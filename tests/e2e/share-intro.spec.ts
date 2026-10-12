@@ -7,6 +7,33 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "./fixtures";
 import { gotoApp, waitForAppReady } from "./helpers";
+import {
+  SHARE_TOKEN_PARAM,
+  unpackShareToken,
+} from "../../kml_heatmap/frontend/state/shareToken";
+
+/** The link a copied link resolves to as the page opens */
+function resolvedLink(copied: string): URLSearchParams {
+  const token = new URL(copied).searchParams.get(SHARE_TOKEN_PARAM);
+  expect(token).not.toBeNull();
+  return unpackShareToken(token!)!;
+}
+
+/**
+ * Wait for the page opened from a copied link to resolve its token and
+ * take the intro's mark off the address bar, which MapApp.initialize does
+ * in one go, before it listens for the visitor's input
+ */
+async function waitForResolvedLink(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate((token) => {
+        const params = new URLSearchParams(location.search);
+        return params.has("p") && !params.has(token) && !params.has("i");
+      }, SHARE_TOKEN_PARAM),
+    )
+    .toBe(true);
+}
 
 /** The id of the intro's layer on the map */
 const LAYER = "share-intro";
@@ -157,15 +184,13 @@ test.describe("The intro of a link to shared flights", () => {
     await gotoApp(page);
 
     const link = await copyShareLink(page);
-    expect(new URL(link).searchParams.get("i")).toBe("1");
+    expect(resolvedLink(link).get("i")).toBe("1");
     // The address bar never carries it
     expect(new URL(page.url()).searchParams.has("i")).toBe(false);
 
     await page.goto(link);
     // Taken off the link as the page opens
-    await expect
-      .poll(() => page.evaluate(() => location.search))
-      .not.toContain("i=1");
+    await waitForResolvedLink(page);
     await expect
       .poll(() => introFrames(page), { timeout: 20000 })
       .toBeGreaterThan(0);
@@ -252,7 +277,7 @@ test.describe("The intro of a link to shared flights", () => {
     await watchIntro(page);
     await gotoApp(page);
     const link = await copyShareLink(page, true);
-    expect(new URL(link).searchParams.get("d")).toBe("1");
+    expect(resolvedLink(link).get("d")).toBe("1");
 
     await page.goto(link);
     await expect
@@ -292,9 +317,7 @@ test.describe("The intro of a link to shared flights", () => {
       await route.continue();
     });
     await page.goto(link, { waitUntil: "domcontentloaded" });
-    await expect
-      .poll(() => page.evaluate(() => location.search))
-      .not.toContain("i=1");
+    await waitForResolvedLink(page);
     const { width, height } = page.viewportSize()!;
     await page.mouse.move(width / 2, height / 2);
     await page.mouse.wheel(0, -400);

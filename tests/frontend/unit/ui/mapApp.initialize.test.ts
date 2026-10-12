@@ -230,6 +230,24 @@ describe("MapApp.initialize", () => {
       expect(listeners().every((signal) => signal?.aborted)).toBe(true);
     });
 
+    it("reads a shared link's token as the link it packs", async () => {
+      // y=2025&p=a5&sv=4&i=1, packed by Copy link (state/shareToken.ts)
+      window.history.replaceState(null, "", "/?c=AgIT9I52g");
+
+      let restoredFrom = "";
+      mockStateManagerInstance.loadState.mockImplementation(() => {
+        restoredFrom = window.location.search;
+        return null;
+      });
+
+      await initializeApp(app);
+
+      expect(restoredFrom).toBe("?y=2025&p=a5&sv=4");
+      await vi.waitFor(() =>
+        expect(m.playShareIntro).toHaveBeenCalledWith(app),
+      );
+    });
+
     it("does not play once the visitor moved the view before the bundle came", async () => {
       window.history.replaceState(null, "", "/?y=2025&p=a5&sv=4&i=1");
       // A wheel over the map as the page opens, the data and the bundle

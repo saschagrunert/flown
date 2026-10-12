@@ -460,8 +460,11 @@ function compareBundles(before, after, names) {
 // distance, and for the target each airport takes the pointer in, its
 // square or, where a neighbour's lies too close, its code's chip, so no
 // two overlap (setAirportTarget in features/airports.ts): 165.47 KB and
-// 57.71 KB gzipped in a local build.
-const BUDGET_APP = { raw: 166 * 1024, gzip: 58.25 * 1024 };
+// 57.71 KB gzipped in a local build. Raised by 5 KB raw and 2.25 KB gzipped
+// (170.72 KB and 59.86 KB gzipped in a local build after) for the token of
+// a copied link (state/shareToken.ts), which a shared link resolves before
+// anything reads it, so it cannot wait for a lazy bundle.
+const BUDGET_APP = { raw: 171 * 1024, gzip: 60.5 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section and the
 // hotspot tour. Fetched only when one of them is first used, so no part of

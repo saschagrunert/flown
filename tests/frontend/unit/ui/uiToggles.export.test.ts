@@ -32,6 +32,10 @@ import {
 } from "../../../../kml_heatmap/frontend/services/featureLoader";
 import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
 import { parseUrlParams } from "../../../../kml_heatmap/frontend/state/urlState";
+import {
+  SHARE_TOKEN_PARAM,
+  unpackShareToken,
+} from "../../../../kml_heatmap/frontend/state/shareToken";
 import type { SavedState } from "../../../../kml_heatmap/frontend/types";
 import { MAP_COMPLETE_TIMEOUT_MS } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
 import { MAP_SOURCES } from "../../../../kml_heatmap/frontend/utils/constants";
@@ -925,6 +929,42 @@ describe("UIToggles export and share", () => {
       expect(toast()?.textContent).toBe("Link copied");
     });
 
+    /** The link a copied link resolves to (state/shareToken.ts) */
+    const resolvedLink = (copied: string): URLSearchParams => {
+      const url = new URL(copied);
+      expect([...url.searchParams.keys()]).toEqual([SHARE_TOKEN_PARAM]);
+      return unpackShareToken(url.searchParams.get(SHARE_TOKEN_PARAM)!)!;
+    };
+
+    it("packs the whole view into one token", async () => {
+      window.history.replaceState(null, "", "/?debug=true&y=2025");
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("clipboard", { writeText });
+      app.isolateSelection = false;
+      app.stateManager.flush.mockReturnValue({
+        schemaVersion: 4,
+        selectedYear: "2025",
+        selectedPathIds: [365, 69],
+        center: { lat: 50, lng: 8 },
+        zoom: 10,
+        bearing: -40,
+        pitch: 30,
+      });
+
+      await uiToggles.shareLink();
+
+      const copied = writeText.mock.calls[0]![0] as string;
+      const url = new URL(copied);
+      expect(url.origin + url.pathname).toBe(window.location.origin + "/");
+      expect(copied.length).toBeLessThan(
+        window.location.origin.length + "/?c=".length + 30,
+      );
+      // The view, without debug and without the intro of share mode
+      expect(resolvedLink(copied).toString()).toBe(
+        "y=2025&p=1x%2Ca5&sv=4&lat=50.000000&lng=8.000000&z=10.00&b=-40&t=30",
+      );
+    });
+
     /** The state a save in share mode writes, which the flush returns */
     const sharedState = (panels: boolean): SavedState => ({
       schemaVersion: 4,
@@ -946,10 +986,12 @@ describe("UIToggles export and share", () => {
       await uiToggles.shareLink();
 
       expect(writeText.mock.calls[0]![0]).toBe(window.location.href);
-      const url = new URL(writeText.mock.calls[1]![0] as string);
+      const copied = writeText.mock.calls[1]![0] as string;
+      const url = new URL(copied);
       expect(url.origin + url.pathname).toBe(window.location.origin + "/");
-      expect(url.searchParams.get("p")).toBe("a5");
-      expect(url.searchParams.get("i")).toBe("1");
+      const link = resolvedLink(copied);
+      expect(link.get("p")).toBe("a5");
+      expect(link.get("i")).toBe("1");
       // The address bar never carries it
       expect(window.location.search).toBe("?y=2025&p=a5&sv=4");
     });
@@ -963,13 +1005,34 @@ describe("UIToggles export and share", () => {
 
       await uiToggles.shareLink();
 
-      const url = new URL(writeText.mock.calls[0]![0] as string);
-      const shared = parseUrlParams(url.searchParams)!;
+      const link = resolvedLink(writeText.mock.calls[0]![0] as string);
+      const shared = parseUrlParams(link)!;
       expect(shared.statsPanelVisible).toBe(false);
-      expect(url.searchParams.has("l")).toBe(false);
+      expect(link.has("l")).toBe(false);
       // Share mode and its flights are what the link is for
       expect(shared.isolateSelection).toBe(true);
       expect(shared.selectedPathIds).toEqual([365]);
+    });
+
+    it("copies the long link in share mode where the token has no room", async () => {
+      window.history.replaceState(null, "", "/?debug=true&y=2025&p=a5&sv=4");
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("clipboard", { writeText });
+      app.isolateSelection = true;
+      // More than the 255 bytes the token holds of an aircraft
+      app.stateManager.flush.mockReturnValue({
+        ...sharedState(false),
+        selectedAircraft: "x".repeat(300),
+      });
+
+      await uiToggles.shareLink();
+
+      const url = new URL(writeText.mock.calls[0]![0] as string);
+      expect(url.origin + url.pathname).toBe(window.location.origin + "/");
+      expect(url.searchParams.has(SHARE_TOKEN_PARAM)).toBe(false);
+      expect(url.searchParams.get("a")).toBe("x".repeat(300));
+      expect(url.searchParams.get("p")).toBe("a5");
+      expect(url.searchParams.get("i")).toBe("1");
     });
 
     it("marks the link of the share sheet in share mode as well", async () => {
@@ -983,7 +1046,7 @@ describe("UIToggles export and share", () => {
       await uiToggles.shareLink();
 
       const { url } = share.mock.calls[0]![0] as { url: string };
-      expect(new URL(url).searchParams.get("i")).toBe("1");
+      expect(resolvedLink(url).get("i")).toBe("1");
     });
 
     it("shows an error toast when the clipboard is unavailable", async () => {
