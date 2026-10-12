@@ -150,6 +150,7 @@ import {
 } from "./calculations/datasetIndex";
 import type { StoreAccessors } from "./state/store";
 import { TOGGLE_KEYS } from "./state/toggles";
+import { resolveShareToken } from "./state/shareToken";
 import { takeShareIntro } from "./state/urlState";
 import type { ReplayManager } from "./ui/replayManager";
 import type { StatsManager } from "./ui/statsManager";
@@ -499,6 +500,8 @@ export class MapApp {
   }
 
   async initialize(): Promise<void> {
+    // A shared link becomes the ordinary one before anything reads it
+    resolveShareToken();
     // Before the first save of the state writes the link anew without it
     const intro = takeShareIntro();
     // Input from the page open on, while the data and the feature bundle

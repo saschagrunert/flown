@@ -212,8 +212,10 @@ image first: the browser's print dialog cannot capture the WebGL map.
 
 ### Copy link
 
-Copy the current URL to the clipboard. On a phone, where there is a native share
-dialog, the More sheet's row says **Share link** and opens that instead.
+Copy a link to the current view to the clipboard. On a phone, where there is a
+native share dialog, the More sheet's row says **Share link** and opens that
+instead. The link packs the whole view into one short token (see
+[Shared links](#shared-links)); the address bar keeps the readable link.
 
 ### Wrapped
 
@@ -735,7 +737,8 @@ replay has no Escape: its close button or a click on the map closes it.
 ## Shareable URLs
 
 Map state is encoded in the URL for easy sharing. Copy the URL from your
-browser's address bar or use the copy-link button:
+browser's address bar, or use the copy-link button for a short link to the same
+view (see [Shared links](#shared-links)):
 
 - Specific year or all years (`?y=2025` or `?y=all`)
 - Aircraft filter (`?a=D-EAGJ`)
@@ -795,6 +798,32 @@ Example URLs:
 
 URL parameters take precedence over localStorage, allowing shared links to
 override saved preferences.
+
+### Shared links
+
+Copy link packs everything the address bar link carries into one parameter,
+`?c=<token>`, and the page turns it back into the ordinary link as it opens, so
+the address bar of the visitor shows the readable link again. A view takes about
+20 characters instead of 50 to 80, and the selected flights about half of what
+they take in `p`:
+
+```text
+?y=2025&a=D-EAGJ&p=6jkc3usv%2Capxuod8z%2Ce13wu1of&sv=4&v=100100001&lat=51.123456&lng=13.654321&z=9.50&t=50&d=1&i=1
+?c=A-qT9IwcggAxMhhpX4BcV3GLtn0md2Ouyq9MNqmgY_jLTynW
+```
+
+The token is a stream of bits written six to a URL-safe base64 character
+(`A`-`Z`, `a`-`z`, `0`-`9`, `-`, `_`), laid out in
+`kml_heatmap/frontend/state/shareToken.ts`: a format version, a bit for each
+value saying whether the link has it, the switches written as `1`, and then each
+value at exactly the precision the link writes it in (the centre to six
+decimals, the zoom to two, bearing and tilt to a tenth of a degree, a
+registration at six bits a character). The selected flights come last: their ids
+sorted, and the gaps between them Rice-coded, about 6 characters a flight for a
+hundred flights instead of the 11 of an id in `p` and its `%2C`. `debug` is left
+out. A link with a value the token has no room for is copied as the long link
+instead, and a token that does not resolve opens the page as a link without one
+would.
 
 ## Smart features
 

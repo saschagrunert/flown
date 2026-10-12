@@ -23,6 +23,10 @@ import {
   waitForMapReady,
   wheelZoomIn,
 } from "./map";
+import {
+  SHARE_TOKEN_PARAM,
+  unpackShareToken,
+} from "../../kml_heatmap/frontend/state/shareToken";
 
 /** Fail loudly if the cards no longer overflow, rather than time out */
 async function expectScrollable(column: Locator): Promise<void> {
@@ -454,14 +458,27 @@ test.describe("Wrapped and Export", () => {
     expect(exportsToJpeg).toBe("function");
   });
 
-  test("share button copies the current link", async ({ page, context }) => {
+  test("share button copies a short link to the current view", async ({
+    page,
+    context,
+  }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
     await page.locator("#share-btn").click();
 
     await expect(toastMessage(page, "Link copied")).toBeVisible();
-    const copied = await page.evaluate(() => navigator.clipboard.readText());
-    expect(copied).toBe(page.url());
-    expect(copied).toContain("?");
+    const copied = new URL(
+      await page.evaluate(() => navigator.clipboard.readText()),
+    );
+    const current = new URL(page.url());
+    expect(copied.origin + copied.pathname).toBe(
+      current.origin + current.pathname,
+    );
+    expect([...copied.searchParams.keys()]).toEqual([SHARE_TOKEN_PARAM]);
+    // The token resolves to the link in the address bar
+    const resolved = unpackShareToken(
+      copied.searchParams.get(SHARE_TOKEN_PARAM)!,
+    );
+    expect(resolved?.toString()).toBe(current.searchParams.toString());
   });
 });

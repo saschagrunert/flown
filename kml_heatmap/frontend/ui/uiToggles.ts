@@ -9,6 +9,7 @@ import { loadExtras } from "../services/featureLoader";
 import { TRY_AGAIN } from "../services/lazyImport";
 import { logError } from "../utils/logger";
 import { showToast } from "../utils/toast";
+import { packShareToken, SHARE_TOKEN_PARAM } from "../state/shareToken";
 import { encodeStateToUrl, SHARE_INTRO_PARAM } from "../state/urlState";
 import { NO_TIMING_MESSAGE, STILL_LOADING_MESSAGE } from "./actions";
 import { altitudeColours, setColorLayer } from "./layerVisibility";
@@ -157,14 +158,23 @@ export class UIToggles {
     // takeShareIntro), over the map: not under the statistics the sender
     // has open, which on a phone are a sheet over all of it. Share mode has
     // flights, so the link has a query.
-    const url =
-      this.app.isolateSelection && state
-        ? `${location.origin}${location.pathname}?${encodeStateToUrl({
+    let url = location.href;
+    if (state) {
+      const shared = this.app.isolateSelection;
+      const query = shared
+        ? `${encodeStateToUrl({
             ...state,
             statsPanelVisible: false,
             flightListVisible: false,
           })}&${SHARE_INTRO_PARAM}=1`
-        : location.href;
+        : encodeStateToUrl(state);
+      // All of it packed into one token (state/shareToken.ts), which the
+      // page resolves as it opens; the long link where the token has no room
+      const token = packShareToken(query);
+      const page = `${location.origin}${location.pathname}`;
+      if (token !== null) url = `${page}?${SHARE_TOKEN_PARAM}=${token}`;
+      else if (shared) url = `${page}?${query}`;
+    }
 
     if (canShareLink()) {
       try {
