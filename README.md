@@ -1,4 +1,4 @@
-# Flown
+# <img src="flown/static/favicon.svg" alt="" width="32" align="absmiddle"> Flown
 
 > Where you have flown: your KML flight logs as a static site.
 
