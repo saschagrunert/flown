@@ -252,6 +252,7 @@ const buildOptions = {
     join(FRONTEND_DIR, "wrapped.ts"),
     join(FRONTEND_DIR, "search.ts"),
     join(FRONTEND_DIR, "extras.ts"),
+    join(FRONTEND_DIR, "local.ts"),
   ],
   outdir: STATIC_DIR,
   entryNames: "[name].bundle",
@@ -301,6 +302,17 @@ const workerBuildOptions = {
   entryPoints: [join(FRONTEND_DIR, "services/yearWorker.ts")],
   splitting: false,
   plugins: [pureConstantsPlugin],
+};
+
+// The worker that builds the flights a visitor drops on the page
+// (services/localWorker.ts), a build of its own for the same reasons. It
+// imports Pyodide from its CDN at run time, which stays an import for the
+// browser to resolve.
+/** @type {import("esbuild").BuildOptions} */
+const localWorkerBuildOptions = {
+  ...workerBuildOptions,
+  entryPoints: [join(FRONTEND_DIR, "services/localWorker.ts")],
+  external: ["https://*"],
 };
 
 /**
@@ -463,8 +475,14 @@ function compareBundles(before, after, names) {
 // 57.71 KB gzipped in a local build. Raised by 5 KB raw and 2.25 KB gzipped
 // (170.72 KB and 59.86 KB gzipped in a local build after) for the token of
 // a copied link (state/shareToken.ts), which a shared link resolves before
-// anything reads it, so it cannot wait for a lazy bundle.
-const BUDGET_APP = { raw: 171 * 1024, gzip: 60.5 * 1024 };
+// anything reads it, so it cannot wait for a lazy bundle. Raised by 2 KB
+// raw and 0.5 KB gzipped (172.39 KB and 60.42 KB gzipped in a local build
+// after) for Your flights: the start of a page on the flights a visitor
+// dropped, which reads their dataset from the browser before the app starts
+// (startApp in mapApp.ts), the watch for files dragged over the page
+// (ui/fileDropWatch.ts), the button, its row in the phone's More sheet and
+// what Copy link says while those flights are shown.
+const BUDGET_APP = { raw: 173 * 1024, gzip: 61 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section and the
 // hotspot tour. Fetched only when one of them is first used, so no part of
@@ -522,6 +540,14 @@ const BUDGET_SEARCH = { raw: 14 * 1024, gzip: 5.75 * 1024 };
 // phone's page has a moment and on the first export. 8.88 KB and 3.39 KB
 // gzipped in a local build when it was set.
 const BUDGET_EXTRAS = { raw: 11 * 1024, gzip: 4.5 * 1024 };
+// Your flights: the panel that takes the KML files a visitor drops, the
+// store in the browser and the page's side of the build worker, fetched
+// the first time the panel opens or a file is dragged over the page, and at
+// start by a page that shows those flights. Set with about 10 % of room.
+const BUDGET_LOCAL = { raw: 20 * 1024, gzip: 7 * 1024 };
+// The worker of Your flights, which runs the site's Python in Pyodide;
+// the runtime itself comes from its CDN and is no part of this.
+const BUDGET_LOCAL_WORKER = { raw: 6 * 1024, gzip: 2.5 * 1024 };
 // The year worker (services/yearWorker.ts): fetched by every visit, preloaded
 // in the page head beside the app and started with the first year file. It
 // decodes the year files and draws the heat sources off the main thread,
@@ -550,8 +576,10 @@ const FEATURES_BUNDLE = "features.bundle.js";
 const WRAPPED_BUNDLE = "wrapped.bundle.js";
 const SEARCH_BUNDLE = "search.bundle.js";
 const EXTRAS_BUNDLE = "extras.bundle.js";
+const LOCAL_BUNDLE = "local.bundle.js";
 const SHARED_BUNDLE = "shared.bundle.js";
 const WORKER_BUNDLE = "yearWorker.bundle.js";
+const LOCAL_WORKER_BUNDLE = "localWorker.bundle.js";
 
 /** @typedef {import("./scripts/build-helpers.js").Overrun} Overrun */
 
@@ -572,7 +600,9 @@ function analyzeBundleSizes() {
     ["🎁 Wrapped", [WRAPPED_BUNDLE], BUDGET_WRAPPED],
     ["🔎 Search", [SEARCH_BUNDLE], BUDGET_SEARCH],
     ["🧰 Extras", [EXTRAS_BUNDLE], BUDGET_EXTRAS],
+    ["📂 Your flights", [LOCAL_BUNDLE], BUDGET_LOCAL],
     ["🧵 Year worker", [WORKER_BUNDLE], BUDGET_WORKER],
+    ["🐍 Build worker", [LOCAL_WORKER_BUNDLE], BUDGET_LOCAL_WORKER],
     [
       "🧭 MapLibre",
       Object.keys(VENDOR_FILES)
@@ -658,27 +688,34 @@ async function build() {
 
     if (isWatch) {
       console.log("👀 Watching for changes...");
-      for (const options of [buildOptions, workerBuildOptions]) {
+      for (const options of [
+        buildOptions,
+        workerBuildOptions,
+        localWorkerBuildOptions,
+      ]) {
         const ctx = await esbuild.context(options);
         await ctx.watch();
       }
     } else {
       console.log("🔨 Building the JavaScript bundles...");
-      const [result, workerResult] = await Promise.all([
+      const [result, workerResult, localWorkerResult] = await Promise.all([
         esbuild.build(buildOptions),
         esbuild.build(workerBuildOptions),
+        esbuild.build(localWorkerBuildOptions),
       ]);
-      // The site publishes the seven by name (see assertExpectedOutputs)
+      // The site publishes the nine by name (see assertExpectedOutputs)
       assertExpectedOutputs(
-        [result.metafile, workerResult.metafile],
+        [result.metafile, workerResult.metafile, localWorkerResult.metafile],
         [
           APP_BUNDLE,
           FEATURES_BUNDLE,
           WRAPPED_BUNDLE,
           SEARCH_BUNDLE,
           EXTRAS_BUNDLE,
+          LOCAL_BUNDLE,
           SHARED_BUNDLE,
           WORKER_BUNDLE,
+          LOCAL_WORKER_BUNDLE,
         ],
       );
 
@@ -693,6 +730,7 @@ async function build() {
         WRAPPED_BUNDLE,
         SEARCH_BUNDLE,
         EXTRAS_BUNDLE,
+        LOCAL_BUNDLE,
       ];
       if (result.metafile) {
         for (const name of composed) {

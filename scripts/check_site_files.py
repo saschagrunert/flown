@@ -29,12 +29,15 @@ ASSETS = (
     "wrapped.bundle.js",
     "search.bundle.js",
     "extras.bundle.js",
+    "local.bundle.js",
     "shared.bundle.js",
     "yearWorker.bundle.js",
+    "localWorker.bundle.js",
     "styles.css",
     "features.css",
     "wrapped.css",
     "search.css",
+    "local.css",
     "vendor/maplibre-gl.mjs",
     "vendor/maplibre-gl-shared.mjs",
     "vendor/maplibre-gl-worker.mjs",
@@ -42,7 +45,13 @@ ASSETS = (
     "vendor/html-to-image.mjs",
 )
 
-SITE_FILES = ("index.html", "map_config.js", *ASSETS, "data/metadata.json")
+SITE_FILES = (
+    "index.html",
+    "map_config.js",
+    "flown-src.zip",
+    *ASSETS,
+    "data/metadata.json",
+)
 
 PACKAGE_FILES = (
     "templates/map_template.html",

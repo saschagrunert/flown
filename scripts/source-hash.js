@@ -32,6 +32,7 @@ const BUILD_FILES = [
   "flown/static/features.css",
   "flown/static/wrapped.css",
   "flown/static/search.css",
+  "flown/static/local.css",
 ].map((name) => join(REPO_ROOT, name));
 
 /**

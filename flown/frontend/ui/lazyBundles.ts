@@ -55,6 +55,8 @@ export const CROSS_SECTION_UNAVAILABLE_MESSAGE =
   "The cross-section is unavailable: its code could not be loaded" + TRY_AGAIN;
 export const SEARCH_UNAVAILABLE_MESSAGE =
   "Search is unavailable: its code could not be loaded" + TRY_AGAIN;
+export const LOCAL_UNAVAILABLE_MESSAGE =
+  "Your flights are unavailable: their code could not be loaded" + TRY_AGAIN;
 /** Share mode is on, but the code that frames its flights is missing */
 export const SHARE_FRAME_UNAVAILABLE_MESSAGE =
   "The map could not move to the shared flights: its code could not be loaded" +

@@ -699,6 +699,47 @@ class TestHttpsProxy:
 
 
 class TestTerrariumTiles:
+    def test_a_getter_of_its_own_replaces_the_connection(self, tmp_path, connections):
+        """The browser build fetches with the worker's XMLHttpRequest."""
+        asked = []
+
+        def get(url):
+            asked.append(url)
+            return 200, _tile_png(250.0)
+
+        tiles = TerrariumTiles(tmp_path / "terrain", get=get, workers=1)
+        tile = TileKey(10, 546, 341)
+
+        assert tiles.pixels({tile: [0]}) == {tile: array("d", [250.0])}
+        assert asked == [
+            "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/10/546/341.png"
+        ]
+        assert connections.connections == 0
+
+    def test_one_worker_fetches_in_this_thread(self, tmp_path):
+        """Where no thread can be started (Pyodide), none is."""
+        import threading
+
+        threads = set()
+
+        def get(url):
+            threads.add(threading.current_thread())
+            return 200, _tile_png(250.0)
+
+        tiles = TerrariumTiles(tmp_path / "terrain", get=get, workers=1)
+        wanted = {TileKey(10, x, 1): [0] for x in range(3)}
+
+        assert len(tiles.pixels(wanted)) == 3
+        assert threads == {threading.main_thread()}
+
+    def test_a_getter_that_fails_is_taken_like_a_lost_connection(self, tmp_path):
+        def get(url):
+            raise OSError("no network")
+
+        tiles = TerrariumTiles(tmp_path / "terrain", get=get, workers=1)
+
+        assert tiles.pixels({TileKey(10, 546, 341): [0]}) == {}
+
     def test_fetches_a_tile_once_and_reuses_the_cache(self, tmp_path, connections):
         body = _tile_png(250.0)
         tiles = TerrariumTiles(tmp_path / "terrain")

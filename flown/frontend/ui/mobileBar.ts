@@ -530,6 +530,13 @@ export class MobileBar {
       },
       {
         kind: "action",
+        id: "local-flights",
+        icon: "upload",
+        label: "Your flights",
+        onSelect: () => runAction(app, "toggleLocalFlights"),
+      },
+      {
+        kind: "action",
         id: "replay",
         icon: "play",
         // The name the control has in the columns

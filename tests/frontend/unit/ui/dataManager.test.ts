@@ -313,6 +313,23 @@ describe("DataManager", () => {
       expect(typeof loaderMocks.options?.onLoadError).toBe("function");
     });
 
+    it("reads the data from the config's source when it has one", () => {
+      // The flights a visitor dropped, kept in the browser (ui/localFlights.ts)
+      expect(loaderMocks.options?.fetchJson).toBeUndefined();
+      expect(loaderMocks.options?.fetchBytes).toBeUndefined();
+      const fetchJson = vi.fn();
+      const fetchBytes = vi.fn();
+      const local = createMockApp({
+        config: { dataDir: "local", dataSource: { fetchJson, fetchBytes } },
+      });
+
+      new DataManager(asMapApp(local)).destroy();
+
+      expect(loaderMocks.options?.dataDir).toBe("local");
+      expect(loaderMocks.options?.fetchJson).toBe(fetchJson);
+      expect(loaderMocks.options?.fetchBytes).toBe(fetchBytes);
+    });
+
     it("wires show/hide loading callbacks to the loading element", () => {
       const loadingEl = document.getElementById("loading")!;
       loaderMocks.options!.showLoading!(loading({ years: ["2025"] }));

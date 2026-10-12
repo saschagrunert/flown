@@ -198,6 +198,9 @@ export class DataManager {
 
     this.dataLoader = new DataLoader({
       dataDir: app.config.dataDir,
+      // The flights a visitor dropped, from the browser's storage rather
+      // than the site's files (ui/localFlights.ts)
+      ...app.config.dataSource,
       showLoading: (state) => this.showLoading(state),
       hideLoading: () => this.hideLoading(),
       onMetadata: (metadata) => this.onMetadata?.(metadata),

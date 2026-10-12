@@ -9,6 +9,7 @@ import { loadExtras } from "../services/featureLoader";
 import { TRY_AGAIN } from "../services/lazyImport";
 import { logError } from "../utils/logger";
 import { showToast } from "../utils/toast";
+import { SHARE_UNAVAILABLE_MESSAGE } from "../state/localFlags";
 import { packShareToken, SHARE_TOKEN_PARAM } from "../state/shareToken";
 import { encodeStateToUrl, SHARE_INTRO_PARAM } from "../state/urlState";
 import { NO_TIMING_MESSAGE, STILL_LOADING_MESSAGE } from "./actions";
@@ -152,6 +153,13 @@ export class UIToggles {
    * touch laptops, which opened it instead of copying.
    */
   async shareLink(): Promise<void> {
+    // The flights a visitor dropped are in this browser alone: a link to
+    // the site would open on the site's flights, with a selection of ids
+    // that are none of them
+    if (this.app.config.localFlights) {
+      showToast(SHARE_UNAVAILABLE_MESSAGE, "info");
+      return;
+    }
     // The URL is read right now, so the debounced save has to land first
     const state = this.app.stateManager.flush();
     // A link to shared flights draws them in as it opens, once (see

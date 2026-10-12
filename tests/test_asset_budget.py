@@ -71,6 +71,7 @@ STYLESHEET_BUDGET_BYTES = {
     "features.css": int(21.5 * 1024),
     "wrapped.css": 36 * 1024,
     "search.css": int(5.75 * 1024),
+    "local.css": int(6.5 * 1024),
 }
 
 # The same sheets gzipped at level 9, as build.js measures the bundles: the
@@ -86,6 +87,7 @@ STYLESHEET_GZIP_BUDGET_BYTES = {
     "features.css": int(3.875 * 1024),
     "wrapped.css": int(6.125 * 1024),
     "search.css": int(1.25 * 1024),
+    "local.css": int(1.5 * 1024),
 }
 
 

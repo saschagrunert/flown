@@ -31,6 +31,12 @@ const LINKS = [
   // The credit of the search of places; the link to Photon's own page is
   // taken as fetched, which its API's place in connect-src allows
   "https://www.openstreetmap.org/copyright",
+  // Fetched by the worker that builds the flights a visitor drops
+  // (services/localWorker.ts), not by the page: a worker started from a
+  // file of the site gets the policy of that file's response, which the
+  // page's meta tag is no part of, so the page's connect-src does not
+  // reach it
+  "https://cdn.jsdelivr.net/pyodide/",
 ];
 
 /**

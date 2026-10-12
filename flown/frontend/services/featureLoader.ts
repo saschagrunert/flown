@@ -39,11 +39,13 @@ import type { FeatureModule } from "../features";
 import type { WrappedModule } from "../wrapped";
 import type { SearchModule } from "../search";
 import type { ExtrasModule } from "../extras";
+import type { LocalModule } from "../local";
 
 /** Next to the page, like every other file the site ships */
 export const FEATURES_CSS_URL = "./features.css";
 export const WRAPPED_CSS_URL = "./wrapped.css";
 export const SEARCH_CSS_URL = "./search.css";
+export const LOCAL_CSS_URL = "./local.css";
 
 /** A lazy bundle is a fraction of a year file, so it gets less time */
 const LAZY_LOAD_TIMEOUT_MS = 30_000;
@@ -112,6 +114,12 @@ const importExtras: Importer<ExtrasModule> = (failedImports) =>
   importWithRetry(
     () => import("../extras"),
     versioned("./extras.bundle.js"),
+    failedImports,
+  );
+const importLocal: Importer<LocalModule> = (failedImports) =>
+  importWithRetry(
+    () => import("../local"),
+    versioned("./local.bundle.js"),
     failedImports,
   );
 
@@ -189,6 +197,7 @@ const features = lazyBundle("feature", FEATURES_CSS_URL, importFeatures);
 const wrapped = lazyBundle("Wrapped", WRAPPED_CSS_URL, importWrapped);
 const search = lazyBundle("search", SEARCH_CSS_URL, importSearch);
 const extras = lazyBundle("extras", null, importExtras);
+const local = lazyBundle("Your flights", LOCAL_CSS_URL, importLocal);
 
 /** The feature bundle's exports, or null when it could not be loaded */
 export function loadFeatures(): Promise<FeatureModule | null> {
@@ -218,6 +227,11 @@ export function loadExtras(): Promise<ExtrasModule | null> {
   return extras.load();
 }
 
+/** The Your flights bundle's exports, or null when it could not be loaded */
+export function loadLocal(): Promise<LocalModule | null> {
+  return local.load();
+}
+
 /** The extras bundle's exports if they have arrived, or null */
 export function loadedExtras(): ExtrasModule | null {
   return extras.loaded();
@@ -241,4 +255,8 @@ export function resetSearchLoader(importer: Importer<SearchModule>): void {
 /** Forget the cached request and replace the import (used by tests) */
 export function resetExtrasLoader(importer: Importer<ExtrasModule>): void {
   extras.reset(importer);
+}
+
+export function resetLocalLoader(importer: Importer<LocalModule>): void {
+  local.reset(importer);
 }

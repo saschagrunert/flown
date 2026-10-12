@@ -31,7 +31,7 @@ from .workers import WorkerPool, default_worker_count
 
 if TYPE_CHECKING:
     from array import array
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
     from pathlib import Path
 
 __all__ = ["TERRAIN_CACHE_DIR", "TerrariumTiles"]
@@ -120,9 +120,24 @@ class TerrariumTiles:
     own.
     """
 
-    def __init__(self, cache_dir: Path | None = None) -> None:
-        """Keep the tiles in ``cache_dir`` (by default ``TERRAIN_CACHE_DIR``)."""
+    def __init__(
+        self,
+        cache_dir: Path | None = None,
+        *,
+        get: Callable[[str], tuple[int, bytes]] | None = None,
+        workers: int | None = None,
+    ) -> None:
+        """Keep the tiles in ``cache_dir`` (by default ``TERRAIN_CACHE_DIR``).
+
+        ``get`` fetches a URL in place of ``http.client`` and answers with
+        the status and the body, as ``_get`` does; the browser build passes
+        one (see ``flown.browser``), which has no sockets. ``workers`` is how
+        many tiles are fetched at once (``FETCH_WORKERS`` by default); one
+        fetches them in this thread, where no other can be started.
+        """
         self.cache_dir = cache_dir if cache_dir is not None else TERRAIN_CACHE_DIR
+        self._get_url = get if get is not None else self._get
+        self.workers = workers
         self._offline = threading.Event()
         # Tiles in a row that used up their attempts on server errors (see
         # SERVER_ERROR_TILES_TO_GIVE_UP), across the fetch threads
@@ -261,7 +276,7 @@ class TerrariumTiles:
             if self._offline.is_set():
                 return None
             try:
-                status, data = self._get(url)
+                status, data = self._get_url(url)
             except _RefusedURLError as e:
                 logger.debug("Elevation tile %s: %s", url, e)
                 return None
@@ -339,9 +354,15 @@ class TerrariumTiles:
             logger.debug("Cannot create %s: %s", self.cache_dir, e)
             return
         started = time.monotonic()
+        workers = self.workers if self.workers is not None else FETCH_WORKERS
         try:
-            with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
-                fetched = [size for size in pool.map(self._download, missing) if size]
+            if workers <= 1:
+                fetched = [size for size in map(self._download, missing) if size]
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    fetched = [
+                        size for size in pool.map(self._download, missing) if size
+                    ]
         finally:
             # The threads are gone; their connections would only wait for
             # the host to drop them

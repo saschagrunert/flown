@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   FEATURES_CSS_URL,
+  LOCAL_CSS_URL,
   SEARCH_CSS_URL,
   SITE_UPDATED_MESSAGE,
   WRAPPED_CSS_URL,
@@ -19,10 +20,12 @@ import {
   loadedFeatures,
   loadExtras,
   loadFeatures,
+  loadLocal,
   loadSearch,
   loadWrapped,
   resetExtrasLoader,
   resetFeatureLoader,
+  resetLocalLoader,
   resetSearchLoader,
   resetWrappedLoader,
   wasSiteUpdated,
@@ -31,6 +34,7 @@ import type { FeatureModule } from "../../../../flown/frontend/features";
 import type { WrappedModule } from "../../../../flown/frontend/wrapped";
 import type { SearchModule } from "../../../../flown/frontend/search";
 import type { ExtrasModule } from "../../../../flown/frontend/extras";
+import type { LocalModule } from "../../../../flown/frontend/local";
 import { logError } from "../../../../flown/frontend/utils/logger";
 
 vi.mock("../../../../flown/frontend/utils/logger", () => ({
@@ -325,6 +329,55 @@ describe("loadSearch", () => {
     await expect(loadSearch()).resolves.toBeNull();
     expect(logError).toHaveBeenCalledWith(
       "Could not load the search bundle:",
+      expect.any(Error),
+    );
+  });
+});
+
+describe("loadLocal", () => {
+  const local = {
+    toggleLocalFlights: vi.fn(),
+    localStartConfig: vi.fn(),
+    reopenAfterSwitch: vi.fn(),
+    showDropSheet: vi.fn(),
+  } as unknown as LocalModule;
+  /** Stands in for `import("../local")` */
+  const importLocal = vi.fn<(failedImports: number) => Promise<LocalModule>>();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetFeatureLoader(importFeatures);
+    resetWrappedLoader(importWrapped);
+    resetSearchLoader(importSearch);
+    resetLocalLoader(importLocal);
+    importLocal.mockResolvedValue(local);
+    loadStylesheet.mockResolvedValue(undefined);
+  });
+
+  it("imports its own bundle and stylesheet, and none of the others", async () => {
+    await expect(loadLocal()).resolves.toBe(local);
+
+    expect(importLocal).toHaveBeenCalledTimes(1);
+    expect(loadStylesheet).toHaveBeenCalledTimes(1);
+    expect(loadStylesheet).toHaveBeenCalledWith(LOCAL_CSS_URL);
+    expect(LOCAL_CSS_URL.startsWith("./")).toBe(true);
+    expect(importFeatures).not.toHaveBeenCalled();
+    expect(importWrapped).not.toHaveBeenCalled();
+    expect(importSearch).not.toHaveBeenCalled();
+  });
+
+  it("hands the bundle out once it has arrived, without fetching it again", async () => {
+    await loadLocal();
+    await expect(loadLocal()).resolves.toBe(local);
+    expect(importLocal).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves with null and reports when the bundle cannot be loaded", async () => {
+    importLocal.mockRejectedValueOnce(new Error("offline"));
+
+    await expect(loadLocal()).resolves.toBeNull();
+    expect(logError).toHaveBeenCalledWith(
+      "Could not load the Your flights bundle:",
       expect.any(Error),
     );
   });

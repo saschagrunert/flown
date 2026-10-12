@@ -166,6 +166,39 @@ of the panels over it, and jumps rather than flies under reduced motion. Replay,
 Replay all, the hotspot tour and Wrapped hold the search while they run, and
 close it as they start.
 
+### Your flights
+
+See your own flights on any Flown site, without a build of your own and without
+sending them anywhere: **Your flights** under Search in the View group, or the
+row of the More sheet on a phone, opens a panel that takes the KML or KMZ files
+of your flights (SkyDemon, Charterware and the other formats the site build
+takes, named as [Adding flights](../README.md#adding-flights) says, and an
+`aircraft.json` next to them), dropped on it, on the map anywhere, or chosen
+with the file picker. The browser keeps the files, runs the same build the site
+was made with on them, in a worker with [Pyodide](https://pyodide.org) (the
+Python runtime is fetched from its CDN the first time, some 10 MB, and the
+site's own code next to the page), and then reloads the page on your flights:
+the heatmap, the flights, the airports, the statistics, the replays, the
+profiles and Wrapped all work on them as they do on the site's. The ground under
+the flights and the airport names come from the same hosts the build asks (see
+[Privacy](privacy.md#requests-to-other-servers)); a build that cannot reach them
+goes on without the ground, or with the airport names as the files spell them.
+
+The panel says which flights the page shows and lists the files kept, each with
+its size and a Remove; a file added or removed builds the set again, and so does
+**Show my flights** after a file changed or the site was deployed again, whose
+build may write the data files another way. **Show the site's flights** goes
+back to the site's without losing the files, **Show my flights** returns to
+them, and **Remove all** lets the files, the build and the build's cache go (the
+parsed tracks, the elevation tiles along them and the airport database, which
+the next build fetches again). Each set of flights keeps a view, year, aircraft
+and selection of its own; the switch opens the page afresh. Nothing leaves the
+browser: the files and the data built from them stay in its storage (IndexedDB),
+which goes with the site's data when the browser clears it; Safari lets go of
+the storage of a site not used for a week unless the page is on the home screen.
+Copy link says that a link cannot carry flights that are only in this browser,
+and does nothing else while they are shown.
+
 ### Statistics
 
 View statistics (distance, altitude, landings, airports, flight time). A line at

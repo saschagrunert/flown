@@ -40,11 +40,11 @@ the flights is in [Rendering](rendering.md) and [Heat](heat.md), the tests in
     the GitHub mark and the top-down aircraft are drawn in `utils/icons.ts`
     because Lucide carries neither
 - **Stylesheets** in `flown/static/` (`styles.css`, `features.css`,
-  `wrapped.css` and `search.css`, see [Stylesheets](#stylesheets))
+  `wrapped.css`, `search.css` and `local.css`, see [Stylesheets](#stylesheets))
 - **Build output** in `flown/static/` (`mapApp.bundle.js`, `features.bundle.js`,
   `wrapped.bundle.js`, `search.bundle.js`, `extras.bundle.js`,
-  `shared.bundle.js`, `yearWorker.bundle.js`, their source maps, `vendor/` and
-  `flags/`)
+  `local.bundle.js`, `shared.bundle.js`, `yearWorker.bundle.js`,
+  `localWorker.bundle.js`, their source maps, `vendor/` and `flags/`)
 - **Build scripts** `build.js` and `scripts/*.js`, plain JavaScript with JSDoc
   types that `tsconfig.node.json` checks (`npm run typecheck`). The type checks
   run TypeScript 7 (the `typescript7` alias of `package.json`, called by path
@@ -101,10 +101,25 @@ holds what only a tap on a control needs: the sheet of the phone's bar
 after the bar is mounted (a tap on a sheet tab before it has arrived opens the
 sheet once it has), and the export of the map as an image (`ui/mapExport.ts`),
 which the first export fetches; the bar and the Export control's busy state stay
-in the app. `shared.bundle.js` is the app itself and everything the lazy bundles
-use of it. `yearWorker.bundle.js` is a build of its own, which decodes the year
-files and writes the heat sources off the main thread (see
-[The year worker](data.md#the-year-worker)).
+in the app. `local.bundle.js` holds Your flights (`ui/localFlights.ts`): the
+panel that takes the KML files a visitor drops on the page, the store of those
+files and of what is built from them in the browser (`services/localStore.ts`),
+the page's side of the build (`services/localBuild.ts`), the sheet over the map
+while files are dragged across it (`ui/fileDrop.ts`) and the configuration a
+page that shows those flights starts with; the app carries the button, its row
+in the More sheet, the watch for a drag of files (`ui/fileDropWatch.ts`), the
+start that asks for that configuration (`startApp` in `mapApp.ts`) and the flags
+both share (`state/localFlags.ts`). `shared.bundle.js` is the app itself and
+everything the lazy bundles use of it. `yearWorker.bundle.js` is a build of its
+own, which decodes the year files and writes the heat sources off the main
+thread (see [The year worker](data.md#the-year-worker)). `localWorker.bundle.js`
+is another, the worker that builds the visitor's flights: it imports Pyodide
+from its CDN, loads lxml and the package's own Python from `flown-src.zip` next
+to the page (`site_assets.py` writes it), and runs `flown.browser.build` on the
+files, with the airport database and the elevation tiles it fetches kept in a
+directory mounted on IndexedDB. The page's Content Security Policy does not
+reach a worker started from a file of the site, which gets the policy of that
+file's response; a host that sends one would have to allow the CDN in it.
 
 ### Shared chunk
 
@@ -159,15 +174,16 @@ the statistics rail falls back to the ISO country code.
 ## Stylesheets
 
 The styles are split the same way as the bundles and travel with them:
-`flown/static/styles.css` is linked in the page, `features.css`, `wrapped.css`
-and `search.css` are fetched alongside their bundles (see
+`flown/static/styles.css` is linked in the page, `features.css`, `wrapped.css`,
+`search.css` and `local.css` are fetched alongside their bundles (see
 `services/featureLoader.ts`), and each has its own budget in
 `tests/test_asset_budget.py` (see [Size budgets](budgets.md#stylesheets)). A
 rule belongs in `features.css` when its selector names replay, in `wrapped.css`
 when it names Wrapped or what the statistics rail renders, its tabs and the
-flight list included, and in `search.css` when it names the search panel or its
-pulse on the map; the file headers spell out the rest, including the one-way
-dependency on `styles.css`.
+flight list included, in `search.css` when it names the search panel or its
+pulse on the map, and in `local.css` when it names the panel of Your flights or
+the sheet over the map while files are dragged; the file headers spell out the
+rest, including the one-way dependency on `styles.css`.
 
 A surface across the whole width of the map on a phone (the tab bar, its sheet)
 takes `--color-bg-edge`, the secondary surface at an alpha of 0.99: Chrome
