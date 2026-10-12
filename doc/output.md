@@ -23,15 +23,21 @@ output-dir/
 ├── search.bundle.js.map
 ├── extras.bundle.js       # The phone's sheet and the export of the map, imported on first use
 ├── extras.bundle.js.map
-├── shared.bundle.js       # The app, which the five above import
+├── local.bundle.js        # Your flights, the panel for the visitor's own KML files, imported on first use
+├── local.bundle.js.map
+├── shared.bundle.js       # The app, which the six above import
 ├── shared.bundle.js.map
 ├── yearWorker.bundle.js   # Decodes the year files and writes the heat sources, in a worker
 ├── yearWorker.bundle.js.map
+├── localWorker.bundle.js  # Builds the visitor's own flights with Pyodide, in a worker
+├── localWorker.bundle.js.map
+├── flown-src.zip          # The Python of this package, which that worker runs
 ├── map_config.js          # Map defaults, tile API key and the build stamp
 ├── styles.css             # Linked in the page
 ├── features.css           # The styles of those features, fetched with their bundle
 ├── wrapped.css            # Wrapped, the statistics panel and the flight list, fetched with its bundle
 ├── search.css             # The search, fetched with its bundle
+├── local.css              # Your flights, fetched with its bundle
 ├── manifest.json
 ├── favicon.svg
 ├── favicon.ico

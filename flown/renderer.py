@@ -29,6 +29,7 @@ from .airport_lookup import (
 from .airports import deduplicate_airports
 from .data_exporter import (
     ExportResult,
+    ExportSelection,
     export_all_data,
     select_exported_paths,
 )
@@ -76,8 +77,10 @@ if TYPE_CHECKING:
     from .types import FlightPath, FlightPathGroup, PathMetadata
 
 __all__ = [
+    "FlightDataExport",
     "ParsedFile",
     "create_progressive_heatmap",
+    "export_flight_data",
     "foreign_output_error",
     "load_cached",
     "no_flight_reason",
@@ -626,6 +629,71 @@ def _warn_free_text_airports(unique_airports: list[AirportData]) -> None:
         )
 
 
+@dataclass(frozen=True)
+class _ExportPlan:
+    """What both exports settle before the data is written (see ``_plan``)."""
+
+    path_groups: FlightPathGroup
+    path_metadata: list[PathMetadata]
+    landings: list[FlightLandings | None] | None
+    #: ``is_exportable_path`` of every path
+    exportable: list[bool]
+    selection: ExportSelection
+    extent: CoordinateExtent
+    unique_airports: list[AirportData]
+    #: The countries of the exported airports, and the flags the site can
+    #: publish of them, which metadata.json lists
+    countries: list[str]
+    available_flags: list[str]
+
+
+def _plan(
+    all_path_groups: FlightPathGroup,
+    all_path_metadata: list[PathMetadata],
+    landings: Sequence[FlightLandings | None] | None,
+) -> _ExportPlan:
+    """Settle which paths are exported, the extent and the airports.
+
+    The site build and the build in the browser (``export_flight_data``)
+    share this, so neither drifts from the other. Undated paths go first;
+    the copies and second recordings of a flight are dropped next (see
+    ``select_exported_paths``), so the extent and the airports are those of
+    the paths the site publishes: a path that gets no id and no segments (a
+    single point, a recording that never moved, a dropped copy) would
+    otherwise still publish its location and name through the airport list.
+    """
+    path_groups, path_metadata, dated_landings = _drop_paths_without_year(
+        all_path_groups, all_path_metadata, landings
+    )
+    # Once per path, for every stage that only looks at the exported ones
+    exportable = [is_exportable_path(path) for path in path_groups]
+    selection = select_exported_paths(path_groups, path_metadata, exportable)
+    exported_indices = selection.exported()
+    kept = set(exported_indices)
+    extent = _map_extent(
+        path_groups, [index in kept for index in range(len(path_groups))]
+    )
+    logger.info("\nProcessing %d start points...", len(exported_indices))
+    unique_airports = deduplicate_airports(
+        [path_metadata[index] for index in exported_indices],
+        [path_groups[index] for index in exported_indices],
+    )
+    logger.info("  Found %d unique airports", len(unique_airports))
+    _warn_free_text_airports(unique_airports)
+    countries = exported_country_codes(unique_airports)
+    return _ExportPlan(
+        path_groups=path_groups,
+        path_metadata=path_metadata,
+        landings=dated_landings,
+        exportable=exportable,
+        selection=selection,
+        extent=extent,
+        unique_airports=unique_airports,
+        countries=countries,
+        available_flags=available_country_flags(countries),
+    )
+
+
 def _export_site(
     all_path_groups: FlightPathGroup,
     all_path_metadata: list[PathMetadata],
@@ -644,36 +712,13 @@ def _export_site(
     ``terrain`` is handed to ``export_all_data``, ``site_url`` (normalized,
     see ``previews.normalize_site_url``) to the link previews.
     """
-    all_path_groups, all_path_metadata, landings = _drop_paths_without_year(
-        all_path_groups, all_path_metadata, landings
+    plan = _plan(all_path_groups, all_path_metadata, landings)
+    all_path_groups, all_path_metadata = plan.path_groups, plan.path_metadata
+    extent, unique_airports, countries = (
+        plan.extent,
+        plan.unique_airports,
+        plan.countries,
     )
-    # Once per path, for every stage that only looks at the exported ones
-    exportable = [is_exportable_path(path) for path in all_path_groups]
-    # The copies and second recordings of a flight are dropped first: the
-    # extent and the airports are those of the paths the site publishes
-    selection = select_exported_paths(all_path_groups, all_path_metadata, exportable)
-    exported_indices = selection.exported()
-    kept = set(exported_indices)
-    extent = _map_extent(
-        all_path_groups, [index in kept for index in range(len(all_path_groups))]
-    )
-
-    # Only exported paths contribute airports: a path that gets no id and no
-    # segments (a single point, a recording that never moved, a dropped
-    # copy) would still publish its location and name through the airport
-    # list
-    logger.info("\nProcessing %d start points...", len(exported_indices))
-    unique_airports = deduplicate_airports(
-        [all_path_metadata[index] for index in exported_indices],
-        [all_path_groups[index] for index in exported_indices],
-    )
-    logger.info("  Found %d unique airports", len(unique_airports))
-    _warn_free_text_airports(unique_airports)
-
-    # The countries of the exported airports, and the flags the site can
-    # publish of them, which metadata.json lists
-    countries = exported_country_codes(unique_airports)
-    available_flags = available_country_flags(countries)
 
     data_dir_name = data_dir.name
     # Read once: the day of map_config.js and that of the file times are
@@ -694,11 +739,11 @@ def _export_site(
             unique_airports,
             site.data_stage,
             aircraft_data=aircraft_data,
-            exportable=exportable,
+            exportable=plan.exportable,
             terrain=terrain,
-            selection=selection,
-            available_flags=available_flags,
-            landings=landings,
+            selection=plan.selection,
+            available_flags=plan.available_flags,
+            landings=plan.landings,
         )
         # The page opens on the latest year, see resolveYearSelection
         render_html(
@@ -783,6 +828,100 @@ def preflight(
         )
 
 
+def _validated_files(kml_files: list[str]) -> list[str]:
+    """The inputs that are valid KML files; raises when any of them is not.
+
+    A file that cannot be used fails the run: a site published without one
+    of the flights, and exit status 0, would hide it until someone notices
+    the flight is missing. So does a file that parses but holds no flight to
+    export (see ``no_flight_reason``).
+    """
+    valid_files = []
+    for kml_file in kml_files:
+        is_valid, error_msg = validate_kml_file(kml_file)
+        if not is_valid:
+            logger.error("  %s", error_msg)
+        else:
+            valid_files.append(kml_file)
+
+    if len(valid_files) < len(kml_files):
+        valid = set(valid_files)
+        invalid = [kml_file for kml_file in kml_files if kml_file not in valid]
+        raise InvalidInputError(
+            f"{len(invalid)} of {len(kml_files)} input file(s) are not valid "
+            f"KML files ({_some_names(invalid)}, see above); fix or remove them"
+        )
+
+    # No input at all (a caller of the library; the CLI refuses it first)
+    if not valid_files:
+        raise InvalidInputError("No valid KML files to process!")
+    return valid_files
+
+
+@dataclass(frozen=True)
+class FlightDataExport:
+    """What ``export_flight_data`` wrote, and what the map opens on."""
+
+    years: list[int]
+    extent: CoordinateExtent
+    airports: int
+    flights: int
+
+
+def export_flight_data(
+    kml_files: list[str],
+    data_dir: str | Path,
+    aircraft_files: Sequence[Path] = (),
+    terrain: TileSource | None = None,
+) -> FlightDataExport:
+    """Write the data files of the flights into ``data_dir``, and nothing else.
+
+    The page in the browser builds the flights someone drops on it this way
+    (see ``flown.browser``): it has the page already, and needs the year
+    files and the two index files of those flights, as ``export_all_data``
+    writes them, plus the extent the map is fitted to, which
+    ``map_config.js`` carries for a published site. ``data_dir`` is expected
+    to be empty or missing. The inputs are validated and parsed as
+    ``create_progressive_heatmap`` does, and raise the same errors.
+    """
+    valid_files = _validated_files(kml_files)
+    logger.info("Parsing %d KML file(s)...", len(valid_files))
+    try:
+        try:
+            all_path_groups, all_path_metadata, landings = _parse_kml_files(valid_files)
+        except (ValueError, OSError) as e:
+            raise ExportError(str(e)) from e
+        plan = _plan(all_path_groups, all_path_metadata, landings)
+        aircraft_data = (
+            merge_aircraft_data(list(aircraft_files)) if aircraft_files else None
+        )
+        try:
+            result = export_all_data(
+                plan.path_groups,
+                plan.path_metadata,
+                plan.unique_airports,
+                data_dir,
+                aircraft_data=aircraft_data,
+                exportable=plan.exportable,
+                terrain=terrain,
+                selection=plan.selection,
+                available_flags=plan.available_flags,
+                landings=plan.landings,
+            )
+        except InvalidInputError:
+            raise
+        except (ValueError, RuntimeError, OSError, FlownError) as e:
+            raise ExportError(f"Export failed: {e}") from e
+        return FlightDataExport(
+            years=result.years,
+            extent=plan.extent,
+            airports=len(plan.unique_airports),
+            flights=len(plan.selection.exported()),
+        )
+    finally:
+        gc.unfreeze()
+
+
 def create_progressive_heatmap(
     kml_files: list[str],
     output_file: str = "index.html",
@@ -829,29 +968,8 @@ def create_progressive_heatmap(
     preflight(output_file, data_dir, [*kml_files, *aircraft_files], force)
     warn_about_a_stale_bundle()
 
-    # Stage 1: Validate and parse. A file that cannot be used fails the run:
-    # a site published without one of the flights, and exit status 0, would
-    # hide it until someone notices the flight is missing. So does a file
-    # that parses but holds no flight to export (see no_flight_reason).
-    valid_files = []
-    for kml_file in kml_files:
-        is_valid, error_msg = validate_kml_file(kml_file)
-        if not is_valid:
-            logger.error("  %s", error_msg)
-        else:
-            valid_files.append(kml_file)
-
-    if len(valid_files) < len(kml_files):
-        valid = set(valid_files)
-        invalid = [kml_file for kml_file in kml_files if kml_file not in valid]
-        raise InvalidInputError(
-            f"{len(invalid)} of {len(kml_files)} input file(s) are not valid "
-            f"KML files ({_some_names(invalid)}, see above); fix or remove them"
-        )
-
-    # No input at all (a caller of the library; the CLI refuses it first)
-    if not valid_files:
-        raise InvalidInputError("No valid KML files to process!")
+    # Stage 1: Validate and parse
+    valid_files = _validated_files(kml_files)
 
     logger.info("Parsing %d KML file(s)...", len(valid_files))
 

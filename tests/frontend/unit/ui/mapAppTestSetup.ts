@@ -123,6 +123,12 @@ export const toggleCrossSection = vi.fn();
 export const toggleHotspotTour = vi.fn();
 /** The search bundle's toggle of the search */
 export const toggleSearch = vi.fn();
+/** The Your flights bundle: its panel, the start on the visitor's flights
+ * and the sheet over the map while files are dragged across the page */
+export const toggleLocalFlights = vi.fn();
+export const localStartConfig = vi.fn(() => Promise.resolve(null));
+export const reopenAfterSwitch = vi.fn();
+export const showDropSheet = vi.fn();
 /** The feature bundle's intro of a link to shared flights */
 export const playShareIntro = vi.fn();
 /** The phone's bottom bar, which none of these tests mounts by default */
@@ -285,6 +291,14 @@ export const modules = {
         Promise.resolve({ toggleSearch } satisfies StandIn<
           typeof import("../../../../flown/frontend/search")
         >),
+      ),
+      loadLocal: vi.fn(() =>
+        Promise.resolve({
+          toggleLocalFlights,
+          localStartConfig,
+          reopenAfterSwitch,
+          showDropSheet,
+        } satisfies StandIn<typeof import("../../../../flown/frontend/local")>),
       ),
       wasSiteUpdated: vi.fn(() => false),
       noticeSiteUpdate: vi.fn(() => null),

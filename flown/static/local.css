@@ -1,0 +1,237 @@
+/* Your flights (ui/localFlights.ts): the panel that takes the KML files a
+   visitor drops on the page and shows them in place of the site's flights,
+   and the sheet over the map while files are dragged across it
+   (ui/fileDrop.ts). Fetched with local.bundle.js the first time the panel
+   opens or a file is dragged over the page, as search.css is with its
+   bundle (see the header of styles.css). The Your flights button is a
+   control of the left column like the others, so it needs nothing here.
+
+   The dependency runs one way, as for the other lazily fetched sheets: this
+   file may use the tokens styles.css defines, and nothing in styles.css may
+   depend on a rule here. The sheets may land in any order, so no two of
+   them style the same elements. */
+
+/* At the top of the map, as wide as a phone allows; beside the Your
+   flights button where the columns are shown (.is-anchored), as the
+   search panel is */
+.local-flights {
+  position: fixed;
+  top: calc(var(--edge-gap) + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-panel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  box-sizing: border-box;
+  width: min(
+    380px,
+    calc(100vw - var(--edge-gap) * 2 - var(--safe-left) - var(--safe-right))
+  );
+  max-height: calc(
+    100dvh - var(--edge-gap) * 2 - var(--safe-top) - var(--safe-bottom)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  background-color: var(--color-bg-edge);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+  color: var(--color-text);
+  font-size: var(--text-md);
+}
+.local-flights[hidden] {
+  display: none;
+}
+.local-flights.is-anchored {
+  --local-y: clamp(
+    calc(var(--edge-gap) + var(--safe-top)),
+    var(--local-top),
+    50dvh
+  );
+  top: var(--local-y);
+  left: var(--local-left);
+  transform: none;
+  max-width: calc(
+    100vw - var(--local-left) - var(--edge-gap) - var(--safe-right)
+  );
+  max-height: calc(
+    100dvh - var(--local-y) - var(--edge-gap) - var(--safe-bottom)
+  );
+}
+
+.local-flights-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+.local-flights-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+.local-flights-close,
+.local-flights-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.local-flights-close {
+  min-width: var(--btn-min-height);
+  min-height: var(--btn-min-height);
+}
+.local-flights-remove {
+  min-width: 28px;
+  min-height: 28px;
+}
+@media (hover: hover) {
+  .local-flights-close:hover,
+  .local-flights-remove:hover {
+    background-color: var(--color-bg-active);
+    color: var(--color-text);
+  }
+}
+.local-flights-close:focus-visible,
+.local-flights-remove:focus-visible,
+.local-flights-drop:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Which flights the page shows */
+.local-flights-shown {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* The drop zone, which is also the file picker */
+.local-flights-drop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) ease,
+    background-color var(--duration-fast) ease;
+}
+.local-flights-drop input {
+  /* The label is the control; the input only opens the picker */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.local-flights-drop.is-over,
+.local-flights-drop:hover {
+  border-color: var(--color-accent-blue);
+  background-color: rgba(var(--color-accent-blue-rgb), 0.08);
+}
+.local-flights-choose {
+  color: var(--color-accent-blue);
+  text-decoration: underline;
+}
+
+/* The files kept, each with its size and its Remove */
+.local-flights-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(40dvh, 240px);
+  overflow-y: auto;
+}
+.local-flights-files:empty {
+  display: none;
+}
+.local-flights-files li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 28px;
+  font-size: var(--text-sm);
+}
+.local-flights-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.local-flights-size {
+  flex-shrink: 0;
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the build says, or what went wrong */
+.local-flights-status {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.local-flights-status[hidden] {
+  display: none;
+}
+.local-flights-status.is-error {
+  color: var(--color-error);
+}
+
+.local-flights-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.local-flights-actions [hidden] {
+  display: none;
+}
+.local-flights-note {
+  margin: 0;
+  color: var(--color-text-dim);
+  font-size: var(--text-xs);
+}
+
+/* Over the whole map while files are dragged across the page */
+.file-drop-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(var(--color-bg-secondary-rgb), 0.8);
+  color: var(--color-text);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  pointer-events: none;
+}
+.file-drop-sheet[hidden] {
+  display: none;
+}
+.file-drop-sheet-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 2px dashed var(--color-accent-blue);
+  border-radius: var(--radius-panel);
+}

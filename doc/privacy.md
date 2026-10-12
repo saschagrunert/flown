@@ -118,6 +118,14 @@ while the Aviation switch is on and the map is zoomed in far enough to draw them
 as EOX does. Nothing is fetched from it while the switch is off, which it is
 unless the visitor, their saved state or the link they followed turns it on.
 
+**The page asks the Pyodide CDN for the Python runtime** (`cdn.jsdelivr.net`)
+the first time a visitor drops their own flights on it (see
+[Your flights](features.md#your-flights)), and then AWS for the elevation tiles
+and GitHub Pages for the OurAirports database as a build does (above), from a
+worker in the browser. The files dropped and everything built from them stay in
+the browser's storage; the requests carry nothing of them beyond which elevation
+tiles the flights touch, as a build's do.
+
 ## Obfuscating the KML files themselves
 
 That is a separate need: this repository commits the files in `data/`, and they

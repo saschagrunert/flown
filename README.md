@@ -58,6 +58,9 @@ site.
 - Satellite imagery as the ground under the flights, keyless
 - Year-in-review "Wrapped" summary
 - Shareable URLs that encode the exact map state
+- Your own flights on any Flown site: drop your KML files on the page and the
+  browser builds and shows them in place of the site's, without uploading
+  anything anywhere
 - Privacy protection: no flight date finer than the year reaches the generated
   site
 - Mobile-friendly with year-based data organization

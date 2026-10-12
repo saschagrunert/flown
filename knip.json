@@ -17,6 +17,8 @@
     "flown/frontend/wrapped.ts!",
     "flown/frontend/search.ts!",
     "flown/frontend/extras.ts!",
+    "flown/frontend/local.ts!",
+    "flown/frontend/services/localWorker.ts!",
     "scripts/*.js",
     "tests/**/*.test.ts",
     "tests/e2e/*.spec.ts"

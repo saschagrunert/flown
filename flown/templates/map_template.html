@@ -148,6 +148,23 @@
             <span class="control-label">Search</span>
           </button>
         </div>
+        <!-- Your flights: the KML files a visitor drops on the page, built
+             and shown in this browser in place of the site's
+             (ui/localFlights.ts, in the local bundle, which sets
+             aria-controls once its panel is made) -->
+        <div class="control-row">
+          <button
+            id="local-flights-btn"
+            class="btn-surface control-btn"
+            data-action="toggleLocalFlights"
+            data-icon="upload"
+            title="Your flights: show your own KML files on this map"
+            aria-label="Your flights: show your own KML files on this map"
+            aria-expanded="false"
+          >
+            <span class="control-label">Your flights</span>
+          </button>
+        </div>
         <div class="control-row">
           <button
             id="stats-btn"

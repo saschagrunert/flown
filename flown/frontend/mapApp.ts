@@ -106,9 +106,15 @@ import { ReliefState } from "./ui/reliefState";
 import { watchScrollEnd, type ScrollEndWatcher } from "./utils/scrollFade";
 import {
   loadFeatures,
+  loadLocal,
   loadSearch,
   loadWrapped,
 } from "./services/featureLoader";
+import type { DataLoaderOptions } from "./services/dataLoader";
+import type { LocalInfo } from "./services/localStore";
+import { LOCAL_FLIGHTS_KEY, wantsReopen } from "./state/localFlags";
+import { storedFlag } from "./utils/storedFlag";
+import { watchFileDrops } from "./ui/fileDropWatch";
 import {
   BASE_STYLE_RETRY_MS,
   BASE_STYLE_UNAVAILABLE_MESSAGE,
@@ -120,6 +126,7 @@ import {
   CROSS_SECTION_UNAVAILABLE_MESSAGE,
   followSearchKey,
   loadLazyBundle,
+  LOCAL_UNAVAILABLE_MESSAGE,
   prepareWrappedOnIntent,
   REPLAY_UNAVAILABLE_MESSAGE,
   SEARCH_UNAVAILABLE_MESSAGE,
@@ -130,6 +137,7 @@ import {
   type FeatureToggle,
 } from "./ui/lazyBundles";
 import { applyPendingFilterChanges, restoreState } from "./ui/stateRestore";
+import { setLocalStateMode } from "./ui/stateManager";
 import {
   followAttributionHeight,
   followKeyboard,
@@ -150,8 +158,8 @@ import {
 } from "./calculations/datasetIndex";
 import type { StoreAccessors } from "./state/store";
 import { TOGGLE_KEYS } from "./state/toggles";
-import { resolveShareToken } from "./state/shareToken";
-import { takeShareIntro } from "./state/urlState";
+import { resolveShareToken, SHARE_TOKEN_PARAM } from "./state/shareToken";
+import { SHARE_INTRO_PARAM, takeShareIntro } from "./state/urlState";
 import type { ReplayManager } from "./ui/replayManager";
 import type { StatsManager } from "./ui/statsManager";
 import type { WrappedManager } from "./ui/wrappedManager";
@@ -178,6 +186,13 @@ export interface MapConfig {
   commit?: string | undefined;
   /** The commit's page, "" when the repository it is in is unknown */
   commitUrl?: string | undefined;
+  /**
+   * Where the data files come from when not from the site: the flights a
+   * visitor dropped, kept in the browser (ui/localFlights.ts)
+   */
+  dataSource?: Pick<DataLoaderOptions, "fetchJson" | "fetchBytes"> | undefined;
+  /** What is known about those flights while the page shows them */
+  localFlights?: LocalInfo | undefined;
 }
 
 /**
@@ -277,7 +292,11 @@ export class MapApp {
   /** Set while a click on Replay waits for the feature bundle */
   private pendingReplayToggle: Promise<void> | null = null;
   /** The toggles of a lazy bundle a click waits for the bundle for */
-  private readonly pendingToggles = new Set<FeatureToggle | "toggleSearch">();
+  private readonly pendingToggles = new Set<
+    FeatureToggle | "toggleSearch" | "toggleLocalFlights"
+  >();
+  /** Files dropped on the page before the bundle of Your flights arrived */
+  private readonly pendingDrops: File[] = [];
   /**
    * Where the last fit to the start view takes the camera: the one of a
    * first visit, measured as the map opens, then that of every Reset view.
@@ -1122,7 +1141,7 @@ export class MapApp {
    * dropping a click on the same control while the bundle is on its way
    */
   private toggleLazily<T>(
-    name: FeatureToggle | "toggleSearch",
+    name: FeatureToggle | "toggleSearch" | "toggleLocalFlights",
     load: () => Promise<T | null>,
     toggle: (module: T) => void,
   ): void {
@@ -1163,6 +1182,35 @@ export class MapApp {
       "toggleSearch",
       () => loadLazyBundle(loadSearch, SEARCH_UNAVAILABLE_MESSAGE),
       (search) => search.toggleSearch(this, open),
+    );
+  }
+
+  /**
+   * Open or close Your flights, the panel that takes the KML files a
+   * visitor drops on the page and shows them in place of the site's, from
+   * its own bundle (ui/localFlights.ts). With `dropped`, the files dragged
+   * onto the page, the panel opens and takes them.
+   */
+  toggleLocalFlights(dropped?: FileList | File[]): void {
+    if (this.mapHeld && !dropped) return;
+    // Files dropped while the bundle is on its way wait for it: a second
+    // call while the first is pending is not made again (toggleLazily)
+    if (dropped) this.pendingDrops.push(...Array.from(dropped));
+    this.toggleLazily(
+      "toggleLocalFlights",
+      async () => {
+        const local = await loadLazyBundle(
+          loadLocal,
+          LOCAL_UNAVAILABLE_MESSAGE,
+        );
+        // Not kept for a later press: the visitor was told, and drops again
+        if (!local) this.pendingDrops.length = 0;
+        return local;
+      },
+      (local) => {
+        const files = this.pendingDrops.splice(0);
+        local.toggleLocalFlights(this, files.length ? files : undefined);
+      },
     );
   }
 
@@ -1399,6 +1447,8 @@ export const INIT_ERROR_HTML =
  * the failure path can be exercised without a page load.
  */
 export async function initMapApp(config: MapConfig): Promise<MapApp> {
+  // The saved state of the flights the page shows, before anything reads it
+  setLocalStateMode(!!config.localFlights);
   const app = new MapApp(config);
   window.mapApp = app;
   // The legend bar and the row chips paint --gradient-*, so publish the
@@ -1407,7 +1457,44 @@ export async function initMapApp(config: MapConfig): Promise<MapApp> {
   renderControlIcons();
   // Bind before the (long) initial load so early interactions are not lost
   bindActions(app);
+  // Files dragged over the page go to Your flights, whose bundle draws the
+  // sheet that says so (ui/fileDropWatch.ts)
+  watchFileDrops(app, () =>
+    loadLazyBundle(loadLocal, LOCAL_UNAVAILABLE_MESSAGE),
+  );
   await app.initialize();
+  return app;
+}
+
+/**
+ * Whether the page opens a link someone copied (a share token, or the
+ * long link of share mode with its intro): it names flights of the site,
+ * and would pick those ids out of the visitor's own. The state the page
+ * keeps in its own URL as the map moves is no such link.
+ */
+function opensSharedLink(): boolean {
+  const params = new URLSearchParams(location.search);
+  return params.has(SHARE_TOKEN_PARAM) || params.has(SHARE_INTRO_PARAM);
+}
+
+/**
+ * Start the app on the site's flights, or on the ones a visitor dropped
+ * and asked to see (ui/localFlights.ts): their bundle then reads the
+ * configuration of that dataset from the browser before the app starts,
+ * and reopens its panel after the reload that switched the flights. A
+ * shared link is to the site's flights, whoever follows it.
+ */
+export async function startApp(config: MapConfig): Promise<MapApp> {
+  const local = !opensSharedLink() && storedFlag(LOCAL_FLIGHTS_KEY);
+  // The bundle is asked for the dataset, or only to reopen its panel after
+  // the reload that went back to the site's flights
+  const bundle =
+    local || wantsReopen()
+      ? await loadLazyBundle(loadLocal, LOCAL_UNAVAILABLE_MESSAGE)
+      : null;
+  const start = (local && (await bundle?.localStartConfig(config))) || config;
+  const app = await initMapApp(start);
+  bundle?.reopenAfterSwitch(app);
   return app;
 }
 
@@ -1435,5 +1522,5 @@ export function reportInitFailure(error: unknown): void {
 // Start the app when the page has set its configuration (map_config.js runs
 // before this module); the unit tests import the module without one
 if (typeof window !== "undefined" && window.MAP_CONFIG) {
-  initMapApp(window.MAP_CONFIG).catch(reportInitFailure);
+  startApp(window.MAP_CONFIG).catch(reportInitFailure);
 }

@@ -6,6 +6,8 @@ import re
 import shutil
 import string
 import subprocess
+import time
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -370,10 +372,49 @@ class TestPackageAssets:
         assert (tmp_path / "search.css").stat().st_size > 0
         for fname in ("favicon.svg", "manifest.json"):
             assert (tmp_path / fname).exists()
+        # The package's Python, for the build in the browser
+        assert (tmp_path / "flown-src.zip").stat().st_size > 0
         # The library bundle was removed; it must not reappear in the output
         assert not (tmp_path / "bundle.js").exists()
         # The server's own business, see test_a_robots_txt_of_its_own_is_left_alone
         assert not (tmp_path / "robots.txt").exists()
+
+    def test_python_sources_are_zipped_the_same_every_time(self, tmp_path):
+        package = tmp_path / "pkg"
+        package.mkdir()
+        (package / "b.py").write_text("B = 2\n")
+        (package / "a.py").write_text("A = 1\n")
+        (package / "notes.txt").write_text("not python")
+        (package / "static").mkdir()
+        (package / "static" / "c.py").write_text("nested")
+        first = tmp_path / "one"
+        second = tmp_path / "two"
+        first.mkdir()
+        second.mkdir()
+
+        assets_module._write_python_sources(first, package)
+        time.sleep(0.01)
+        assets_module._write_python_sources(second, package)
+
+        with zipfile.ZipFile(first / "flown-src.zip") as archive:
+            assert archive.namelist() == ["pkg/a.py", "pkg/b.py"]
+            assert archive.read("pkg/a.py") == b"A = 1\n"
+            assert {info.date_time for info in archive.infolist()} == {
+                (1980, 1, 1, 0, 0, 0)
+            }
+        assert (first / "flown-src.zip").read_bytes() == (
+            second / "flown-src.zip"
+        ).read_bytes()
+        assert not list(first.glob(".flown-src.zip.*"))
+
+    def test_the_sources_zipped_are_this_package(self, tmp_path):
+        assets_module._write_python_sources(tmp_path)
+
+        with zipfile.ZipFile(tmp_path / "flown-src.zip") as archive:
+            names = archive.namelist()
+        assert "flown/browser.py" in names
+        assert "flown/renderer.py" in names
+        assert not any(name.startswith("flown/frontend") for name in names)
 
     def test_bundle_and_source_map_are_copied(self, tmp_path):
         static_dir = tmp_path / "static"

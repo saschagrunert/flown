@@ -15,14 +15,13 @@ import re
 import shutil
 import string
 import subprocess
+import tempfile
+import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote
-
-import minify_html as mh
-import rcssmin
 
 from .cache import atomic_text_write
 from .exceptions import FlownError
@@ -41,6 +40,9 @@ __all__ = [
     "EXTRAS_BUNDLE_FILE",
     "FEATURES_BUNDLE_FILE",
     "FLAGS_DIR_NAME",
+    "LOCAL_BUNDLE_FILE",
+    "LOCAL_WORKER_BUNDLE_FILE",
+    "PYTHON_SOURCES_FILE",
     "SEARCH_BUNDLE_FILE",
     "SHARED_BUNDLE_FILE",
     "SITE_FILES",
@@ -78,6 +80,7 @@ FEATURES_BUNDLE_FILE = STATIC_DIR / "features.bundle.js"
 WRAPPED_BUNDLE_FILE = STATIC_DIR / "wrapped.bundle.js"
 SEARCH_BUNDLE_FILE = STATIC_DIR / "search.bundle.js"
 EXTRAS_BUNDLE_FILE = STATIC_DIR / "extras.bundle.js"
+LOCAL_BUNDLE_FILE = STATIC_DIR / "local.bundle.js"
 # The app and every module the four lazy bundles above use of it, which all
 # five entry points import
 SHARED_BUNDLE_FILE = STATIC_DIR / "shared.bundle.js"
@@ -85,14 +88,17 @@ SHARED_BUNDLE_FILE = STATIC_DIR / "shared.bundle.js"
 # thread; the page imports the same file for what it does to year data itself
 # (frontend/services/yearWorker.ts). A build of its own in build.js.
 YEAR_WORKER_BUNDLE_FILE = STATIC_DIR / "yearWorker.bundle.js"
+LOCAL_WORKER_BUNDLE_FILE = STATIC_DIR / "localWorker.bundle.js"
 BUNDLE_FILES = (
     BUNDLE_FILE,
     FEATURES_BUNDLE_FILE,
     WRAPPED_BUNDLE_FILE,
     SEARCH_BUNDLE_FILE,
     EXTRAS_BUNDLE_FILE,
+    LOCAL_BUNDLE_FILE,
     SHARED_BUNDLE_FILE,
     YEAR_WORKER_BUNDLE_FILE,
+    LOCAL_WORKER_BUNDLE_FILE,
 )
 # The sources of the bundle; only present in a checkout, not in the image
 FRONTEND_DIR = Path(__file__).parent / "frontend"
@@ -110,6 +116,7 @@ BUILD_HASH_FILES = (
     "flown/static/features.css",
     "flown/static/wrapped.css",
     "flown/static/search.css",
+    "flown/static/local.css",
 )
 # Packages whose pinned version changes a built site (the bundler, what it
 # bundles and what is vendored as it is), hashed after the files and in this
@@ -150,7 +157,12 @@ VENDOR_FILES = (
 # is (see services/featureLoader.ts). The order matters to the cascade, so it
 # is the order they are written in; the last three style different elements,
 # so which of them lands first does not.
-CSS_FILES = ("styles.css", "features.css", "wrapped.css", "search.css")
+CSS_FILES = ("styles.css", "features.css", "wrapped.css", "search.css", "local.css")
+# The Python of this package, zipped, which the page fetches when a visitor
+# drops flights on it and runs with Pyodide in a worker (see browser.py and
+# frontend/services/localWorker.ts): the build of their flights in their
+# browser is the one the site was built with
+PYTHON_SOURCES_FILE = "flown-src.zip"
 # Written with --private only. No robots.txt: crawlers read it only at the
 # origin root, and its Disallow would keep them from fetching the page and
 # ever seeing this noindex.
@@ -159,6 +171,7 @@ ROBOTS_META = '<meta name="robots" content="noindex, nofollow" />'
 # produce (the source map of a bundle built without one) is removed.
 SITE_FILES = (
     "map_config.js",
+    PYTHON_SOURCES_FILE,
     *CSS_FILES,
     *(bundle.name for bundle in BUNDLE_FILES),
     *(f"{bundle.name}.map" for bundle in BUNDLE_FILES),
@@ -170,6 +183,7 @@ SITE_FILES = (
 # published while they do not change (see SiteOutput): not the page, the
 # config or the previews, whose day would date a flight.
 CODE_FILES = (
+    PYTHON_SOURCES_FILE,
     *CSS_FILES,
     *(bundle.name for bundle in BUNDLE_FILES),
     *(f"{bundle.name}.map" for bundle in BUNDLE_FILES),
@@ -195,7 +209,13 @@ def minify_html(html_content: str) -> str:
     Only the markup: the template has no inline styles or scripts (its CSP
     blocks inline scripts). The stylesheets are minified by the build, and
     the config is written as compact JSON (see ``_generate_map_config``).
+
+    The minifier is imported here, as the stylesheets' one is below: the
+    build in the browser (see ``browser``) imports this module for the
+    country flags and has neither, nor a page to write.
     """
+    import minify_html as mh  # noqa: PLC0415
+
     minified: str = mh.minify(html_content)
     return minified
 
@@ -614,6 +634,8 @@ def _copy_javascript_bundle(output_dir: Path, bundle: Path) -> None:
 
 def _copy_and_minify_css(output_dir: Path, static_dir: Path) -> None:
     """Copy and minify every stylesheet to the output directory."""
+    import rcssmin  # noqa: PLC0415
+
     for name in CSS_FILES:
         with open(static_dir / name, encoding="utf-8") as f:
             content = f.read()
@@ -648,6 +670,40 @@ def _copy_vendor_files(output_dir: Path, static_dir: Path) -> None:
         total += dst.stat().st_size
     logger.info(
         "Vendored files copied: %d files (%.1f KB)", len(VENDOR_FILES), total / 1024
+    )
+
+
+def _write_python_sources(output_dir: Path, package: Path | None = None) -> None:
+    """Zip the package's Python modules into the site (PYTHON_SOURCES_FILE).
+
+    Written the same for the same sources: the entries in name order, with
+    one fixed time stamp, so the file keeps its day in the site while the
+    package does not change (see CODE_FILES). The frontend, the template and
+    the static files are not in it: the page has them already.
+    """
+    package = package if package is not None else Path(__file__).parent
+    target = output_dir / PYTHON_SOURCES_FILE
+    with tempfile.NamedTemporaryFile(
+        dir=output_dir, prefix=f".{PYTHON_SOURCES_FILE}.", suffix=".tmp", delete=False
+    ) as handle:
+        temp = Path(handle.name)
+    try:
+        with zipfile.ZipFile(
+            temp, "w", zipfile.ZIP_DEFLATED, compresslevel=9
+        ) as archive:
+            for source in sorted(package.glob("*.py")):
+                info = zipfile.ZipInfo(f"{package.name}/{source.name}")
+                info.date_time = (1980, 1, 1, 0, 0, 0)
+                info.compress_type = zipfile.ZIP_DEFLATED
+                archive.writestr(info, source.read_bytes())
+        temp.replace(target)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    logger.info(
+        "Python sources packed: %s (%.1f KB)",
+        PYTHON_SOURCES_FILE,
+        target.stat().st_size / 1024,
     )
 
 
@@ -709,5 +765,6 @@ def package_assets(
         _copy_javascript_bundle(output_dir, bundle)
     _copy_and_minify_css(output_dir, STATIC_DIR)
     _copy_vendor_files(output_dir, STATIC_DIR)
+    _write_python_sources(output_dir)
     _copy_favicon_files(output_dir, STATIC_DIR)
     _copy_country_flags(output_dir, country_codes)

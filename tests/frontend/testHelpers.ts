@@ -186,6 +186,7 @@ interface MockManagers {
   toggleCrossSection: Mock;
   toggleHotspotTour: Mock;
   toggleSearch: Mock;
+  toggleLocalFlights: Mock;
   resetView: Mock;
   isReset: Mock;
   canResetView: Mock;
@@ -443,6 +444,7 @@ function createMockManagers(): MockManagers {
     toggleCrossSection: vi.fn(),
     toggleHotspotTour: vi.fn(),
     toggleSearch: vi.fn(),
+    toggleLocalFlights: vi.fn(),
     resetView: vi.fn(() => Promise.resolve()),
     // Something to reset unless a test says otherwise
     isReset: vi.fn(() => false),

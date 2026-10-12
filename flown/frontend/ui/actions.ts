@@ -154,6 +154,8 @@ function actionHandlers(app: MapApp) {
     toggleSearch: () => app.toggleSearch(),
     // The `/` key, which opens the search or goes back to its field
     openSearch: () => app.toggleSearch(true),
+    // Your flights: the files a visitor drops, shown in this browser
+    toggleLocalFlights: () => app.toggleLocalFlights(),
     // Once the dropdown stops changing, see FilterManager.pickYear
     filterByYear: () => app.filterManager.pickYear(),
     filterByAircraft: () => app.filterManager.filterByAircraft(),

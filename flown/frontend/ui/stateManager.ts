@@ -24,17 +24,36 @@ import { mapZoomToState } from "../utils/mapHelpers";
 const STORAGE_KEY = "flown-state";
 
 /**
+ * Whether the page started on the visitor's flights (setLocalStateMode),
+ * which decides the key for the page's lifetime: the flag in localStorage
+ * is what the next start reads, and a shared link opens on the site's
+ * flights whatever it says, another tab may flip it, and the switch
+ * itself sets it before the page unloads and saves.
+ */
+let localMode = false;
+
+/** Told once at start, from the configuration the app starts with */
+export function setLocalStateMode(local: boolean): void {
+  localMode = local;
+}
+
+/**
  * Storage key of the map at this location. Every page of an origin shares
  * one localStorage, so two maps published side by side (user.github.io/a/
  * and /b/) would otherwise restore each other's year, view and selection.
  * The key names the page's directory, which index.html and its folder share;
- * a map at the root of its origin uses the bare key.
+ * a map at the root of its origin uses the bare key. A page that shows the
+ * flights a visitor dropped (ui/localFlights.ts) keeps a state of its own
+ * under `:local`: the year, the aircraft and the selection of one set of
+ * flights name none of the other's.
  */
 export function storageKey(
   pathname: string = window.location.pathname,
+  local: boolean = localMode,
 ): string {
   const directory = pathname.slice(0, pathname.lastIndexOf("/") + 1);
-  return directory === "/" ? STORAGE_KEY : STORAGE_KEY + ":" + directory;
+  const base = local ? STORAGE_KEY + ":local" : STORAGE_KEY;
+  return directory === "/" ? base : base + ":" + directory;
 }
 
 /**

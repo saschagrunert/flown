@@ -36,6 +36,7 @@ from flown.listing import list_flights
 from flown.parser import parse_and_cache
 from flown.previews import encode_path_id
 from flown.renderer import (
+    FlightDataExport,
     ParsedFile,
     _drop_paths_without_year,
     _export_site,
@@ -44,6 +45,7 @@ from flown.renderer import (
     _parse_with_error_handling,
     _serve_hint,
     create_progressive_heatmap,
+    export_flight_data,
     load_cached,
     no_flight_reason,
 )
@@ -1035,6 +1037,57 @@ class TestExportSite:
             _export_site(paths, metadata, out / "index.html", out / "data")
 
         assert not out.exists()
+
+
+class TestExportFlightData:
+    """The data files alone, for the build in the browser (flown.browser)."""
+
+    def test_writes_the_data_files_and_nothing_of_the_page(self, tmp_path):
+        kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
+        data = tmp_path / "site"
+
+        result = export_flight_data([kml_file], data)
+
+        assert result == FlightDataExport(
+            years=[2025],
+            extent=CoordinateExtent(51.13, 51.55, 12.05, 13.76),
+            airports=2,
+            flights=1,
+        )
+        assert json.loads((data / "metadata.json").read_text())["available_years"] == [
+            2025
+        ]
+        assert (data / "airports.json").is_file()
+        assert (data / "2025" / "data.json").is_file()
+        assert not (data / "index.html").exists()
+        assert not (data / "map_config.js").exists()
+        assert not (tmp_path / "site.html").exists()
+
+    def test_takes_the_aircraft_file_it_is_given(self, tmp_path):
+        kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
+        aircraft = tmp_path / "input" / "aircraft.json"
+        aircraft.write_text(json.dumps({"DEAGJ": "Diamond DA20"}))
+
+        export_flight_data([kml_file], tmp_path / "site", aircraft_files=[aircraft])
+
+        metadata = json.loads((tmp_path / "site" / "metadata.json").read_text())
+        assert metadata["aircraft_models"] == {"D-EAGJ": "Diamond DA20"}
+
+    def test_an_invalid_file_fails_as_the_site_build_does(self, tmp_path, capsys):
+        kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
+        bad = tmp_path / "input" / "2_DEAGJ_DA20.kml"
+        bad.write_text("not xml")
+
+        with pytest.raises(InvalidInputError, match="1 of 2"):
+            export_flight_data([kml_file, str(bad)], tmp_path / "site")
+
+        assert not (tmp_path / "site").exists()
+
+    def test_nothing_to_export_is_refused(self, tmp_path):
+        kml_file = _write_kml(tmp_path / "input" / "1.kml", template=UNDATED_KML)
+
+        with pytest.raises(InvalidInputError, match="hold no flight to export"):
+            export_flight_data([kml_file], tmp_path / "site")
 
 
 class TestCreateProgressiveHeatmap:

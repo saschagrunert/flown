@@ -51,6 +51,7 @@ import {
   SlidersHorizontal,
   Star,
   Trophy,
+  Upload,
   X,
   ZoomIn,
   type IconNode,
@@ -99,6 +100,7 @@ export type IconName =
   | "climb"
   | "reset"
   | "search"
+  | "upload"
   | "aircraftTop";
 
 /**
@@ -163,6 +165,7 @@ const NODES: Record<Exclude<IconName, keyof typeof OWN_PATHS>, IconNode> = {
   climb: ArrowUpFromLine,
   reset: RotateCcw,
   search: Search,
+  upload: Upload,
 };
 
 /** One Lucide node list as the markup that goes inside an `<svg>` */

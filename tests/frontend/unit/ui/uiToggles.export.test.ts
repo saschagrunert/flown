@@ -36,6 +36,7 @@ import {
   SHARE_TOKEN_PARAM,
   unpackShareToken,
 } from "../../../../flown/frontend/state/shareToken";
+import { SHARE_UNAVAILABLE_MESSAGE } from "../../../../flown/frontend/state/localFlags";
 import type { SavedState } from "../../../../flown/frontend/types";
 import { MAP_COMPLETE_TIMEOUT_MS } from "../../../../flown/frontend/utils/mapHelpers";
 import { MAP_SOURCES } from "../../../../flown/frontend/utils/constants";
@@ -832,6 +833,35 @@ describe("UIToggles export and share", () => {
   });
 
   describe("shareLink", () => {
+    it("says a link cannot carry the flights a visitor dropped, and copies nothing", async () => {
+      const share = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("share", share);
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("clipboard", { writeText });
+      app.config.localFlights = {
+        years: [2025],
+        flights: 1,
+        airports: 1,
+        center: [50, 8],
+        bounds: [
+          [49, 7],
+          [51, 9],
+        ],
+        files: ["a.kml"],
+        stamp: "a.kml\u00001\u00001",
+        build: undefined,
+        builtAt: 1,
+      };
+
+      await uiToggles.shareLink();
+
+      expect(toast()?.textContent).toBe(SHARE_UNAVAILABLE_MESSAGE);
+      expect(toast()?.classList.contains("toast-error")).toBe(false);
+      expect(share).not.toHaveBeenCalled();
+      expect(writeText).not.toHaveBeenCalled();
+      expect(app.stateManager.flush).not.toHaveBeenCalled();
+    });
+
     it("flushes the pending state so the URL is current, then uses the share sheet", async () => {
       setInnerWidth(390);
       const share = vi.fn().mockResolvedValue(undefined);

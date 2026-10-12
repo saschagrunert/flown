@@ -41,7 +41,7 @@ COPY scripts/*.js ./scripts/
 COPY flown/frontend/ ./flown/frontend/
 COPY flown/static/styles.css flown/static/features.css \
     flown/static/wrapped.css flown/static/search.css \
-    ./flown/static/
+    flown/static/local.css ./flown/static/
 RUN npm run build
 
 # Stage 2: the Python package without the TypeScript sources. A stage of its

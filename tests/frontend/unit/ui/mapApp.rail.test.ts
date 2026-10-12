@@ -18,6 +18,7 @@ import {
 import {
   CROSS_SECTION_UNAVAILABLE_MESSAGE,
   REPLAY_UNAVAILABLE_MESSAGE,
+  LOCAL_UNAVAILABLE_MESSAGE,
   SEARCH_UNAVAILABLE_MESSAGE,
   STATS_UNAVAILABLE_MESSAGE,
   TOUR_UNAVAILABLE_MESSAGE,
@@ -37,6 +38,7 @@ import {
 } from "../../../../flown/frontend/utils/toast";
 import {
   loadFeatures,
+  loadLocal,
   loadSearch,
   loadWrapped,
   noticeSiteUpdate,
@@ -1339,6 +1341,120 @@ describe("MapApp controls and map", () => {
       await vi.waitFor(() =>
         expect(m.toggleHotspotTour).toHaveBeenCalledTimes(2),
       );
+    });
+  });
+
+  describe("Your flights", () => {
+    it("opens from its own bundle, once for quick presses", async () => {
+      await initializeApp(app);
+      const { deliver } = await holdNextLoad(loadLocal);
+      vi.mocked(loadFeatures).mockClear();
+
+      app.toggleLocalFlights();
+      app.toggleLocalFlights();
+      deliver();
+
+      await vi.waitFor(() =>
+        expect(m.toggleLocalFlights).toHaveBeenCalledWith(app, undefined),
+      );
+      await Promise.resolve();
+      expect(m.toggleLocalFlights).toHaveBeenCalledTimes(1);
+      expect(loadFeatures).not.toHaveBeenCalled();
+
+      app.toggleLocalFlights();
+      await vi.waitFor(() =>
+        expect(m.toggleLocalFlights).toHaveBeenCalledTimes(2),
+      );
+    });
+
+    it("does not open while the map is held, unless files were dropped", async () => {
+      await initializeApp(app);
+      app.replayActive = true;
+
+      app.toggleLocalFlights();
+      await Promise.resolve();
+      expect(loadLocal).not.toHaveBeenCalled();
+
+      const dropped = [new File(["x"], "a.kml")];
+      app.toggleLocalFlights(dropped);
+      await vi.waitFor(() =>
+        expect(m.toggleLocalFlights).toHaveBeenCalledWith(app, dropped),
+      );
+      // The queue is a copy, so the caller's list is left alone
+      expect(dropped).toHaveLength(1);
+    });
+
+    it("hands the files of every drop while its bundle is on its way over together", async () => {
+      await initializeApp(app);
+      const { deliver } = await holdNextLoad(loadLocal);
+      const first = new File(["x"], "a.kml");
+      const second = new File(["y"], "b.kml");
+
+      app.toggleLocalFlights([first]);
+      app.toggleLocalFlights([second]);
+      deliver();
+
+      await vi.waitFor(() =>
+        expect(m.toggleLocalFlights).toHaveBeenCalledWith(app, [first, second]),
+      );
+      await Promise.resolve();
+      expect(m.toggleLocalFlights).toHaveBeenCalledTimes(1);
+
+      // Delivered, the queue is empty: a press opens the panel plain
+      app.toggleLocalFlights();
+      await vi.waitFor(() =>
+        expect(m.toggleLocalFlights).toHaveBeenLastCalledWith(app, undefined),
+      );
+    });
+
+    it("delivers a drop queued behind a press", async () => {
+      await initializeApp(app);
+      const { deliver } = await holdNextLoad(loadLocal);
+      const dropped = new File(["x"], "a.kml");
+
+      app.toggleLocalFlights();
+      app.toggleLocalFlights([dropped]);
+      deliver();
+
+      await vi.waitFor(() =>
+        expect(m.toggleLocalFlights).toHaveBeenCalledWith(app, [dropped]),
+      );
+      await Promise.resolve();
+      expect(m.toggleLocalFlights).toHaveBeenCalledTimes(1);
+    });
+
+    it("says so when its bundle cannot be fetched", async () => {
+      await initializeApp(app);
+      vi.mocked(loadLocal).mockResolvedValueOnce(null);
+
+      app.toggleLocalFlights();
+
+      await vi.waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith(
+          LOCAL_UNAVAILABLE_MESSAGE,
+          "error",
+        ),
+      );
+    });
+
+    it("forgets the files of a drop whose bundle did not come", async () => {
+      await initializeApp(app);
+      vi.mocked(loadLocal).mockResolvedValueOnce(null);
+
+      app.toggleLocalFlights([new File(["x"], "a.kml")]);
+      await vi.waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith(
+          LOCAL_UNAVAILABLE_MESSAGE,
+          "error",
+        ),
+      );
+
+      // A later press opens the panel plain: the visitor drops again
+      app.toggleLocalFlights();
+      await vi.waitFor(() =>
+        expect(m.toggleLocalFlights).toHaveBeenCalledWith(app, undefined),
+      );
+      expect(m.toggleLocalFlights).toHaveBeenCalledTimes(1);
     });
   });
 

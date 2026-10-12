@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   StateManager,
   sanitizeSavedState,
+  setLocalStateMode,
   storageKey,
 } from "../../../../flown/frontend/ui/stateManager";
 import { LngLat } from "../../../mocks/maplibre-gl";
@@ -154,6 +155,22 @@ describe("storageKey", () => {
   it("keeps the original key for a map at the root of its origin", () => {
     expect(storageKey("/")).toBe("flown-state");
     expect(storageKey("/index.html")).toBe("flown-state");
+  });
+
+  it("keeps a state of its own for the flights a visitor dropped", () => {
+    expect(storageKey("/", true)).toBe("flown-state:local");
+    expect(storageKey("/a/index.html", true)).toBe("flown-state:local:/a/");
+    // Told once at start, for the page's lifetime (setLocalStateMode in
+    // initMapApp), not by the flag, which another tab or the switch itself
+    // flips before the page is gone
+    try {
+      setLocalStateMode(true);
+      expect(storageKey("/")).toBe("flown-state:local");
+      expect(storageKey("/a/")).toBe("flown-state:local:/a/");
+    } finally {
+      setLocalStateMode(false);
+    }
+    expect(storageKey("/")).toBe("flown-state");
   });
 });
 
