@@ -22,12 +22,12 @@ import {
   stripControlStyles,
   stripSourceMapComment,
 } from "../../../scripts/vendor.js";
-import { HTML_TO_IMAGE_URL } from "../../../kml_heatmap/frontend/ui/mapExport";
+import { HTML_TO_IMAGE_URL } from "../../../flown/frontend/ui/mapExport";
 
 const REPO_ROOT = join(__dirname, "../../..");
-const VENDOR_DIR = join(REPO_ROOT, "kml_heatmap/static/vendor");
+const VENDOR_DIR = join(REPO_ROOT, "flown/static/vendor");
 const TEMPLATE = readFileSync(
-  join(REPO_ROOT, "kml_heatmap/templates/map_template.html"),
+  join(REPO_ROOT, "flown/templates/map_template.html"),
   "utf8",
 );
 

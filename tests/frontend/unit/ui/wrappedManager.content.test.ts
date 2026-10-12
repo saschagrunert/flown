@@ -6,11 +6,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
-import type { Metadata } from "../../../../kml_heatmap/frontend/types";
-import { WrappedManager } from "../../../../kml_heatmap/frontend/ui/wrappedManager";
-import { datasetIndex } from "../../../../kml_heatmap/frontend/calculations/datasetIndex";
-import * as statistics from "../../../../kml_heatmap/frontend/calculations/panelStats";
+} from "../../../../flown/frontend/state/siteData";
+import type { Metadata } from "../../../../flown/frontend/types";
+import { WrappedManager } from "../../../../flown/frontend/ui/wrappedManager";
+import { datasetIndex } from "../../../../flown/frontend/calculations/datasetIndex";
+import * as statistics from "../../../../flown/frontend/calculations/panelStats";
 import { createDataset, asMapApp, type MockApp } from "../../testHelpers";
 import {
   createWrappedMockApp,

@@ -1,1 +1,1 @@
-"""Test suite for kml_heatmap package."""
+"""Test suite for flown package."""

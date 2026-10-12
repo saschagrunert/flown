@@ -4,12 +4,12 @@ import {
   formatNumber,
   formatFileSize,
   formatTrack,
-} from "../../../../kml_heatmap/frontend/utils/formatters";
+} from "../../../../flown/frontend/utils/formatters";
 import {
   formatTime,
   formatSpeed,
-} from "../../../../kml_heatmap/frontend/utils/replayFormatters";
-import { formatBuildDate } from "../../../../kml_heatmap/frontend/utils/statsFormat";
+} from "../../../../flown/frontend/utils/replayFormatters";
+import { formatBuildDate } from "../../../../flown/frontend/utils/statsFormat";
 
 describe("formatter utilities", () => {
   describe("formatFileSize", () => {

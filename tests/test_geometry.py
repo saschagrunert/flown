@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from kml_heatmap.geometry import (
+from flown.geometry import (
     EARTH_RADIUS_KM,
     KM_PER_DEGREE,
     MAX_LATITUDE,

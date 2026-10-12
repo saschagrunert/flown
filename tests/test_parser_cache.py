@@ -11,11 +11,11 @@ from unittest.mock import patch
 
 import pytest
 
-import kml_heatmap.airport_lookup as lookup_module
-import kml_heatmap.parser_cache as parser_cache_module
-from kml_heatmap.airport_lookup import database_fingerprint
-from kml_heatmap.landings import FlightLandings
-from kml_heatmap.parser_cache import (
+import flown.airport_lookup as lookup_module
+import flown.parser_cache as parser_cache_module
+from flown.airport_lookup import database_fingerprint
+from flown.landings import FlightLandings
+from flown.parser_cache import (
     CACHE_FORMAT_VERSION,
     CACHE_MAX_AGE_DAYS,
     CACHE_SUFFIX,
@@ -28,7 +28,7 @@ from kml_heatmap.parser_cache import (
     prune_stale_cache_entries,
     save_to_cache,
 )
-from kml_heatmap.types import PathMetadata, TrackPoint
+from flown.types import PathMetadata, TrackPoint
 
 SHARED = TrackPoint(50.0, 8.5, 300.0, 1000.5)
 COORDS = [SHARED, TrackPoint(51.0, 9.5, None, None)]
@@ -253,7 +253,7 @@ class TestGetCacheKey:
 
 class TestParserFingerprint:
     def test_changes_with_the_parser_code(self, tmp_path):
-        package = tmp_path / "kml_heatmap"
+        package = tmp_path / "flown"
         package.mkdir()
         for module in parser_cache_module._PARSER_MODULES:
             (package / f"{module}.py").write_text(f"# {module}\n")

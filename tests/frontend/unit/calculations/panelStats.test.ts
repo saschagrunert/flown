@@ -13,16 +13,13 @@ import {
   filterStatistics,
   filterStatisticsInSlices,
   landingTotals,
-} from "../../../../kml_heatmap/frontend/calculations/panelStats";
-import { datasetIndex } from "../../../../kml_heatmap/frontend/calculations/datasetIndex";
+} from "../../../../flown/frontend/calculations/panelStats";
+import { datasetIndex } from "../../../../flown/frontend/calculations/datasetIndex";
 import {
   FEET_TO_METERS,
   METERS_TO_FEET,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import type {
-  PathInfo,
-  PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/utils/constants";
+import type { PathInfo, PathSegment } from "../../../../flown/frontend/types";
 import { createDataset, createSegment, segmentOf } from "../../testHelpers";
 
 const FT = (meters: number): number => meters * METERS_TO_FEET;

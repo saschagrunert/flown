@@ -14,7 +14,7 @@ import {
   EXPORT_FAILED_MESSAGE,
   EXPORT_UNAVAILABLE_MESSAGE,
   UIToggles,
-} from "../../../../kml_heatmap/frontend/ui/uiToggles";
+} from "../../../../flown/frontend/ui/uiToggles";
 import {
   EXPORT_SHARE_FRAME_MS,
   EXPORT_SHARE_WAIT_MS,
@@ -25,20 +25,20 @@ import {
   importFromVendor,
   resetHtmlToImageLoader,
   type HtmlToImage,
-} from "../../../../kml_heatmap/frontend/ui/mapExport";
+} from "../../../../flown/frontend/ui/mapExport";
 import {
   loadExtras,
   resetExtrasLoader,
-} from "../../../../kml_heatmap/frontend/services/featureLoader";
-import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
-import { parseUrlParams } from "../../../../kml_heatmap/frontend/state/urlState";
+} from "../../../../flown/frontend/services/featureLoader";
+import { logError } from "../../../../flown/frontend/utils/logger";
+import { parseUrlParams } from "../../../../flown/frontend/state/urlState";
 import {
   SHARE_TOKEN_PARAM,
   unpackShareToken,
-} from "../../../../kml_heatmap/frontend/state/shareToken";
-import type { SavedState } from "../../../../kml_heatmap/frontend/types";
-import { MAP_COMPLETE_TIMEOUT_MS } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import { MAP_SOURCES } from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/state/shareToken";
+import type { SavedState } from "../../../../flown/frontend/types";
+import { MAP_COMPLETE_TIMEOUT_MS } from "../../../../flown/frontend/utils/mapHelpers";
+import { MAP_SOURCES } from "../../../../flown/frontend/utils/constants";
 import {
   asMapApp,
   createMockApp,
@@ -86,13 +86,13 @@ function deleteNavigatorProperty(name: string): void {
   Reflect.deleteProperty(navigator, name);
 }
 
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => ({
+vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logDebug: vi.fn(),
   logError: vi.fn(),
 }));
 
 /** The import of the extras bundle, as the app makes it */
-const importExtras = () => import("../../../../kml_heatmap/frontend/extras");
+const importExtras = () => import("../../../../flown/frontend/extras");
 
 describe("UIToggles export and share", () => {
   let uiToggles: UIToggles;

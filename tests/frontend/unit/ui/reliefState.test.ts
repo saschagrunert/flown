@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import { AppStore } from "../../../../kml_heatmap/frontend/state/store";
+import { AppStore } from "../../../../flown/frontend/state/store";
 import {
   PATH_RIBBON_SOURCES,
   RIBBON_SOURCES,
   ReliefState,
-} from "../../../../kml_heatmap/frontend/ui/reliefState";
+} from "../../../../flown/frontend/ui/reliefState";
 import {
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 
 describe("ReliefState", () => {
   /** The store's relief switches, in the order they were written */

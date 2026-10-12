@@ -16,32 +16,32 @@ import {
   cloudPoints,
   nthSmallest,
   type CloudPoints,
-} from "../../../../kml_heatmap/frontend/calculations/heatCloud";
+} from "../../../../flown/frontend/calculations/heatCloud";
 import {
   chainTimes,
   flightClock,
-} from "../../../../kml_heatmap/frontend/calculations/flightClock";
-import { levelGroundFt } from "../../../../kml_heatmap/frontend/calculations/groundProfile";
+} from "../../../../flown/frontend/calculations/flightClock";
+import { levelGroundFt } from "../../../../flown/frontend/calculations/groundProfile";
 import {
   heatWeight,
   CRUISE_SPEED_MS,
   segmentSeconds,
   type SegmentWeight,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
+} from "../../../../flown/frontend/calculations/heatLines";
 import {
   HEAT_KNEE,
   heatTone,
-} from "../../../../kml_heatmap/frontend/calculations/heatTone";
-import { liftFt } from "../../../../kml_heatmap/frontend/calculations/lift";
-import { segmentDistance } from "../../../../kml_heatmap/frontend/calculations/statistics";
-import { smoothFlights } from "../../../../kml_heatmap/frontend/calculations/smoothing";
+} from "../../../../flown/frontend/calculations/heatTone";
+import { liftFt } from "../../../../flown/frontend/calculations/lift";
+import { segmentDistance } from "../../../../flown/frontend/calculations/statistics";
+import { smoothFlights } from "../../../../flown/frontend/calculations/smoothing";
 import {
   DEGREES_TO_RADIANS,
   metresPerPixel,
   type Coordinate,
-} from "../../../../kml_heatmap/frontend/utils/geometry";
-import { mercatorOf } from "../../../../kml_heatmap/frontend/utils/mercator";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/utils/geometry";
+import { mercatorOf } from "../../../../flown/frontend/utils/mercator";
+import type { PathSegment } from "../../../../flown/frontend/types";
 
 /**
  * A weighing of the tests: each segment by its length, at a cruise, as

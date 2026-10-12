@@ -4,10 +4,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Point } from "maplibre-gl";
-import type { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+import type { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { createDataset, createSegment, type MockApp } from "../../testHelpers";
-import { findNearestSegment } from "../../../../kml_heatmap/frontend/features/layers";
+import { findNearestSegment } from "../../../../flown/frontend/features/layers";
 import {
   ALTITUDE,
   ALTITUDE_SELECTED,

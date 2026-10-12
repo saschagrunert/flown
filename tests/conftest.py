@@ -1,10 +1,10 @@
-"""Pytest configuration and shared fixtures for kml-heatmap tests.
+"""Pytest configuration and shared fixtures for flown tests.
 
 The cache directory is redirected to a session-private directory through the
-production ``KML_HEATMAP_CACHE_DIR`` setting, a small fixture airports.csv
+production ``FLOWN_CACHE_DIR`` setting, a small fixture airports.csv
 and the runways.csv of its airports are installed there so no test needs the
 network, and any attempt to download either database or an elevation tile
-fails loudly. ``KML_HEATMAP_SITE_URL`` is cleared for every test.
+fails loudly. ``FLOWN_SITE_URL`` is cleared for every test.
 """
 
 import json
@@ -51,15 +51,15 @@ def parse_kml_file(kml_file, cache_path=None):
     The result is stored in the cache entry ``cache_path`` with the landings
     of its paths, as a build stores it (see ``renderer._parse_with_error_handling``).
     """
-    from kml_heatmap.landings import path_landings
-    from kml_heatmap.parser import parse_and_cache
+    from flown.landings import path_landings
+    from flown.parser import parse_and_cache
 
     return parse_and_cache(kml_file, cache_path, path_landings)[0]
 
 
 def parse_kml_coordinates(kml_file):
     """Parse a KML file as the pipeline does, from the parse cache if it has it."""
-    from kml_heatmap.parser import load_cached_entry
+    from flown.parser import load_cached_entry
 
     cached, cache_path = load_cached_entry(kml_file)
     if cached is not None:
@@ -89,11 +89,11 @@ class FlatTiles:
 # Set by a copy of the repository whose data/ holds flights of its own (see
 # doc/hosting.md): the tests written against the flights of this one are
 # skipped there rather than failing its every build
-OWN_FLIGHTS_ENV = "KML_HEATMAP_OWN_FLIGHTS"
+OWN_FLIGHTS_ENV = "FLOWN_OWN_FLIGHTS"
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip the tests marked ``repo_data`` with ``KML_HEATMAP_OWN_FLIGHTS=1``."""
+    """Skip the tests marked ``repo_data`` with ``FLOWN_OWN_FLIGHTS=1``."""
     if os.environ.get(OWN_FLIGHTS_ENV) != "1":
         return
     skip = pytest.mark.skip(reason=f"{OWN_FLIGHTS_ENV}=1: data/ holds other flights")
@@ -103,19 +103,19 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_configure(config):
-    """Point the cache at a private directory before kml_heatmap is imported."""
+    """Point the cache at a private directory before flown is imported."""
     # Set once per session, before any test runs, and read at its end
     global _TEST_CACHE_DIR  # noqa: PLW0603
-    _TEST_CACHE_DIR = Path(tempfile.mkdtemp(prefix="kml_heatmap_test_"))
-    os.environ["KML_HEATMAP_CACHE_DIR"] = str(_TEST_CACHE_DIR)
+    _TEST_CACHE_DIR = Path(tempfile.mkdtemp(prefix="flown_test_"))
+    os.environ["FLOWN_CACHE_DIR"] = str(_TEST_CACHE_DIR)
 
 
 def missing_frontend_build():
-    """The files of `npm run build` that kml_heatmap/static/ lacks.
+    """The files of `npm run build` that flown/static/ lacks.
 
     Read at call time, from the module, like ``missing_build_files`` does.
     """
-    from kml_heatmap import site_assets
+    from flown import site_assets
 
     vendor = site_assets.STATIC_DIR / "vendor"
     return [
@@ -141,7 +141,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     if missing:
         terminalreporter.write_sep("=", "the frontend is not built", red=True)
         terminalreporter.write_line(
-            f"kml_heatmap/static/ lacks {', '.join(missing)}. The tests that "
+            f"flown/static/ lacks {', '.join(missing)}. The tests that "
             "build a site need them: run `npm run build` first (`make test` "
             "does)."
         )
@@ -151,13 +151,13 @@ def pytest_unconfigure(config):
     """Clean up the private cache directory after all tests complete."""
     if _TEST_CACHE_DIR and _TEST_CACHE_DIR.exists():
         shutil.rmtree(_TEST_CACHE_DIR, ignore_errors=True)
-    os.environ.pop("KML_HEATMAP_CACHE_DIR", None)
+    os.environ.pop("FLOWN_CACHE_DIR", None)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def airport_fixture_csv():
     """Install the fixture airports.csv and runways.csv as the (fresh) cache."""
-    from kml_heatmap.airport_lookup import CACHE_FILE, RUNWAYS_CACHE_FILE
+    from flown.airport_lookup import CACHE_FILE, RUNWAYS_CACHE_FILE
 
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     now = time.time()
@@ -181,9 +181,9 @@ def no_network(monkeypatch):
     def _refuse(*args, **kwargs):
         raise AssertionError("Unexpected network access in tests")
 
-    monkeypatch.setattr("kml_heatmap.airport_lookup.urlopen", _refuse)
+    monkeypatch.setattr("flown.airport_lookup.urlopen", _refuse)
     # The tiles are fetched over a connection of http.client, not urlopen
-    monkeypatch.setattr("kml_heatmap.terrain_fetch.HTTPSConnection", _refuse)
+    monkeypatch.setattr("flown.terrain_fetch.HTTPSConnection", _refuse)
 
 
 @pytest.fixture(autouse=True)
@@ -192,7 +192,7 @@ def no_site_url(monkeypatch):
 
     The tests of the link previews set their own.
     """
-    monkeypatch.delenv("KML_HEATMAP_SITE_URL", raising=False)
+    monkeypatch.delenv("FLOWN_SITE_URL", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -204,7 +204,7 @@ def private_parse_cache(monkeypatch, tmp_path_factory):
     output) depending on the order they run in.
     """
     monkeypatch.setattr(
-        "kml_heatmap.parser_cache.KML_CACHE_DIR", tmp_path_factory.mktemp("kml")
+        "flown.parser_cache.KML_CACHE_DIR", tmp_path_factory.mktemp("kml")
     )
 
 
@@ -215,7 +215,7 @@ def reset_airport_cache():
     The marker lives in the (session private) cache directory; a test that
     exercises a failed download must not stop the next test from trying.
     """
-    import kml_heatmap.airport_lookup as airport_lookup_module
+    import flown.airport_lookup as airport_lookup_module
 
     def reset():
         airport_lookup_module.databases.reset()
@@ -276,10 +276,10 @@ def decoded_segments(entry):
 
     The rows on disk are scaled integers stored as differences, column
     by column (see
-    ``kml_heatmap.segment_codec``). Tests that care about the values rather
+    ``flown.segment_codec``). Tests that care about the values rather
     than the encoding go through here.
     """
-    from kml_heatmap.segment_codec import COORDINATE_SCALE, decode_rows
+    from flown.segment_codec import COORDINATE_SCALE, decode_rows
 
     start = [value / COORDINATE_SCALE for value in entry["start"]]
     return start, decode_rows(entry["start"], entry["columns"])

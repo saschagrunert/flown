@@ -7,12 +7,12 @@ import {
   legTrack,
   REPLAY_LEG_PAUSE_S,
   type ReplayManager,
-} from "../../../../kml_heatmap/frontend/ui/replayManager";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
-import { AUTO_ZOOM_FOLLOW } from "../../../../kml_heatmap/frontend/utils/constants";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
+} from "../../../../flown/frontend/ui/replayManager";
+import type { PathSegment } from "../../../../flown/frontend/types";
+import { AUTO_ZOOM_FOLLOW } from "../../../../flown/frontend/utils/constants";
+import * as motion from "../../../../flown/frontend/utils/motion";
 import { LngLatBounds } from "../../../mocks/maplibre-gl";
-import type { ReplayCamera } from "../../../../kml_heatmap/frontend/ui/replayCamera";
+import type { ReplayCamera } from "../../../../flown/frontend/ui/replayCamera";
 import { createDataset } from "../../testHelpers";
 import {
   createReplayManager,
@@ -28,7 +28,7 @@ import {
   type MockApp,
 } from "./replayTestSetup";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/htmlGenerators", () => ({
+vi.mock("../../../../flown/frontend/utils/htmlGenerators", () => ({
   generateSegmentPopupHtml: vi.fn(() => "<div>popup</div>"),
 }));
 

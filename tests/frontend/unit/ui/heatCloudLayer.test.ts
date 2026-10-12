@@ -10,32 +10,32 @@ import {
   HEAT_CLOUD_LAYER,
   HeatCloudLayer,
   type HeatCloudStyle,
-} from "../../../../kml_heatmap/frontend/ui/heatCloudLayer";
+} from "../../../../flown/frontend/ui/heatCloudLayer";
 import {
   CLOUD_STOPS,
   cloudExposure,
   cloudLook,
   cloudPulse,
   markStrength,
-} from "../../../../kml_heatmap/frontend/ui/heatCloudShaders";
-import { cloudMatrix } from "../../../../kml_heatmap/frontend/ui/glLayer";
-import { mercatorOf } from "../../../../kml_heatmap/frontend/utils/mercator";
+} from "../../../../flown/frontend/ui/heatCloudShaders";
+import { cloudMatrix } from "../../../../flown/frontend/ui/glLayer";
+import { mercatorOf } from "../../../../flown/frontend/utils/mercator";
 import {
   cloudPoints,
   type CloudPoints,
-} from "../../../../kml_heatmap/frontend/calculations/heatCloud";
-import { smoothFlights } from "../../../../kml_heatmap/frontend/calculations/smoothing";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/heatCloud";
+import { smoothFlights } from "../../../../flown/frontend/calculations/smoothing";
+import type { PathSegment } from "../../../../flown/frontend/types";
 
 const motion = vi.hoisted(() => ({ reduced: false }));
-vi.mock("../../../../kml_heatmap/frontend/utils/motion", () => ({
+vi.mock("../../../../flown/frontend/utils/motion", () => ({
   prefersReducedMotion: () => motion.reduced,
 }));
 
 /** Whether withMapStill is capturing the map */
 const capture = vi.hoisted(() => ({ still: false }));
 vi.mock(
-  "../../../../kml_heatmap/frontend/utils/mapHelpers",
+  "../../../../flown/frontend/utils/mapHelpers",
   async (importOriginal) => ({
     ...(await importOriginal<object>()),
     isMapStill: () => capture.still,

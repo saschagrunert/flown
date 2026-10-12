@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellTable } from "../../../../kml_heatmap/frontend/calculations/cellTable";
+import { cellTable } from "../../../../flown/frontend/calculations/cellTable";
 
 describe("cellTable", () => {
   it("finds a cell again by its column and row, in the order made", () => {

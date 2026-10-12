@@ -17,7 +17,7 @@
  * html-to-image is the exception to "as it is": the package has no module
  * in one file, so its module is bundled into one here (VENDOR_MODULES).
  *
- * build.js copies them into kml_heatmap/static/vendor/ (generated, not
+ * build.js copies them into flown/static/vendor/ (generated, not
  * committed) and the Python side publishes that directory next to the page.
  */
 
@@ -35,14 +35,14 @@ import { buildSync } from "esbuild";
 import { REPO_ROOT } from "./source-hash.js";
 
 const NODE_MODULES = join(REPO_ROOT, "node_modules");
-const VENDOR_DIR = join(REPO_ROOT, "kml_heatmap/static/vendor");
+const VENDOR_DIR = join(REPO_ROOT, "flown/static/vendor");
 
 /**
  * Country flags, kept apart from the vendored files above because the page
  * never loads all of them: the Python side publishes only the countries an
  * export actually visited, and the rest never leave the checkout.
  */
-const FLAG_DIR = join(REPO_ROOT, "kml_heatmap/static/flags");
+const FLAG_DIR = join(REPO_ROOT, "flown/static/flags");
 const FLAG_SOURCE = join(NODE_MODULES, "flag-icons/flags/4x3");
 
 /**
@@ -54,7 +54,7 @@ const FLAG_SOURCE = join(NODE_MODULES, "flag-icons/flags/4x3");
  * That worker is a module of the site's own origin, which is why the page's
  * CSP gets by with `worker-src 'self'` and no `blob:`. The app bundle imports
  * maplibre-gl.mjs from here instead of carrying a copy (see build.js).
- * kml_heatmap/site_assets.py keeps the list of the files it publishes in
+ * flown/site_assets.py keeps the list of the files it publishes in
  * step with this one; tests/frontend/unit/vendor.test.ts checks this list
  * against node_modules.
  * @type {Record<string, string>}
@@ -417,7 +417,7 @@ export function applyVendorPatches(content, published) {
 }
 
 /**
- * Copy the vendored files into kml_heatmap/static/vendor/.
+ * Copy the vendored files into flown/static/vendor/.
  *
  * The directory is replaced rather than written over, so a file dropped
  * from the list above does not linger in a checkout and get published.
@@ -469,10 +469,10 @@ export function copyVendorAssets() {
 }
 
 /**
- * Copy the country flags into kml_heatmap/static/flags/.
+ * Copy the country flags into flown/static/flags/.
  *
  * All of them, because which ones a site needs depends on the flights it is
- * built from; `kml_heatmap/site_assets.py` publishes the handful an export
+ * built from; `flown/site_assets.py` publishes the handful an export
  * touched. Like vendor/, the directory is generated, gitignored and left out
  * of the wheel, so a copy installed from PyPI falls back to the country
  * code rather than shipping two megabytes of flags nobody asked for.

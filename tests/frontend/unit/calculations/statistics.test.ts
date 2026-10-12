@@ -7,18 +7,15 @@ import {
   buildSegmentRanges,
   segmentRangesFor,
   segmentsForPathIds,
-} from "../../../../kml_heatmap/frontend/calculations/statistics";
+} from "../../../../flown/frontend/calculations/statistics";
 // Tested here, on the same fixtures as the slices they are made of
 import {
   calculateTotalDistance,
   filterSegmentsByPaths,
   perPathSeconds,
-} from "../../../../kml_heatmap/frontend/calculations/panelStats";
-import { METERS_TO_FEET } from "../../../../kml_heatmap/frontend/utils/constants";
-import type {
-  PathInfo,
-  PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/panelStats";
+import { METERS_TO_FEET } from "../../../../flown/frontend/utils/constants";
+import type { PathInfo, PathSegment } from "../../../../flown/frontend/types";
 import { segmentOf } from "../../testHelpers";
 
 const FT = (meters: number): number => meters * METERS_TO_FEET;

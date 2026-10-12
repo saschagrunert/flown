@@ -13,22 +13,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kml_heatmap import workers
-from kml_heatmap.aircraft import merge_aircraft_data
-from kml_heatmap.cli import format_listing, main
-from kml_heatmap.data_exporter import ExportSelection
-from kml_heatmap.exceptions import (
+from flown import workers
+from flown.aircraft import merge_aircraft_data
+from flown.cli import format_listing, main
+from flown.data_exporter import ExportSelection
+from flown.exceptions import (
     ExportError,
+    FlownError,
     InvalidInputError,
-    KMLHeatmapError,
     OutputRefusedError,
 )
-from kml_heatmap.listing import FlightListing, _skip_reason
-from kml_heatmap.logger import logger, set_info_stream, set_log_level
-from kml_heatmap.terrain import TerrariumTiles
+from flown.listing import FlightListing, _skip_reason
+from flown.logger import logger, set_info_stream, set_log_level
+from flown.terrain import TerrariumTiles
 
 if TYPE_CHECKING:
-    from kml_heatmap.types import PathMetadata
+    from flown.types import PathMetadata
 
 MINIMAL_KML = "<?xml version='1.0'?><kml></kml>"
 
@@ -49,16 +49,16 @@ def bundle(tmp_path, monkeypatch):
     path = tmp_path / "static" / "mapApp.bundle.js"
     path.parent.mkdir()
     path.write_text("/* bundle */")
-    monkeypatch.setattr("kml_heatmap.site_assets.BUNDLE_FILE", path)
-    monkeypatch.setattr("kml_heatmap.site_assets.BUNDLE_FILES", (path,))
+    monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", path)
+    monkeypatch.setattr("flown.site_assets.BUNDLE_FILES", (path,))
     return path
 
 
 def _run(argv, create_return=True):
     mock_create = MagicMock(return_value=create_return)
     with (
-        patch("sys.argv", ["kml-heatmap", *argv]),
-        patch("kml_heatmap.renderer.create_progressive_heatmap", mock_create),
+        patch("sys.argv", ["flown", *argv]),
+        patch("flown.renderer.create_progressive_heatmap", mock_create),
     ):
         main()
     return mock_create
@@ -66,13 +66,13 @@ def _run(argv, create_return=True):
 
 class TestArgumentParsing:
     def test_no_arguments_shows_usage(self):
-        with patch("sys.argv", ["kml-heatmap"]), pytest.raises(SystemExit) as exc_info:
+        with patch("sys.argv", ["flown"]), pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 2
 
     @pytest.mark.parametrize("flag", ["-h", "--help"])
     def test_help(self, capsys, flag):
-        with patch("sys.argv", ["kml-heatmap", flag]), pytest.raises(SystemExit) as e:
+        with patch("sys.argv", ["flown", flag]), pytest.raises(SystemExit) as e:
             main()
         assert e.value.code == 0
         out = capsys.readouterr().out
@@ -83,16 +83,16 @@ class TestArgumentParsing:
 
     def test_version(self, capsys):
         with (
-            patch("sys.argv", ["kml-heatmap", "--version"]),
+            patch("sys.argv", ["flown", "--version"]),
             pytest.raises(SystemExit) as e,
         ):
             main()
         assert e.value.code == 0
-        assert "kml-heatmap 1.0.0" in capsys.readouterr().out
+        assert "flown 1.0.0" in capsys.readouterr().out
 
     def test_output_dir_without_argument_exits(self):
         with (
-            patch("sys.argv", ["kml-heatmap", "file.kml", "--output-dir"]),
+            patch("sys.argv", ["flown", "file.kml", "--output-dir"]),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -100,7 +100,7 @@ class TestArgumentParsing:
 
     def test_unknown_option_exits(self):
         with (
-            patch("sys.argv", ["kml-heatmap", "--unknown-option"]),
+            patch("sys.argv", ["flown", "--unknown-option"]),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -123,7 +123,7 @@ class TestTerrain:
         assert mock_create.call_args.kwargs["terrain"] is None
 
     def test_the_switch_is_in_the_help(self, capsys):
-        with patch("sys.argv", ["kml-heatmap", "--help"]), pytest.raises(SystemExit):
+        with patch("sys.argv", ["flown", "--help"]), pytest.raises(SystemExit):
             main()
         assert "--no-terrain" in capsys.readouterr().out
 
@@ -139,7 +139,7 @@ class TestSiteUrl:
 
     def test_the_option_is_normalized(self, workspace, monkeypatch):
         _, kml, out = workspace
-        monkeypatch.setenv("KML_HEATMAP_SITE_URL", "https://other.example")
+        monkeypatch.setenv("FLOWN_SITE_URL", "https://other.example")
 
         mock_create = _run(
             [str(kml), "--output-dir", str(out), "--site-url", "https://a.example/b/"]
@@ -149,7 +149,7 @@ class TestSiteUrl:
 
     def test_the_environment_is_the_default(self, workspace, monkeypatch):
         _, kml, out = workspace
-        monkeypatch.setenv("KML_HEATMAP_SITE_URL", "https://a.example")
+        monkeypatch.setenv("FLOWN_SITE_URL", "https://a.example")
 
         mock_create = _run([str(kml), "--output-dir", str(out)])
 
@@ -208,7 +208,7 @@ class TestFileCollection:
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
         with (
-            patch("sys.argv", ["kml-heatmap", str(empty_dir)]),
+            patch("sys.argv", ["flown", str(empty_dir)]),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -223,9 +223,9 @@ class TestFileCollection:
         with (
             patch(
                 "sys.argv",
-                ["kml-heatmap", str(kml), str(missing), "--output-dir", str(out)],
+                ["flown", str(kml), str(missing), "--output-dir", str(out)],
             ),
-            patch("kml_heatmap.renderer.create_progressive_heatmap", mock_create),
+            patch("flown.renderer.create_progressive_heatmap", mock_create),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -284,9 +284,9 @@ class TestOutputHandling:
     def test_processing_failure_exits_with_stderr_message(self, workspace, capsys):
         _, kml, out = workspace
         with (
-            patch("sys.argv", ["kml-heatmap", str(kml), "--output-dir", str(out)]),
+            patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
             patch(
-                "kml_heatmap.renderer.create_progressive_heatmap",
+                "flown.renderer.create_progressive_heatmap",
                 side_effect=ExportError("Export failed: disk full"),
             ),
             pytest.raises(SystemExit) as exc_info,
@@ -301,7 +301,7 @@ class TestOutputHandling:
             (InvalidInputError("1 of 2 file(s) hold no flight"), 2),
             (OutputRefusedError("Refusing"), 2),
             (ExportError("Export failed"), 1),
-            (KMLHeatmapError("bundle"), 1),
+            (FlownError("bundle"), 1),
             (KeyboardInterrupt(), 130),
         ],
     )
@@ -310,8 +310,8 @@ class TestOutputHandling:
     ):
         _, kml, out = workspace
         with (
-            patch("sys.argv", ["kml-heatmap", str(kml), "--output-dir", str(out)]),
-            patch("kml_heatmap.renderer.create_progressive_heatmap", side_effect=error),
+            patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
+            patch("flown.renderer.create_progressive_heatmap", side_effect=error),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -323,7 +323,7 @@ class TestOutputHandling:
 
     def test_a_usage_error_exits_with_2(self, capsys):
         with (
-            patch("sys.argv", ["kml-heatmap", "--jobs", "0", "x.kml"]),
+            patch("sys.argv", ["flown", "--jobs", "0", "x.kml"]),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -360,7 +360,7 @@ class TestOutputHandling:
         assert "dangerous" in capsys.readouterr().err
 
     def test_default_output_dir_next_to_input_is_accepted(self, workspace, monkeypatch):
-        """``kml-heatmap flight.kml`` in the file's directory is the documented use."""
+        """``flown flight.kml`` in the file's directory is the documented use."""
         input_dir, kml, _ = workspace
         monkeypatch.chdir(input_dir)
         mock_create = _run([kml.name])
@@ -404,15 +404,15 @@ class TestOutputHandling:
     @pytest.mark.parametrize(
         "error",
         [
-            KMLHeatmapError("Airport database unavailable"),
+            FlownError("Airport database unavailable"),
             PermissionError(13, "Permission denied"),
         ],
     )
     def test_pipeline_errors_are_one_line(self, workspace, capsys, error):
         _, kml, out = workspace
         with (
-            patch("sys.argv", ["kml-heatmap", str(kml), "--output-dir", str(out)]),
-            patch("kml_heatmap.renderer.create_progressive_heatmap", side_effect=error),
+            patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
+            patch("flown.renderer.create_progressive_heatmap", side_effect=error),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -425,7 +425,7 @@ class TestOutputHandling:
 class TestDebugFlag:
     def test_debug_flag_enables_debug_mode(self, workspace):
         _, kml, out = workspace
-        with patch("kml_heatmap.cli.set_debug_mode") as mock_set_debug:
+        with patch("flown.cli.set_debug_mode") as mock_set_debug:
             _run(["--debug", str(kml), "--output-dir", str(out)])
         mock_set_debug.assert_called_once_with(True)
 
@@ -502,7 +502,7 @@ class TestInputsAreLeftAloneByDefault:
     def test_obfuscation_is_not_even_attempted(self, workspace):
         _, kml, out = workspace
 
-        with patch("kml_heatmap.obfuscate.obfuscate_kml_files") as mock_obfuscate:
+        with patch("flown.obfuscate.obfuscate_kml_files") as mock_obfuscate:
             _run([str(kml), "--output-dir", str(out)])
 
         mock_obfuscate.assert_not_called()
@@ -542,15 +542,15 @@ class TestObfuscateFlag:
             patch(
                 "sys.argv",
                 [
-                    "kml-heatmap",
+                    "flown",
                     "--obfuscate-inputs",
                     str(kml),
                     "--output-dir",
                     str(out),
                 ],
             ),
-            patch("kml_heatmap.renderer.create_progressive_heatmap", mock_create),
-            patch("kml_heatmap.obfuscate.obfuscate_kml_files", side_effect=obfuscate),
+            patch("flown.renderer.create_progressive_heatmap", mock_create),
+            patch("flown.obfuscate.obfuscate_kml_files", side_effect=obfuscate),
         ):
             main()
         assert calls == [("obfuscate", [kml]), "create"]
@@ -562,7 +562,7 @@ class TestObfuscateFlag:
         empty = input_dir / "empty.kml"
         empty.write_text("")
 
-        with patch("kml_heatmap.obfuscate.obfuscate_kml_files") as mock_obfuscate:
+        with patch("flown.obfuscate.obfuscate_kml_files") as mock_obfuscate:
             _run(
                 [
                     "--obfuscate-inputs",
@@ -674,7 +674,7 @@ class TestObfuscationFailsClosed:
         )
 
         # Simulate a rewrite that leaves the real date in place
-        monkeypatch.setattr("kml_heatmap.obfuscate.obfuscate_kml_files", lambda _: 0)
+        monkeypatch.setattr("flown.obfuscate.obfuscate_kml_files", lambda _: 0)
 
         with pytest.raises(SystemExit) as excinfo:
             _run(
@@ -752,8 +752,8 @@ class TestList:
         before = sorted(path.name for path in flights.iterdir())
 
         with (
-            patch("sys.argv", ["kml-heatmap", "--list", "-q", str(flights)]),
-            patch("kml_heatmap.terrain.TerrariumTiles") as tiles,
+            patch("sys.argv", ["flown", "--list", "-q", str(flights)]),
+            patch("flown.terrain.TerrariumTiles") as tiles,
             pytest.raises(SystemExit) as exit_info,
         ):
             main()
@@ -807,8 +807,8 @@ class TestList:
         (flights / "1_DEAGJ_DA20.kml").write_text(dated, encoding="utf-8")
 
         with (
-            patch("sys.argv", ["kml-heatmap", "--list", "-q", str(flights)]),
-            patch("kml_heatmap.terrain.TerrariumTiles"),
+            patch("sys.argv", ["flown", "--list", "-q", str(flights)]),
+            patch("flown.terrain.TerrariumTiles"),
         ):
             main()
 
@@ -823,8 +823,8 @@ class TestList:
         shutil.copytree(FIXTURE_FLIGHTS, flights)
 
         with (
-            patch("sys.argv", ["kml-heatmap", "--list", str(flights)]),
-            patch("kml_heatmap.terrain.TerrariumTiles"),
+            patch("sys.argv", ["flown", "--list", str(flights)]),
+            patch("flown.terrain.TerrariumTiles"),
         ):
             main()
 
@@ -841,7 +841,7 @@ class TestList:
 
     def test_nothing_to_list_is_a_usage_error(self, tmp_path, capsys):
         with (
-            patch("sys.argv", ["kml-heatmap", "--list", str(tmp_path)]),
+            patch("sys.argv", ["flown", "--list", str(tmp_path)]),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -874,7 +874,7 @@ class TestQuiet:
         _run(["-q", "--debug", str(kml), "--output-dir", str(out)])
 
         assert logger.getEffectiveLevel() == logging.DEBUG
-        assert "KML Heatmap Generator" in capsys.readouterr().out
+        assert "Flown" in capsys.readouterr().out
 
 
 class TestPrivate:
@@ -900,7 +900,7 @@ class TestJobs:
     @pytest.mark.parametrize("value", ["0", "-1", "many"])
     def test_refuses_a_count_that_is_none(self, value, capsys):
         with (
-            patch("sys.argv", ["kml-heatmap", "--jobs", value, "x.kml"]),
+            patch("sys.argv", ["flown", "--jobs", value, "x.kml"]),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -912,23 +912,23 @@ class TestCacheDir:
     def test_is_set_before_the_pipeline_is_imported(self, workspace, monkeypatch):
         input_dir, kml, out = workspace
         cache = input_dir.parent / "cache"
-        monkeypatch.setenv("KML_HEATMAP_CACHE_DIR", "unchanged")
+        monkeypatch.setenv("FLOWN_CACHE_DIR", "unchanged")
 
         _run(["--cache-dir", str(cache), str(kml), "--output-dir", str(out)])
 
-        assert os.environ["KML_HEATMAP_CACHE_DIR"] == str(cache.resolve())
+        assert os.environ["FLOWN_CACHE_DIR"] == str(cache.resolve())
 
     def test_the_cache_module_reads_it(self, tmp_path):
         """In a fresh interpreter, as a run of the command line is one."""
         script = (
-            "import sys; from kml_heatmap import cli; argv = sys.argv[1:]; "
-            "sys.argv = ['kml-heatmap', '--cache-dir', argv[0], '--list', argv[1]]\n"
+            "import sys; from flown import cli; argv = sys.argv[1:]; "
+            "sys.argv = ['flown', '--cache-dir', argv[0], '--list', argv[1]]\n"
             "try:\n    cli.main()\nexcept SystemExit:\n    pass\n"
-            "from kml_heatmap import cache; print(cache.CACHE_DIR)"
+            "from flown import cache; print(cache.CACHE_DIR)"
         )
         empty = tmp_path / "empty"
         empty.mkdir()
-        env = {k: v for k, v in os.environ.items() if k != "KML_HEATMAP_CACHE_DIR"}
+        env = {k: v for k, v in os.environ.items() if k != "FLOWN_CACHE_DIR"}
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", script, str(tmp_path / "c"), str(empty)],
             capture_output=True,
@@ -943,8 +943,8 @@ class TestRefreshAirports:
     def test_marks_the_cached_database_for_a_download_first(self, workspace, caplog):
         _, kml, out = workspace
         with (
-            patch("kml_heatmap.airport_lookup.refresh_airport_databases") as refresh,
-            caplog.at_level(logging.INFO, logger="kml_heatmap"),
+            patch("flown.airport_lookup.refresh_airport_databases") as refresh,
+            caplog.at_level(logging.INFO, logger="flown"),
         ):
             mock_create = _run(
                 ["--refresh-airports", str(kml), "--output-dir", str(out)]
@@ -958,7 +958,7 @@ class TestRefreshAirports:
 
     def test_not_without_the_flag(self, workspace):
         _, kml, out = workspace
-        with patch("kml_heatmap.airport_lookup.refresh_airport_databases") as refresh:
+        with patch("flown.airport_lookup.refresh_airport_databases") as refresh:
             _run([str(kml), "--output-dir", str(out)])
         refresh.assert_not_called()
 

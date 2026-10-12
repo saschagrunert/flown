@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from kml_heatmap.exceptions import KMLParseError
-from kml_heatmap.helpers import parse_timestamp_epoch
-from kml_heatmap.parser import _parse_kml_tree, parse_size
-from kml_heatmap.parser_cache import get_cache_key
-from kml_heatmap.types import TrackPoint
+from flown.exceptions import KMLParseError
+from flown.helpers import parse_timestamp_epoch
+from flown.parser import _parse_kml_tree, parse_size
+from flown.parser_cache import get_cache_key
+from flown.types import TrackPoint
 from tests.conftest import parse_kml_coordinates
 
 MB = 1024 * 1024
@@ -247,7 +247,7 @@ class TestParseKmlCoordinates:
         assert "outside of gx:Track" not in capsys.readouterr().err
 
     def test_gx_coord_counts_in_debug_output(self, tmp_path, capsys):
-        from kml_heatmap.logger import set_debug_mode
+        from flown.logger import set_debug_mode
 
         set_debug_mode(True)
         try:
@@ -333,7 +333,7 @@ class TestParseKmlCoordinates:
     def test_a_file_name_that_is_not_utf_8(self, tmp_path, caplog):
         """As unzipped from a Windows archive: the build stopped on it."""
         # A captured line with the name cannot go to the xdist controller
-        caplog.set_level(logging.CRITICAL, logger="kml_heatmap")
+        caplog.set_level(logging.CRITICAL, logger="flown")
         kml = f"""{KML_HEADER}<Document><Placemark><name>A</name><LineString>
           <coordinates>8.5,50.0,300 9.0,51.0,400</coordinates>
         </LineString></Placemark></Document></kml>"""
@@ -442,7 +442,7 @@ class TestParseKmlCoordinates:
         assert capsys.readouterr().err.count("Ignoring extra filename parts") == 1
 
     def test_debug_logging_lists_tags(self, tmp_path, capsys):
-        from kml_heatmap.logger import set_debug_mode
+        from flown.logger import set_debug_mode
 
         set_debug_mode(True)
         try:
@@ -452,7 +452,7 @@ class TestParseKmlCoordinates:
         assert root is not None
         assert damage is None
         assert "All unique tags in file" in capsys.readouterr().out
-        assert not logging.getLogger("kml_heatmap").isEnabledFor(logging.DEBUG)
+        assert not logging.getLogger("flown").isEnabledFor(logging.DEBUG)
 
 
 class TestCharterwareIntegration:
@@ -533,7 +533,7 @@ class TestTimeSpanPlacemark:
 
     def test_timespan_gives_year_and_duration(self, tmp_path):
         """The obfuscator shifts TimeSpan dates; the parser must read them too."""
-        from kml_heatmap.export_pipeline import path_duration
+        from flown.export_pipeline import path_duration
 
         kml_file = _write(tmp_path, "1_DEAGJ_DA20.kml", self.KML)
         _, _, metadata = parse_kml_coordinates(kml_file)
@@ -547,7 +547,7 @@ class TestTimeSpanPlacemark:
     @pytest.mark.parametrize("inherited", [False, True], ids=["multi", "folder"])
     def test_lines_that_share_a_timespan_share_its_duration(self, tmp_path, inherited):
         """Each line gets its part by distance, so all fly the average speed."""
-        from kml_heatmap.export_pipeline import path_duration
+        from flown.export_pipeline import path_duration
 
         span = (
             "<TimeSpan><begin>2025-06-15T12:00:00Z</begin>"
@@ -574,7 +574,7 @@ class TestTimeSpanPlacemark:
         assert durations[1] == pytest.approx(3 * durations[0])
 
     def test_lines_that_never_move_share_a_timespan_evenly(self, tmp_path):
-        from kml_heatmap.export_pipeline import path_duration
+        from flown.export_pipeline import path_duration
 
         span = (
             "<TimeSpan><begin>2025-06-15T12:00:00Z</begin>"
@@ -761,7 +761,7 @@ class TestTimeSpanPlacemark:
         assert len(paths) == 2
 
     def test_lines_with_their_own_timespans_keep_them(self, tmp_path):
-        from kml_heatmap.export_pipeline import path_duration
+        from flown.export_pipeline import path_duration
 
         placemarks = "".join(
             f"<Placemark><name>{hour}</name><TimeSpan>"
@@ -883,7 +883,7 @@ class TestYearAcrossNewYear:
         """The parser and the obfuscator both go by the start of the flight."""
         from pathlib import Path
 
-        from kml_heatmap.obfuscate import obfuscate_kml_file
+        from flown.obfuscate import obfuscate_kml_file
 
         kml_file = _write(tmp_path, "ny.kml", _new_year_track())
         _, _, before = parse_kml_coordinates(kml_file)
@@ -949,7 +949,7 @@ class TestDamagedDocuments:
     def test_a_cut_off_track_keeps_what_comes_before_the_cut(self, tmp_path, caplog):
         kml = _track(100)
         cut = kml[: kml.index("<gx:coord>8.0060") + len("<gx:coord>8.00")]
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _, paths, _ = parse_kml_coordinates(_write(tmp_path, "cut.kml", cut))
         # The fix cut in the middle is left out, not read as 8.00
         assert [round(p.lon, 4) for p in paths[0]] == [
@@ -972,7 +972,7 @@ class TestDamagedDocuments:
 
     def test_content_after_the_end_leaves_every_point(self, tmp_path, caplog):
         kml = _track(10) + "\ngarbage<x>"
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _, paths, _ = parse_kml_coordinates(_write(tmp_path, "junk.kml", kml))
         assert len(paths[0]) == 10
         assert "junk.kml: damaged," in caplog.text
@@ -994,7 +994,7 @@ class TestDamagedDocuments:
         assert excinfo.value.line_number == 2
 
     def test_white_space_before_the_declaration_is_no_damage(self, tmp_path, caplog):
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _, paths, _ = parse_kml_coordinates(
                 _write(tmp_path, "lead.kml", "\n  " + GX_TRACK_KML)
             )
@@ -1004,7 +1004,7 @@ class TestDamagedDocuments:
     def test_a_mended_file_that_is_cut_off_is_recovered(self, tmp_path, caplog):
         kml = "\n" + _track(100)
         cut = kml[: kml.index("<gx:coord>8.0060")]
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _, paths, _ = parse_kml_coordinates(_write(tmp_path, "cut.kml", cut))
         assert len(paths[0]) == 59
         assert "cut.kml: damaged," in caplog.text
@@ -1025,7 +1025,7 @@ class TestDamagedDocuments:
 
     def test_gx_without_its_namespace_is_read(self, tmp_path, caplog):
         kml = GX_TRACK_KML.replace(' xmlns:gx="http://www.google.com/kml/ext/2.2"', "")
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _, paths, _ = parse_kml_coordinates(_write(tmp_path, "nogx.kml", kml))
         assert [p.alt for p in paths[0]] == [300.0, 400.0]
         assert "damaged" not in caplog.text
@@ -1053,7 +1053,7 @@ class TestDamagedDocuments:
             tmp_path / "cut.kmz",
             {"doc.kml": kml[: kml.index("<gx:coord>8.0060")], "extra.kml": kml},
         )
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _, paths, _ = parse_kml_coordinates(kmz)
         assert len(paths[0]) == 59
         assert caplog.text.count("holds 1 more KML file") == 1
@@ -1094,7 +1094,7 @@ class TestKmz:
             tmp_path / "tracks.kmz",
             {"tracks/a.kml": KMZ_TRACK, "tracks/b.kml": KMZ_TRACK},
         )
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _parse_kml_tree(kmz)
         assert (
             "tracks.kmz: the KMZ archive holds 1 more KML file(s) than tracks/a.kml"
@@ -1105,7 +1105,7 @@ class TestKmz:
         kmz = _kmz(
             tmp_path / "track.kmz", {"doc.kml": KMZ_TRACK, "__MACOSX/._doc.kml": "x"}
         )
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             _parse_kml_tree(kmz)
         assert "KMZ archive holds" not in caplog.text
 
@@ -1142,14 +1142,14 @@ class TestKmz:
     def test_a_member_too_large_is_refused_before_it_is_read(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr("kml_heatmap.parser.MAX_KML_FILE_SIZE", 100)
+        monkeypatch.setattr("flown.parser.MAX_KML_FILE_SIZE", 100)
         kmz = _kmz(tmp_path / "big.kmz", {"doc.kml": KMZ_TRACK})
         with pytest.raises(KMLParseError, match="too large"):
             _parse_kml_tree(kmz)
 
     def test_a_member_larger_than_it_claims_is_refused(self, tmp_path, monkeypatch):
         """The size in the directory is the archive's word, not a limit."""
-        monkeypatch.setattr("kml_heatmap.parser.MAX_KML_FILE_SIZE", 100)
+        monkeypatch.setattr("flown.parser.MAX_KML_FILE_SIZE", 100)
         kmz = _kmz(tmp_path / "liar.kmz", {"doc.kml": KMZ_TRACK})
         real = zipfile.ZipFile.infolist
 
@@ -1284,7 +1284,7 @@ class TestParseSize:
     def test_capped_at_the_largest_document_the_parse_reads(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr("kml_heatmap.parser.MAX_KML_FILE_SIZE", 100)
+        monkeypatch.setattr("flown.parser.MAX_KML_FILE_SIZE", 100)
         kmz = _kmz(tmp_path / "big.kmz", {"doc.kml": b"x" * 1000})
         assert parse_size(kmz) == 100
 

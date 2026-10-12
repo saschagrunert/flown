@@ -11,24 +11,24 @@ import {
   crossSectionOpen,
   followCrossSection,
   toggleCrossSection,
-} from "../../../../kml_heatmap/frontend/ui/crossSection";
+} from "../../../../flown/frontend/ui/crossSection";
 import {
   CROSS_SECTION_LAYERS,
   CROSS_SECTION_SOURCE,
-} from "../../../../kml_heatmap/frontend/ui/crossSectionCorridor";
+} from "../../../../flown/frontend/ui/crossSectionCorridor";
 import {
   densityColour,
   densityReference,
-} from "../../../../kml_heatmap/frontend/ui/crossSectionChart";
-import { HEATMAP_GRADIENT } from "../../../../kml_heatmap/frontend/ui/heatmapPaint";
+} from "../../../../flown/frontend/ui/crossSectionChart";
+import { HEATMAP_GRADIENT } from "../../../../flown/frontend/ui/heatmapPaint";
 import {
   heightUnit,
   sectionSummary,
-} from "../../../../kml_heatmap/frontend/ui/crossSectionText";
-import type { CrossSection } from "../../../../kml_heatmap/frontend/calculations/crossSection";
-import { isSectionLine } from "../../../../kml_heatmap/frontend/state/urlState";
-import { MobileSheet } from "../../../../kml_heatmap/frontend/ui/mobileSheet";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/ui/crossSectionText";
+import type { CrossSection } from "../../../../flown/frontend/calculations/crossSection";
+import { isSectionLine } from "../../../../flown/frontend/state/urlState";
+import { MobileSheet } from "../../../../flown/frontend/ui/mobileSheet";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import type {
   Map as MockMap,
   Marker as MockMarker,

@@ -2,10 +2,10 @@
 
 from unittest.mock import MagicMock
 
-from kml_heatmap.aircraft import AircraftInfo
-from kml_heatmap.parser_common import empty_placemark_metadata
-from kml_heatmap.parser_standard import process_standard_coordinates
-from kml_heatmap.types import FlightPath, FlightPathGroup, PathMetadata, TrackPoint
+from flown.aircraft import AircraftInfo
+from flown.parser_common import empty_placemark_metadata
+from flown.parser_standard import process_standard_coordinates
+from flown.types import FlightPath, FlightPathGroup, PathMetadata, TrackPoint
 
 
 def _elem(text):

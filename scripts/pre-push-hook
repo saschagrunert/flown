@@ -1,5 +1,5 @@
 #!/bin/sh
-# kml-heatmap pre-push hook: `make hooks` installs a copy, and replaces a
+# flown pre-push hook: `make hooks` installs a copy, and replaces a
 # copy it finds by this line, or a link an older `make hooks` made.
 # It runs scripts/pre_push.py of the worktree the push comes from. All
 # worktrees of a clone share one hooks directory, and a link into the

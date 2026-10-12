@@ -7,9 +7,9 @@ import {
   listFlights,
   runwayUse,
   flightLabel,
-} from "../../../../kml_heatmap/frontend/ui/airportFlights";
-import type { PathInfo } from "../../../../kml_heatmap/frontend/types";
-import type { PickList } from "../../../../kml_heatmap/frontend/ui/pathSelection";
+} from "../../../../flown/frontend/ui/airportFlights";
+import type { PathInfo } from "../../../../flown/frontend/types";
+import type { PickList } from "../../../../flown/frontend/ui/pathSelection";
 import {
   asMapApp,
   createDataset,
@@ -21,7 +21,7 @@ import { Popup as MockPopup } from "../../../mocks/maplibre-gl";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
+} from "../../../../flown/frontend/state/siteData";
 
 const pathInfo: PathInfo[] = [
   {

@@ -44,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 # Every KML file, wherever it is and however its extension is spelled, and
 # every KMZ archive, which the check reports as one it cannot read (the
-# generator reads both, see kml_heatmap.validation.find_kml_files)
+# generator reads both, see flown.validation.find_kml_files)
 KML_PATHSPECS = (":(glob,icase)**/*.kml", ":(glob,icase)**/*.kmz")
 # The flights of the site
 FLIGHT_PATHSPECS = (":(glob,icase)data/**/*.kml", ":(glob,icase)data/**/*.kmz")
@@ -243,7 +243,7 @@ def one_trip(ends: list[tuple[tuple[float, float], tuple[float, float]]]) -> boo
     under way, rather than the flights of weeks at home with a trip among
     them, which come back to that field in between.
     """
-    from kml_heatmap.geometry import haversine_distance  # noqa: PLC0415
+    from flown.geometry import haversine_distance  # noqa: PLC0415
 
     def near(first: tuple[float, float], second: tuple[float, float]) -> bool:
         return haversine_distance(*first, *second) <= SAME_FIELD_KM
@@ -286,7 +286,7 @@ def trip_of(repo: Path, pushed: list[str], added: list[str]) -> bool:
 def dated_refs(lines: list[str]) -> list[str]:
     """The dates, weekdays and holidays in the names of the refs pushed to."""
     # Imported here: main() puts the checkout on the path first
-    from kml_heatmap.date_tokens import (  # noqa: PLC0415
+    from flown.date_tokens import (  # noqa: PLC0415
         find_date_tokens,
         find_holiday_tokens,
         find_partial_date_tokens,
@@ -337,7 +337,7 @@ def dated_messages(
     if not pushed_shas:
         return []
     # Imported here: main() puts the checkout on the path first
-    from kml_heatmap.date_tokens import (  # noqa: PLC0415
+    from flown.date_tokens import (  # noqa: PLC0415
         find_date_tokens,
         find_holiday_tokens,
         find_partial_date_tokens,
@@ -372,7 +372,7 @@ def dated_messages(
 def violations_in(repo: Path, commit: str) -> dict[str, list[str]]:
     """The obfuscation violations of the KML files a commit adds or changes."""
     # Imported here: main() puts the checkout on the path first
-    from kml_heatmap.obfuscate import check_directory_obfuscated  # noqa: PLC0415
+    from flown.obfuscate import check_directory_obfuscated  # noqa: PLC0415
 
     with tempfile.TemporaryDirectory(prefix="kml-pre-push-") as tmp:
         directory = Path(tmp)
@@ -462,7 +462,7 @@ def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
         )
         return 1
     # Imported here: main() puts the checkout on the path first
-    from kml_heatmap.helpers import numeric_filename_key  # noqa: PLC0415
+    from flown.helpers import numeric_filename_key  # noqa: PLC0415
 
     added = sorted(added_flights(repo, exclude, shas), key=numeric_filename_key)
     if added and trip_of(repo, shas, added):

@@ -19,25 +19,22 @@ import {
   importYearTools,
   DataLoader,
   type DataLoaderOptions,
-} from "../../../../kml_heatmap/frontend/services/dataLoader";
+} from "../../../../flown/frontend/services/dataLoader";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
-import {
-  logDebug,
-  logError,
-} from "../../../../kml_heatmap/frontend/utils/logger";
-import { createYearDecoder } from "../../../../kml_heatmap/frontend/services/yearDecoder";
+} from "../../../../flown/frontend/state/siteData";
+import { logDebug, logError } from "../../../../flown/frontend/utils/logger";
+import { createYearDecoder } from "../../../../flown/frontend/services/yearDecoder";
 import { FakeYearWorker, path, rawYear, yearBytes } from "../../yearFixtures";
 import type {
   LoadingState,
   Metadata,
   RawYearData,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/types";
 
 // Mock logger
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => ({
+vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logDebug: vi.fn(),
   logError: vi.fn(),
 }));

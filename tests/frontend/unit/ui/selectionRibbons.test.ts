@@ -8,27 +8,27 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   followSelectionRibbons,
   selectionRibbons,
-} from "../../../../kml_heatmap/frontend/ui/selectionRibbons";
-import { followSelectionHighlight } from "../../../../kml_heatmap/frontend/ui/selectionHighlight";
-import { followTerrain } from "../../../../kml_heatmap/frontend/ui/terrain";
+} from "../../../../flown/frontend/ui/selectionRibbons";
+import { followSelectionHighlight } from "../../../../flown/frontend/ui/selectionHighlight";
+import { followTerrain } from "../../../../flown/frontend/ui/terrain";
 import {
   groundedFlights,
   heldGroundedFlights,
   releaseGroundProfiles,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
+} from "../../../../flown/frontend/calculations/groundProfile";
 import {
   LIFT_MAX_ZOOM,
   liftExaggeration,
   ribbonId,
-} from "../../../../kml_heatmap/frontend/calculations/lift";
+} from "../../../../flown/frontend/calculations/lift";
 import {
   ribbonOf,
   ribbonProperties,
-} from "../../../../kml_heatmap/frontend/calculations/ribbons";
-import { EXAGGERATION_STATE } from "../../../../kml_heatmap/frontend/calculations/ribbonPaint";
-import { MAP_SOURCES } from "../../../../kml_heatmap/frontend/utils/constants";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/ribbons";
+import { EXAGGERATION_STATE } from "../../../../flown/frontend/calculations/ribbonPaint";
+import { MAP_SOURCES } from "../../../../flown/frontend/utils/constants";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   asMapApp,
   createDataset,

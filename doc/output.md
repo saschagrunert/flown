@@ -87,7 +87,7 @@ m), and the only segments the exporter drops are the ones whose two endpoints
 round to the same coordinate (standing still), which keeps the rows contiguous.
 
 Every value above is written as an integer difference to the row before it
-rather than as the number itself (`kml_heatmap/segment_codec.py`, mirrored by
+rather than as the number itself (`flown/segment_codec.py`, mirrored by
 `decodeYear` in `services/yearDecode.ts`, which the page runs in a worker). The
 exporter has already rounded each column to the step the format counts in (1e-5
 degrees, 20 ft, 1 kt, 0.1 s and 10 ft of ground), so every value is a whole
@@ -185,8 +185,8 @@ run and kept in the [cache directory](#cache-directory) for 30 days.
 
 The runways of the same database (`runways.csv`, cached the same way) name the
 runway of every touchdown. The build reads the landings from the logs at their
-full precision (`kml_heatmap/landings.py`): a touchdown is a fix within 60 ft of
-a field's ground (its published elevation plus how far the logger read above it
+full precision (`flown/landings.py`): a touchdown is a fix within 60 ft of a
+field's ground (its published elevation plus how far the logger read above it
 while taxiing) at 35 kt or more, a full stop one that slows below 25 kt there, a
 touch-and-go one that climbs 300 ft without stopping, and a go-around an
 approach below 400 ft on a runway's line that climbs away without touching down.
@@ -195,8 +195,8 @@ end of the field.
 
 Without the database the site is still generated, with the airport names as the
 KML files spell them, without countries and without landings. Set
-`KML_HEATMAP_REQUIRE_AIRPORT_DB=1` to fail instead, as CI does for the published
-site; it requires the runways as well.
+`FLOWN_REQUIRE_AIRPORT_DB=1` to fail instead, as CI does for the published site;
+it requires the runways as well.
 
 ## Elevation data
 
@@ -205,14 +205,14 @@ The ground under the flights (the 3D view stands them on it) comes from the
 in the Terrarium encoding, at zoom 10: pixels of about 100 m at 50 degrees
 north, fine enough for the relief under a flight. The build samples the
 elevation under every exported position, bilinear across tile edges, and writes
-it into the year files; `kml_heatmap/terrain.py` has the details, including how
-the model is shifted to meet the altitudes a flight recorded taxiing at both
-ends. The 3D view draws the relief from the same tiles at every zoom (the page
-fetches them from AWS while the 3D view is on, a few hundred KB for a view, and
-credits them on the map while they are drawn), so the ground a flight is
-measured against and the ground it is drawn on are the same model. Zoomed out
-the map draws it from the tiles of a coarser level, and the page smooths the
-sampled ground along each flight as much before it stands the flight on it.
+it into the year files; `flown/terrain.py` has the details, including how the
+model is shifted to meet the altitudes a flight recorded taxiing at both ends.
+The 3D view draws the relief from the same tiles at every zoom (the page fetches
+them from AWS while the 3D view is on, a few hundred KB for a view, and credits
+them on the map while they are drawn), so the ground a flight is measured
+against and the ground it is drawn on are the same model. Zoomed out the map
+draws it from the tiles of a coarser level, and the page smooths the sampled
+ground along each flight as much before it stands the flight on it.
 
 The tiles are downloaded on the first run, eight at a time, and kept in the
 [cache directory](#cache-directory); how many the flights in this repository
@@ -222,8 +222,8 @@ A tile never changes, so it is never fetched again. A download that fails is
 tried again a few times. Offline, or when a tile cannot be fetched, the build
 goes on without it: a flight with a position under a missing tile gets no ground
 and stands on the line between its airfields, and one warning says how many
-flights that affects. Set `KML_HEATMAP_REQUIRE_TERRAIN=1` to fail instead, as CI
-does for the published site. `--no-terrain` skips the tiles altogether.
+flights that affects. Set `FLOWN_REQUIRE_TERRAIN=1` to fail instead, as CI does
+for the published site. `--no-terrain` skips the tiles altogether.
 
 ### Attribution
 
@@ -256,23 +256,23 @@ from several sources, which ask for this
 ## Cache directory
 
 What a run downloads or computes and can use again is kept in one cache
-directory: `~/.cache/kml-heatmap` by default, or `KML_HEATMAP_CACHE_DIR` when it
-is set. The container image sets it to `/cache`, which `make build` mounts from
-`CACHE_DIR` (see [Makefile variables](usage.md#makefile-variables-and-targets)),
-and `--cache-dir` names one for a run (see
+directory: `~/.cache/flown` by default, or `FLOWN_CACHE_DIR` when it is set. The
+container image sets it to `/cache`, which `make build` mounts from `CACHE_DIR`
+(see [Makefile variables](usage.md#makefile-variables-and-targets)), and
+`--cache-dir` names one for a run (see
 [Command-line options](usage.md#command-line-options)). Without a home directory
 (no `HOME` and no entry in the password database, as in a container run under a
-foreign user id) it is `kml-heatmap-cache-<uid>` in the temp directory instead,
-with the user id in its name. One there that is not a directory of that user
-alone (a symlink, another user's, or one others may write to) is not used: the
-run warns and caches in a fresh directory of its own, for that run only, which
-it removes as it exits. One that others may only read is made the user's alone
-(mode 0700): the parse cache holds the raw flights. Wherever the cache directory
-is, its `kml/` is made the user's alone the same way (and the cache directory
-too, when the run creates it), and its entries are readable by the user alone
-(mode 0600); a `kml/` that is a symlink or another user's is not used, and the
-run parses without the cache. Anything in it can be deleted at any time; the
-next run fetches or computes it again.
+foreign user id) it is `flown-cache-<uid>` in the temp directory instead, with
+the user id in its name. One there that is not a directory of that user alone (a
+symlink, another user's, or one others may write to) is not used: the run warns
+and caches in a fresh directory of its own, for that run only, which it removes
+as it exits. One that others may only read is made the user's alone (mode 0700):
+the parse cache holds the raw flights. Wherever the cache directory is, its
+`kml/` is made the user's alone the same way (and the cache directory too, when
+the run creates it), and its entries are readable by the user alone (mode 0600);
+a `kml/` that is a symlink or another user's is not used, and the run parses
+without the cache. Anything in it can be deleted at any time; the next run
+fetches or computes it again.
 
 | Entry                         | What it holds                                                                                                                                                                                                                                                                  | How long                                                                                                                                                                                                                                                 | Delete it to                                                                                                               |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |

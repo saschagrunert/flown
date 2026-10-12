@@ -4,8 +4,8 @@ import {
   STORE_ACCESSOR_KEYS,
   createDefaultState,
   defineStoreAccessors,
-} from "../../../../kml_heatmap/frontend/state/store";
-import { TOGGLES } from "../../../../kml_heatmap/frontend/state/toggles";
+} from "../../../../flown/frontend/state/store";
+import { TOGGLES } from "../../../../flown/frontend/state/toggles";
 
 describe("createDefaultState", () => {
   it("returns expected defaults", () => {

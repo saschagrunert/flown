@@ -14,9 +14,9 @@ from unittest.mock import MagicMock
 import pytest
 from lxml import html as lxml_html
 
-import kml_heatmap.workers as workers_module
-from kml_heatmap import previews
-from kml_heatmap.previews import (
+import flown.workers as workers_module
+from flown import previews
+from flown.previews import (
     PREVIEW_HEIGHT,
     PREVIEW_WIDTH,
     DrawnPath,
@@ -30,7 +30,7 @@ from kml_heatmap.previews import (
     track_of,
     write_previews,
 )
-from kml_heatmap.types import TrackPoint
+from flown.types import TrackPoint
 
 SITE = "https://example.org/flights"
 
@@ -99,8 +99,8 @@ class TestNormalizeSiteUrl:
             ("https://example.org/flights/", "https://example.org/flights"),
             (" http://127.0.0.1:8000 ", "http://127.0.0.1:8000"),
             (
-                "https://user.github.io/kml-heatmap",
-                "https://user.github.io/kml-heatmap",
+                "https://user.github.io/flown",
+                "https://user.github.io/flown",
             ),
         ],
     )
@@ -390,7 +390,7 @@ class TestRenderImages:
     ):
         """A change to the PNG encoder draws the images again, not only one
         to this module."""
-        package = tmp_path / "kml_heatmap"
+        package = tmp_path / "flown"
         package.mkdir()
         for module in previews._DRAWING_MODULES:
             (package / f"{module}.py").write_text(f"# {module}\n")
@@ -442,7 +442,7 @@ class TestRenderImages:
             def write(self, data):
                 raise OSError("disk full")
 
-        monkeypatch.setattr("kml_heatmap.cache.tempfile.NamedTemporaryFile", Full)
+        monkeypatch.setattr("flown.cache.tempfile.NamedTemporaryFile", Full)
         with pytest.raises(OSError, match="disk full"):
             previews._write_file(tmp_path / "a.png", b"data")
         assert list(tmp_path.iterdir()) == []
@@ -646,7 +646,7 @@ class TestWritePreviews:
         assert _meta(page, "og:image:width") == ["1200"]
         assert _meta(page, "og:image:height") == ["630"]
         assert _meta(page, "twitter:card") == ["summary_large_image"]
-        assert _meta(page, "og:title") == ["EDAQ Halle-Oppin (2025) · KML Heatmap"]
+        assert _meta(page, "og:title") == ["EDAQ Halle-Oppin (2025) · Flown"]
         assert _meta(page, "og:description") == [
             "Flown in 2025 in D-EAGJ DA20, on the flight heatmap"
         ]
@@ -661,7 +661,7 @@ class TestWritePreviews:
         _write(tmp_path, SITE)
         page = (tmp_path / "f" / "10.html").read_text()
         assert _meta(page, "og:title") == [
-            "EDAQ Halle-Oppin → EDDC Dresden (2026) · KML Heatmap"
+            "EDAQ Halle-Oppin → EDDC Dresden (2026) · Flown"
         ]
 
     @pytest.mark.usefixtures("fake_images")
@@ -713,7 +713,7 @@ class TestWritePreviews:
         page = (tmp_path / "f" / "1.html").read_text()
         assert "<script" not in page
         assert "<b>" not in page
-        title = f"{start} → EDDC Dresden (2025) · KML Heatmap"
+        title = f"{start} → EDDC Dresden (2025) · Flown"
         assert _meta(page, "og:title") == [title]
         assert lxml_html.fromstring(page).findtext(".//title") == title
         assert _meta(page, "og:description") == [
@@ -725,7 +725,7 @@ class TestWritePreviews:
         _write(tmp_path, None, [_circuit()], metadata, {0: 1})
 
         page = (tmp_path / "f" / "1.html").read_text()
-        assert _meta(page, "og:title") == ["A flight of 2025 · KML Heatmap"]
+        assert _meta(page, "og:title") == ["A flight of 2025 · Flown"]
         assert _meta(page, "og:description") == ["Flown in 2025, on the flight heatmap"]
 
     @pytest.mark.usefixtures("fake_images")
@@ -765,7 +765,7 @@ class TestPagePreviewTags:
         assert _meta(f"<head>{tags}</head>", "twitter:card") == ["summary"]
 
 
-FRONTEND = Path(__file__).parents[1] / "kml_heatmap" / "frontend"
+FRONTEND = Path(__file__).parents[1] / "flown" / "frontend"
 
 
 def _ts_source(relative):
@@ -792,7 +792,7 @@ class TestParityWithThePage:
 
     def test_the_background_is_the_page_s(self):
         styles = (
-            Path(__file__).parents[1] / "kml_heatmap" / "static" / "styles.css"
+            Path(__file__).parents[1] / "flown" / "static" / "styles.css"
         ).read_text(encoding="utf-8")
         grey = f"{previews.BACKGROUND:02x}"
         assert f"--color-bg-primary: #{grey * 3};" in styles

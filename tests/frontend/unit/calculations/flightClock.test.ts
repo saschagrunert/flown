@@ -9,18 +9,18 @@ import {
   chainTimes,
   flightClock,
   flightClockOf,
-} from "../../../../kml_heatmap/frontend/calculations/flightClock";
+} from "../../../../flown/frontend/calculations/flightClock";
 import {
   groundedFlights,
   releaseGroundProfiles,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
-import { segmentSeconds } from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import { planarMetres } from "../../../../kml_heatmap/frontend/utils/geometry";
+} from "../../../../flown/frontend/calculations/groundProfile";
+import { segmentSeconds } from "../../../../flown/frontend/calculations/heatLines";
+import { planarMetres } from "../../../../flown/frontend/utils/geometry";
 import {
   smoothFlights,
   type SmoothedFlights,
-} from "../../../../kml_heatmap/frontend/calculations/smoothing";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/smoothing";
+import type { PathSegment } from "../../../../flown/frontend/types";
 
 /** A segment of `path_id` along the latitude 47, `step` hundredths east */
 function along(

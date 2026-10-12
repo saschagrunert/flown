@@ -8,15 +8,15 @@ import {
   REPLAY_ALL_LAYER,
   ReplayAllLayer,
   type ReplayAllStyle,
-} from "../../../../kml_heatmap/frontend/ui/replayAllLayer";
+} from "../../../../flown/frontend/ui/replayAllLayer";
 import {
   replayAllPoints,
   type ReplayAllPoints,
-} from "../../../../kml_heatmap/frontend/calculations/replayAll";
-import { flightClock } from "../../../../kml_heatmap/frontend/calculations/flightClock";
-import { smoothFlights } from "../../../../kml_heatmap/frontend/calculations/smoothing";
-import { RELIEF_MAX_LEVEL } from "../../../../kml_heatmap/frontend/calculations/lift";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/replayAll";
+import { flightClock } from "../../../../flown/frontend/calculations/flightClock";
+import { smoothFlights } from "../../../../flown/frontend/calculations/smoothing";
+import { RELIEF_MAX_LEVEL } from "../../../../flown/frontend/calculations/lift";
+import type { PathSegment } from "../../../../flown/frontend/types";
 
 /** A WebGL2 context that records what is asked of it */
 function mockGl(compiles = true) {

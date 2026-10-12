@@ -15,9 +15,9 @@ import {
   snapToLegs,
   valueAt,
   type FlightProfile,
-} from "../../../../kml_heatmap/frontend/calculations/flightProfile";
-import { heightsAboveGround } from "../../../../kml_heatmap/frontend/calculations/statistics";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/flightProfile";
+import { heightsAboveGround } from "../../../../flown/frontend/calculations/statistics";
+import type { PathSegment } from "../../../../flown/frontend/types";
 
 /** A hundredth of a degree of latitude, in km: 1.11 */
 const STEP_KM = 1.112;

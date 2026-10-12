@@ -8,8 +8,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from lxml import etree
 
-from kml_heatmap.aircraft import parse_aircraft_from_filename
-from kml_heatmap.constants import (
+from flown.aircraft import parse_aircraft_from_filename
+from flown.constants import (
     ALT_MAX_M,
     ALT_MIN_M,
     LAT_MAX,
@@ -17,7 +17,7 @@ from kml_heatmap.constants import (
     LON_MAX,
     LON_MIN,
 )
-from kml_heatmap.parser_common import (
+from flown.parser_common import (
     build_path_metadata_dict,
     empty_placemark_metadata,
     extract_charterware_timestamp,
@@ -28,7 +28,7 @@ from kml_heatmap.parser_common import (
     parse_coordinate_point,
     validate_and_normalize_coordinate,
 )
-from kml_heatmap.types import PlacemarkMetadata, TrackPoint
+from flown.types import PlacemarkMetadata, TrackPoint
 
 NS = {"kml": "http://www.opengis.net/kml/2.2"}
 

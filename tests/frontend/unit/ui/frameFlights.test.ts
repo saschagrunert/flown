@@ -8,10 +8,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   flightsCamera,
   frameFlights,
-} from "../../../../kml_heatmap/frontend/ui/frameFlights";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
-import { AUTO_ZOOM_FOLLOW } from "../../../../kml_heatmap/frontend/utils/constants";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/ui/frameFlights";
+import * as motion from "../../../../flown/frontend/utils/motion";
+import { AUTO_ZOOM_FOLLOW } from "../../../../flown/frontend/utils/constants";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   asMapApp,
   createDataset,

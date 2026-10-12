@@ -5,9 +5,9 @@ import {
   prepareReplaySegments,
   replayCurve,
   replayPoint,
-} from "../../../../kml_heatmap/frontend/features/replay";
-import { calculateBearing } from "../../../../kml_heatmap/frontend/utils/geometry";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/features/replay";
+import { calculateBearing } from "../../../../flown/frontend/utils/geometry";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { segmentOf } from "../../testHelpers";
 
 describe("replay feature", () => {

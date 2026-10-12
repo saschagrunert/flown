@@ -16,16 +16,16 @@ import {
   HEAT_SHOWN_STATE,
   setBaseStyle,
   withDataLayers,
-} from "../../../kml_heatmap/frontend/mapLayers";
-import { heatmapRadiusPx } from "../../../kml_heatmap/frontend/ui/heatmapPaint";
+} from "../../../flown/frontend/mapLayers";
+import { heatmapRadiusPx } from "../../../flown/frontend/ui/heatmapPaint";
 import {
   HEAT_LINES,
   HEATMAP_CLUSTER,
   MAP_LAYERS,
   MAP_MIN_ZOOM,
   MAP_SOURCES,
-} from "../../../kml_heatmap/frontend/utils/constants";
-import { FALLBACK_STYLE } from "../../../kml_heatmap/frontend/baseStyle";
+} from "../../../flown/frontend/utils/constants";
+import { FALLBACK_STYLE } from "../../../flown/frontend/baseStyle";
 import { createMapLibreMock, createMockApp } from "../testHelpers";
 import { resetMapLibreMock } from "../../mocks/maplibre-gl";
 

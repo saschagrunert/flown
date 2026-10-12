@@ -12,15 +12,15 @@ import {
   TOGGLES,
   VISIBILITY_SLOTS,
   type ToggleUrl,
-} from "../../../../kml_heatmap/frontend/state/toggles";
+} from "../../../../flown/frontend/state/toggles";
 import {
   runAction,
   type ActionName,
-} from "../../../../kml_heatmap/frontend/ui/actions";
+} from "../../../../flown/frontend/ui/actions";
 import { asMapApp, createMockApp } from "../../testHelpers";
 
 const TEMPLATE = readFileSync(
-  join(__dirname, "../../../../kml_heatmap/templates/map_template.html"),
+  join(__dirname, "../../../../flown/templates/map_template.html"),
   "utf8",
 );
 

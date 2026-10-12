@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 import pytest
 
-import kml_heatmap.site_assets as assets_module
-from kml_heatmap.geometry import CoordinateExtent
-from kml_heatmap.site_assets import (
+import flown.site_assets as assets_module
+from flown.geometry import CoordinateExtent
+from flown.site_assets import (
     BuildCommit,
     _copy_javascript_bundle,
     _generate_map_config,
@@ -34,7 +34,7 @@ def _install_vendor_files(tmp_path, monkeypatch):
         path = static / "vendor" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(name)
-    monkeypatch.setattr("kml_heatmap.site_assets.STATIC_DIR", static)
+    monkeypatch.setattr("flown.site_assets.STATIC_DIR", static)
     return static
 
 
@@ -59,13 +59,13 @@ def bundle(tmp_path_factory, monkeypatch):
     search.write_text("// search\n")
     extras = static / "extras.bundle.js"
     extras.write_text("// extras\n")
-    monkeypatch.setattr("kml_heatmap.site_assets.BUNDLE_FILE", bundle)
-    monkeypatch.setattr("kml_heatmap.site_assets.FEATURES_BUNDLE_FILE", features)
-    monkeypatch.setattr("kml_heatmap.site_assets.WRAPPED_BUNDLE_FILE", wrapped)
-    monkeypatch.setattr("kml_heatmap.site_assets.SEARCH_BUNDLE_FILE", search)
-    monkeypatch.setattr("kml_heatmap.site_assets.EXTRAS_BUNDLE_FILE", extras)
+    monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", bundle)
+    monkeypatch.setattr("flown.site_assets.FEATURES_BUNDLE_FILE", features)
+    monkeypatch.setattr("flown.site_assets.WRAPPED_BUNDLE_FILE", wrapped)
+    monkeypatch.setattr("flown.site_assets.SEARCH_BUNDLE_FILE", search)
+    monkeypatch.setattr("flown.site_assets.EXTRAS_BUNDLE_FILE", extras)
     monkeypatch.setattr(
-        "kml_heatmap.site_assets.BUNDLE_FILES",
+        "flown.site_assets.BUNDLE_FILES",
         (bundle, features, wrapped, search, extras),
     )
     return bundle
@@ -254,7 +254,7 @@ class TestRenderHtml:
         ]
         # The style is the one the page fetches
         app = (
-            Path(__file__).parents[1] / "kml_heatmap" / "frontend" / "baseStyle.ts"
+            Path(__file__).parents[1] / "flown" / "frontend" / "baseStyle.ts"
         ).read_text()
         assert f'"{assets_module.CARTO_STYLE_URL}"' in app
 
@@ -403,8 +403,8 @@ class TestBuildDate:
 
 
 COMMIT_ENV = (
-    "KML_HEATMAP_COMMIT",
-    "KML_HEATMAP_REPOSITORY",
+    "FLOWN_COMMIT",
+    "FLOWN_REPOSITORY",
     "GITHUB_SHA",
     "GITHUB_REPOSITORY",
     "GITHUB_SERVER_URL",
@@ -443,19 +443,17 @@ def fake_git(no_commit_env):
 
     def install(**outputs):
         no_commit_env.setattr(
-            "kml_heatmap.site_assets.shutil.which", lambda _name: "/usr/bin/git"
+            "flown.site_assets.shutil.which", lambda _name: "/usr/bin/git"
         )
-        no_commit_env.setattr(
-            "kml_heatmap.site_assets.subprocess.run", _fake_git(**outputs)
-        )
+        no_commit_env.setattr("flown.site_assets.subprocess.run", _fake_git(**outputs))
 
     return install
 
 
 class TestBuildCommit:
     def test_prefers_the_explicit_commit(self, no_commit_env):
-        no_commit_env.setenv("KML_HEATMAP_COMMIT", "5B3AB4048d1c")
-        no_commit_env.setenv("KML_HEATMAP_REPOSITORY", "git@github.com:me/kmls.git")
+        no_commit_env.setenv("FLOWN_COMMIT", "5B3AB4048d1c")
+        no_commit_env.setenv("FLOWN_REPOSITORY", "git@github.com:me/kmls.git")
         no_commit_env.setenv("GITHUB_SHA", "a" * 40)
         no_commit_env.setenv("GITHUB_REPOSITORY", "someone/else")
         assert build_commit() == BuildCommit(
@@ -473,8 +471,8 @@ class TestBuildCommit:
         ],
     )
     def test_links_github_remotes(self, no_commit_env, remote):
-        no_commit_env.setenv("KML_HEATMAP_COMMIT", "c" * 40)
-        no_commit_env.setenv("KML_HEATMAP_REPOSITORY", remote)
+        no_commit_env.setenv("FLOWN_COMMIT", "c" * 40)
+        no_commit_env.setenv("FLOWN_REPOSITORY", remote)
         assert build_commit().url == f"https://github.com/me/kmls/commit/{'c' * 40}"
 
     @pytest.mark.parametrize(
@@ -482,8 +480,8 @@ class TestBuildCommit:
         ["", "git@gitlab.com:me/kmls.git", "https://github.com.evil/me/kmls"],
     )
     def test_does_not_link_other_remotes(self, no_commit_env, remote):
-        no_commit_env.setenv("KML_HEATMAP_COMMIT", "c" * 40)
-        no_commit_env.setenv("KML_HEATMAP_REPOSITORY", remote)
+        no_commit_env.setenv("FLOWN_COMMIT", "c" * 40)
+        no_commit_env.setenv("FLOWN_REPOSITORY", remote)
         assert build_commit() == BuildCommit("ccccccc", "")
 
     def test_links_github_sha_to_the_repository_the_workflow_runs_in(
@@ -524,7 +522,7 @@ class TestBuildCommit:
         assert build_commit() == BuildCommit()
 
     def test_is_empty_without_git(self, no_commit_env):
-        no_commit_env.setattr("kml_heatmap.site_assets.shutil.which", lambda _: None)
+        no_commit_env.setattr("flown.site_assets.shutil.which", lambda _: None)
         assert build_commit() == BuildCommit()
 
     @pytest.mark.parametrize(
@@ -536,8 +534,8 @@ class TestBuildCommit:
 
     @pytest.mark.parametrize("value", ["abc", "'; alert(1)//", "zzzzzzzz"])
     def test_rejects_anything_that_is_not_a_hash(self, no_commit_env, value):
-        no_commit_env.setenv("KML_HEATMAP_COMMIT", value)
-        no_commit_env.setenv("KML_HEATMAP_REPOSITORY", "git@github.com:me/kmls.git")
+        no_commit_env.setenv("FLOWN_COMMIT", value)
+        no_commit_env.setenv("FLOWN_REPOSITORY", "git@github.com:me/kmls.git")
         assert build_commit() == BuildCommit()
 
 
@@ -612,7 +610,7 @@ class TestMissingFrontendBuild:
 class TestStaleBundleWarning:
     def _frontend(self, tmp_path, monkeypatch):
         """A checkout the hash can be computed from: sources and build files."""
-        frontend = tmp_path / "kml_heatmap" / "frontend"
+        frontend = tmp_path / "flown" / "frontend"
         (frontend / "ui").mkdir(parents=True)
         (frontend / "mapApp.ts").write_text("export {};")
         (frontend / "ui" / "a.ts").write_text("export const a = 1;")
@@ -641,7 +639,7 @@ class TestStaleBundleWarning:
         self, tmp_path, monkeypatch, bundle, capsys
     ):
         self._frontend(tmp_path, monkeypatch)
-        bundle.write_text("/* kml-heatmap build 000000000000 */\n")
+        bundle.write_text("/* flown build 000000000000 */\n")
 
         assets_module.warn_about_a_stale_bundle()
 
@@ -650,7 +648,7 @@ class TestStaleBundleWarning:
     def test_quiet_for_a_current_bundle(self, tmp_path, monkeypatch, bundle, capsys):
         self._frontend(tmp_path, monkeypatch)
         current = assets_module._frontend_source_hash()
-        bundle.write_text(f"/* kml-heatmap build {current} */\n")
+        bundle.write_text(f"/* flown build {current} */\n")
 
         assets_module.warn_about_a_stale_bundle()
 
@@ -724,7 +722,7 @@ class TestStaleBundleWarning:
             (tmp_path / name).unlink()
         else:
             (tmp_path / name).write_text(content)
-        bundle.write_text("/* kml-heatmap build 000000000000 */\n")
+        bundle.write_text("/* flown build 000000000000 */\n")
 
         assets_module.warn_about_a_stale_bundle()
 
@@ -738,7 +736,7 @@ class TestGeneratorHash:
     @pytest.fixture
     def package(self, tmp_path, monkeypatch):
         """A package of a module, a template and static files, as hashed."""
-        package = tmp_path / "kml_heatmap"
+        package = tmp_path / "flown"
         (package / "templates").mkdir(parents=True)
         (package / "static" / "vendor").mkdir(parents=True)
         (package / "site_assets.py").write_text("code")

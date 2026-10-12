@@ -6,20 +6,20 @@ import {
   type YearRequest,
   type YearResponse,
   type YearWorkerScope,
-} from "../../../../kml_heatmap/frontend/services/yearWorker";
+} from "../../../../flown/frontend/services/yearWorker";
 import {
   DATA_FORMAT_VERSION,
   decodeYear,
-} from "../../../../kml_heatmap/frontend/services/yearDecode";
-import { drawHeat } from "../../../../kml_heatmap/frontend/services/heatSource";
+} from "../../../../flown/frontend/services/yearDecode";
+import { drawHeat } from "../../../../flown/frontend/services/heatSource";
 import {
   flatRuns,
   flightColumns,
   flightsOf,
   heatLinesSource,
   runsSource,
-} from "../../../../kml_heatmap/frontend/services/flightLines";
-import { heatColumns } from "../../../../kml_heatmap/frontend/calculations/heatExposure";
+} from "../../../../flown/frontend/services/flightLines";
+import { heatColumns } from "../../../../flown/frontend/calculations/heatExposure";
 import { createSegment } from "../../testHelpers";
 import { path, rawYear, yearBytes } from "../../yearFixtures";
 
@@ -180,7 +180,7 @@ describe("handleRequest for the heat sources", () => {
     it("answers lines asked for before any flights with the reason", async () => {
       vi.resetModules();
       const fresh =
-        await import("../../../../kml_heatmap/frontend/services/yearWorker");
+        await import("../../../../flown/frontend/services/yearWorker");
 
       expect(fresh.handleRequest({ id: 6, runs }).response).toEqual({
         id: 6,
@@ -239,7 +239,7 @@ describe("the module", () => {
     vi.stubGlobal("onmessage", null);
     vi.resetModules();
 
-    await import("../../../../kml_heatmap/frontend/services/yearWorker");
+    await import("../../../../flown/frontend/services/yearWorker");
     (globalThis as unknown as YearWorkerScope).onmessage!({
       data: { id: 9, bytes: yearBytes(year) },
     } as MessageEvent<YearRequest>);

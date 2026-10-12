@@ -6,14 +6,14 @@ import {
   resolveShareToken,
   SHARE_TOKEN_PARAM,
   unpackShareToken,
-} from "../../../../kml_heatmap/frontend/state/shareToken";
+} from "../../../../flown/frontend/state/shareToken";
 import {
   encodeStateToUrl,
   parseUrlParams,
   STATE_SCHEMA_VERSION,
-} from "../../../../kml_heatmap/frontend/state/urlState";
-import { TOGGLES } from "../../../../kml_heatmap/frontend/state/toggles";
-import type { AppState } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/state/urlState";
+import { TOGGLES } from "../../../../flown/frontend/state/toggles";
+import type { AppState } from "../../../../flown/frontend/types";
 
 /** Path ids are 40-bit content hashes, which fc.integer cannot reach */
 const pathId = fc

@@ -32,8 +32,8 @@ export default defineConfig(
     ignores: [
       ...gitignorePatterns(),
       // Tracked, but generated or vendored
-      "kml_heatmap/static/**",
-      "kml_heatmap/templates/**",
+      "flown/static/**",
+      "flown/templates/**",
     ],
   },
   eslint.configs.recommended,

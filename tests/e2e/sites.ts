@@ -33,7 +33,7 @@ export const SITES = {
   docs: {
     dir: "docs",
     port,
-    rebuild: "npm run build && python -m kml_heatmap data --output-dir docs",
+    rebuild: "npm run build && python -m flown data --output-dir docs",
   },
   /**
    * The fixture flights of tests/fixtures/visual/ with a fixed build stamp.

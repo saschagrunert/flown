@@ -6,7 +6,7 @@ import {
   type CodeItem,
   type CodePlace,
   type CodeRoom,
-} from "../../../../kml_heatmap/frontend/calculations/codePlacement";
+} from "../../../../flown/frontend/calculations/codePlacement";
 
 /** A code of 40 by 16 pixels at a dot */
 function item(name: string, x: number, y: number): CodeItem {

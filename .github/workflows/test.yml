@@ -130,11 +130,11 @@ jobs:
       # The check imports nothing but the standard library
       - name: Check that the KML files are obfuscated
         if: ${{ !cancelled() }}
-        run: python -m kml_heatmap.obfuscate data/ --check
+        run: python -m flown.obfuscate data/ --check
       # Copies of flights from data/, and as public as they are
       - name: Check that the fixture flights of the visual snapshots are obfuscated
         if: ${{ !cancelled() }}
-        run: python -m kml_heatmap.obfuscate tests/fixtures/visual/ --check
+        run: python -m flown.obfuscate tests/fixtures/visual/ --check
 
   unit:
     # Not for Dependabot's Python bumps, see the top (also for the zizmor
@@ -156,9 +156,9 @@ jobs:
           python-lock: requirements-test.lock
       # The export contract test reads the data files of a real build
       - name: Build the site from the current sources
-        run: python -m kml_heatmap data --output-dir docs
+        run: python -m flown data --output-dir docs
         env:
-          KML_HEATMAP_REQUIRE_AIRPORT_DB: "1"
+          FLOWN_REQUIRE_AIRPORT_DB: "1"
       # In an order of its own every run, so a test that only passes after
       # another one shows; the log names the seed to repeat it with
       # (`npx vitest run --sequence.seed=<seed>`). pytest does the same
@@ -173,7 +173,7 @@ jobs:
       - name: Run Python tests with coverage
         run: pytest -n auto --durations=15 --cov --cov-branch --cov-report=xml:coverage/coverage.xml --cov-report=term
         env:
-          KML_HEATMAP_OWN_FLIGHTS: ${{ vars.KML_HEATMAP_OWN_FLIGHTS }}
+          FLOWN_OWN_FLIGHTS: ${{ vars.FLOWN_OWN_FLIGHTS }}
       - name: Upload coverage to Codecov
         if: github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
@@ -233,15 +233,15 @@ jobs:
       - name: Generate a site with the installed package
         working-directory: ${{ runner.temp }}
         env:
-          KML_HEATMAP_CACHE_DIR: ${{ runner.temp }}/smoke/cache
+          FLOWN_CACHE_DIR: ${{ runner.temp }}/smoke/cache
         run: |
           python "$GITHUB_WORKSPACE/scripts/smoke_site.py" prepare smoke
-          "$RUNNER_TEMP/wheel-venv/bin/kml-heatmap" --version
-          "$RUNNER_TEMP/wheel-venv/bin/kml-heatmap" --no-terrain smoke/input --output-dir smoke/site
+          "$RUNNER_TEMP/wheel-venv/bin/flown" --version
+          "$RUNNER_TEMP/wheel-venv/bin/flown" --no-terrain smoke/input --output-dir smoke/site
           python "$GITHUB_WORKSPACE/scripts/smoke_site.py" check smoke
       # The image itself is not published
       - name: Build the container image
-        run: docker build -t kml-heatmap .
+        run: docker build -t flown .
       # Runs the image the way the Makefile does, the flights read-only, with
       # the airport and runway fixtures in place of the OurAirports downloads
       # (scripts/smoke_site.py, run with the runner's Python, which does not
@@ -255,7 +255,7 @@ jobs:
           python3 scripts/smoke_site.py prepare "$smoke"
           docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
             -v "$smoke/input:/data/input:ro" -v "$smoke/site:/data/site" -v "$smoke/cache:/cache" \
-            kml-heatmap input --output-dir site
+            flown input --output-dir site
           python3 scripts/smoke_site.py check "$smoke"
       # The same run as the image's own user (USER app, no home directory),
       # which the --user flag above bypasses. The mounts are world-writable
@@ -266,7 +266,7 @@ jobs:
           python3 scripts/smoke_site.py prepare --world-writable "$smoke"
           docker run --rm --network none \
             -v "$smoke/input:/data/input:ro" -v "$smoke/site:/data/site" -v "$smoke/cache:/cache" \
-            kml-heatmap input --output-dir site
+            flown input --output-dir site
           python3 scripts/smoke_site.py check "$smoke"
 
   # The sites the e2e jobs test, built once for all of them. The published
@@ -293,15 +293,15 @@ jobs:
       # test a site with all of its ground. The build without a key reads
       # the same tiles from the cache this one filled.
       - name: Build the site with a dummy tile API key
-        run: python -m kml_heatmap data --output-dir e2e-sites/dummy
+        run: python -m flown data --output-dir e2e-sites/dummy
         env:
-          KML_HEATMAP_REQUIRE_AIRPORT_DB: "1"
-          KML_HEATMAP_REQUIRE_TERRAIN: "1"
+          FLOWN_REQUIRE_AIRPORT_DB: "1"
+          FLOWN_REQUIRE_TERRAIN: "1"
           CARTO_API_KEY: e2e-carto
       - name: Build the site without a tile API key
-        run: python -m kml_heatmap data --output-dir e2e-sites/none
+        run: python -m flown data --output-dir e2e-sites/none
         env:
-          KML_HEATMAP_REQUIRE_AIRPORT_DB: "1"
+          FLOWN_REQUIRE_AIRPORT_DB: "1"
           CARTO_API_KEY: ""
       - name: Upload the site with a dummy tile API key
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -343,10 +343,10 @@ jobs:
     needs: e2e-sites
     # Not for Dependabot's Playwright bumps, see the top, and not in a copy
     # of the repository with flights of its own: the specs expect these
-    # (KML_HEATMAP_OWN_FLIGHTS, see doc/hosting.md)
+    # (FLOWN_OWN_FLIGHTS, see doc/hosting.md)
     if: >- # zizmor: ignore[bot-conditions]
       github.event_name != 'schedule' &&
-      vars.KML_HEATMAP_OWN_FLIGHTS != '1' &&
+      vars.FLOWN_OWN_FLIGHTS != '1' &&
       !(github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.actor == 'dependabot[bot]' &&
       startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright'))
@@ -668,7 +668,7 @@ jobs:
   # request, the flights among them. A job may be skipped only where its own
   # condition skips it on purpose, Dependabot's own pushes to a pip or a
   # Playwright branch (see the top), and the e2e jobs in a copy of the
-  # repository with flights of its own (KML_HEATMAP_OWN_FLIGHTS); anywhere
+  # repository with flights of its own (FLOWN_OWN_FLIGHTS); anywhere
   # else a skip, a failure or a cancellation fails this job. The weekly run
   # has none of these jobs.
   checks:
@@ -692,7 +692,7 @@ jobs:
             github.actor == 'dependabot[bot]' &&
             (startsWith(github.head_ref, 'dependabot/pip/') ||
             startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright')) }}
-          OWN_FLIGHTS: ${{ vars.KML_HEATMAP_OWN_FLIGHTS }}
+          OWN_FLIGHTS: ${{ vars.FLOWN_OWN_FLIGHTS }}
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           if [ "$OWN_FLIGHTS" = 1 ]; then
@@ -756,13 +756,13 @@ jobs:
         with:
           python-lock: requirements.lock
       # The link preview images, cached under a hash of what each one draws
-      # and of the module that draws them (kml_heatmap/previews.py), so the
+      # and of the module that draws them (flown/previews.py), so the
       # latest cache has every image that did not change
       - name: Cache the link preview images
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/kml-heatmap/previews
-          key: previews-${{ hashFiles('data/**/*.kml', 'data/**/*.kmz', 'kml_heatmap/*.py') }}
+          path: ~/.cache/flown/previews
+          key: previews-${{ hashFiles('data/**/*.kml', 'data/**/*.kmz', 'flown/*.py') }}
           restore-keys: previews-
       # Where the site is published: the link previews name their images by
       # absolute URLs, which the build cannot know by itself. Only reads the
@@ -776,12 +776,12 @@ jobs:
       # upload-pages-artifact keeps in its tar; taken from the content, they
       # keep the browser caches of the files a deploy did not change.
       - name: Build the site
-        run: python -m kml_heatmap data --output-dir site
+        run: python -m flown data --output-dir site
         env:
-          KML_HEATMAP_REQUIRE_AIRPORT_DB: "1"
-          KML_HEATMAP_REQUIRE_TERRAIN: "1"
-          KML_HEATMAP_STABLE_MTIMES: "1"
-          KML_HEATMAP_SITE_URL: ${{ steps.pages.outputs.base_url }}
+          FLOWN_REQUIRE_AIRPORT_DB: "1"
+          FLOWN_REQUIRE_TERRAIN: "1"
+          FLOWN_STABLE_MTIMES: "1"
+          FLOWN_SITE_URL: ${{ steps.pages.outputs.base_url }}
           CARTO_API_KEY: ${{ secrets.CARTO_API_KEY }}
       - name: Upload the site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

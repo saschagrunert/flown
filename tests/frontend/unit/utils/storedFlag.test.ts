@@ -2,10 +2,10 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   storedFlag,
   storeFlag,
-} from "../../../../kml_heatmap/frontend/utils/storedFlag";
+} from "../../../../flown/frontend/utils/storedFlag";
 
 describe("storedFlag", () => {
-  const key = "kml-heatmap-test-flag";
+  const key = "flown-test-flag";
 
   afterEach(() => {
     vi.restoreAllMocks();

@@ -5,13 +5,13 @@ import {
   HEAT_MERGE_ZOOM,
   linesSource,
   type HeatLines,
-} from "../../../../kml_heatmap/frontend/services/heatSource";
-import { HEAT_LINES } from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/services/heatSource";
+import { HEAT_LINES } from "../../../../flown/frontend/utils/constants";
 import {
   exposedHeat,
   heatColumns,
-} from "../../../../kml_heatmap/frontend/calculations/heatExposure";
-import { heatLineFeatures } from "../../../../kml_heatmap/frontend/calculations/heatLines";
+} from "../../../../flown/frontend/calculations/heatExposure";
+import { heatLineFeatures } from "../../../../flown/frontend/calculations/heatLines";
 import { createSegment } from "../../testHelpers";
 
 /** `count` points along a line, `[lat, lng]`, and a heat for each */

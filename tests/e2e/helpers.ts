@@ -4,8 +4,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page } from "@playwright/test";
 // Type-only import so the window.mapApp / MAP_CONFIG globals are declared
-import type {} from "../../kml_heatmap/frontend/globals";
-import { STATE_SCHEMA_VERSION } from "../../kml_heatmap/frontend/state/urlState";
+import type {} from "../../flown/frontend/globals";
+import { STATE_SCHEMA_VERSION } from "../../flown/frontend/state/urlState";
 import {
   airportPosition,
   containerPoint,
@@ -148,7 +148,7 @@ export function toastMessage(page: Page, text: string): Locator {
 export function readSavedState(page: Page): Promise<Record<string, unknown>> {
   return page.evaluate(
     () =>
-      JSON.parse(localStorage.getItem("kml-heatmap-state") || "{}") as Record<
+      JSON.parse(localStorage.getItem("flown-state") || "{}") as Record<
         string,
         unknown
       >,

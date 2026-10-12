@@ -15,7 +15,7 @@ import { join, relative, resolve } from "node:path";
  */
 
 const REPO_ROOT = resolve(__dirname, "../../..");
-const FRONTEND_DIR = join(REPO_ROOT, "kml_heatmap/frontend");
+const FRONTEND_DIR = join(REPO_ROOT, "flown/frontend");
 
 /**
  * URLs in the frontend that the page never fetches: link targets and the
@@ -27,7 +27,7 @@ const LINKS = [
   "https://www.openflightmaps.org",
   "https://cloudless.eox.at",
   "https://registry.opendata.aws/terrain-tiles/",
-  "https://github.com/saschagrunert/kml-heatmap",
+  "https://github.com/saschagrunert/flown",
   // The credit of the search of places; the link to Photon's own page is
   // taken as fetched, which its API's place in connect-src allows
   "https://www.openstreetmap.org/copyright",
@@ -48,7 +48,7 @@ const CARTO_STYLE_URLS = [
 
 function readPolicy(): Map<string, string[]> {
   const template = readFileSync(
-    join(REPO_ROOT, "kml_heatmap/templates/map_template.html"),
+    join(REPO_ROOT, "flown/templates/map_template.html"),
     "utf8",
   );
   const content =

@@ -18,24 +18,24 @@ from unittest.mock import MagicMock, patch
 import pytest
 from lxml import html as lxml_html
 
-import kml_heatmap.airport_lookup as lookup_module
-import kml_heatmap.cache as cache_module
-import kml_heatmap.data_exporter as exporter_module
-import kml_heatmap.renderer as renderer_module
-from kml_heatmap import path_content
-from kml_heatmap.data_exporter import export_all_data
-from kml_heatmap.exceptions import (
+import flown.airport_lookup as lookup_module
+import flown.cache as cache_module
+import flown.data_exporter as exporter_module
+import flown.renderer as renderer_module
+from flown import path_content
+from flown.data_exporter import export_all_data
+from flown.exceptions import (
     ExportError,
+    FlownError,
     InvalidInputError,
-    KMLHeatmapError,
     OutputRefusedError,
 )
-from kml_heatmap.geometry import CoordinateExtent
-from kml_heatmap.landings import FlightLandings
-from kml_heatmap.listing import list_flights
-from kml_heatmap.parser import parse_and_cache
-from kml_heatmap.previews import encode_path_id
-from kml_heatmap.renderer import (
+from flown.geometry import CoordinateExtent
+from flown.landings import FlightLandings
+from flown.listing import list_flights
+from flown.parser import parse_and_cache
+from flown.previews import encode_path_id
+from flown.renderer import (
     ParsedFile,
     _drop_paths_without_year,
     _export_site,
@@ -47,8 +47,8 @@ from kml_heatmap.renderer import (
     load_cached,
     no_flight_reason,
 )
-from kml_heatmap.site_output import STABLE_MTIMES_ENV, STAGING_PREFIX
-from kml_heatmap.types import PathMetadata, TrackPoint
+from flown.site_output import STABLE_MTIMES_ENV, STAGING_PREFIX
+from flown.types import PathMetadata, TrackPoint
 from tests.conftest import (
     FIXTURE_AIRPORTS_CSV,
     FIXTURE_RUNWAYS_CSV,
@@ -177,13 +177,13 @@ def bundle(tmp_path_factory, monkeypatch):
     search.write_text("/* test search */", encoding="utf-8")
     extras = static / "extras.bundle.js"
     extras.write_text("/* test extras */", encoding="utf-8")
-    monkeypatch.setattr("kml_heatmap.site_assets.BUNDLE_FILE", bundle)
-    monkeypatch.setattr("kml_heatmap.site_assets.FEATURES_BUNDLE_FILE", features)
-    monkeypatch.setattr("kml_heatmap.site_assets.WRAPPED_BUNDLE_FILE", wrapped)
-    monkeypatch.setattr("kml_heatmap.site_assets.SEARCH_BUNDLE_FILE", search)
-    monkeypatch.setattr("kml_heatmap.site_assets.EXTRAS_BUNDLE_FILE", extras)
+    monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", bundle)
+    monkeypatch.setattr("flown.site_assets.FEATURES_BUNDLE_FILE", features)
+    monkeypatch.setattr("flown.site_assets.WRAPPED_BUNDLE_FILE", wrapped)
+    monkeypatch.setattr("flown.site_assets.SEARCH_BUNDLE_FILE", search)
+    monkeypatch.setattr("flown.site_assets.EXTRAS_BUNDLE_FILE", extras)
     monkeypatch.setattr(
-        "kml_heatmap.site_assets.BUNDLE_FILES",
+        "flown.site_assets.BUNDLE_FILES",
         (bundle, features, wrapped, search, extras),
     )
     return bundle
@@ -225,7 +225,7 @@ class TestMapExtent:
         assert _map_extent(paths) == CoordinateExtent(50.0, 51.0, 8.0, 9.5)
 
     def test_nothing_to_export_raises(self):
-        with pytest.raises(KMLHeatmapError, match="No flight paths"):
+        with pytest.raises(FlownError, match="No flight paths"):
             _map_extent([[TrackPoint(40.0, -3.0, 1.0)]])
 
 
@@ -240,7 +240,7 @@ class TestParseWithoutAPool:
             _write_kml(tmp_path / "10_DEAGJ_DA20.kml", 2026),
             _write_kml(tmp_path / "2_DEAGJ_DA20.kml", 2025),
         ]
-        with patch("kml_heatmap.workers.ProcessPoolExecutor", _NoPool):
+        with patch("flown.workers.ProcessPoolExecutor", _NoPool):
             _, metadata, _ = _parse_kml_files(files)
         assert [m["year"] for m in metadata] == [2026, 2025]
         # Which file each path is of, folders and all (see duplicates._one_file)
@@ -252,7 +252,7 @@ class TestParseWithoutAPool:
         cached = _write_kml(tmp_path / "1_DEAGJ_DA20.kml", 2025)
         _parse_kml_files([cached])
         fresh = _write_kml(tmp_path / "2_DEAGJ_DA20.kml", 2026)
-        monkeypatch.setattr("kml_heatmap.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
         pool = _InlineExecutor()
         submitted = []
         real_submit = pool.submit
@@ -263,7 +263,7 @@ class TestParseWithoutAPool:
 
         with (
             patch.object(pool, "submit", submit),
-            patch("kml_heatmap.workers.ProcessPoolExecutor", pool),
+            patch("flown.workers.ProcessPoolExecutor", pool),
         ):
             _, metadata, _ = _parse_kml_files([cached, fresh])
         assert submitted == [fresh]
@@ -278,11 +278,11 @@ class TestParseWithoutAPool:
         with zipfile.ZipFile(kmz, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("doc.kml", kml)
         assert kmz.stat().st_size < 100_000
-        monkeypatch.setattr("kml_heatmap.renderer.POOLED_CACHE_MIN_BYTES", 100_000)
-        monkeypatch.setattr("kml_heatmap.renderer.POOLED_CACHE_MIN_WORKERS", 1)
+        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_BYTES", 100_000)
+        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_WORKERS", 1)
         # The stand-in parses nothing, so no coordinates come back
         with (
-            patch("kml_heatmap.renderer._parse_in_pool") as parse_in_pool,
+            patch("flown.renderer._parse_in_pool") as parse_in_pool,
             pytest.raises(InvalidInputError),
         ):
             _parse_kml_files([str(kmz)])
@@ -303,8 +303,8 @@ class TestParseWithoutAPool:
         _parse_kml_files([str(cached)])
         capsys.readouterr()
         fresh = _write_kml(tmp_path / "2_DEAGJ_DA20.kml", 2026)
-        monkeypatch.setattr("kml_heatmap.renderer.POOLED_CACHE_MIN_BYTES", -1)
-        monkeypatch.setattr("kml_heatmap.renderer.POOLED_CACHE_MIN_WORKERS", 1)
+        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_BYTES", -1)
+        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_WORKERS", 1)
         pool = _InlineExecutor()
         submitted = []
         real_submit = pool.submit
@@ -321,8 +321,8 @@ class TestParseWithoutAPool:
 
         with (
             patch.object(pool, "submit", submit),
-            patch("kml_heatmap.workers.ProcessPoolExecutor", pool),
-            patch("kml_heatmap.renderer.parse_and_cache", parse),
+            patch("flown.workers.ProcessPoolExecutor", pool),
+            patch("flown.renderer.parse_and_cache", parse),
         ):
             _, metadata, _ = _parse_kml_files([str(cached), fresh])
 
@@ -350,13 +350,13 @@ class TestParseWithoutAPool:
     def test_warm_cache_needs_no_pool(self, tmp_path, monkeypatch):
         files = [_write_kml(tmp_path / f"{i}_DEAGJ_DA20.kml", 2025) for i in (1, 2)]
         first = _parse_kml_files(files)
-        monkeypatch.setattr("kml_heatmap.renderer.INLINE_PARSE_MAX_BYTES", -1)
-        with patch("kml_heatmap.workers.ProcessPoolExecutor", _NoPool):
+        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        with patch("flown.workers.ProcessPoolExecutor", _NoPool):
             assert _parse_kml_files(files) == first
 
     def test_an_uncached_file_is_hashed_once(self, tmp_path):
         """The cache key of the lookup is where the parse is stored."""
-        from kml_heatmap import parser_cache
+        from flown import parser_cache
 
         files = [_write_kml(tmp_path / f"{i}_DEAGJ_DA20.kml", 2025) for i in (1, 2)]
         hashed = []
@@ -373,16 +373,14 @@ class TestParseWithoutAPool:
             # And the entry was written, with the landings: the next run
             # reads it, and finds no landing either
             with (
-                patch(
-                    "kml_heatmap.renderer.parse_and_cache", side_effect=AssertionError
-                ),
-                patch("kml_heatmap.renderer.path_landings", side_effect=AssertionError),
+                patch("flown.renderer.parse_and_cache", side_effect=AssertionError),
+                patch("flown.renderer.path_landings", side_effect=AssertionError),
             ):
                 _parse_kml_files(files)
 
     def test_unreadable_cache_is_a_miss(self, tmp_path):
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
-        with patch("kml_heatmap.renderer.load_cached_entry", side_effect=OSError):
+        with patch("flown.renderer.load_cached_entry", side_effect=OSError):
             _, metadata, _ = _parse_kml_files([kml_file])
         assert len(metadata) == 1
 
@@ -390,10 +388,10 @@ class TestParseWithoutAPool:
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with (
             patch(
-                "kml_heatmap.renderer._parse_with_error_handling",
-                side_effect=KMLHeatmapError("Airport database unavailable"),
+                "flown.renderer._parse_with_error_handling",
+                side_effect=FlownError("Airport database unavailable"),
             ),
-            pytest.raises(KMLHeatmapError, match="Airport database unavailable"),
+            pytest.raises(FlownError, match="Airport database unavailable"),
         ):
             _parse_kml_files([kml_file])
 
@@ -401,10 +399,10 @@ class TestParseWithoutAPool:
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with (
             patch(
-                "kml_heatmap.renderer._parse_with_error_handling",
+                "flown.renderer._parse_with_error_handling",
                 side_effect=RuntimeError("unexpected"),
             ),
-            pytest.raises(KMLHeatmapError, match=r"1 of 1 file\(s\) failed to parse"),
+            pytest.raises(FlownError, match=r"1 of 1 file\(s\) failed to parse"),
         ):
             _parse_kml_files([kml_file])
         assert "Unexpected error processing" in capsys.readouterr().err
@@ -449,7 +447,7 @@ class TestParseWithErrorHandling:
         """Only a KMLParseError or OSError is what is wrong with the file."""
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with patch(
-            "kml_heatmap.renderer.parse_and_cache",
+            "flown.renderer.parse_and_cache",
             side_effect=ValueError("landing bug"),
         ):
             assert _parse_with_error_handling(kml_file) == ParsedFile(kml_file)
@@ -508,7 +506,7 @@ class TestParseKmlFiles:
     @pytest.fixture(autouse=True)
     def _in_a_pool(self, monkeypatch):
         """These files are small enough to be parsed inline; use the pool."""
-        monkeypatch.setattr("kml_heatmap.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
 
     def test_merges_results_in_input_order(self, tmp_path):
         files = [
@@ -542,20 +540,20 @@ class TestParseKmlFiles:
         bad.write_text("<not-kml>garbage")
         good = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
 
-        with pytest.raises(KMLHeatmapError, match="1 of 2 file"):
+        with pytest.raises(FlownError, match="1 of 2 file"):
             _parse_kml_files([str(bad), good])
 
     def test_no_coordinates_raises(self, tmp_path):
         empty = tmp_path / "empty.kml"
         empty.write_text("<kml><Document/></kml>")
-        with pytest.raises(KMLHeatmapError, match=r"1 of 1 file\(s\) failed to parse"):
+        with pytest.raises(FlownError, match=r"1 of 1 file\(s\) failed to parse"):
             _parse_kml_files([str(empty)])
 
     def test_a_file_without_a_flight_fails_the_run(self, tmp_path, capsys):
         clamped = _write_kml(tmp_path / "2_DEAGJ_DA20.kml", template=CLAMPED_KML)
         good = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
 
-        with pytest.raises(KMLHeatmapError, match="1 of 2 file"):
+        with pytest.raises(FlownError, match="1 of 2 file"):
             _parse_kml_files([clamped, good])
         assert f"{clamped}: no track of two or more points" in capsys.readouterr().err
 
@@ -599,7 +597,7 @@ class TestParseKmlFiles:
             initargs.append(kwargs["initargs"])
             return next(pools)
 
-        with patch("kml_heatmap.workers.ProcessPoolExecutor", side_effect=pool):
+        with patch("flown.workers.ProcessPoolExecutor", side_effect=pool):
             paths, metadata, _ = _parse_kml_files(files)
 
         # Both pools get the databases and their fingerprint (see init_worker)
@@ -619,20 +617,20 @@ class TestParseKmlFiles:
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with (
             patch(
-                "kml_heatmap.workers.ProcessPoolExecutor",
+                "flown.workers.ProcessPoolExecutor",
                 _FakeExecutor(BrokenProcessPool("crashed")),
             ),
-            pytest.raises(KMLHeatmapError, match=r"crashed on .*1_DEAGJ_DA20"),
+            pytest.raises(FlownError, match=r"crashed on .*1_DEAGJ_DA20"),
         ):
             _parse_kml_files([kml_file])
 
     def test_pipeline_error_in_a_worker_stops_the_run(self, tmp_path, capsys):
         """An error that is not about one file (the airport database) is fatal."""
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
-        executor = _FakeExecutor(KMLHeatmapError("Airport database unavailable"))
+        executor = _FakeExecutor(FlownError("Airport database unavailable"))
         with (
-            patch("kml_heatmap.workers.ProcessPoolExecutor", executor),
-            pytest.raises(KMLHeatmapError, match="Airport database unavailable"),
+            patch("flown.workers.ProcessPoolExecutor", executor),
+            pytest.raises(FlownError, match="Airport database unavailable"),
         ):
             _parse_kml_files([kml_file])
         assert executor.cancelled
@@ -642,7 +640,7 @@ class TestParseKmlFiles:
         """No semaphores in a sandbox: the files are parsed all the same."""
         files = [_write_kml(tmp_path / f"{i}_DEAGJ_DA20.kml") for i in (1, 2)]
         with patch(
-            "kml_heatmap.workers.ProcessPoolExecutor",
+            "flown.workers.ProcessPoolExecutor",
             MagicMock(side_effect=OSError("no semaphores")),
         ):
             paths, _, _ = _parse_kml_files(files)
@@ -654,9 +652,7 @@ class TestParseKmlFiles:
         """The retry runs each file alone, in a worker of its own."""
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         pools = [_FakeExecutor(MemoryError()), _InlineExecutor()]
-        with patch(
-            "kml_heatmap.workers.ProcessPoolExecutor", MagicMock(side_effect=pools)
-        ):
+        with patch("flown.workers.ProcessPoolExecutor", MagicMock(side_effect=pools)):
             paths, _, _ = _parse_kml_files([kml_file])
 
         assert len(paths) == 1
@@ -678,7 +674,7 @@ class TestParseKmlFiles:
                 return future
 
         with patch(
-            "kml_heatmap.workers.ProcessPoolExecutor",
+            "flown.workers.ProcessPoolExecutor",
             MagicMock(side_effect=lambda *_a, **_k: Pool()),
         ):
             paths, _, _ = _parse_kml_files(files)
@@ -690,10 +686,10 @@ class TestParseKmlFiles:
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with (
             patch(
-                "kml_heatmap.workers.ProcessPoolExecutor",
+                "flown.workers.ProcessPoolExecutor",
                 _FakeExecutor(RuntimeError("unexpected")),
             ),
-            pytest.raises(KMLHeatmapError, match=r"1 of 1 file\(s\) failed to parse"),
+            pytest.raises(FlownError, match=r"1 of 1 file\(s\) failed to parse"),
         ):
             _parse_kml_files([kml_file])
         assert "Unexpected error processing" in capsys.readouterr().err
@@ -711,9 +707,9 @@ class TestParseKmlFiles:
         shutil.copyfile(FIXTURE_RUNWAYS_CSV, cache_dir / "runways.csv")
         # Nor does it see the stand-in bundle, which it gets as an argument
         run_cli = (
-            "import sys; from pathlib import Path; import kml_heatmap.renderer as r; "
+            "import sys; from pathlib import Path; import flown.renderer as r; "
             "r.BUNDLE_FILE = Path(sys.argv.pop(1)); "
-            "from kml_heatmap.cli import main; main()"
+            "from flown.cli import main; main()"
         )
 
         result = subprocess.run(  # noqa: S603
@@ -731,7 +727,7 @@ class TestParseKmlFiles:
             text=True,
             check=False,
             cwd=Path(__file__).parent.parent,
-            env={**os.environ, "KML_HEATMAP_CACHE_DIR": str(cache_dir)},
+            env={**os.environ, "FLOWN_CACHE_DIR": str(cache_dir)},
         )
 
         assert result.returncode == 0, result.stderr
@@ -1022,7 +1018,7 @@ class TestExportSite:
 
         out = tmp_path / "out"
         with (
-            patch("kml_heatmap.renderer.is_exportable_path", check),
+            patch("flown.renderer.is_exportable_path", check),
             patch.object(exporter_module, "is_exportable_path", check),
         ):
             _export_site(paths, metadata, out / "index.html", out / "data")
@@ -1035,7 +1031,7 @@ class TestExportSite:
         ]
         out = tmp_path / "out"
 
-        with pytest.raises(KMLHeatmapError, match="No flight paths"):
+        with pytest.raises(FlownError, match="No flight paths"):
             _export_site(paths, metadata, out / "index.html", out / "data")
 
         assert not out.exists()
@@ -1075,19 +1071,19 @@ class TestCreateProgressiveHeatmap:
         aircraft.parent.mkdir(parents=True)
         aircraft.write_text("{}")
         out = tmp_path / "out"
-        with pytest.raises(KMLHeatmapError):
+        with pytest.raises(FlownError):
             create_progressive_heatmap(
                 [kml_file], str(out / "index.html"), str(out / "data"), [aircraft]
             )
 
     def test_missing_bundle_fails_before_any_work(self, tmp_path, capsys, monkeypatch):
         missing = tmp_path / "static" / "missing.js"
-        monkeypatch.setattr("kml_heatmap.site_assets.BUNDLE_FILE", missing)
-        monkeypatch.setattr("kml_heatmap.site_assets.BUNDLE_FILES", (missing,))
+        monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", missing)
+        monkeypatch.setattr("flown.site_assets.BUNDLE_FILES", (missing,))
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
         out = tmp_path / "out"
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [kml_file], str(out / "index.html"), str(out / "data")
             )
@@ -1123,7 +1119,7 @@ class TestCreateProgressiveHeatmap:
 
     @pytest.mark.usefixtures("bundle")
     def test_no_valid_files(self, tmp_path):
-        with pytest.raises(KMLHeatmapError):
+        with pytest.raises(FlownError):
             create_progressive_heatmap(
                 [str(tmp_path / "missing.kml")],
                 str(tmp_path / "o" / "index.html"),
@@ -1138,7 +1134,7 @@ class TestCreateProgressiveHeatmap:
         kml_file = _write_kml(input_dir / "1_DEAGJ_DA20.kml")
         (input_dir / "manifest.json").write_text("{}")
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [kml_file], str(input_dir / "index.html"), str(input_dir / "data")
             )
@@ -1152,7 +1148,7 @@ class TestCreateProgressiveHeatmap:
         """The page loads the data directory by its name, next to itself."""
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [kml_file],
                 str(tmp_path / "a" / "index.html"),
@@ -1171,7 +1167,7 @@ class TestCreateProgressiveHeatmap:
         empty = input_dir / "2_DEAGJ_DA20.kml"
         empty.write_text("")
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [good, str(empty)],
                 str(tmp_path / "o" / "index.html"),
@@ -1189,7 +1185,7 @@ class TestCreateProgressiveHeatmap:
         input_dir.mkdir()
         (input_dir / "empty.kml").write_text("<kml><Document/></kml>")
         out = tmp_path / "out"
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [str(input_dir / "empty.kml")],
                 str(out / "index.html"),
@@ -1234,7 +1230,7 @@ class TestCreateProgressiveHeatmap:
         kml_file = _write_kml(tmp_path / "input" / "track.kml", template=UNDATED_KML)
         out = tmp_path / "out"
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [kml_file], str(out / "index.html"), str(out / "data")
             )
@@ -1262,7 +1258,7 @@ class TestCreateProgressiveHeatmap:
         bad = _write_kml(tmp_path / "input" / "2_DEAGJ_DA20.kml", template=template)
         out = tmp_path / "out"
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [good, bad], str(out / "index.html"), str(out / "data")
             )
@@ -1306,10 +1302,10 @@ class TestCreateProgressiveHeatmap:
         out = tmp_path / "out"
         with (
             patch(
-                "kml_heatmap.renderer.export_all_data",
+                "flown.renderer.export_all_data",
                 side_effect=RuntimeError("Failed to process year 2025"),
             ),
-            pytest.raises(KMLHeatmapError) as failure,
+            pytest.raises(FlownError) as failure,
         ):
             create_progressive_heatmap(
                 [kml_file], str(out / "index.html"), str(out / "data")
@@ -1336,7 +1332,7 @@ class TestCreateProgressiveHeatmap:
             return real_atomic_write(path, write)
 
         with (
-            patch("kml_heatmap.data_exporter.atomic_write", atomic_write),
+            patch("flown.data_exporter.atomic_write", atomic_write),
             pytest.raises(ExportError) as failure,
         ):
             create_progressive_heatmap(
@@ -1361,7 +1357,7 @@ class TestCreateProgressiveHeatmap:
         other = _write_kml(tmp_path / "input" / "2_DEAGJ_DA20.kml", 2026)
         with (
             patch(
-                "kml_heatmap.renderer.package_assets",
+                "flown.renderer.package_assets",
                 side_effect=PermissionError(errno.EACCES, "Permission denied"),
             ),
             pytest.raises(ExportError),
@@ -1384,7 +1380,7 @@ class TestCreateProgressiveHeatmap:
         (out / "manifest.json").symlink_to(victim)
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [kml_file], str(out / "index.html"), str(out / "data")
             )
@@ -1403,7 +1399,7 @@ class TestCreateProgressiveHeatmap:
         (out / "README.md").write_text("docs")
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 [kml_file], str(out / "index.html"), str(out / "data")
             )
@@ -1443,7 +1439,7 @@ class TestCreateProgressiveHeatmap:
 
     @pytest.mark.usefixtures("bundle")
     def test_stable_mtimes_on_request(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("KML_HEATMAP_STABLE_MTIMES", "1")
+        monkeypatch.setenv("FLOWN_STABLE_MTIMES", "1")
         out = tmp_path / "out"
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
@@ -1498,7 +1494,7 @@ class TestCreateProgressiveHeatmap:
 
     @pytest.mark.usefixtures("bundle")
     def test_output_below_input_directory(self, tmp_path):
-        """The documented ``kml-heatmap flight.kml --output-dir out`` layout."""
+        """The documented ``flown flight.kml --output-dir out`` layout."""
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         out = tmp_path / "out"
         assert (
@@ -1582,12 +1578,12 @@ class TestLinkPreviews:
     def _previews(self, tmp_path_factory, monkeypatch):
         """A cache of its own, no pool, and images that take no time."""
         monkeypatch.setattr(
-            "kml_heatmap.previews.PREVIEW_CACHE_DIR",
+            "flown.previews.PREVIEW_CACHE_DIR",
             tmp_path_factory.mktemp("previews") / "cache",
         )
         monkeypatch.setattr(os, "process_cpu_count", lambda: 1)
         monkeypatch.setattr(
-            "kml_heatmap.previews.render_preview",
+            "flown.previews.render_preview",
             lambda tracks: b"\x89PNG " + str(len(tracks)).encode(),
         )
 
@@ -1666,7 +1662,7 @@ class TestLinkPreviews:
         assert f"url=../?y=2026&amp;p={ids['2026'][0]}&amp;sv=4" in stub
 
     def test_the_site_url_comes_from_the_environment(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("KML_HEATMAP_SITE_URL", f"{self.SITE}/")
+        monkeypatch.setenv("FLOWN_SITE_URL", f"{self.SITE}/")
         out = tmp_path / "out"
 
         assert create_progressive_heatmap(
@@ -1739,7 +1735,7 @@ class TestLinkPreviews:
     def test_a_relative_site_url_fails_before_any_work(self, tmp_path, capsys):
         out = tmp_path / "out"
 
-        with pytest.raises(KMLHeatmapError) as failure:
+        with pytest.raises(FlownError) as failure:
             create_progressive_heatmap(
                 self._inputs(tmp_path),
                 str(out / "index.html"),
@@ -1826,7 +1822,7 @@ class TestListFlights:
             _write_kml(tmp_path / "1_DEAGJ_DA20.kml"),
             _write_kml(tmp_path / "2_DEAGJ_DA20.kml", year=2026),
         ]
-        monkeypatch.setattr("kml_heatmap.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
         pool = _InlineExecutor()
         submitted = []
         real_submit = pool.submit
@@ -1837,7 +1833,7 @@ class TestListFlights:
 
         with (
             patch.object(pool, "submit", submit),
-            patch("kml_heatmap.workers.ProcessPoolExecutor", pool),
+            patch("flown.workers.ProcessPoolExecutor", pool),
         ):
             rows = list_flights(files).rows
 
@@ -1859,7 +1855,7 @@ class TestListFlights:
         ]
         # Found by where it was when; here the second is taken for one
         monkeypatch.setattr(
-            "kml_heatmap.data_exporter.drop_overlapping_paths",
+            "flown.data_exporter.drop_overlapping_paths",
             lambda by_year, *_: {2025: by_year[2025]},
         )
 
@@ -1875,7 +1871,7 @@ class TestPipelineErrors:
         out = tmp_path / "out"
         with (
             patch(
-                "kml_heatmap.renderer._parse_kml_files",
+                "flown.renderer._parse_kml_files",
                 side_effect=OSError("disk gone"),
             ),
             pytest.raises(ExportError, match="disk gone"),
@@ -1890,7 +1886,7 @@ class TestPipelineErrors:
         out = tmp_path / "out"
         with (
             patch(
-                "kml_heatmap.renderer._export_site",
+                "flown.renderer._export_site",
                 side_effect=InvalidInputError("No flight paths"),
             ),
             pytest.raises(InvalidInputError, match=r"^No flight paths$"),

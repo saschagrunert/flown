@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from kml_heatmap.date_tokens import (
+from flown.date_tokens import (
     find_date_tokens,
     find_holiday_tokens,
     find_partial_date_tokens,

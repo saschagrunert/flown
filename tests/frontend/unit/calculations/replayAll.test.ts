@@ -15,13 +15,13 @@ import {
   worldShifts,
   type FitMap,
   type ReplayAllPoints,
-} from "../../../../kml_heatmap/frontend/calculations/replayAll";
-import { mercatorOf } from "../../../../kml_heatmap/frontend/utils/mercator";
-import * as clockModule from "../../../../kml_heatmap/frontend/calculations/flightClock";
-import { flightClock } from "../../../../kml_heatmap/frontend/calculations/flightClock";
-import { heatWeight } from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import { smoothFlights } from "../../../../kml_heatmap/frontend/calculations/smoothing";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/replayAll";
+import { mercatorOf } from "../../../../flown/frontend/utils/mercator";
+import * as clockModule from "../../../../flown/frontend/calculations/flightClock";
+import { flightClock } from "../../../../flown/frontend/calculations/flightClock";
+import { heatWeight } from "../../../../flown/frontend/calculations/heatLines";
+import { smoothFlights } from "../../../../flown/frontend/calculations/smoothing";
+import type { PathSegment } from "../../../../flown/frontend/types";
 
 /**
  * A flight of `path_id`: `count` fixes a thousandth of a degree apart

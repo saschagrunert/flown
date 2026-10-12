@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob:; connect-src 'self' blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://nwy-tiles-api.prod.newaydata.com https://s3.amazonaws.com/elevation-tiles-prod/ https://tiles.maps.eox.at https://photon.komoot.io; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta
+      name="description"
+      content="Where you have flown: a map of your flight logs"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#141414" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Flown" />
+    <meta property="og:title" content="Flown" />
+    <meta
+      property="og:description"
+      content="Where you have flown: a map of your flight logs"
+    />
+    <meta property="og:type" content="website" />
+    <!-- The preview image, its URL and the card (previews.py); the image
+         only with the site's URL, which an og:image needs -->
+    $link_preview
+    <!-- noindex, nofollow with --private (site_assets.ROBOTS_META) -->
+    $robots
+    <title>Flown</title>
+    <!-- The style, then the tile index, glyphs and sprite; the tiles come
+         from four more hosts the style only names once it has loaded.
+         crossorigin because MapLibre fetches all of them. -->
+    <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin />
+    <link
+      rel="preconnect"
+      href="https://tiles.basemaps.cartocdn.com"
+      crossorigin
+    />
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="192x192"
+      href="./favicon-192.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="512x512"
+      href="./favicon-512.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="./apple-touch-icon.png"
+    />
+    <link
+      rel="apple-touch-icon-precomposed"
+      sizes="180x180"
+      href="./apple-touch-icon.png"
+    />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="./vendor/maplibre-gl.css" />
+    <link rel="stylesheet" href="./styles.css" />
+    <!-- What the app asks for as soon as it runs: the chunk its bundle
+         imports, MapLibre, the two workers (the year files' and the map's,
+         each started once the modules before it have run, a round trip
+         late on a slow network), the two index files, and the latest year,
+         which is what the page shows first. Requesting them here overlaps
+         their download with the bundle instead of starting it once that
+         has run; the loader's fetch for the same URL is then served from
+         the preload (crossorigin is what makes the two requests match). -->
+    <link rel="modulepreload" href="./shared.bundle.js" />
+    <link rel="modulepreload" href="./vendor/maplibre-gl.mjs" />
+    <link rel="modulepreload" href="./vendor/maplibre-gl-shared.mjs" />
+    <link rel="modulepreload" href="./yearWorker.bundle.js" />
+    <link rel="modulepreload" href="./vendor/maplibre-gl-worker.mjs" />
+    <link
+      rel="preload"
+      as="fetch"
+      crossorigin
+      href="$data_dir_name/metadata.json"
+    />
+    <link
+      rel="preload"
+      as="fetch"
+      crossorigin
+      href="$data_dir_name/airports.json"
+    />
+    $year_preload
+    <!-- CARTO's style and the index of its tiles, a round trip each that
+         would otherwise wait for the map and then for the style; with the
+         key on when the site has one, as the page asks for them. After the
+         site's own files, which the flights are drawn from. -->
+    $base_style_preload
+  </head>
+  <body>
+    <noscript>
+      <p class="noscript-message">
+        JavaScript is required to display the flight map visualization.
+      </p>
+    </noscript>
+    <!-- The map comes after the controls in the document, so the tab order
+         reaches the controls before the airport markers on the map, of
+         which there can be dozens; this link goes past the controls. -->
+    <a href="#map" class="skip-nav">Skip to map</a>
+    <header>
+      <h1 class="visually-hidden">Flown</h1>
+    </header>
+    <!-- Left control column: what the map shows you and how to pass it on.
+         Icons are injected from utils/icons.ts into every [data-icon]. -->
+    <nav
+      id="left-buttons"
+      class="control-column is-at-end"
+      aria-label="View and share"
+    >
+      <div
+        class="control-group"
+        role="group"
+        aria-labelledby="view-group-title"
+      >
+        <h2 class="control-group-title" id="view-group-title">View</h2>
+        <!-- Finds the site's airports and, through Photon, any place, and
+             takes the map there; `/` opens it too (ui/locationSearch.ts, in
+             the search bundle, which sets aria-controls once its panel is
+             made) -->
+        <div class="control-row">
+          <button
+            id="search-btn"
+            class="btn-surface control-btn"
+            data-action="toggleSearch"
+            data-icon="search"
+            title="Search: find an airport or a place and go there"
+            aria-label="Search: find an airport or a place and go there"
+            aria-keyshortcuts="/"
+            aria-expanded="false"
+          >
+            <span class="control-label">Search</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="stats-btn"
+            class="btn-surface control-btn"
+            data-action="toggleStats"
+            data-icon="stats"
+            title="Statistics: the figures and the list of the flights"
+            aria-label="Statistics: the figures and the list of the flights"
+            aria-controls="stats-rail"
+            aria-expanded="false"
+          >
+            <span class="control-label">Statistics</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="wrapped-btn"
+            class="btn-surface control-btn"
+            data-action="showWrapped"
+            data-icon="wrapped"
+            title="Wrapped: your flying in review"
+            aria-label="Wrapped: your flying in review"
+            aria-haspopup="dialog"
+          >
+            <span class="control-label">Wrapped</span>
+          </button>
+        </div>
+        <!-- Draws a line on the map and shows the heights flown along it
+             (ui/crossSection.ts, in the feature bundle) -->
+        <div class="control-row">
+          <button
+            id="cross-section-btn"
+            class="btn-surface control-btn"
+            data-action="toggleCrossSection"
+            data-icon="ruler"
+            title="Cross-section: draw a line on the map to see the heights flown along it"
+            aria-label="Cross-section: draw a line on the map to see the heights flown along it"
+            aria-pressed="false"
+          >
+            <span class="control-label">Cross-section</span>
+          </button>
+        </div>
+        <div class="control-sep" role="separator"></div>
+        <div class="control-row">
+          <button
+            id="replay-btn"
+            class="btn-surface control-btn"
+            data-action="toggleReplay"
+            data-icon="play"
+            title="Pick flights with timing data to replay, under Statistics, Flights"
+            aria-label="Replay selected flights"
+            aria-disabled="true"
+            aria-pressed="false"
+          >
+            <span class="control-label">Replay</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="replay-all-btn"
+            class="btn-surface control-btn"
+            data-action="toggleReplayAll"
+            data-icon="play"
+            title="Replay all flights at once"
+            aria-label="Replay all flights at once"
+            aria-pressed="false"
+          >
+            <span class="control-label">Replay all</span>
+          </button>
+        </div>
+        <!-- A short flight over the busiest places of the heat, in the 3D
+             view (ui/hotspotTour.ts) -->
+        <div class="control-row">
+          <button
+            id="hotspot-tour-btn"
+            class="btn-surface control-btn"
+            data-action="toggleHotspotTour"
+            data-icon="trophy"
+            title="Hotspot tour: fly over the busiest places of the heat in 3D"
+            aria-label="Hotspot tour: fly over the busiest places of the heat in 3D"
+            aria-pressed="false"
+          >
+            <span class="control-label">Hotspot tour</span>
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="control-group"
+        role="group"
+        aria-labelledby="share-group-title"
+      >
+        <h2 class="control-group-title" id="share-group-title">Share</h2>
+        <!-- Share mode: the selected flights alone, and a selection that
+             holds still while they are shown (ui/pathSelection.ts). The id
+             and the action keep the name the mode had before. -->
+        <div class="control-row">
+          <button
+            id="isolate-btn"
+            class="btn-surface control-btn"
+            data-action="toggleIsolateSelection"
+            data-icon="isolate"
+            title="Share mode: show only the selected flights and lock the selection"
+            aria-label="Share mode: show only the selected flights and lock the selection"
+            aria-disabled="true"
+            aria-pressed="false"
+          >
+            <span class="control-label">Share mode</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="share-btn"
+            class="btn-surface control-btn"
+            data-action="shareLink"
+            data-icon="share"
+            title="Copy link to this map view"
+            aria-label="Copy link to this map view"
+          >
+            <span class="control-label">Copy link</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="export-btn"
+            class="btn-surface control-btn"
+            data-action="exportMap"
+            data-icon="export"
+            title="Export image of the map"
+            aria-label="Export image of the map"
+          >
+            <span class="control-label">Export image</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Right control column: which flights are drawn and which layers -->
+    <nav
+      id="right-buttons"
+      class="control-column is-at-end"
+      aria-label="Filter, layers and map"
+    >
+      <div
+        class="control-group"
+        role="group"
+        aria-labelledby="filter-group-title"
+      >
+        <h2 class="control-group-title" id="filter-group-title">Filter</h2>
+        <div class="control-row">
+          <div
+            id="year-filter"
+            class="btn-surface control-btn filter-dropdown"
+            data-icon="calendar"
+          >
+            <select
+              id="year-select"
+              data-action="filterByYear"
+              aria-label="Filter flights by year"
+            >
+              <option value="all">All years</option>
+              $year_option
+            </select>
+          </div>
+        </div>
+        <div class="control-row">
+          <div
+            id="aircraft-filter"
+            class="btn-surface control-btn filter-dropdown"
+            data-icon="aircraft"
+          >
+            <select
+              id="aircraft-select"
+              data-action="filterByAircraft"
+              aria-label="Filter flights by aircraft"
+            >
+              <option value="all">All aircraft</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="control-group"
+        role="group"
+        aria-labelledby="layers-group-title"
+      >
+        <h2 class="control-group-title" id="layers-group-title">Layers</h2>
+        <div class="control-row">
+          <button
+            id="heatmap-btn"
+            class="btn-surface control-btn active"
+            data-action="toggleHeatmap"
+            data-icon="heatmap"
+            title="Heatmap: where the time was spent, brighter where more"
+            aria-label="Heatmap: where the time was spent, brighter where more"
+            aria-pressed="true"
+          >
+            <span class="control-label">Heatmap</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="airports-btn"
+            class="btn-surface control-btn active"
+            data-action="toggleAirports"
+            data-icon="airport"
+            title="Airports: show airport markers"
+            aria-label="Airports: show airport markers"
+            aria-pressed="true"
+          >
+            <span class="control-label">Airports</span>
+          </button>
+        </div>
+        <div class="control-sep" role="separator"></div>
+        <div class="control-row">
+          <button
+            id="altitude-btn"
+            class="btn-surface control-btn"
+            data-action="toggleAltitude"
+            data-icon="altitude"
+            title="Altitude: colour the flights by height"
+            aria-label="Altitude: colour the flights by height"
+            aria-pressed="false"
+          >
+            <span class="control-label">Altitude</span>
+          </button>
+          <span class="ramp-chip ramp-chip-altitude" aria-hidden="true"></span>
+        </div>
+        <div class="control-row">
+          <button
+            id="airspeed-btn"
+            class="btn-surface control-btn"
+            data-action="toggleAirspeed"
+            data-icon="speed"
+            title="Groundspeed: colour the flights by speed over the ground"
+            aria-label="Groundspeed: colour the flights by speed over the ground"
+            aria-pressed="false"
+            aria-disabled="true"
+          >
+            <span class="control-label">Groundspeed</span>
+          </button>
+          <span class="ramp-chip ramp-chip-speed" aria-hidden="true"></span>
+          <!-- What describes the button on a site without timing data
+               (appInitializer.ts) -->
+          <span id="airspeed-reason" hidden>No timing data in the flights</span>
+        </div>
+        <div class="control-row">
+          <button
+            id="aviation-btn"
+            class="btn-surface control-btn"
+            data-action="toggleAviation"
+            data-icon="aviation"
+            title="Aviation: airspaces and navaids of open flightmaps, once zoomed in"
+            aria-label="Aviation: airspaces and navaids of open flightmaps, once zoomed in"
+            aria-pressed="false"
+          >
+            <span class="control-label">Aviation</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- How the map itself is drawn. The map turns and tilts by gesture;
+           the compass points north and is the way back (ui/mapOrientation.ts) -->
+      <div class="control-group" role="group" aria-labelledby="map-group-title">
+        <h2 class="control-group-title" id="map-group-title">Map</h2>
+        <div class="control-row">
+          <button
+            id="compass-btn"
+            class="btn-surface control-btn compass-btn"
+            data-action="resetNorth"
+            data-icon="compass"
+            title="North up: turn the map back north up and flat (right drag or Ctrl drag turns and tilts it)"
+            aria-label="North up: turn the map back north up and flat"
+            aria-disabled="true"
+          >
+            <span class="control-label">North up</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="globe-btn"
+            class="btn-surface control-btn"
+            data-action="toggleGlobe"
+            data-icon="globe"
+            title="Globe: draw the map as a globe"
+            aria-label="Globe: draw the map as a globe"
+            aria-pressed="false"
+          >
+            <span class="control-label">Globe</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="three-d-btn"
+            class="btn-surface control-btn"
+            data-action="toggleThreeD"
+            data-icon="threeD"
+            title="3D: lift the flights to their altitude, over the terrain, and the heat into a glowing cloud"
+            aria-label="3D: lift the flights to their altitude, over the terrain, and the heat into a glowing cloud"
+            aria-pressed="false"
+          >
+            <span class="control-label">3D</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="satellite-btn"
+            class="btn-surface control-btn"
+            data-action="toggleSatellite"
+            data-icon="satellite"
+            title="Satellite: draw the ground from satellite imagery"
+            aria-label="Satellite: draw the ground from satellite imagery"
+            aria-pressed="false"
+          >
+            <span class="control-label">Satellite</span>
+          </button>
+        </div>
+        <div class="control-row">
+          <button
+            id="reset-view-btn"
+            class="btn-surface control-btn"
+            data-action="resetView"
+            data-icon="reset"
+            title="Reset view: newest year, all aircraft, heatmap and airports, north up"
+            aria-label="Reset view: newest year, all aircraft, heatmap and airports, north up"
+            aria-disabled="true"
+          >
+            <span class="control-label">Reset view</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- The compass of the phone layout, where the columns are hidden. Shown
+         only while the map is turned or tilted (ui/mapOrientation.ts). -->
+    <button
+      type="button"
+      id="compass-float-btn"
+      class="btn-surface compass-btn"
+      data-action="resetNorth"
+      data-icon="compass"
+      data-icon-size="20"
+      title="North up: turn the map back north up and flat"
+      aria-label="North up: turn the map back north up and flat"
+      hidden
+    ></button>
+
+    <!-- Statistics rail: a collapse control plus the panel the stats manager
+         fills. Hidden until the statistics are opened; the map is sized
+         beside the rail rather than underneath it. -->
+    <aside id="stats-rail" aria-labelledby="stats-rail-title" hidden>
+      <div id="stats-rail-header">
+        <h2 id="stats-rail-title" class="kh-stats-title">
+          <span
+            class="kh-stats-title-icon"
+            data-icon="stats"
+            data-icon-size="20"
+          ></span>
+          <span class="kh-stats-title-text">Statistics</span>
+        </h2>
+        <button
+          id="stats-collapse-btn"
+          class="btn-surface control-btn"
+          data-action="toggleStats"
+          data-icon="collapse"
+          data-icon-size="20"
+          title="Collapse statistics"
+          aria-label="Collapse statistics"
+          aria-controls="stats-rail"
+          aria-expanded="false"
+        ></button>
+      </div>
+      <!-- The figures and the flight list share the rail, and the phone's
+           statistics sheet with it. The tabs show once the code that runs
+           them has loaded (ui/flightList.ts). -->
+      <div
+        id="stats-rail-tabs"
+        role="tablist"
+        aria-label="Statistics and flights"
+        hidden
+      >
+        <button
+          id="stats-tab"
+          type="button"
+          role="tab"
+          aria-controls="stats-panel"
+          aria-selected="true"
+        >
+          Statistics
+        </button>
+        <button
+          id="flights-tab"
+          type="button"
+          role="tab"
+          aria-controls="flight-list-panel"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          Flights
+        </button>
+      </div>
+      <!-- Focusable: the panel scrolls (bottom sheet on small screens) -->
+      <div
+        id="stats-panel"
+        role="tabpanel"
+        aria-labelledby="stats-tab"
+        tabindex="0"
+      ></div>
+      <div
+        id="flight-list-panel"
+        role="tabpanel"
+        aria-labelledby="flights-tab"
+        hidden
+      ></div>
+    </aside>
+    <div
+      id="altitude-legend"
+      class="color-legend"
+      hidden
+      role="region"
+      aria-label="Altitude colour scale legend"
+    >
+      <div class="legend-title" data-icon="altitude">Altitude</div>
+      <div
+        class="gradient-bar"
+        role="img"
+        aria-label="Altitude gradient from low to high, spread by rank"
+      ></div>
+      <!-- The colours are spread by rank (see scalePosition): the middle
+           label is the median, which the middle of the bar colours -->
+      <div class="labels">
+        <span id="legend-min">0 ft</span>
+        <span
+          ><span class="visually-hidden">median </span
+          ><span id="legend-mid">5,000 ft</span></span
+        >
+        <span id="legend-max">10,000 ft</span>
+      </div>
+    </div>
+    <div
+      id="airspeed-legend"
+      class="color-legend"
+      hidden
+      role="region"
+      aria-label="Groundspeed colour scale legend"
+    >
+      <div class="legend-title" data-icon="speed">Groundspeed</div>
+      <div
+        class="gradient-bar"
+        role="img"
+        aria-label="Groundspeed gradient from slow to fast, spread by rank"
+      ></div>
+      <!-- The scale spans the middle nine tenths of the speeds, and the
+           slowest and fastest take the colours of its ends (see
+           calculateAirspeedRange), which the signs say. Between them the
+           colours are spread by rank: the middle label is the median. -->
+      <div class="labels">
+        <span>≤ <span id="airspeed-legend-min">0 kt</span></span>
+        <span
+          ><span class="visually-hidden">median </span
+          ><span id="airspeed-legend-mid">100 kt</span></span
+        >
+        <span>≥ <span id="airspeed-legend-max">200 kt</span></span>
+      </div>
+    </div>
+    <!-- The colours of the heat, of the heatmap and of the 3D view's cloud,
+         in one row: less time spent on the left, more on the right. How
+         many passes of a flight the two ends stand for is in the bar's
+         name and the tooltip, which ui/heatLegend.ts keeps in step with
+         the exposure (ui/heatScale.ts) as it draws the bar; it also shows
+         what the cloud means while it draws the heat. -->
+    <div
+      id="heat-legend"
+      class="color-legend"
+      hidden
+      role="region"
+      aria-label="Heat colour scale legend"
+    >
+      <div class="labels">
+        <span class="legend-title" data-icon="heatmap">Time spent</span>
+        <span aria-hidden="true">Less</span>
+        <span
+          class="gradient-bar"
+          role="img"
+          aria-label="Time spent: blue for about 1 pass of a flight, light cyan for about 64, white for many more"
+        ></span>
+        <span aria-hidden="true">More</span>
+      </div>
+      <details id="heat-cloud-about" hidden>
+        <summary>What the cloud shows</summary>
+        <ul>
+          <li><b>Glow:</b> the heat, at the height flown</li>
+          <li><b>Shadow:</b> the same on the ground, under lifted flights</li>
+          <li>
+            <span class="heat-cloud-moving"
+              ><b>Pulses, or chevrons at rest:</b> the direction flown</span
+            ><span class="heat-cloud-still"
+              ><b>Chevrons:</b> the direction flown</span
+            >
+          </li>
+        </ul>
+      </details>
+    </div>
+
+    <!-- The toasts stack here (utils/toast.ts), ahead of the map for the
+         same reason: an error's Retry and Dismiss are buttons. Outside
+         <main>, which Wrapped's dialog makes inert while it is open, so
+         a toast still speaks and can be pressed then (wrappedManager.ts). -->
+    <div id="toast-stack" class="toast-stack"></div>
+
+    <!-- The map and what is said over it: the landmark the page is about.
+         display: contents, so it adds no box of its own (styles.css);
+         role="main" because older WebKit drops the landmark of an element
+         without a box. -->
+    <main id="map-home" role="main">
+      <!-- What is selected, and the way out of it. A selection is only drawn
+         on the map where the paths themselves are drawn; at the zoom levels
+         that show the heat bloom alone it had no representation at all, and
+         nothing anywhere said how many flights share mode and the shared
+         link would carry. Share mode is entered and left here as well,
+         with the link beside it while it is on. Filled by
+         ui/pathSelection.ts. -->
+      <div id="selection-chip" hidden>
+        <!-- Share mode's mark, on a phone in place of the word "Sharing"
+             before the count (styles.css) -->
+        <span
+          id="selection-chip-mode"
+          data-icon="isolate"
+          role="img"
+          aria-label="Sharing"
+        ></span>
+        <span id="selection-chip-count"></span>
+        <!-- Replay where a phone's pick of flights lands, which has no
+           Replay but in the More sheet (styles.css shows it on a phone) -->
+        <button
+          type="button"
+          id="selection-replay-btn"
+          class="btn-surface"
+          data-icon="play"
+          title="Replay the selected flights"
+          aria-label="Replay the selected flights"
+          hidden
+        >
+          <span class="control-label">Replay</span>
+        </button>
+        <button
+          type="button"
+          id="selection-share-btn"
+          class="btn-surface"
+          data-action="toggleIsolateSelection"
+          data-icon="isolate"
+          title="Share mode: show only these flights and lock the selection"
+          aria-label="Share mode: show only these flights and lock the selection"
+        >
+          <span class="control-label">Share</span>
+        </button>
+        <button
+          type="button"
+          id="selection-link-btn"
+          class="btn-surface"
+          data-action="shareLink"
+          data-icon="share"
+          title="Copy link to these flights"
+          aria-label="Copy link to these flights"
+          hidden
+        >
+          <span class="control-label">Copy link</span>
+        </button>
+        <button
+          type="button"
+          id="selection-exit-btn"
+          class="btn-surface"
+          data-action="toggleIsolateSelection"
+          data-icon="close"
+          title="Exit share mode, keeping the flights selected"
+          aria-label="Exit share mode, keeping the flights selected"
+          hidden
+        >
+          <span class="control-label">Exit</span>
+        </button>
+        <button
+          type="button"
+          id="selection-clear-btn"
+          class="btn-surface"
+          data-icon="close"
+          title="Clear the selection"
+          aria-label="Clear the selection"
+        >
+          <span class="control-label">Clear</span>
+        </button>
+      </div>
+
+      <!-- Said in place of the flights when the first year could not be
+         loaded, with the way to ask for it again (appInitializer.ts). Ahead
+         of the map, like the controls: after it, its Retry was 55 presses
+         of Tab away, past every airport marker. -->
+      <div id="map-empty" hidden>
+        <p>Could not load the flights</p>
+        <button
+          type="button"
+          id="map-empty-retry"
+          class="btn-surface control-btn"
+          aria-label="Retry loading the flights"
+          data-icon="reset"
+        >
+          <span class="control-label">Retry</span>
+        </button>
+      </div>
+
+      <div id="map" role="region" aria-label="Flight map" tabindex="-1"></div>
+
+      <!-- Loading indicator (shown/hidden by the data manager, text is updatable) -->
+      <div id="loading">
+        <div role="status" aria-live="polite">
+          <span class="loading-spinner" aria-hidden="true"></span>
+          <span id="loading-text">Loading data…</span>
+        </div>
+        <!-- Filled while year files of a known size download. Outside the live
+           region, which would otherwise announce every step of the value -->
+        <div
+          id="loading-progress"
+          role="progressbar"
+          aria-label="Download progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          hidden
+        ></div>
+      </div>
+
+      <!-- Shown by the stylesheet when no map was ever made, a few seconds
+           in: a browser runs no module script of a page opened as a file,
+           and the page was an empty map whose controls did nothing -->
+      <p id="serve-hint">
+        The map did not start. Opened as a file? Serve its folder over HTTP, for
+        example with
+        <code>python3 -m http.server -d &lt;folder&gt;</code>.
+      </p>
+    </main>
+
+    <!-- Toast announcements. Present from the start, so screen readers track
+         them before utils/toast.ts writes a message into one. Outside <main>
+         as the stack is. -->
+    <div
+      id="toast-status"
+      class="visually-hidden"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+    <div
+      id="toast-alert"
+      class="visually-hidden"
+      role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
+    ></div>
+
+    <!-- Replay Controls -->
+    <div id="replay-controls" role="region" aria-label="Flight replay controls">
+      <div id="replay-controls-inner">
+        <div
+          id="replay-buttons"
+          role="group"
+          aria-label="Replay playback controls"
+        >
+          <button
+            id="replay-play-btn"
+            class="btn-surface replay-btn"
+            data-action="playReplay"
+            data-icon="play"
+            data-icon-size="20"
+            title="Play replay"
+            aria-label="Play replay"
+          ></button>
+          <button
+            id="replay-pause-btn"
+            class="btn-surface replay-btn initially-hidden"
+            data-action="pauseReplay"
+            data-icon="pause"
+            data-icon-size="20"
+            title="Pause replay"
+            aria-label="Pause replay"
+          ></button>
+          <button
+            id="replay-stop-btn"
+            class="btn-surface replay-btn"
+            data-action="stopReplay"
+            data-icon="stop"
+            data-icon-size="20"
+            title="Stop replay and reset to beginning"
+            aria-label="Stop replay and reset to beginning"
+          ></button>
+          <div id="replay-time-display">00:00 / 00:00</div>
+          <select
+            id="replay-speed"
+            class="btn-surface replay-btn"
+            data-action="changeReplaySpeed"
+            aria-label="Replay speed multiplier"
+          >
+            <option value="1">1x</option>
+            <option value="2">2x</option>
+            <option value="5">5x</option>
+            <option value="10">10x</option>
+            <option value="25">25x</option>
+            <option value="50" selected>50x</option>
+            <option value="100">100x</option>
+            <option value="200">200x</option>
+            <option value="500">500x</option>
+            <option value="1000">1000x</option>
+          </select>
+          <button
+            id="replay-autozoom-btn"
+            class="btn-surface replay-btn"
+            data-action="toggleAutoZoom"
+            data-icon="autoZoom"
+            data-icon-size="20"
+            title="Auto-zoom: zoom in on the aircraft and keep it in view"
+            aria-label="Auto-zoom: zoom in on the aircraft and keep it in view"
+            aria-pressed="false"
+          ></button>
+          <!-- Bound by ReplayManager, not by a data-action -->
+          <button
+            id="replay-chase-btn"
+            class="btn-surface replay-btn"
+            data-icon="chase"
+            data-icon-size="20"
+            title="Chase view: follow the aircraft from behind"
+            aria-label="Chase view: follow the aircraft from behind"
+            aria-pressed="false"
+          ></button>
+        </div>
+        <div id="replay-slider-container">
+          <span id="replay-slider-start" aria-hidden="true">0:00</span>
+          <input
+            type="range"
+            id="replay-slider"
+            min="0"
+            max="100"
+            value="0"
+            data-action="seekReplay"
+            aria-label="Replay timeline position"
+            aria-valuetext="0:00 of 0:00"
+          />
+          <span id="replay-slider-end" aria-hidden="true">0:00</span>
+        </div>
+        <!-- Announces play/pause/seek only; the time display updates every frame -->
+        <div
+          id="replay-live"
+          class="visually-hidden"
+          aria-live="polite"
+          aria-atomic="true"
+        ></div>
+      </div>
+    </div>
+
+    <!-- Wrapped Card Modal -->
+    <div
+      id="wrapped-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wrapped-title"
+    >
+      <div id="wrapped-container">
+        <div id="wrapped-header">
+          <!-- Shown while the intro plays (ui/wrappedIntro.ts) -->
+          <button id="wrapped-skip-btn" type="button" hidden>Skip intro</button>
+          <button
+            class="close-btn"
+            data-action="closeWrapped"
+            data-icon="close"
+            data-icon-size="20"
+            title="Close Wrapped"
+            aria-label="Close Wrapped"
+          >
+            <span class="control-label">Close</span>
+          </button>
+        </div>
+        <div id="wrapped-content">
+          <!-- Cards column - left side -->
+          <!-- tabindex: the column scrolls, so it has to be reachable by
+               keyboard (axe: scrollable-region-focusable) -->
+          <div
+            id="wrapped-cards-column"
+            tabindex="0"
+            role="region"
+            aria-label="Wrapped cards"
+          >
+            <!-- Card 1: Stats -->
+            <section
+              id="wrapped-card-stats"
+              class="wrapped-square-card"
+              aria-labelledby="wrapped-title"
+            >
+              <h1 id="wrapped-title">Your Year in Flight</h1>
+              <p class="year" id="wrapped-year">2025</p>
+              <div class="stat-grid" id="wrapped-stats"></div>
+              <!-- Side by side with the map: the column scrolls, and this
+                   says so (wrapped.css, WrappedManager) -->
+              <button
+                id="wrapped-more-btn"
+                type="button"
+                data-icon="chevronDown"
+                data-icon-size="16"
+              >
+                More below
+              </button>
+            </section>
+
+            <!-- Card 2: Facts -->
+            <section
+              id="wrapped-card-facts"
+              class="wrapped-square-card"
+              aria-labelledby="wrapped-fun-facts-title"
+            >
+              <div class="fun-facts" id="wrapped-fun-facts"></div>
+            </section>
+
+            <!-- Card 3: Aircraft Fleet -->
+            <section
+              id="wrapped-card-fleet"
+              class="wrapped-square-card"
+              aria-labelledby="wrapped-aircraft-fleet-title"
+            >
+              <div class="aircraft-fleet" id="wrapped-aircraft-fleet"></div>
+            </section>
+
+            <!-- Card 4: Airports -->
+            <section
+              id="wrapped-card-airports"
+              class="wrapped-square-card"
+              aria-labelledby="wrapped-top-airports-title wrapped-airports-grid-title"
+            >
+              <div class="top-airports" id="wrapped-top-airports"></div>
+              <div class="airports-grid" id="wrapped-airports-grid"></div>
+            </section>
+          </div>
+
+          <!-- Map - right side -->
+          <div
+            id="wrapped-map-container"
+            role="region"
+            aria-label="Flight map overview"
+          >
+            <!-- The title the intro opens on, over the map while it plays
+                 (ui/wrappedIntro.ts): the words of the first card, which
+                 is what assistive technology reads -->
+            <div id="wrapped-intro-title" aria-hidden="true">
+              <span id="wrapped-intro-heading"></span>
+              <span id="wrapped-intro-year"></span>
+            </div>
+            <!-- Map will be moved here when wrapped is shown -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GitHub footer -->
+    <footer id="github-footer">
+      <a
+        href="https://github.com/saschagrunert/flown"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Flown source code on GitHub"
+        aria-label="Flown source code on GitHub"
+      >
+        <svg
+          class="github-icon"
+          viewBox="0 0 16 16"
+          width="20"
+          height="20"
+          aria-hidden="true"
+        >
+          <path
+            fill="currentColor"
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+          />
+        </svg>
+      </a>
+    </footer>
+
+    <!-- Deferred scripts and modules execute in document order: config,
+         then the application bundle, which imports MapLibre from vendor/,
+         the year worker's bundle with the first year file and html-to-image
+         on the first export. All code is served
+         from the site itself (vendor/ is copied out of node_modules by
+         scripts/vendor.js); only the map tiles come from elsewhere. -->
+    <!-- Configuration with template variables -->
+    <script src="./map_config.js" defer></script>
+
+    <!-- Main application -->
+    <script type="module" src="./mapApp.bundle.js"></script>
+  </body>
+</html>

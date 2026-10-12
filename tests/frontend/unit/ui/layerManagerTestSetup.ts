@@ -9,14 +9,14 @@
  */
 import { expect, vi } from "vitest";
 import type { Point } from "maplibre-gl";
-import { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import type { LayerMode } from "../../../../kml_heatmap/frontend/ui/pathRuns";
-import { scalePosition } from "../../../../kml_heatmap/frontend/utils/colors";
+import { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import type { LayerMode } from "../../../../flown/frontend/ui/pathRuns";
+import { scalePosition } from "../../../../flown/frontend/utils/colors";
 import type {
   PathRunProperties,
   PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
-import { rankValues } from "../../../../kml_heatmap/frontend/features/layers";
+} from "../../../../flown/frontend/types";
+import { rankValues } from "../../../../flown/frontend/features/layers";
 import {
   asMapApp,
   createDataset,

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   ReplayState,
   restingPitch,
-} from "../../../../kml_heatmap/frontend/ui/replayState";
-import type { MapApp } from "../../../../kml_heatmap/frontend/mapApp";
+} from "../../../../flown/frontend/ui/replayState";
+import type { MapApp } from "../../../../flown/frontend/mapApp";
 
 describe("ReplayState", () => {
   describe("default values", () => {

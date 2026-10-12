@@ -11,18 +11,18 @@ import {
   encodeStateToUrl,
   isSectionLine,
   parseUrlParams,
-} from "../../../../kml_heatmap/frontend/state/urlState";
+} from "../../../../flown/frontend/state/urlState";
 import {
   initialToggles,
   TOGGLES,
   type ToggleKey,
-} from "../../../../kml_heatmap/frontend/state/toggles";
+} from "../../../../flown/frontend/state/toggles";
 import {
   MAP_MAX_PITCH,
   MAX_ZOOM,
   MIN_ZOOM,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import type { AppState } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/utils/constants";
+import type { AppState } from "../../../../flown/frontend/types";
 
 /** Path ids are 40-bit content hashes, which fc.integer cannot reach */
 const pathId = fc

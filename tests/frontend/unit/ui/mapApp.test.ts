@@ -6,15 +6,15 @@ import {
   UnsupportedBrowserError,
   initMapApp,
   reportInitFailure,
-} from "../../../../kml_heatmap/frontend/mapApp";
-import { safeAreaInsets } from "../../../../kml_heatmap/frontend/utils/safeArea";
-import { bindActions } from "../../../../kml_heatmap/frontend/ui/actions";
-import { STORE_ACCESSOR_KEYS } from "../../../../kml_heatmap/frontend/state/store";
-import type { KMLDataset } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/mapApp";
+import { safeAreaInsets } from "../../../../flown/frontend/utils/safeArea";
+import { bindActions } from "../../../../flown/frontend/ui/actions";
+import { STORE_ACCESSOR_KEYS } from "../../../../flown/frontend/state/store";
+import type { KMLDataset } from "../../../../flown/frontend/types";
 import { createSegment } from "../../testHelpers";
 
 const loggerMock = vi.hoisted(() => ({ logDebug: vi.fn(), logError: vi.fn() }));
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => loggerMock);
+vi.mock("../../../../flown/frontend/utils/logger", () => loggerMock);
 
 const config = {
   center: [48.0, 16.0] as [number, number],

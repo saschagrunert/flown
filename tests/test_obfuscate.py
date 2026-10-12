@@ -13,16 +13,16 @@ import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-import kml_heatmap.obfuscate as obfuscate_module
-from kml_heatmap.aircraft import parse_aircraft_from_filename
-from kml_heatmap.date_tokens import (
+import flown.obfuscate as obfuscate_module
+from flown.aircraft import parse_aircraft_from_filename
+from flown.date_tokens import (
     find_date_tokens,
     find_holiday_tokens,
     find_partial_date_tokens,
     find_time_tokens,
     find_weekday_tokens,
 )
-from kml_heatmap.obfuscate import (
+from flown.obfuscate import (
     GENERIC_CREATOR,
     _extract_frac,
     _find_stray_dates,
@@ -864,7 +864,7 @@ class TestObfuscateFile:
         kml_file.write_text(SAMPLE_KML, encoding="utf-8")
         kml_file.chmod(0o640)
 
-        with patch("kml_heatmap.cache.os.replace", wraps=os.replace) as mock_replace:
+        with patch("flown.cache.os.replace", wraps=os.replace) as mock_replace:
             assert obfuscate_kml_file(kml_file) is True
 
         mock_replace.assert_called_once()
@@ -886,14 +886,14 @@ class TestObfuscateFile:
     def test_invalid_utf8_is_skipped_with_warning(self, tmp_path, caplog):
         kml_file = tmp_path / "test.kml"
         kml_file.write_bytes(b"\xff\xfe<when>2025-03-03T08:25:15Z</when>")
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             assert obfuscate_kml_file(kml_file) is False
         assert "not valid UTF-8" in caplog.text
 
     def test_write_failure_leaves_original(self, tmp_path):
         kml_file = tmp_path / "test.kml"
         kml_file.write_text(SAMPLE_KML, encoding="utf-8")
-        with patch("kml_heatmap.cache.os.replace", side_effect=OSError("disk")):
+        with patch("flown.cache.os.replace", side_effect=OSError("disk")):
             assert obfuscate_kml_file(kml_file) is False
         assert kml_file.read_text(encoding="utf-8") == SAMPLE_KML
         assert sorted(p.name for p in tmp_path.iterdir()) == ["test.kml"]
@@ -912,7 +912,7 @@ class TestObfuscateFiles:
         bad.write_text(SAMPLE_KML, encoding="utf-8")
 
         with patch(
-            "kml_heatmap.obfuscate.obfuscate_kml_content",
+            "flown.obfuscate.obfuscate_kml_content",
             side_effect=[
                 obfuscate_kml_content(SAMPLE_KML),
                 RuntimeError("boom"),
@@ -1063,7 +1063,7 @@ class TestCheckObfuscated:
     def test_generic_creator_is_not_a_violation(self, tmp_path):
         kml_file = tmp_path / "test.kml"
         kml_file.write_text(
-            '<kml creator="kml-heatmap"><when>2025-01-01T00:00:00Z</when></kml>',
+            '<kml creator="flown"><when>2025-01-01T00:00:00Z</when></kml>',
             encoding="utf-8",
         )
         assert check_kml_obfuscated(kml_file) == []
@@ -1961,8 +1961,8 @@ class TestRenameCharterwareFiles:
     def test_rename_failure_keeps_the_file(self, tmp_path, capsys):
         path = self._write(tmp_path, CHARTERWARE_NAME)
         with (
-            patch("kml_heatmap.obfuscate.os.link", side_effect=OSError("denied")),
-            patch("kml_heatmap.obfuscate.os.rename", side_effect=OSError("denied")),
+            patch("flown.obfuscate.os.link", side_effect=OSError("denied")),
+            patch("flown.obfuscate.os.rename", side_effect=OSError("denied")),
         ):
             assert rename_charterware_files([path]) == [path]
         assert "Cannot rename" in capsys.readouterr().err
@@ -1979,7 +1979,7 @@ class TestRenameCharterwareFiles:
                 taken.write_text("other flight", encoding="utf-8")
             return real_link(src, dst, **kwargs)
 
-        with patch("kml_heatmap.obfuscate.os.link", side_effect=link_after_other_run):
+        with patch("flown.obfuscate.os.link", side_effect=link_after_other_run):
             renamed = rename_charterware_files([path])
 
         assert taken.read_text(encoding="utf-8") == "other flight"
@@ -1988,7 +1988,7 @@ class TestRenameCharterwareFiles:
 
     def test_renames_without_hard_link_support(self, tmp_path):
         path = self._write(tmp_path, CHARTERWARE_NAME)
-        with patch("kml_heatmap.obfuscate.os.link", side_effect=OSError("no links")):
+        with patch("flown.obfuscate.os.link", side_effect=OSError("no links")):
             renamed = rename_charterware_files([path])
         assert renamed == [tmp_path / "2026-01-01_0000h_OE-AKI_LOAV-LOAV.kml"]
         assert renamed[0].exists()
@@ -2073,7 +2073,7 @@ class TestErrorBranches:
             calls.append(fd)
             return real_fsync(fd)
 
-        with patch("kml_heatmap.cache.os.fsync", side_effect=recording_fsync):
+        with patch("flown.cache.os.fsync", side_effect=recording_fsync):
             assert obfuscate_module.obfuscate_kml_file(kml_file) is True
         # Once for the temp file, once for the directory entry
         assert len(calls) == 2
@@ -2338,7 +2338,7 @@ class TestNamesAndDescriptions:
 class TestCreators:
     def test_every_creator_is_checked_and_replaced(self, tmp_path):
         content = (
-            '<kml creator="kml-heatmap"><Document creator="SkyDemon Mobile">'
+            '<kml creator="flown"><Document creator="SkyDemon Mobile">'
             "<when>2026-01-01T00:00:00Z</when></Document></kml>"
         )
         kml_file = tmp_path / "flight.kml"

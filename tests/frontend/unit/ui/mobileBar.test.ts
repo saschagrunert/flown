@@ -10,25 +10,25 @@ import {
   afterEach,
   vi,
 } from "vitest";
-import type { MapApp } from "../../../../kml_heatmap/frontend/mapApp";
-import type { KMLDataset } from "../../../../kml_heatmap/frontend/types";
+import type { MapApp } from "../../../../flown/frontend/mapApp";
+import type { KMLDataset } from "../../../../flown/frontend/types";
 import {
   AppStore,
   defineStoreAccessors,
   type StoreAccessors,
-} from "../../../../kml_heatmap/frontend/state/store";
+} from "../../../../flown/frontend/state/store";
 import {
   MobileBar,
   SHEET_UNAVAILABLE_MESSAGE,
-} from "../../../../kml_heatmap/frontend/ui/mobileBar";
+} from "../../../../flown/frontend/ui/mobileBar";
 import {
   loadExtras,
   resetExtrasLoader,
-} from "../../../../kml_heatmap/frontend/services/featureLoader";
-import { REPLAY_PRECONDITION_MESSAGE } from "../../../../kml_heatmap/frontend/ui/replayButton";
-import { NO_DATA_MESSAGE } from "../../../../kml_heatmap/frontend/ui/actions";
-import { MOBILE_BREAKPOINT_PX } from "../../../../kml_heatmap/frontend/utils/constants";
-import { PHONE_LAYOUT_QUERY } from "../../../../kml_heatmap/frontend/utils/device";
+} from "../../../../flown/frontend/services/featureLoader";
+import { REPLAY_PRECONDITION_MESSAGE } from "../../../../flown/frontend/ui/replayButton";
+import { NO_DATA_MESSAGE } from "../../../../flown/frontend/ui/actions";
+import { MOBILE_BREAKPOINT_PX } from "../../../../flown/frontend/utils/constants";
+import { PHONE_LAYOUT_QUERY } from "../../../../flown/frontend/utils/device";
 
 const PHONE_WIDTH = 390;
 const DESKTOP_WIDTH = 1200;
@@ -179,7 +179,7 @@ function dismissSheet(): void {
 }
 
 /** The import of the extras bundle, as the app makes it */
-const importExtras = () => import("../../../../kml_heatmap/frontend/extras");
+const importExtras = () => import("../../../../flown/frontend/extras");
 
 describe("MobileBar", () => {
   let app: BarMockApp;

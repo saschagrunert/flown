@@ -11,46 +11,46 @@ import {
   ReplayAllControls,
   replayAllClock,
   toggleReplayAll,
-} from "../../../../kml_heatmap/frontend/ui/replayAll";
-import { featurePart } from "../../../../kml_heatmap/frontend/ui/lazyBundles";
-import { flightClock } from "../../../../kml_heatmap/frontend/calculations/flightClock";
+} from "../../../../flown/frontend/ui/replayAll";
+import { featurePart } from "../../../../flown/frontend/ui/lazyBundles";
+import { flightClock } from "../../../../flown/frontend/calculations/flightClock";
 import {
   REPLAY_ALL_SPEED,
   ReplayAllPlayer,
-} from "../../../../kml_heatmap/frontend/ui/replayAllPlayer";
+} from "../../../../flown/frontend/ui/replayAllPlayer";
 import {
   REPLAY_ALL_LAYER,
   type ReplayAllLayer,
-} from "../../../../kml_heatmap/frontend/ui/replayAllLayer";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
+} from "../../../../flown/frontend/ui/replayAllLayer";
+import * as motion from "../../../../flown/frontend/utils/motion";
 import {
   FEET_TO_METERS,
   MAP_LAYERS,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import { HEAT_CLOUD_LAYER } from "../../../../kml_heatmap/frontend/ui/heatCloudLayer";
-import { REPLAY_PANEL_HEIGHT_VAR } from "../../../../kml_heatmap/frontend/ui/replayManager";
-import { restingPitch } from "../../../../kml_heatmap/frontend/ui/replayState";
+} from "../../../../flown/frontend/utils/constants";
+import { HEAT_CLOUD_LAYER } from "../../../../flown/frontend/ui/heatCloudLayer";
+import { REPLAY_PANEL_HEIGHT_VAR } from "../../../../flown/frontend/ui/replayManager";
+import { restingPitch } from "../../../../flown/frontend/ui/replayState";
 import {
   groundedFlights,
   heldGroundedFlights,
   releaseGroundedFlights,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/calculations/groundProfile";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
 import {
   fitTilted,
   LEG_PAUSE_S,
-} from "../../../../kml_heatmap/frontend/calculations/replayAll";
-import { MAP_MAX_ZOOM } from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/calculations/replayAll";
+import { MAP_MAX_ZOOM } from "../../../../flown/frontend/utils/constants";
 import {
   LIFT_MAX_ZOOM,
   liftExaggeration,
-} from "../../../../kml_heatmap/frontend/calculations/lift";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/lift";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   getColorForAirspeed,
   getColorForAltitude,
-} from "../../../../kml_heatmap/frontend/utils/colors";
-import { calculateAirspeedRange } from "../../../../kml_heatmap/frontend/features/layers";
+} from "../../../../flown/frontend/utils/colors";
+import { calculateAirspeedRange } from "../../../../flown/frontend/features/layers";
 import {
   asMapApp,
   createDataset,
@@ -75,11 +75,11 @@ const cuts = vi.hoisted(() => ({
   colourOf: undefined as ((segment: PathSegment) => number) | undefined,
 }));
 vi.mock(
-  "../../../../kml_heatmap/frontend/calculations/replayAll",
+  "../../../../flown/frontend/calculations/replayAll",
   async (original) => {
     const module =
       await original<
-        typeof import("../../../../kml_heatmap/frontend/calculations/replayAll")
+        typeof import("../../../../flown/frontend/calculations/replayAll")
       >();
     return {
       ...module,
@@ -93,7 +93,7 @@ vi.mock(
     };
   },
 );
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", async (original) => ({
+vi.mock("../../../../flown/frontend/utils/toast", async (original) => ({
   ...(await original<object>()),
   showToast: toast.showToast,
   announceStatus: toast.announceStatus,

@@ -27,17 +27,16 @@ would date its flight; only a bundle, stylesheet or icon a build did not change
 keeps its time. A time an older build or another tool left, which can hold the
 time of day, is replaced by the build day. The directories a build writes in get
 00:00 UTC of the build day as well, which a directory listing would show
-otherwise. With `KML_HEATMAP_STABLE_MTIMES=1` the time is taken from the content
+otherwise. With `FLOWN_STABLE_MTIMES=1` the time is taken from the content
 instead (see
 [How the output directory is written](usage.md#how-the-output-directory-is-written)).
-Set `SOURCE_DATE_EPOCH` to stamp a different day. The commit is
-`KML_HEATMAP_COMMIT` (with its remote in `KML_HEATMAP_REPOSITORY`, which
-`make build` sets from your checkout), else `GITHUB_SHA` on GitHub Actions (in
-the repository `GITHUB_REPOSITORY` names, on the server `GITHUB_SERVER_URL`
-names, which is `https://github.com` unless the workflow runs on GitHub
-Enterprise, so the link is right on a fork as well), else `HEAD` of the checkout
-the tool runs from. The hash links to the commit only when the repository is
-known.
+Set `SOURCE_DATE_EPOCH` to stamp a different day. The commit is `FLOWN_COMMIT`
+(with its remote in `FLOWN_REPOSITORY`, which `make build` sets from your
+checkout), else `GITHUB_SHA` on GitHub Actions (in the repository
+`GITHUB_REPOSITORY` names, on the server `GITHUB_SERVER_URL` names, which is
+`https://github.com` unless the workflow runs on GitHub Enterprise, so the link
+is right on a fork as well), else `HEAD` of the checkout the tool runs from. The
+hash links to the commit only when the repository is known.
 
 That is the site. A repository the KML files are committed to keeps its own
 dates: a public one dates every committed flight to the day of its commit, in
@@ -123,7 +122,7 @@ unless the visitor, their saved state or the link they followed turns it on.
 
 That is a separate need: this repository commits the files in `data/`, and they
 must not carry real dates. `--obfuscate-inputs`, or
-`python -m kml_heatmap.obfuscate <dir>` on its own, rewrites them in place
+`python -m flown.obfuscate <dir>` on its own, rewrites them in place
 (atomically, after validation). The timestamps of a flight are shifted by one
 offset of whole seconds so that it starts at 00:00:00 UTC on January 1st of its
 year: the intervals between its points, the gaps between its tracks and so its
@@ -153,7 +152,7 @@ contain:
 - Full precision coordinates and altitudes
 - The order of the flights (from the file numbering)
 
-`python -m kml_heatmap.obfuscate <dir> --check` verifies a directory: the first
+`python -m flown.obfuscate <dir> --check` verifies a directory: the first
 timestamp of every flight must be 00:00:00 on January 1st (a fraction of a
 second may follow), and no other date may appear anywhere in a file or its name
 (numeric, also with the year first and spaces such as `2026 08 16` or with en

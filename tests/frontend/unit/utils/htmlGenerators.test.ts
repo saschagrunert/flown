@@ -7,18 +7,18 @@ import {
   pluralFlights,
   pluralize,
   type SegmentPopupParams,
-} from "../../../../kml_heatmap/frontend/utils/htmlGenerators";
+} from "../../../../flown/frontend/utils/htmlGenerators";
 import {
   markFlightTimeUnits,
   splitAirportName,
-} from "../../../../kml_heatmap/frontend/utils/statsFormat";
+} from "../../../../flown/frontend/utils/statsFormat";
 import {
   getColorForAirspeed,
   getColorForAltitude,
   rgbToRgba,
-} from "../../../../kml_heatmap/frontend/utils/colors";
-import { icon } from "../../../../kml_heatmap/frontend/utils/icons";
-import { ddToDms } from "../../../../kml_heatmap/frontend/utils/geometry";
+} from "../../../../flown/frontend/utils/colors";
+import { icon } from "../../../../flown/frontend/utils/icons";
+import { ddToDms } from "../../../../flown/frontend/utils/geometry";
 
 describe("htmlGenerators", () => {
   describe("escapeHtml", () => {

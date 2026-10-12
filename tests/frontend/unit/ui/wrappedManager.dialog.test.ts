@@ -5,19 +5,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { resetSiteData } from "../../../../kml_heatmap/frontend/state/siteData";
-import { WrappedManager } from "../../../../kml_heatmap/frontend/ui/wrappedManager";
+import { resetSiteData } from "../../../../flown/frontend/state/siteData";
+import { WrappedManager } from "../../../../flown/frontend/ui/wrappedManager";
 import {
   TOAST_ALERT_ID,
   TOAST_STACK_ID,
   TOAST_STATUS_ID,
   showToast,
-} from "../../../../kml_heatmap/frontend/utils/toast";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
-import { HIDEABLE_CONTROL_IDS } from "../../../../kml_heatmap/frontend/ui/wrappedChrome";
+} from "../../../../flown/frontend/utils/toast";
+import * as motion from "../../../../flown/frontend/utils/motion";
+import { HIDEABLE_CONTROL_IDS } from "../../../../flown/frontend/ui/wrappedChrome";
 import { LngLat, Popup } from "../../../mocks/maplibre-gl";
 import { asMapApp, type MockApp } from "../../testHelpers";
-import type { AirportMarker } from "../../../../kml_heatmap/frontend/types";
+import type { AirportMarker } from "../../../../flown/frontend/types";
 import {
   createFlightHistory,
   createWrappedMockApp,
@@ -330,7 +330,7 @@ describe("WrappedManager dialog", () => {
       wrappedManager.destroy();
       document.body.innerHTML = new DOMParser().parseFromString(
         readFileSync(
-          join(process.cwd(), "kml_heatmap/templates/map_template.html"),
+          join(process.cwd(), "flown/templates/map_template.html"),
           "utf8",
         ),
         "text/html",

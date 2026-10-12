@@ -1,16 +1,16 @@
-# KML Heatmap Generator
+# Flown
 
-> Create interactive heatmap visualizations from KML files.
+> Where you have flown: your KML flight logs as a static site.
 
-[![Demo](https://img.shields.io/badge/live-demo-blue.svg)](https://saschagrunert.github.io/kml-heatmap)
-[![Coverage](https://codecov.io/gh/saschagrunert/kml-heatmap/badge.svg?token=AxIuoWeFSy)](https://codecov.io/gh/saschagrunert/kml-heatmap)
+[![Demo](https://img.shields.io/badge/live-demo-blue.svg)](https://saschagrunert.github.io/flown)
+[![Coverage](https://codecov.io/gh/saschagrunert/flown/badge.svg?token=AxIuoWeFSy)](https://codecov.io/gh/saschagrunert/flown)
 
-KML Heatmap turns the KML flight logs of SkyDemon, Charterware and other
-aviation apps into a static site: a map of where the time was spent, with the
-flights coloured by altitude or groundspeed, the airports visited, statistics,
-replays, a 3D view and a year-in-review summary. The
-[live demo](https://saschagrunert.github.io/kml-heatmap) shows the flights of
-this repository.
+Flown turns the KML flight logs of SkyDemon, Charterware and other aviation apps
+into a static site: a map of where the time was spent, with the flights coloured
+by altitude or groundspeed, the airports visited, statistics, replays, a 3D view
+and a year-in-review summary. The
+[live demo](https://saschagrunert.github.io/flown) shows the flights of this
+repository.
 
 To publish your own flights the same way, fork this repository and follow
 [Your own site on GitHub Pages](doc/hosting.md#your-own-site-on-github-pages);

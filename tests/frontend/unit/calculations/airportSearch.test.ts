@@ -8,8 +8,8 @@ import {
   AIRPORT_RESULTS,
   foldText,
   matchAirports,
-} from "../../../../kml_heatmap/frontend/calculations/airportSearch";
-import type { Airport } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/airportSearch";
+import type { Airport } from "../../../../flown/frontend/types";
 
 function airport(name: string, code?: string, country?: string): Airport {
   return {

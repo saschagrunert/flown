@@ -25,7 +25,7 @@ stale site). `make test` builds the site first, as the CI unit job does; to run
 it with `npm test`, build it yourself:
 
 ```bash
-npm run build && python -m kml_heatmap data --output-dir docs
+npm run build && python -m flown data --output-dir docs
 ```
 
 In CI the unit job builds it first, and a missing build fails there.
@@ -59,8 +59,8 @@ a run names its seed; `pytest --randomly-seed=<seed>` repeats that order, and
 well (`--sequence.shuffle`; repeat an order with `--sequence.seed=<seed>`).
 
 A test that reads named flights of `data/` is marked `repo_data`, and
-`KML_HEATMAP_OWN_FLIGHTS=1` skips it, for a copy of the repository with flights
-of its own (see [Hosting](../hosting.md#your-own-site-on-github-pages)).
+`FLOWN_OWN_FLIGHTS=1` skips it, for a copy of the repository with flights of its
+own (see [Hosting](../hosting.md#your-own-site-on-github-pages)).
 
 No test touches the network: `tests/conftest.py` fails any download of a tile
 loudly, the pipeline tests pass a tile source of their own
@@ -154,7 +154,7 @@ cannot tell an old site from a new one.
 npx playwright install --with-deps chromium webkit
 
 # Build the site from the current sources
-npm run build && python -m kml_heatmap data --output-dir docs
+npm run build && python -m flown data --output-dir docs
 
 # Run E2E tests
 npm run test:e2e
@@ -197,7 +197,7 @@ jobs of the `test` workflow, which wait for every test job but `security` to
 pass (a new advisory for a test dependency must not hold back new flights, and
 the weekly run reports it anyway) and skip a commit that is no longer the head
 of `main`: they run the same steps as `make build` (frontend bundle, then
-`python -m kml_heatmap data`) and upload the result to GitHub Pages (see
+`python -m flown data`) and upload the result to GitHub Pages (see
 [Repository rules](../../CONTRIBUTING.md#repository-rules) for what is not
 committed). The `checks` job is the one status a merge needs (the ruleset on
 `main` requires it, see

@@ -10,9 +10,9 @@ import {
   followHeatLegend,
   heatLegend,
   heatLegendText,
-} from "../../../../kml_heatmap/frontend/ui/heatLegend";
-import { HEAT_FLIGHT_DENSITY } from "../../../../kml_heatmap/frontend/calculations/heatExposure";
-import { HEATMAP_GRADIENT } from "../../../../kml_heatmap/frontend/ui/heatmapPaint";
+} from "../../../../flown/frontend/ui/heatLegend";
+import { HEAT_FLIGHT_DENSITY } from "../../../../flown/frontend/calculations/heatExposure";
+import { HEATMAP_GRADIENT } from "../../../../flown/frontend/ui/heatmapPaint";
 import { asMapApp, createMockApp, type MockApp } from "../../testHelpers";
 
 /** A gradient as the page's style spells it */
@@ -25,7 +25,7 @@ function styled(gradient: string): string {
 /** The heat legend as the page has it */
 function heatLegendOfPage(): HTMLElement {
   const template = readFileSync(
-    join(process.cwd(), "kml_heatmap/templates/map_template.html"),
+    join(process.cwd(), "flown/templates/map_template.html"),
     "utf8",
   );
   const page = new DOMParser().parseFromString(template, "text/html");
@@ -222,7 +222,7 @@ describe("followHeatLegend", () => {
     // The stylesheet shows one of the two: the chevrons' own under reduced
     // motion, where the pulses rest
     const css = readFileSync(
-      join(process.cwd(), "kml_heatmap/static/features.css"),
+      join(process.cwd(), "flown/static/features.css"),
       "utf8",
     ).replace(/\s+/g, " ");
     expect(css).toContain("#heat-legend .heat-cloud-still { display: none; }");

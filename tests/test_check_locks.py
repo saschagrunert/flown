@@ -84,7 +84,7 @@ def repo(tmp_path, monkeypatch):
     (tmp_path / "package.json").write_text(
         json.dumps(
             {
-                "name": "kml-heatmap",
+                "name": "flown",
                 "version": VERSION,
                 "engines": {"node": f">={NODE}"},
             }
@@ -94,10 +94,10 @@ def repo(tmp_path, monkeypatch):
     (tmp_path / "package-lock.json").write_text(
         json.dumps(
             {
-                "name": "kml-heatmap",
+                "name": "flown",
                 "version": VERSION,
                 "packages": {
-                    "": {"name": "kml-heatmap", "version": VERSION},
+                    "": {"name": "flown", "version": VERSION},
                     "node_modules/@playwright/test": {"version": PLAYWRIGHT},
                 },
             }
@@ -118,7 +118,7 @@ def repo(tmp_path, monkeypatch):
             f"```sh\npodman run {IMAGE} npx playwright test\n```\n",
             encoding="utf-8",
         )
-    package = tmp_path / "kml_heatmap"
+    package = tmp_path / "flown"
     package.mkdir()
     (package / "__init__.py").write_text(
         f'__version__ = "{VERSION}"\n', encoding="utf-8"
@@ -381,7 +381,7 @@ class TestPackageVersion:
         assert check_locks.main() == 1
 
         err = capsys.readouterr().err
-        assert "kml_heatmap/__init__.py is 1.0.0, package.json 1.1.0" in err
+        assert "flown/__init__.py is 1.0.0, package.json 1.1.0" in err
         assert "npm install" in err
 
     def test_the_top_level_lock_version_out_of_step_fails(self, repo, capsys):
@@ -403,7 +403,7 @@ class TestPackageVersion:
         assert 'package-lock.json packages[""] 1.1.0' in capsys.readouterr().err
 
     def test_a_missing_python_version_fails(self, repo, capsys):
-        (repo / "kml_heatmap/__init__.py").write_text("", encoding="utf-8")
+        (repo / "flown/__init__.py").write_text("", encoding="utf-8")
 
         assert check_locks.main() == 1
 
@@ -411,7 +411,7 @@ class TestPackageVersion:
 
     def test_a_missing_npm_version_fails(self, repo, capsys):
         path = repo / "package.json"
-        path.write_text(json.dumps({"name": "kml-heatmap"}), encoding="utf-8")
+        path.write_text(json.dumps({"name": "flown"}), encoding="utf-8")
 
         assert check_locks.main() == 1
 

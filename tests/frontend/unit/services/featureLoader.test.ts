@@ -26,20 +26,20 @@ import {
   resetSearchLoader,
   resetWrappedLoader,
   wasSiteUpdated,
-} from "../../../../kml_heatmap/frontend/services/featureLoader";
-import type { FeatureModule } from "../../../../kml_heatmap/frontend/features";
-import type { WrappedModule } from "../../../../kml_heatmap/frontend/wrapped";
-import type { SearchModule } from "../../../../kml_heatmap/frontend/search";
-import type { ExtrasModule } from "../../../../kml_heatmap/frontend/extras";
-import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
+} from "../../../../flown/frontend/services/featureLoader";
+import type { FeatureModule } from "../../../../flown/frontend/features";
+import type { WrappedModule } from "../../../../flown/frontend/wrapped";
+import type { SearchModule } from "../../../../flown/frontend/search";
+import type { ExtrasModule } from "../../../../flown/frontend/extras";
+import { logError } from "../../../../flown/frontend/utils/logger";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => ({
+vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logError: vi.fn(),
   logDebug: vi.fn(),
 }));
 
 const loadStylesheet = vi.hoisted(() => vi.fn());
-vi.mock("../../../../kml_heatmap/frontend/services/stylesheet", () => ({
+vi.mock("../../../../flown/frontend/services/stylesheet", () => ({
   loadStylesheet,
 }));
 
@@ -454,7 +454,7 @@ describe("a bundle of another build", () => {
     "is told by the build %s exports",
     (entry) => {
       const source = readFileSync(
-        resolve(__dirname, "../../../../kml_heatmap/frontend", entry),
+        resolve(__dirname, "../../../../flown/frontend", entry),
         "utf8",
       );
       expect(source).toMatch(

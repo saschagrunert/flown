@@ -3,7 +3,7 @@
  * cross-section, the hotspot tour and the cloud's readout all say
  */
 import { describe, it, expect } from "vitest";
-import { formatDuration } from "../../../../kml_heatmap/frontend/utils/duration";
+import { formatDuration } from "../../../../flown/frontend/utils/duration";
 
 describe("formatDuration", () => {
   it("says seconds under a minute", () => {

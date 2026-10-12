@@ -3,11 +3,11 @@ import {
   exposedHeat,
   heatColumns,
   heatExposure,
-} from "../../../../kml_heatmap/frontend/calculations/heatExposure";
+} from "../../../../flown/frontend/calculations/heatExposure";
 import {
   HEAT_KNEE,
   heatTone,
-} from "../../../../kml_heatmap/frontend/calculations/heatTone";
+} from "../../../../flown/frontend/calculations/heatTone";
 
 /** Points and the heat of each, as heatmapPoints hands them over */
 interface Points {

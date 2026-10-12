@@ -5,11 +5,11 @@
  * destinations the map flies to afterwards.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { resetSiteData } from "../../../../kml_heatmap/frontend/state/siteData";
+import { resetSiteData } from "../../../../flown/frontend/state/siteData";
 import {
   INTRO_SEEN_KEY,
   WrappedManager,
-} from "../../../../kml_heatmap/frontend/ui/wrappedManager";
+} from "../../../../flown/frontend/ui/wrappedManager";
 import {
   FIT_PADDING,
   INTRO_FLY_MS,
@@ -18,10 +18,10 @@ import {
   INTRO_WAIT_MS,
   overviewBounds,
   prepareWrappedIntro,
-} from "../../../../kml_heatmap/frontend/ui/wrappedIntro";
-import * as cameraScript from "../../../../kml_heatmap/frontend/ui/cameraScript";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
+} from "../../../../flown/frontend/ui/wrappedIntro";
+import * as cameraScript from "../../../../flown/frontend/ui/cameraScript";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
+import * as motion from "../../../../flown/frontend/utils/motion";
 import { asMapApp, type MockApp } from "../../testHelpers";
 import {
   createWrappedMockApp,
@@ -61,7 +61,7 @@ const loader = vi.hoisted(() => ({
   loadFeatures: vi.fn(() => Promise.resolve(features as unknown)),
 }));
 vi.mock(
-  "../../../../kml_heatmap/frontend/services/featureLoader",
+  "../../../../flown/frontend/services/featureLoader",
   async (original) => ({
     ...(await original<object>()),
     loadFeatures: loader.loadFeatures,

@@ -7,8 +7,8 @@ import { describe, it, expect } from "vitest";
 import {
   agreement,
   markStretches,
-} from "../../../../kml_heatmap/frontend/calculations/cloudCells";
-import { heatTone } from "../../../../kml_heatmap/frontend/calculations/heatTone";
+} from "../../../../flown/frontend/calculations/cloudCells";
+import { heatTone } from "../../../../flown/frontend/calculations/heatTone";
 
 /** The floats of a point, and which are the heat and the marks */
 const FLOATS = 7;

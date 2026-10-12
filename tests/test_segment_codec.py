@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from kml_heatmap.segment_codec import (
+from flown.segment_codec import (
     COORDINATE_SCALE,
     FORMAT_VERSION,
     GROUND_STEP,
@@ -20,7 +20,7 @@ from kml_heatmap.segment_codec import (
     encode_rows,
     encode_start,
 )
-from kml_heatmap.types import COORDINATE_DECIMALS
+from flown.types import COORDINATE_DECIMALS
 
 # The exporter's own rounding, which is what the format relies on
 coordinates = st.floats(-180, 180).map(lambda v: round(v, COORDINATE_DECIMALS))

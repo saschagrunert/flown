@@ -3,7 +3,7 @@
  *
  * Validates `docs/data/metadata.json`, `docs/data/airports.json` and each
  * `docs/data/<year>/data.json` against hand-written runtime guards derived from
- * `kml_heatmap/frontend/types.ts` (decisions D1/D2/D3). A second test runs the
+ * `flown/frontend/types.ts` (decisions D1/D2/D3). A second test runs the
  * same guards against an inline sample so the guards are verified on their own.
  *
  * The guards require every field the exporter always writes and only leave
@@ -22,7 +22,7 @@ import { cwd, env } from "node:process";
 import {
   DATA_FORMAT_VERSION,
   expandYearData,
-} from "../../../kml_heatmap/frontend/services/yearDecode";
+} from "../../../flown/frontend/services/yearDecode";
 import type {
   Airport,
   Metadata,
@@ -30,7 +30,7 @@ import type {
   RawPathSegments,
   RawColumns,
   RawYearData,
-} from "../../../kml_heatmap/frontend/types";
+} from "../../../flown/frontend/types";
 import { checkSite } from "../../e2e/site-check";
 
 // vitest runs with the repository root as working directory
@@ -112,7 +112,7 @@ function isCount(value: unknown): value is number {
 }
 
 /**
- * The landings of a flight (kml_heatmap/landings.py): all four keys or
+ * The landings of a flight (flown/landings.py): all four keys or
  * none, and one touchdown for every full stop and touch-and-go
  */
 function hasLandings(value: Json): boolean {
@@ -243,7 +243,7 @@ function isRawYearData(value: unknown): value is RawYearData {
 
 /**
  * The ICAO code of an airport's name, which the exporter writes where the
- * name holds one (airport_icao_code in kml_heatmap/airport_lookup.py): four
+ * name holds one (airport_icao_code in flown/airport_lookup.py): four
  * letters of a region that has airport codes, standing as a word of the name
  */
 function isAirportCode(code: unknown, name: string): boolean {
@@ -318,14 +318,14 @@ function isMetadata(value: unknown): value is Metadata {
 // ---- inline sample (new format) ----
 
 /**
- * Column scales of the wire format, mirroring kml_heatmap/segment_codec.py
+ * Column scales of the wire format, mirroring flown/segment_codec.py
  * (the altitude column counts steps of 20 ft). The sample is written in
  * the units a reader thinks in and encoded here, so the guards and the
  * loader are checked against an encoder that is not the one under test.
  */
 const SCALES = [1e5, 1e5, 1 / 20, 1, 10];
 
-/** Tens of feet, GROUND_STEP of kml_heatmap/segment_codec.py */
+/** Tens of feet, GROUND_STEP of flown/segment_codec.py */
 const GROUND_SCALE = 1 / 10;
 
 function encodePath(
@@ -705,7 +705,7 @@ describe("export contract (docs/data)", () => {
   it.runIf(env["CI"])("the built site is present in CI", () => {
     expect(
       available,
-      `${DATA_DIR} is missing; run python -m kml_heatmap data --output-dir docs`,
+      `${DATA_DIR} is missing; run python -m flown data --output-dir docs`,
     ).toBe(true);
   });
 
@@ -805,7 +805,7 @@ describe("export contract (docs/data)", () => {
         );
 
         // The decoded values have to be the ones the exporter put in. The
-        // row columns are scaled by kml_heatmap/segment_codec.py and
+        // row columns are scaled by flown/segment_codec.py and
         // unscaled here, so a disagreement between the two sides would show
         // as physically impossible numbers rather than as a parse error.
         // metadata.json carries the groundspeed range, which the Python side

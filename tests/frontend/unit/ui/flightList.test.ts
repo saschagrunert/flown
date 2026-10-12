@@ -9,13 +9,13 @@ import {
   nextSort,
   searchRows,
   sortRows,
-} from "../../../../kml_heatmap/frontend/ui/flightList";
-import type { PathInfo } from "../../../../kml_heatmap/frontend/types";
-import type { PickList } from "../../../../kml_heatmap/frontend/ui/pathSelection";
+} from "../../../../flown/frontend/ui/flightList";
+import type { PathInfo } from "../../../../flown/frontend/types";
+import type { PickList } from "../../../../flown/frontend/ui/pathSelection";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
+} from "../../../../flown/frontend/state/siteData";
 import {
   asMapApp,
   createDataset,

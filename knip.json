@@ -12,17 +12,17 @@
   // still fails. The entry points' own exports are checked too
   // (`includeEntryExports`): each is what a lazy bundle hands the app.
   "entry": [
-    "kml_heatmap/frontend/mapApp.ts!",
-    "kml_heatmap/frontend/features.ts!",
-    "kml_heatmap/frontend/wrapped.ts!",
-    "kml_heatmap/frontend/search.ts!",
-    "kml_heatmap/frontend/extras.ts!",
+    "flown/frontend/mapApp.ts!",
+    "flown/frontend/features.ts!",
+    "flown/frontend/wrapped.ts!",
+    "flown/frontend/search.ts!",
+    "flown/frontend/extras.ts!",
     "scripts/*.js",
     "tests/**/*.test.ts",
     "tests/e2e/*.spec.ts"
   ],
   "project": [
-    "kml_heatmap/frontend/**/*.ts!",
+    "flown/frontend/**/*.ts!",
     "tests/**/*.ts",
     "*.js",
     "scripts/*.js"

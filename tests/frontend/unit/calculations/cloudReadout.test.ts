@@ -18,19 +18,19 @@ import {
   type CloudReadout,
   type ReadoutData,
   type SightLine,
-} from "../../../../kml_heatmap/frontend/calculations/cloudReadout";
+} from "../../../../flown/frontend/calculations/cloudReadout";
 import {
   DEGREES_TO_RADIANS,
   EARTH_CIRCUMFERENCE_M,
   planarMetres,
   type Coordinate,
-} from "../../../../kml_heatmap/frontend/utils/geometry";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/utils/geometry";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   CRUISE_SPEED_MS,
   heatWeight,
   type SegmentWeight,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
+} from "../../../../flown/frontend/calculations/heatLines";
 
 /** Metres of a degree of latitude, as the module counts them */
 const DEGREE_M = EARTH_CIRCUMFERENCE_M / 360;

@@ -12,16 +12,13 @@ import {
   HOTSPOT_APART_M,
   MAX_HOTSPOTS,
   type Hotspot,
-} from "../../../../kml_heatmap/frontend/calculations/hotspots";
-import type {
-  Airport,
-  PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/hotspots";
+import type { Airport, PathSegment } from "../../../../flown/frontend/types";
 import {
   heatWeight,
   type SegmentWeight,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import { planarMetres } from "../../../../kml_heatmap/frontend/utils/geometry";
+} from "../../../../flown/frontend/calculations/heatLines";
+import { planarMetres } from "../../../../flown/frontend/utils/geometry";
 import { segmentOf } from "../../testHelpers";
 
 /** Degrees of latitude in a kilometre */

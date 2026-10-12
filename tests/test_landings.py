@@ -1,4 +1,4 @@
-"""Tests for the landing detector (kml_heatmap.landings).
+"""Tests for the landing detector (flown.landings).
 
 Most flights here are drawn leg by leg around a made-up field, so each rule
 of the detector is tried on its own; the sample flights of data/ and the
@@ -13,19 +13,19 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-import kml_heatmap.airport_lookup as lookup_module
-import kml_heatmap.landings as landings_module
-from kml_heatmap.airport_lookup import (
+import flown.airport_lookup as lookup_module
+import flown.landings as landings_module
+from flown.airport_lookup import (
     REQUIRE_DATABASE_ENV,
     AirportRecord,
     RunwayEnd,
     load_runway_database,
 )
-from kml_heatmap.constants import FEET_TO_METERS
-from kml_heatmap.data_exporter import export_all_data
-from kml_heatmap.exceptions import AirportDatabaseError
-from kml_heatmap.geometry import planar_km
-from kml_heatmap.landings import (
+from flown.constants import FEET_TO_METERS
+from flown.data_exporter import export_all_data
+from flown.exceptions import AirportDatabaseError
+from flown.geometry import planar_km
+from flown.landings import (
     FIELD_RADIUS_KM,
     Field,
     FieldIndex,
@@ -34,7 +34,7 @@ from kml_heatmap.landings import (
     detect_path_landings,
     field_index,
 )
-from kml_heatmap.types import PathMetadata, TrackPoint
+from flown.types import PathMetadata, TrackPoint
 from tests.conftest import parse_data, parse_kml_coordinates
 
 DATA_DIR = Path(__file__).parent.parent / "data"

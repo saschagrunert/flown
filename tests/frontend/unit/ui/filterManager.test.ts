@@ -3,8 +3,8 @@ import {
   FilterManager,
   YEAR_PICK_DELAY_MS,
   fitSelection,
-} from "../../../../kml_heatmap/frontend/ui/filterManager";
-import type { KMLDataset } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/ui/filterManager";
+import type { KMLDataset } from "../../../../flown/frontend/types";
 import {
   createMockApp,
   createDataset,
@@ -18,9 +18,9 @@ const toastMock = vi.hoisted(() => ({
   announceStatus: vi.fn(),
   dismissToast: vi.fn(),
 }));
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => toastMock);
+vi.mock("../../../../flown/frontend/utils/toast", () => toastMock);
 const loggerMock = vi.hoisted(() => ({ logError: vi.fn(), logDebug: vi.fn() }));
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => loggerMock);
+vi.mock("../../../../flown/frontend/utils/logger", () => loggerMock);
 
 describe("FilterManager", () => {
   let filterManager: FilterManager;

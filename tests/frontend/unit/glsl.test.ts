@@ -17,7 +17,7 @@ import {
   tightenShaders,
 } from "../../../scripts/build-helpers.js";
 
-const UI_DIR = join(__dirname, "../../../kml_heatmap/frontend/ui");
+const UI_DIR = join(__dirname, "../../../flown/frontend/ui");
 /** The layers, and the shaders a layer keeps in a module of their own */
 const LAYERS = readdirSync(UI_DIR).filter((name) =>
   /(?:Layer|Shaders)\.ts$/.test(name),
@@ -234,7 +234,7 @@ describe("tightenGlsl", () => {
 describe("assertExpectedOutputs", () => {
   const outputs = (...names: string[]) => ({
     outputs: Object.fromEntries(
-      names.map((name) => [`kml_heatmap/static/${name}`, {}]),
+      names.map((name) => [`flown/static/${name}`, {}]),
     ),
   });
 

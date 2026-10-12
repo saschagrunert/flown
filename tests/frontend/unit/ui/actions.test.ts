@@ -7,12 +7,12 @@ import {
   bindActions,
   runAction,
   type ActionName,
-} from "../../../../kml_heatmap/frontend/ui/actions";
-import * as toast from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/ui/actions";
+import * as toast from "../../../../flown/frontend/utils/toast";
 import { createMockApp, asMapApp, type MockApp } from "../../testHelpers";
 
 const loggerMock = vi.hoisted(() => ({ logError: vi.fn(), logDebug: vi.fn() }));
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => loggerMock);
+vi.mock("../../../../flown/frontend/utils/logger", () => loggerMock);
 
 const BUTTON_ACTIONS = [
   "toggleHeatmap",

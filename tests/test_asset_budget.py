@@ -4,7 +4,7 @@ The JavaScript bundles have their budgets in build.js, which every production
 build enforces. The stylesheets are minified by the Python side instead (see
 ``site_assets._copy_and_minify_css``), and failing a user's site generation
 over a project policy would be the wrong place for it, so their budgets are a
-test: it fails in CI on a regression and leaves ``kml-heatmap`` itself alone.
+test: it fails in CI on a regression and leaves ``flown`` itself alone.
 
 The measurement goes through the renderer rather than minifying the sources
 here, so that the budgets keep covering the files the site actually serves
@@ -20,7 +20,7 @@ import gzip
 
 import pytest
 
-from kml_heatmap.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
+from flown.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
 
 # Bytes of each minified stylesheet as the renderer writes it into a site.
 #

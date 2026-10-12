@@ -9,28 +9,28 @@ export CARTO_API_KEY
 
 # The address the site is published at; the link preview images are only
 # drawn with it (see --site-url)
-KML_HEATMAP_SITE_URL ?=
-export KML_HEATMAP_SITE_URL
+FLOWN_SITE_URL ?=
+export FLOWN_SITE_URL
 
 # The commit the site is stamped with and the remote it is in; the image
 # carries no .git to ask. Evaluated once, not for every recipe line.
-ifndef KML_HEATMAP_COMMIT
-KML_HEATMAP_COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
-KML_HEATMAP_REPOSITORY := $(shell git remote get-url origin 2>/dev/null)
+ifndef FLOWN_COMMIT
+FLOWN_COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
+FLOWN_REPOSITORY := $(shell git remote get-url origin 2>/dev/null)
 endif
-export KML_HEATMAP_COMMIT KML_HEATMAP_REPOSITORY
+export FLOWN_COMMIT FLOWN_REPOSITORY
 
 # Container runtime: podman is preferred, docker is the fallback.
 CONTAINER_RUNTIME ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 INPUT_DIR ?= data
 OUTPUT_DIR ?= docs
-CACHE_DIR ?= $(or $(KML_HEATMAP_CACHE_DIR),$(HOME)/.cache/kml-heatmap)
+CACHE_DIR ?= $(or $(FLOWN_CACHE_DIR),$(HOME)/.cache/flown)
 # Absolute for the bind mount: a relative one names a volume of the runtime
 # instead. Not with abspath, which splits a path with spaces.
 CACHE_MOUNT = $(if $(filter /%,$(CACHE_DIR)),$(CACHE_DIR),$(CURDIR)/$(CACHE_DIR))
 HOST_BIND ?= 127.0.0.1
 PORT ?= 8000
-IMAGE_NAME := kml-heatmap
+IMAGE_NAME := flown
 
 # INPUT_DIR and OUTPUT_DIR are mounted below /data using their base names, so
 # the defaults map to /data/data and /data/docs inside the container.
@@ -71,7 +71,7 @@ help: ## Show available targets and variables
 	@echo "  HOST_BIND=$(HOST_BIND)"
 	@echo "  PORT=$(PORT)"
 	@echo "  CARTO_API_KEY (value is not printed)"
-	@echo "  KML_HEATMAP_SITE_URL=$(KML_HEATMAP_SITE_URL)"
+	@echo "  FLOWN_SITE_URL=$(FLOWN_SITE_URL)"
 
 require-runtime:
 	@test -n "$(CONTAINER_RUNTIME)" || { \
@@ -95,10 +95,10 @@ build: require-runtime ## Build the image and generate OUTPUT_DIR from INPUT_DIR
 	$(CONTAINER_RUNTIME) build -t $(IMAGE_NAME) .
 	mkdir -p "$(CACHE_MOUNT)" "$(OUTPUT_DIR)"
 	$(CONTAINER_RUNTIME) run --rm $(RUN_AS_USER) -e HOME=/tmp \
-	  -e CARTO_API_KEY -e KML_HEATMAP_SITE_URL \
-	  -e KML_HEATMAP_COMMIT -e KML_HEATMAP_REPOSITORY -e SOURCE_DATE_EPOCH \
-	  -e KML_HEATMAP_STABLE_MTIMES -e KML_HEATMAP_REQUIRE_AIRPORT_DB \
-	  -e KML_HEATMAP_REQUIRE_TERRAIN \
+	  -e CARTO_API_KEY -e FLOWN_SITE_URL \
+	  -e FLOWN_COMMIT -e FLOWN_REPOSITORY -e SOURCE_DATE_EPOCH \
+	  -e FLOWN_STABLE_MTIMES -e FLOWN_REQUIRE_AIRPORT_DB \
+	  -e FLOWN_REQUIRE_TERRAIN \
 	  -v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):ro" \
 	  -v "$(abspath $(OUTPUT_DIR)):$(OUTPUT_MOUNT)" \
 	  -v "$(CACHE_MOUNT):/cache" \
@@ -144,9 +144,9 @@ obfuscate: ## Rewrite the KML files in INPUT_DIR in place so they carry no real 
 	  echo "error: input directory '$(INPUT_DIR)' not found; run 'make $@ INPUT_DIR=path'"; \
 	  exit 1; }
 	@if $(HOST_PYTHON_OK); then \
-	  set -x; python -m kml_heatmap.obfuscate "$(INPUT_DIR)"; \
+	  set -x; python -m flown.obfuscate "$(INPUT_DIR)"; \
 	else \
-	  $(call in_image,python -m kml_heatmap.obfuscate "$(INPUT_MOUNT)",-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT)"); \
+	  $(call in_image,python -m flown.obfuscate "$(INPUT_MOUNT)",-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT)"); \
 	fi
 
 # The flights of the visual snapshots are committed copies of real ones, so
@@ -158,11 +158,11 @@ check-obfuscation: ## Check that the KML files in INPUT_DIR and the fixture flig
 	  exit 1; }
 	@if $(HOST_PYTHON_OK); then \
 	  set -x; \
-	  python -m kml_heatmap.obfuscate "$(INPUT_DIR)" --check && \
-	  python -m kml_heatmap.obfuscate tests/fixtures/visual --check; \
+	  python -m flown.obfuscate "$(INPUT_DIR)" --check && \
+	  python -m flown.obfuscate tests/fixtures/visual --check; \
 	else \
-	  $(call in_image,python -m kml_heatmap.obfuscate "$(INPUT_MOUNT)" --check && \
-	    python -m kml_heatmap.obfuscate "$(VISUAL_MOUNT)" --check,-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):ro" \
+	  $(call in_image,python -m flown.obfuscate "$(INPUT_MOUNT)" --check && \
+	    python -m flown.obfuscate "$(VISUAL_MOUNT)" --check,-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):ro" \
 	    -v "$(CURDIR)/tests/fixtures/visual:$(VISUAL_MOUNT):ro"); \
 	fi
 
@@ -176,7 +176,7 @@ hooks: ## Install the pre-push hook that refuses to push KML files with real dat
 	  if [ -e "$$hook" ] || [ -L "$$hook" ]; then \
 	    case "$$(readlink "$$hook")" in \
 	      */scripts/pre_push.py) ;; \
-	      *) grep -qs "^# kml-heatmap pre-push hook" "$$hook" || { \
+	      *) grep -qs "^# flown pre-push hook" "$$hook" || { \
 	        echo "error: $$hook exists already; remove it or call $$wrapper from it"; \
 	        exit 1; } ;; \
 	    esac; fi && \
@@ -197,8 +197,8 @@ lint: ## Run the linters, formatters (check only), type checkers and typos of th
 	npm run lint:unused
 	npm run format:check
 	zizmor --min-severity medium .github
-	python -m kml_heatmap.obfuscate data --check
-	python -m kml_heatmap.obfuscate tests/fixtures/visual --check
+	python -m flown.obfuscate data --check
+	python -m flown.obfuscate tests/fixtures/visual --check
 	typos
 
 format: ## Run formatters
@@ -211,7 +211,7 @@ format: ## Run formatters
 # one fails them). Vitest runs in an order of its own each time, as in CI.
 test: ## Build the frontend bundles and the site in docs/, then run the JavaScript and Python test suites with coverage
 	npm run build
-	python -m kml_heatmap data --output-dir docs
+	python -m flown data --output-dir docs
 	npm run test:coverage -- --sequence.shuffle
 	pytest -n auto --cov --cov-branch --cov-report=xml:coverage/coverage.xml --cov-report=term
 
@@ -257,14 +257,14 @@ lock: ## Regenerate the lock files from pyproject.toml and requirements-tools.in
 	    --output-file=requirements-tools.lock requirements-tools.in; \
 	  status=$$?; rm -rf "$$tmp"; exit $$status
 
-clean: ## Remove the container image (when a runtime is available) and local build artifacts, including the frontend build output in kml_heatmap/static/ and the fixture site of the visual snapshots
+clean: ## Remove the container image (when a runtime is available) and local build artifacts, including the frontend build output in flown/static/ and the fixture site of the visual snapshots
 	-@test -z "$(CONTAINER_RUNTIME)" || $(CONTAINER_RUNTIME) rmi $(IMAGE_NAME) 2>/dev/null
 	rm -rf htmlcov coverage coverage.xml .coverage .coverage.* test-results playwright-report \
 	  visual-site e2e-sites bundle-meta.json \
 	  dist build *.egg-info .mypy_cache .ruff_cache .pytest_cache .hypothesis \
 	  .playwright-mcp \
-	  kml_heatmap/static/*.bundle.js kml_heatmap/static/*.map \
-	  kml_heatmap/static/vendor kml_heatmap/static/flags
+	  flown/static/*.bundle.js flown/static/*.map \
+	  flown/static/vendor flown/static/flags
 	find . \( -path ./node_modules -o -path ./.git -o -path ./.claude \
 	  -o -path ./.venv -o -path ./venv \) -prune -o \
 	  -type d -name __pycache__ -prune -exec rm -rf {} +

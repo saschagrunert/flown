@@ -12,8 +12,8 @@ import {
   CROSS_SECTION_SOURCE,
   removeLayers,
   tooShort,
-} from "../../../../kml_heatmap/frontend/ui/crossSectionCorridor";
-import { MAP_LAYERS } from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/ui/crossSectionCorridor";
+import { MAP_LAYERS } from "../../../../flown/frontend/utils/constants";
 
 interface AddedLayer {
   id: string;

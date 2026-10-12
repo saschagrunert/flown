@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { siteData } from "../../../../kml_heatmap/frontend/state/siteData";
-import { StatsManager } from "../../../../kml_heatmap/frontend/ui/statsManager";
-import * as panelStats from "../../../../kml_heatmap/frontend/calculations/panelStats";
-import type { FilteredStatistics } from "../../../../kml_heatmap/frontend/types";
+import { siteData } from "../../../../flown/frontend/state/siteData";
+import { StatsManager } from "../../../../flown/frontend/ui/statsManager";
+import * as panelStats from "../../../../flown/frontend/calculations/panelStats";
+import type { FilteredStatistics } from "../../../../flown/frontend/types";
 import {
   createMockApp,
   createDataset,
@@ -564,7 +564,7 @@ describe("StatsManager", () => {
       mockApp.config.builtOn = "2026-09-21";
       mockApp.config.commit = "5b3ab40";
       mockApp.config.commitUrl =
-        "https://github.com/saschagrunert/kml-heatmap/commit/5b3ab4048d1c";
+        "https://github.com/saschagrunert/flown/commit/5b3ab4048d1c";
       statsManager.updateStatsPanel(mockStats, false);
 
       const build = statsPanel.querySelector(".kh-stats-build")!;
@@ -574,7 +574,7 @@ describe("StatsManager", () => {
       );
       const link = build.querySelector("a")!;
       expect(link.getAttribute("href")).toBe(
-        "https://github.com/saschagrunert/kml-heatmap/commit/5b3ab4048d1c",
+        "https://github.com/saschagrunert/flown/commit/5b3ab4048d1c",
       );
       expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     });

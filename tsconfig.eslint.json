@@ -1,9 +1,5 @@
 {
   "extends": "./tsconfig.test.json",
-  "include": [
-    "kml_heatmap/frontend/**/*",
-    "tests/**/*",
-    "playwright.config.ts"
-  ],
-  "exclude": ["node_modules", "kml_heatmap/static"]
+  "include": ["flown/frontend/**/*", "tests/**/*", "playwright.config.ts"],
+  "exclude": ["node_modules", "flown/static"]
 }

@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from kml_heatmap.logger import logger, set_debug_mode, set_log_level, setup_logger
+from flown.logger import logger, set_debug_mode, set_log_level, setup_logger
 
 
 @pytest.fixture(autouse=True)
@@ -86,7 +86,7 @@ class TestOutputStreams:
 class TestGlobalLogger:
     def test_global_logger_name(self):
         assert isinstance(logger, logging.Logger)
-        assert logger.name == "kml_heatmap"
+        assert logger.name == "flown"
 
 
 class TestSetDebugMode:

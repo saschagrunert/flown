@@ -12,7 +12,7 @@ import { resolve } from "node:path";
  */
 function sheet(name: string): string {
   return readFileSync(
-    resolve(__dirname, "../../../kml_heatmap/static", name),
+    resolve(__dirname, "../../../flown/static", name),
     "utf8",
   );
 }

@@ -1,4 +1,4 @@
-# KML Heatmap Generator runtime image
+# Flown runtime image
 #
 # Base images carry both the tag and the digest of the multi-arch index, so
 # Dependabot bumps the two together and the version stays readable in the FROM
@@ -38,18 +38,18 @@ RUN node -e ' \
 # reuses the bundles of the last build.
 COPY build.js tsconfig.json ./
 COPY scripts/*.js ./scripts/
-COPY kml_heatmap/frontend/ ./kml_heatmap/frontend/
-COPY kml_heatmap/static/styles.css kml_heatmap/static/features.css \
-    kml_heatmap/static/wrapped.css kml_heatmap/static/search.css \
-    ./kml_heatmap/static/
+COPY flown/frontend/ ./flown/frontend/
+COPY flown/static/styles.css flown/static/features.css \
+    flown/static/wrapped.css flown/static/search.css \
+    ./flown/static/
 RUN npm run build
 
 # Stage 2: the Python package without the TypeScript sources. A stage of its
 # own so the sources never become a layer of the image; they are dropped here
 # rather than in .dockerignore, which would hide them from the build as well.
 FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS package
-COPY kml_heatmap/ /package/kml_heatmap/
-RUN rm -rf /package/kml_heatmap/frontend
+COPY flown/ /package/flown/
+RUN rm -rf /package/flown/frontend
 
 # Stage 3: Python runtime
 FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2
@@ -75,13 +75,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 # The Python package with its templates and static assets, then the built
 # bundles (and their source maps), the vendored files and the flags over its
 # static directory
-COPY --from=package /package/kml_heatmap/ ./kml_heatmap/
-COPY --from=js-builder /build/kml_heatmap/static/ ./kml_heatmap/static/
+COPY --from=package /package/flown/ ./flown/
+COPY --from=js-builder /build/flown/static/ ./flown/static/
 COPY serve.py ./
 # The bytecode, compiled once here: the unprivileged user cannot write it
 # next to the sources, and PYTHONDONTWRITEBYTECODE keeps any run from trying,
 # so every run would compile every module again otherwise
-RUN python -m compileall -q /app/kml_heatmap /app/serve.py
+RUN python -m compileall -q /app/flown /app/serve.py
 
 # Run as an unprivileged user; /data is the work directory for input and
 # output mounts, /cache holds the OurAirports database, the elevation tiles
@@ -92,11 +92,11 @@ RUN useradd --system --uid 10001 --user-group --no-create-home \
     && chown app:app /data /cache
 
 ENV PYTHONPATH=/app \
-    KML_HEATMAP_CACHE_DIR=/cache
+    FLOWN_CACHE_DIR=/cache
 
 USER app
 WORKDIR /data
 
-ENTRYPOINT ["python", "-m", "kml_heatmap"]
+ENTRYPOINT ["python", "-m", "flown"]
 # Default command: show the help text
 CMD ["--help"]

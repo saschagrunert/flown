@@ -3,13 +3,13 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 /** A fresh module per test: the media query is created once per module */
 async function loadMotion(
   matchMedia: unknown,
-): Promise<typeof import("../../../../kml_heatmap/frontend/utils/motion")> {
+): Promise<typeof import("../../../../flown/frontend/utils/motion")> {
   Object.defineProperty(window, "matchMedia", {
     value: matchMedia,
     configurable: true,
   });
   vi.resetModules();
-  return import("../../../../kml_heatmap/frontend/utils/motion");
+  return import("../../../../flown/frontend/utils/motion");
 }
 
 describe("prefersReducedMotion", () => {

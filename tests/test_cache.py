@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-import kml_heatmap.cache as cache_module
-from kml_heatmap.cache import (
+import flown.cache as cache_module
+from flown.cache import (
     CACHE_DIR,
     atomic_bytes_write,
     atomic_data_write,
@@ -35,7 +35,7 @@ def umask_022():
 
 class TestCacheDir:
     def test_cache_dir_follows_environment_setting(self):
-        assert Path(os.environ["KML_HEATMAP_CACHE_DIR"]) == CACHE_DIR
+        assert Path(os.environ["FLOWN_CACHE_DIR"]) == CACHE_DIR
 
     def test_cache_dir_is_absolute(self):
         assert CACHE_DIR.is_absolute()
@@ -45,11 +45,9 @@ class TestCacheDir:
         assert CACHE_DIR.is_dir()
 
     def test_default_cache_dir_below_home(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("KML_HEATMAP_CACHE_DIR")
+        monkeypatch.delenv("FLOWN_CACHE_DIR")
         with patch.object(Path, "home", return_value=tmp_path):
-            assert cache_module._default_cache_dir() == (
-                tmp_path / ".cache" / "kml-heatmap"
-            )
+            assert cache_module._default_cache_dir() == (tmp_path / ".cache" / "flown")
 
     @pytest.fixture
     def no_home(self, monkeypatch, tmp_path):
@@ -61,22 +59,22 @@ class TestCacheDir:
         monkeypatch.setattr(Path, "home", home)
         monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
         # A refused directory hands the fresh one on through the environment
-        monkeypatch.setenv("KML_HEATMAP_CACHE_DIR", "unchanged")
+        monkeypatch.setenv("FLOWN_CACHE_DIR", "unchanged")
         return tmp_path
 
     def test_default_cache_dir_without_home_uses_tempdir(self, no_home):
         result = cache_module._default_cache_dir()
-        assert result == no_home / f"kml-heatmap-cache-{os.getuid()}"
+        assert result == no_home / f"flown-cache-{os.getuid()}"
         assert result.is_dir()
         assert result.stat().st_mode & 0o777 == 0o700
         # Used again by the next run, and by the workers of this one
         assert cache_module._default_cache_dir() == result
-        assert os.environ["KML_HEATMAP_CACHE_DIR"] == "unchanged"
+        assert os.environ["FLOWN_CACHE_DIR"] == "unchanged"
 
     @pytest.mark.parametrize("mode", [0o770, 0o777, 0o722])
     def test_a_temp_cache_others_can_write_to_is_refused(self, no_home, mode):
         """Another user could put parse results of their own into it."""
-        shared = no_home / f"kml-heatmap-cache-{os.getuid()}"
+        shared = no_home / f"flown-cache-{os.getuid()}"
         shared.mkdir()
         shared.chmod(mode)
 
@@ -85,12 +83,12 @@ class TestCacheDir:
         assert result != shared
         assert result.parent == no_home
         assert result.stat().st_mode & 0o777 == 0o700
-        assert os.environ["KML_HEATMAP_CACHE_DIR"] == str(result)
+        assert os.environ["FLOWN_CACHE_DIR"] == str(result)
 
     @pytest.mark.parametrize("mode", [0o755, 0o750, 0o705])
     def test_a_temp_cache_others_can_read_is_made_private(self, no_home, mode):
         """The parse cache holds the raw flights, real dates among them."""
-        shared = no_home / f"kml-heatmap-cache-{os.getuid()}"
+        shared = no_home / f"flown-cache-{os.getuid()}"
         shared.mkdir()
         shared.chmod(mode)
 
@@ -98,7 +96,7 @@ class TestCacheDir:
 
         assert result == shared
         assert result.stat().st_mode & 0o777 == 0o700
-        assert os.environ["KML_HEATMAP_CACHE_DIR"] == "unchanged"
+        assert os.environ["FLOWN_CACHE_DIR"] == "unchanged"
 
     def test_the_cache_of_a_run_alone_goes_as_it_exits(self, no_home, monkeypatch):
         """Not a copy of the raw flights left in the temp directory per run."""
@@ -106,7 +104,7 @@ class TestCacheDir:
         monkeypatch.setattr(
             atexit, "register", lambda *args, **kwargs: registered.append(args)
         )
-        shared = no_home / f"kml-heatmap-cache-{os.getuid()}"
+        shared = no_home / f"flown-cache-{os.getuid()}"
         shared.mkdir()
         shared.chmod(0o777)
 
@@ -121,19 +119,19 @@ class TestCacheDir:
     def test_a_temp_cache_of_another_user_is_refused(self, no_home, monkeypatch):
         monkeypatch.setattr(os, "getuid", lambda: 4242)
         result = cache_module._default_cache_dir()
-        assert result.name != "kml-heatmap-cache-4242"
-        assert (no_home / "kml-heatmap-cache-4242").is_dir()
+        assert result.name != "flown-cache-4242"
+        assert (no_home / "flown-cache-4242").is_dir()
 
     def test_a_symlinked_temp_cache_is_refused(self, no_home, tmp_path_factory):
         target = tmp_path_factory.mktemp("elsewhere")
         target.chmod(0o700)
-        (no_home / f"kml-heatmap-cache-{os.getuid()}").symlink_to(target)
+        (no_home / f"flown-cache-{os.getuid()}").symlink_to(target)
         result = cache_module._default_cache_dir()
         assert result.parent == no_home
         assert not result.is_symlink()
 
     def test_module_reads_environment_at_import(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("KML_HEATMAP_CACHE_DIR", str(tmp_path / "elsewhere"))
+        monkeypatch.setenv("FLOWN_CACHE_DIR", str(tmp_path / "elsewhere"))
         try:
             reloaded = importlib.reload(cache_module)
             assert tmp_path / "elsewhere" == reloaded.CACHE_DIR
@@ -167,7 +165,7 @@ class TestMakeBuildCache:
 
     def test_a_relative_cache_directory_is_mounted_from_where_make_runs(self, tmp_path):
         """Not a volume of the runtime named after it, which a bind mount is."""
-        commands = self._build_commands(tmp_path, "KML_HEATMAP_CACHE_DIR=cache")
+        commands = self._build_commands(tmp_path, "FLOWN_CACHE_DIR=cache")
         assert f'-v "{tmp_path}/cache:/cache"' in commands
         assert f'mkdir -p "{tmp_path}/cache"' in commands
 
@@ -195,7 +193,7 @@ class TestAtomicWrite:
         of an interrupted obfuscation still matches the patterns it is found
         and ignored by.
         """
-        from kml_heatmap.obfuscate import TEMP_FILE_PATTERN
+        from flown.obfuscate import TEMP_FILE_PATTERN
 
         path = tmp_path / name
         path.write_text("old")
@@ -296,7 +294,7 @@ class TestAtomicWrite:
             synced.append(os.fstat(fd))
             real_fsync(fd)
 
-        with patch("kml_heatmap.cache.os.fsync", side_effect=fsync):
+        with patch("flown.cache.os.fsync", side_effect=fsync):
             atomic_write(path, lambda tmp: tmp.write("x"), durable=True)
         assert path.read_text() == "x"
         # The data before the rename, the directory entry after it
@@ -317,12 +315,12 @@ class TestAtomicWrite:
                 raise OSError("not supported")
             real_fsync(fd)
 
-        with patch("kml_heatmap.cache.os.fsync", side_effect=fsync):
+        with patch("flown.cache.os.fsync", side_effect=fsync):
             atomic_write(path, lambda tmp: tmp.write("x"), durable=True)
         assert path.read_text() == "x"
 
     def test_directory_fsync_tolerates_errors(self, tmp_path):
-        with patch("kml_heatmap.cache.os.fsync") as fsync:
+        with patch("flown.cache.os.fsync") as fsync:
             cache_module._fsync_directory(tmp_path / "missing")
         fsync.assert_not_called()
         closed = []
@@ -333,15 +331,15 @@ class TestAtomicWrite:
             real_close(fd)
 
         with (
-            patch("kml_heatmap.cache.os.fsync", side_effect=OSError("nope")),
-            patch("kml_heatmap.cache.os.close", side_effect=recording_close),
+            patch("flown.cache.os.fsync", side_effect=OSError("nope")),
+            patch("flown.cache.os.close", side_effect=recording_close),
         ):
             cache_module._fsync_directory(tmp_path)
         # The directory is closed again although the flush failed
         assert len(closed) == 1
 
     def test_not_durable_by_default(self, tmp_path):
-        with patch("kml_heatmap.cache.os.fsync") as fsync:
+        with patch("flown.cache.os.fsync") as fsync:
             atomic_text_write(tmp_path / "file.txt", "x")
         fsync.assert_not_called()
 
@@ -349,8 +347,8 @@ class TestAtomicWrite:
         path = tmp_path / "test.json"
 
         with (
-            patch("kml_heatmap.cache.os.replace", side_effect=OSError("replace")),
-            patch("kml_heatmap.cache.os.unlink", side_effect=OSError("unlink")),
+            patch("flown.cache.os.replace", side_effect=OSError("replace")),
+            patch("flown.cache.os.unlink", side_effect=OSError("unlink")),
             pytest.raises(OSError, match="replace"),
         ):
             atomic_write(path, lambda tmp: tmp.write("{}"))
@@ -370,7 +368,7 @@ class TestAtomicBytesWrite:
         path = tmp_path / "tile.png"
         path.write_bytes(b"old")
         with (
-            patch("kml_heatmap.cache.os.replace", side_effect=OSError("boom")),
+            patch("flown.cache.os.replace", side_effect=OSError("boom")),
             pytest.raises(OSError, match="boom"),
         ):
             atomic_bytes_write(path, b"new")
@@ -405,7 +403,7 @@ class TestAtomicDataWrite:
     def test_cleans_up_temp_on_replace_failure(self, tmp_path):
         path = tmp_path / "data.json"
         with (
-            patch("kml_heatmap.cache.os.replace", side_effect=OSError("boom")),
+            patch("flown.cache.os.replace", side_effect=OSError("boom")),
             contextlib.suppress(OSError),
         ):
             atomic_data_write(path, {"a": 1})

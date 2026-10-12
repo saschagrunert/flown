@@ -6,8 +6,8 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { LngLat } from "maplibre-gl";
-import type { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+import type { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import type { MockApp } from "../../testHelpers";
 import {
   ALTITUDE,
@@ -168,7 +168,7 @@ describe("LayerManager pointer", () => {
       // only closed the values. jsdom lets [hidden] win whatever the
       // stylesheet says, so the rule itself is looked for.
       const style = document.createElement("style");
-      style.textContent = readFileSync("kml_heatmap/static/styles.css", "utf8");
+      style.textContent = readFileSync("flown/static/styles.css", "utf8");
       document.head.append(style);
       try {
         const hides = [...style.sheet!.cssRules].some(

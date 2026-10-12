@@ -19,21 +19,21 @@ import {
   SHORT_QUERY_MESSAGE,
   airportDetail,
   toggleSearch,
-} from "../../../../kml_heatmap/frontend/ui/locationSearch";
-import { PLACE_DEBOUNCE_MS } from "../../../../kml_heatmap/frontend/services/photon";
+} from "../../../../flown/frontend/ui/locationSearch";
+import { PLACE_DEBOUNCE_MS } from "../../../../flown/frontend/services/photon";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
-import { announceStatus } from "../../../../kml_heatmap/frontend/utils/toast";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
-import type { Airport } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/state/siteData";
+import { announceStatus } from "../../../../flown/frontend/utils/toast";
+import * as motion from "../../../../flown/frontend/utils/motion";
+import type { Airport } from "../../../../flown/frontend/types";
 import type { Map as MockMap } from "../../../mocks/maplibre-gl";
 import { asMapApp, createMockApp, type MockApp } from "../../testHelpers";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", async (original) => ({
+vi.mock("../../../../flown/frontend/utils/toast", async (original) => ({
   ...(await original<
-    typeof import("../../../../kml_heatmap/frontend/utils/toast")
+    typeof import("../../../../flown/frontend/utils/toast")
   >()),
   announceStatus: vi.fn(),
 }));

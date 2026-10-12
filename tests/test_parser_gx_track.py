@@ -4,16 +4,16 @@ from datetime import UTC, datetime, timedelta
 
 from lxml import etree
 
-from kml_heatmap.aircraft import parse_aircraft_from_filename
-from kml_heatmap.constants import KML_NAMESPACES
-from kml_heatmap.helpers import parse_timestamp_epoch
-from kml_heatmap.parser_common import local_name
-from kml_heatmap.parser_gx_track import (
+from flown.aircraft import parse_aircraft_from_filename
+from flown.constants import KML_NAMESPACES
+from flown.helpers import parse_timestamp_epoch
+from flown.parser_common import local_name
+from flown.parser_gx_track import (
     _collect_track_children,
     parse_gx_tracks,
     process_gx_track,
 )
-from kml_heatmap.types import FlightPath, FlightPathGroup, PathMetadata, TrackPoint
+from flown.types import FlightPath, FlightPathGroup, PathMetadata, TrackPoint
 
 KML_NS = KML_NAMESPACES["kml"]
 GX_NS = KML_NAMESPACES["gx"]

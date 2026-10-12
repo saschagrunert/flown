@@ -9,7 +9,7 @@ names the Python or Node.js version names the same one.
 Dependabot raises the ranges in pyproject.toml but cannot recompile the
 lock files, and CI installs the lock files. Without this check such a pull
 request passes CI while testing the old versions. The version in
-kml_heatmap/__init__.py is what `--version` and the wheel report, and
+flown/__init__.py is what `--version` and the wheel report, and
 package.json and package-lock.json carry it again for the npm side; nothing
 reads all of them, so they drift apart unnoticed until the two sides name
 two different versions. The pre-commit hooks are not checked here: the
@@ -30,7 +30,7 @@ from packaging.utils import canonicalize_name
 
 ROOT = Path(__file__).resolve().parent.parent
 PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s\\;]+)", re.MULTILINE)
-# The __version__ assignment at the top of kml_heatmap/__init__.py
+# The __version__ assignment at the top of flown/__init__.py
 PACKAGE_VERSION = re.compile(r'^__version__\s*=\s*"([^"]+)"', re.MULTILINE)
 # Any reference to the Playwright image, in a job of the test workflow or in
 # a documented command
@@ -68,8 +68,8 @@ def read_npm_version(name: str) -> str | None:
 
 
 def read_python_version() -> str | None:
-    """The version kml_heatmap/__init__.py declares."""
-    text = (ROOT / "kml_heatmap/__init__.py").read_text(encoding="utf-8")
+    """The version flown/__init__.py declares."""
+    text = (ROOT / "flown/__init__.py").read_text(encoding="utf-8")
     match = PACKAGE_VERSION.search(text)
     return match.group(1) if match else None
 
@@ -96,21 +96,19 @@ def npm_versions() -> dict[str, str | None]:
 def version_mismatches() -> list[str]:
     """Describe every place the package version differs from __init__.py.
 
-    kml_heatmap/__init__.py is the one pyproject.toml reads (its version is
+    flown/__init__.py is the one pyproject.toml reads (its version is
     dynamic), so it is what the others have to agree with.
     """
     expected = read_python_version()
     if expected is None:
-        return ["kml_heatmap/__init__.py declares no __version__"]
+        return ["flown/__init__.py declares no __version__"]
 
     problems = []
     for source, version in npm_versions().items():
         if version is None:
             problems.append(f"{source} declares no version")
         elif version != expected:
-            problems.append(
-                f"kml_heatmap/__init__.py is {expected}, {source} {version}"
-            )
+            problems.append(f"flown/__init__.py is {expected}, {source} {version}")
     return problems
 
 
@@ -344,7 +342,7 @@ def main() -> int:
         )
     if version_problems:
         print(
-            "Set the same version in kml_heatmap/__init__.py and package.json, "
+            "Set the same version in flown/__init__.py and package.json, "
             "then run `npm install` to carry it into package-lock.json.",
             file=sys.stderr,
         )

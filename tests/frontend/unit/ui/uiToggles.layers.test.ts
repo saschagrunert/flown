@@ -5,13 +5,13 @@
  * DOM that result.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { UIToggles } from "../../../../kml_heatmap/frontend/ui/uiToggles";
-import { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import { AIRPORTS_HIDDEN_CLASS } from "../../../../kml_heatmap/frontend/mapLayers";
+import { UIToggles } from "../../../../flown/frontend/ui/uiToggles";
+import { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import { AIRPORTS_HIDDEN_CLASS } from "../../../../flown/frontend/mapLayers";
 import {
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 import {
   asMapApp,
   createDataset,
@@ -24,7 +24,7 @@ import {
 } from "../../testHelpers";
 
 const toastMock = vi.hoisted(() => ({ showToast: vi.fn() }));
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => toastMock);
+vi.mock("../../../../flown/frontend/utils/toast", () => toastMock);
 
 const DOM: Record<string, string> = {
   "heatmap-btn": "button",

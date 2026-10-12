@@ -5,22 +5,22 @@ from pathlib import Path
 
 import pytest
 
-from kml_heatmap.constants import (
+from flown.constants import (
     KM_TO_NAUTICAL_MILES,
     MAX_GROUNDSPEED_KNOTS,
     MIN_SEGMENT_TIME_SECONDS,
     SECONDS_PER_HOUR,
     SPEED_WINDOW_SECONDS,
 )
-from kml_heatmap.helpers import parse_timestamp_epoch
-from kml_heatmap.segment_calculator import (
+from flown.helpers import parse_timestamp_epoch
+from flown.segment_calculator import (
     SegmentSpeed,
     SpeedWindow,
     calculate_fallback_groundspeed,
     extract_segment_speeds,
     outlasts_the_window,
 )
-from kml_heatmap.types import TrackPoint
+from flown.types import TrackPoint
 from tests.conftest import parse_kml_coordinates
 
 DATA_DIR = Path(__file__).parent.parent / "data"

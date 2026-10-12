@@ -14,7 +14,7 @@ import {
   toMapPitch,
   turnOf,
   type Coordinate,
-} from "../../../../kml_heatmap/frontend/utils/geometry";
+} from "../../../../flown/frontend/utils/geometry";
 import { createSegment } from "../../testHelpers";
 
 describe("geometry utilities", () => {

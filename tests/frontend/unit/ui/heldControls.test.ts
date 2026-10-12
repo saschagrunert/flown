@@ -8,11 +8,11 @@ import {
   holdControls,
   REPLAY_HELD_CONTROL_IDS,
   SELECTION_CONTROL_IDS,
-} from "../../../../kml_heatmap/frontend/ui/heldControls";
-import { setUnavailable } from "../../../../kml_heatmap/frontend/utils/buttonState";
+} from "../../../../flown/frontend/ui/heldControls";
+import { setUnavailable } from "../../../../flown/frontend/utils/buttonState";
 
 const toastMock = vi.hoisted(() => ({ showToast: vi.fn() }));
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => toastMock);
+vi.mock("../../../../flown/frontend/utils/toast", () => toastMock);
 
 /** The mode that holds the controls */
 const WHY = "the replay";

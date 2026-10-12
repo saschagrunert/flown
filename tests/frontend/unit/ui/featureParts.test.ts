@@ -4,8 +4,8 @@
  * hotspot tour, the cross-section and the player of Wrapped's intro.
  */
 import { describe, it, expect } from "vitest";
-import type { CrossSectionTool } from "../../../../kml_heatmap/frontend/ui/crossSection";
-import { featurePart } from "../../../../kml_heatmap/frontend/ui/lazyBundles";
+import type { CrossSectionTool } from "../../../../flown/frontend/ui/crossSection";
+import { featurePart } from "../../../../flown/frontend/ui/lazyBundles";
 
 /** A tool that is never opened, which is all the registry asks of it */
 const tool = (): CrossSectionTool => ({ toggle() {}, isOpen: () => false });

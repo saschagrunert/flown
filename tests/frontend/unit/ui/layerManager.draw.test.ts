@@ -6,13 +6,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Point, type Map as MapLibreMap } from "maplibre-gl";
 import { Map as MockMap, mockControl } from "../../../mocks/maplibre-gl";
-import { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import { addDataLayers } from "../../../../kml_heatmap/frontend/mapLayers";
+import { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import { addDataLayers } from "../../../../flown/frontend/mapLayers";
 import {
   airspeedColorAt,
   altitudeColorAt,
   getColorForAltitude,
-} from "../../../../kml_heatmap/frontend/utils/colors";
+} from "../../../../flown/frontend/utils/colors";
 import {
   createMockApp,
   createDataset,

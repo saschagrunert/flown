@@ -39,11 +39,11 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
-          ~/.cache/kml-heatmap/airports.csv
-          ~/.cache/kml-heatmap/runways.csv
+          ~/.cache/flown/airports.csv
+          ~/.cache/flown/runways.csv
         key: ourairports-${{ steps.week.outputs.week }}
         restore-keys: ourairports-
-    # The elevation tiles (kml_heatmap/terrain_fetch.py) the ground under the
+    # The elevation tiles (flown/terrain_fetch.py) the ground under the
     # flights is sampled from, with the decoded pixels of each beside it
     # (.pixels): about 90 MB for data/, half of it each. A tile never
     # changes upstream, so the cache of the last set of flights is restored
@@ -60,6 +60,6 @@ runs:
     - name: Cache the elevation tiles
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/kml-heatmap/terrain
-        key: terrain-${{ hashFiles('data/**/*.kml', 'data/**/*.kmz', 'kml_heatmap/terrain*.py', 'kml_heatmap/png.py') }}
+        path: ~/.cache/flown/terrain
+        key: terrain-${{ hashFiles('data/**/*.kml', 'data/**/*.kmz', 'flown/terrain*.py', 'flown/png.py') }}
         restore-keys: terrain-

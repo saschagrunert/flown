@@ -147,7 +147,7 @@ its own `aircraft.json` (see [Aircraft model data](#aircraft-model-data)); the
 search for one never goes above it:
 
 ```bash
-python -m kml_heatmap data/ data-new/ extra_flight.kml --output-dir combined
+python -m flown data/ data-new/ extra_flight.kml --output-dir combined
 ```
 
 The tool detects the format of each file and processes them accordingly.
@@ -190,18 +190,18 @@ Variables:
 - `OUTPUT_DIR` - Output directory (default: `docs`); it must not be `INPUT_DIR`,
   lie inside it or contain it, and the two need different base names
 - `CACHE_DIR` - Host directory mounted as `/cache`, a relative one from where
-  `make` runs (default: `KML_HEATMAP_CACHE_DIR` when it is set, else
-  `~/.cache/kml-heatmap`, see [Cache directory](output.md#cache-directory))
+  `make` runs (default: `FLOWN_CACHE_DIR` when it is set, else `~/.cache/flown`,
+  see [Cache directory](output.md#cache-directory))
 - `HOST_BIND` - Address `make serve` binds on the host (default: `127.0.0.1`;
   use `0.0.0.0` for the local network)
 - `PORT` - Host port for `make serve` (default: `8000`)
 - `CARTO_API_KEY` - Tile API key (passed by name, never printed)
-- `KML_HEATMAP_SITE_URL` - The address the site is published at, for the link
-  preview images (see `--site-url`)
-- `SOURCE_DATE_EPOCH`, `KML_HEATMAP_COMMIT`, `KML_HEATMAP_REPOSITORY`,
-  `KML_HEATMAP_STABLE_MTIMES`, `KML_HEATMAP_REQUIRE_AIRPORT_DB` and
-  `KML_HEATMAP_REQUIRE_TERRAIN` - Passed into the container of `make build` when
-  set (the commit and the repository are taken from your checkout otherwise)
+- `FLOWN_SITE_URL` - The address the site is published at, for the link preview
+  images (see `--site-url`)
+- `SOURCE_DATE_EPOCH`, `FLOWN_COMMIT`, `FLOWN_REPOSITORY`,
+  `FLOWN_STABLE_MTIMES`, `FLOWN_REQUIRE_AIRPORT_DB` and
+  `FLOWN_REQUIRE_TERRAIN` - Passed into the container of `make build` when set
+  (the commit and the repository are taken from your checkout otherwise)
 
 Targets (`make help` prints this list with the current variable values):
 
@@ -227,8 +227,8 @@ Targets (`make help` prints this list with the current variable values):
 - `hooks` - Install the pre-push hook that refuses to push KML files with real
   dates, and the pre-commit hooks
 - `clean` - Remove the container image (when a runtime is available) and local
-  build artifacts, including the frontend build output in `kml_heatmap/static/`
-  and the fixture site of the visual snapshots (`visual-site/`)
+  build artifacts, including the frontend build output in `flown/static/` and
+  the fixture site of the visual snapshots (`visual-site/`)
 - `help` - Show available targets and variables
 
 Only `build`, `serve` and `serve-build` need podman or docker; `clean` also
@@ -251,34 +251,34 @@ output is owned by you (add `--userns=keep-id` with rootless podman):
 
 ```bash
 # Build the image
-docker build -t kml-heatmap .
-mkdir -p out ~/.cache/kml-heatmap
+docker build -t flown .
+mkdir -p out ~/.cache/flown
 
 # Generate out/ from the KML files in data/
 docker run --rm --user "$(id -u):$(id -g)" \
   -v "$PWD/data:/data/data:ro" -v "$PWD/out:/data/out" \
-  -v ~/.cache/kml-heatmap:/cache \
-  kml-heatmap data --output-dir out
+  -v ~/.cache/flown:/cache \
+  flown data --output-dir out
 
 # With the API key (inherited from the environment, its value is not echoed)
 docker run --rm --user "$(id -u):$(id -g)" -e CARTO_API_KEY \
   -v "$PWD/data:/data/data:ro" -v "$PWD/out:/data/out" \
-  -v ~/.cache/kml-heatmap:/cache \
-  kml-heatmap data --output-dir out
+  -v ~/.cache/flown:/cache \
+  flown data --output-dir out
 
 # Debug output
 docker run --rm --user "$(id -u):$(id -g)" \
   -v "$PWD/data:/data/data:ro" -v "$PWD/out:/data/out" \
-  -v ~/.cache/kml-heatmap:/cache \
-  kml-heatmap --debug data --output-dir out
+  -v ~/.cache/flown:/cache \
+  flown --debug data --output-dir out
 
 # Serve the generated site on http://127.0.0.1:8000/ (mounts out/ only, read-only)
 docker run --rm -p 127.0.0.1:8000:8000 -e BIND_HOST=0.0.0.0 \
-  -v "$PWD/out:/data:ro" --entrypoint python kml-heatmap /app/serve.py
+  -v "$PWD/out:/data:ro" --entrypoint python flown /app/serve.py
 ```
 
 The image runs as an unprivileged user, uses `/data` as its working directory
-and `KML_HEATMAP_CACHE_DIR=/cache`. `make build` and `make serve` also pass
+and `FLOWN_CACHE_DIR=/cache`. `make build` and `make serve` also pass
 `-e HOME=/tmp`, since the user id they run as has no entry in the image's
 password database; the commands above go without it, because the cache is
 `/cache` either way and the tool falls back to a directory under the temp
@@ -300,7 +300,7 @@ the generator refuses to run without it):
 npm ci && npm run build
 
 pip install .                     # the runtime dependencies from pyproject.toml
-python -m kml_heatmap your_track.kml   # writes docs/; use --output-dir for another place
+python -m flown your_track.kml   # writes docs/; use --output-dir for another place
 
 # Serve it over HTTP, then open http://127.0.0.1:8000/
 python -m http.server 8000 --bind 127.0.0.1 -d docs
@@ -310,19 +310,19 @@ Opening `docs/index.html` from disk does not work (see
 [Quick start](../README.md#quick-start)). To publish the directory, see
 [Hosting](hosting.md).
 
-`pip install .` also provides the `kml-heatmap` console script and ships the
-templates and static assets.
+`pip install .` also provides the `flown` console script and ships the templates
+and static assets.
 
 ## Command-line options
 
 ```text
-kml-heatmap [--version] [--output-dir DIR] [--force] [--site-url URL] [--list]
+flown [--version] [--output-dir DIR] [--force] [--site-url URL] [--list]
             [-q] [--debug] [--obfuscate-inputs] [--private] [--no-terrain]
             [--cache-dir DIR] [--refresh-airports] [--jobs N] path [path ...]
 ```
 
-`kml-heatmap --help` lists the options in the groups below; `--version` prints
-the version and exits.
+`flown --help` lists the options in the groups below; `--version` prints the
+version and exits.
 
 - `path` - KML or KMZ files and/or directories. Directories are scanned with
   their subdirectories for `.kml` and `.kmz` files (case-insensitive) and
@@ -337,20 +337,20 @@ Output:
 - `--output-dir DIR` - Output directory (default: `docs`). The tool refuses to
   run if the output directory is the directory of an input file or contains one,
   or is a directory it must never clean out (`/`, the home directory). An output
-  directory below the input directory is fine, so `kml-heatmap flight.kml` in
-  the file's directory writes to `./docs/`. It also refuses an output directory
-  that holds files the site is made of (an `index.html`, a `styles.css`, a
+  directory below the input directory is fine, so `flown flight.kml` in the
+  file's directory writes to `./docs/`. It also refuses an output directory that
+  holds files the site is made of (an `index.html`, a `styles.css`, a
   `data/airports.json` and the like) but no sign of an earlier run
   (`map_config.js`, `data/metadata.json`): many a project keeps a site of its
   own in `docs/`, and the run would replace it file by file.
 - `--force` - Replace the files of a site in the output directory that no
   earlier run wrote (see `--output-dir`)
 - `--site-url URL` - The address the site is published at, such as
-  `https://example.org/flights` (default: `KML_HEATMAP_SITE_URL`). A link
-  preview names its image by an absolute URL, which the build cannot know by
-  itself: with the address the site, each year and each flight get a preview
-  image (see [Link previews](output.md#link-previews)), without it the previews
-  go without one. CI fills it in from the Pages configuration.
+  `https://example.org/flights` (default: `FLOWN_SITE_URL`). A link preview
+  names its image by an absolute URL, which the build cannot know by itself:
+  with the address the site, each year and each flight get a preview image (see
+  [Link previews](output.md#link-previews)), without it the previews go without
+  one. CI fills it in from the Pages configuration.
 - `--list` - Print a table of every flight in the inputs (file, year, aircraft,
   airports as the site names them, without their dates, points, whether it has
   times) and, for each one the site would leave out, why: no year, a recording
@@ -392,8 +392,8 @@ Network and cache:
   tiles (see [Elevation data](output.md#elevation-data)); nothing is downloaded
   for it, and the 3D view puts each flight on a line between its airfields
 - `--cache-dir DIR` - Where the OurAirports database, the elevation tiles, the
-  link preview images and the parse cache are kept (default:
-  `KML_HEATMAP_CACHE_DIR`, else `~/.cache/kml-heatmap`)
+  link preview images and the parse cache are kept (default: `FLOWN_CACHE_DIR`,
+  else `~/.cache/flown`)
 - `--refresh-airports` - Download the OurAirports airport and runway lists again
   instead of using the cached copies, which are otherwise renewed every 30 days.
   It marks the cached copies expired rather than deleting them, and a complete
@@ -416,12 +416,12 @@ files that the new site no longer has (the files of years that dropped out, a
 stale `mapApp.bundle.js.map`) and leaves anything else in the output directory
 alone, such as a `CNAME` or a `robots.txt` of your own. It never writes through
 a symlink: a symlink in place of one of its files stops the run. With
-`KML_HEATMAP_STABLE_MTIMES=1` every published file gets a modification time
-taken from its content (some day between 2001 and 2010), so a server that
-derives its ETags from it, as GitHub Pages does, keeps them for the files a new
-build did not change; CI sets it for the deployed site. Leave it off for a
-server that compares the times by age (`python -m http.server`). Without it a
-file is dated to 00:00 UTC of the build day (`SOURCE_DATE_EPOCH`, see
+`FLOWN_STABLE_MTIMES=1` every published file gets a modification time taken from
+its content (some day between 2001 and 2010), so a server that derives its ETags
+from it, as GitHub Pages does, keeps them for the files a new build did not
+change; CI sets it for the deployed site. Leave it off for a server that
+compares the times by age (`python -m http.server`). Without it a file is dated
+to 00:00 UTC of the build day (`SOURCE_DATE_EPOCH`, see
 [Privacy](privacy.md#what-the-site-carries)), never the time of the build: a
 bundle, stylesheet or icon a build did not change keeps its time, every file the
 flights decide (the data, the page, the flags and previews) gets the build day,
@@ -429,8 +429,8 @@ and one that changed again on the same day gets a second more each time. A time
 that is no such day, left by an older build or another tool, is replaced by the
 build day. The directories a build writes in (the output and data directories,
 the years, `vendor/`, `flags/` and the previews) get the build day as well, or
-one fixed time in 2001 with `KML_HEATMAP_STABLE_MTIMES=1`. The headers a host
-should send are in [Hosting](hosting.md#headers-and-compression).
+one fixed time in 2001 with `FLOWN_STABLE_MTIMES=1`. The headers a host should
+send are in [Hosting](hosting.md#headers-and-compression).
 
 ### Exit status
 
@@ -455,7 +455,7 @@ led to it, and the exit status says what kind it was:
 ## Troubleshooting
 
 The build log names the file in every warning. `--debug` (or
-`kml-heatmap --debug <file>` on a single file) shows what the parser found.
+`flown --debug <file>` on a single file) shows what the parser found.
 
 ### A flight is missing
 

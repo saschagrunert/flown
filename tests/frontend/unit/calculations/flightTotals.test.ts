@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeFlightTotals,
   flightTotals,
-} from "../../../../kml_heatmap/frontend/calculations/flightTotals";
-import { calculateDistance } from "../../../../kml_heatmap/frontend/utils/geometry";
+} from "../../../../flown/frontend/calculations/flightTotals";
+import { calculateDistance } from "../../../../flown/frontend/utils/geometry";
 import { createDataset, createSegment } from "../../testHelpers";
 
 const A: [number, number] = [50.0, 8.0];

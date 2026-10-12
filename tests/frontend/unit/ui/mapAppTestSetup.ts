@@ -9,23 +9,23 @@
  * instances.
  */
 import { vi } from "vitest";
-import type { MapApp } from "../../../../kml_heatmap/frontend/mapApp";
-import type { AirportManager } from "../../../../kml_heatmap/frontend/ui/airportManager";
-import type { DataManager } from "../../../../kml_heatmap/frontend/ui/dataManager";
-import type { FilterManager } from "../../../../kml_heatmap/frontend/ui/filterManager";
-import type { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import type { PathSelection } from "../../../../kml_heatmap/frontend/ui/pathSelection";
-import type { ReplayManager } from "../../../../kml_heatmap/frontend/ui/replayManager";
-import type { StateManager } from "../../../../kml_heatmap/frontend/ui/stateManager";
-import type { StatsManager } from "../../../../kml_heatmap/frontend/ui/statsManager";
-import type { UIToggles } from "../../../../kml_heatmap/frontend/ui/uiToggles";
-import type { WrappedManager } from "../../../../kml_heatmap/frontend/ui/wrappedManager";
+import type { MapApp } from "../../../../flown/frontend/mapApp";
+import type { AirportManager } from "../../../../flown/frontend/ui/airportManager";
+import type { DataManager } from "../../../../flown/frontend/ui/dataManager";
+import type { FilterManager } from "../../../../flown/frontend/ui/filterManager";
+import type { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import type { PathSelection } from "../../../../flown/frontend/ui/pathSelection";
+import type { ReplayManager } from "../../../../flown/frontend/ui/replayManager";
+import type { StateManager } from "../../../../flown/frontend/ui/stateManager";
+import type { StatsManager } from "../../../../flown/frontend/ui/statsManager";
+import type { UIToggles } from "../../../../flown/frontend/ui/uiToggles";
+import type { WrappedManager } from "../../../../flown/frontend/ui/wrappedManager";
 import type {
   Airport,
   KMLDataset,
   Metadata,
   SavedState,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/types";
 import type { Map as MockMap } from "../../../mocks/maplibre-gl";
 
 /**
@@ -159,7 +159,7 @@ export const modules = {
       logDebug: vi.fn(),
       initLogger: vi.fn(),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/utils/logger")
+      typeof import("../../../../flown/frontend/utils/logger")
     >,
   domCache: () =>
     ({
@@ -172,7 +172,7 @@ export const modules = {
         clear: vi.fn(),
       },
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/utils/domCache")
+      typeof import("../../../../flown/frontend/utils/domCache")
     >,
   toast: () =>
     ({
@@ -181,13 +181,13 @@ export const modules = {
       dismissToast: vi.fn(),
       TOAST_DURATION_MS: 4000,
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/utils/toast")
+      typeof import("../../../../flown/frontend/utils/toast")
     >,
   // The real bar registers a window resize listener it never removes, so
   // every test would leak one along with the MapApp it pins
   mobileBar: () =>
     ({ MobileBar: mobileBar }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/mobileBar")
+      typeof import("../../../../flown/frontend/ui/mobileBar")
     >,
   dataManager: () =>
     ({
@@ -195,7 +195,7 @@ export const modules = {
         return mockDataManagerInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/dataManager")
+      typeof import("../../../../flown/frontend/ui/dataManager")
     >,
   filterManager: () =>
     ({
@@ -203,7 +203,7 @@ export const modules = {
         return mockFilterManagerInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/filterManager")
+      typeof import("../../../../flown/frontend/ui/filterManager")
     >,
   airportManager: () =>
     ({
@@ -211,7 +211,7 @@ export const modules = {
         return mockAirportManagerInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/airportManager")
+      typeof import("../../../../flown/frontend/ui/airportManager")
     >,
   replayManager: () =>
     ({
@@ -219,7 +219,7 @@ export const modules = {
         return mockReplayManagerInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/replayManager")
+      typeof import("../../../../flown/frontend/ui/replayManager")
     >,
   layerManager: () =>
     ({
@@ -227,7 +227,7 @@ export const modules = {
         return mockLayerManagerInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/layerManager")
+      typeof import("../../../../flown/frontend/ui/layerManager")
     >,
   stateManager: () =>
     ({
@@ -235,7 +235,7 @@ export const modules = {
         return mockStateManagerInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/stateManager")
+      typeof import("../../../../flown/frontend/ui/stateManager")
     >,
   wrappedManager: () =>
     ({
@@ -243,7 +243,7 @@ export const modules = {
         return mockWrappedManagerInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/wrappedManager")
+      typeof import("../../../../flown/frontend/ui/wrappedManager")
     >,
   featureLoader: () =>
     ({
@@ -265,7 +265,7 @@ export const modules = {
           // A link to shared flights plays their intro
           playShareIntro,
         } satisfies StandIn<
-          typeof import("../../../../kml_heatmap/frontend/features")
+          typeof import("../../../../flown/frontend/features")
         >),
       ),
       loadWrapped: vi.fn(() =>
@@ -278,18 +278,18 @@ export const modules = {
             return mockStatsManagerInstance;
           }),
         } satisfies StandIn<
-          typeof import("../../../../kml_heatmap/frontend/wrapped")
+          typeof import("../../../../flown/frontend/wrapped")
         >),
       ),
       loadSearch: vi.fn(() =>
         Promise.resolve({ toggleSearch } satisfies StandIn<
-          typeof import("../../../../kml_heatmap/frontend/search")
+          typeof import("../../../../flown/frontend/search")
         >),
       ),
       wasSiteUpdated: vi.fn(() => false),
       noticeSiteUpdate: vi.fn(() => null),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/services/featureLoader")
+      typeof import("../../../../flown/frontend/services/featureLoader")
     >,
   uiToggles: () =>
     ({
@@ -297,7 +297,7 @@ export const modules = {
         return mockUITogglesInstance;
       }),
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/uiToggles")
+      typeof import("../../../../flown/frontend/ui/uiToggles")
     >,
   pathSelection: () =>
     ({
@@ -313,7 +313,7 @@ export const modules = {
       })),
       CONTROL_COLUMNS: "#left-buttons, #right-buttons",
     }) satisfies StandIn<
-      typeof import("../../../../kml_heatmap/frontend/ui/pathSelection")
+      typeof import("../../../../flown/frontend/ui/pathSelection")
     >,
 };
 

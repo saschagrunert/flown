@@ -321,7 +321,7 @@ async function installHermeticRoutes(
  * The key the page remembers the tip of the 3D view under
  * (THREE_D_TIP_STORAGE_KEY in ui/mapOrientation.ts)
  */
-export const THREE_D_TIP_KEY = "kml-heatmap-3d-tip";
+export const THREE_D_TIP_KEY = "flown-3d-tip";
 
 /**
  * Whether the browser has had the tip of the 3D view: "shown", as for the

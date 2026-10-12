@@ -11,12 +11,12 @@ import {
   visitedBefore,
   visitedCells,
   yearNewAreaKm2,
-} from "../../../../kml_heatmap/frontend/calculations/newAreas";
-import type { KMLDataset } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/newAreas";
+import type { KMLDataset } from "../../../../flown/frontend/types";
 import {
   DEGREES_TO_RADIANS,
   METRES_PER_DEGREE,
-} from "../../../../kml_heatmap/frontend/utils/geometry";
+} from "../../../../flown/frontend/utils/geometry";
 import { createDataset, createSegment } from "../../testHelpers";
 
 /** Degrees of latitude, and of longitude at `lat`, per metre */

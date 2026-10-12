@@ -5,11 +5,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { NO_TIMING_MESSAGE } from "../../../kml_heatmap/frontend/ui/actions";
+import { NO_TIMING_MESSAGE } from "../../../flown/frontend/ui/actions";
 
 const page = new DOMParser().parseFromString(
   readFileSync(
-    join(__dirname, "../../../kml_heatmap/templates/map_template.html"),
+    join(__dirname, "../../../flown/templates/map_template.html"),
     "utf8",
   ),
   "text/html",

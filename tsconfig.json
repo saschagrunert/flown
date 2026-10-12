@@ -24,6 +24,6 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["kml_heatmap/frontend/**/*"],
-  "exclude": ["node_modules", "kml_heatmap/static"]
+  "include": ["flown/frontend/**/*"],
+  "exclude": ["node_modules", "flown/static"]
 }

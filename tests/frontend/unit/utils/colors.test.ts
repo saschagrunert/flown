@@ -5,7 +5,7 @@ import {
   getColorForAirspeed,
   rgbToRgba,
   scalePosition,
-} from "../../../../kml_heatmap/frontend/utils/colors";
+} from "../../../../flown/frontend/utils/colors";
 
 /**
  * Split an "rgb(r,g,b)" string into its components so the tests can assert on

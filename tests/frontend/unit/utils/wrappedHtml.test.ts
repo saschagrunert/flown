@@ -7,16 +7,16 @@ import {
   generateAircraftFleetHtml,
   generateHomeBaseHtml,
   generateDestinationsHtml,
-} from "../../../../kml_heatmap/frontend/utils/wrappedHtml";
-import type { AirportCount } from "../../../../kml_heatmap/frontend/utils/htmlGenerators";
+} from "../../../../flown/frontend/utils/wrappedHtml";
+import type { AirportCount } from "../../../../flown/frontend/utils/htmlGenerators";
 import type {
   FilteredStatistics,
   FunFact,
   YearStats,
-} from "../../../../kml_heatmap/frontend/types";
-import { icon } from "../../../../kml_heatmap/frontend/utils/icons";
-import { markup } from "../../../../kml_heatmap/frontend/utils/markup";
-import { generateFunFacts } from "../../../../kml_heatmap/frontend/features/wrapped";
+} from "../../../../flown/frontend/types";
+import { icon } from "../../../../flown/frontend/utils/icons";
+import { markup } from "../../../../flown/frontend/utils/markup";
+import { generateFunFacts } from "../../../../flown/frontend/features/wrapped";
 
 /**
  * The ICAO code the export writes for an airport (airports.json's `code`).

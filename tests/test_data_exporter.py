@@ -13,11 +13,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import kml_heatmap.data_exporter as exporter_module
-import kml_heatmap.path_content as path_content_module
-import kml_heatmap.site_output as site_output_module
-from kml_heatmap.airports import AirportData
-from kml_heatmap.data_exporter import (
+import flown.data_exporter as exporter_module
+import flown.path_content as path_content_module
+import flown.site_output as site_output_module
+from flown.airports import AirportData
+from flown.data_exporter import (
     ChunkResult,
     ExportResult,
     GroundspeedRange,
@@ -31,9 +31,9 @@ from kml_heatmap.data_exporter import (
     export_all_data,
     process_year_chunk,
 )
-from kml_heatmap.exceptions import KMLHeatmapError, OutputRefusedError
-from kml_heatmap.helpers import parse_timestamp_epoch
-from kml_heatmap.path_content import (
+from flown.exceptions import FlownError, OutputRefusedError
+from flown.helpers import parse_timestamp_epoch
+from flown.path_content import (
     PATH_ID_BITS,
     _content_id,
     _path_content,
@@ -42,10 +42,10 @@ from kml_heatmap.path_content import (
     exported_contents,
     is_exportable_path,
 )
-from kml_heatmap.segment_codec import FORMAT_VERSION, decode_ground
-from kml_heatmap.site_output import STAGING_PREFIX, SiteOutput, day_start
-from kml_heatmap.types import PathMetadata, TrackPoint
-from kml_heatmap.validation import protected_directories
+from flown.segment_codec import FORMAT_VERSION, decode_ground
+from flown.site_output import STAGING_PREFIX, SiteOutput, day_start
+from flown.types import PathMetadata, TrackPoint
+from flown.validation import protected_directories
 from tests.conftest import FlatTiles, decoded_segments
 
 
@@ -620,7 +620,7 @@ class TestAssembleYearFile:
             2025, [_two_point_path(0)], _metadata([{"year": 2025}]), [0], str(tmp_path)
         )
         with (
-            patch("kml_heatmap.cache.os.replace", side_effect=OSError("boom")),
+            patch("flown.cache.os.replace", side_effect=OSError("boom")),
             pytest.raises(OSError, match="boom"),
         ):
             _assemble_year_file(2025, [chunk], str(tmp_path))
@@ -780,7 +780,7 @@ class TestExportChunks:
         metadata = _metadata([{"year": 2025}, {"year": 2025}])
         plans = _plan_chunks({2025: [0, 1]}, {0: 0, 1: 1}, max_workers=4)
 
-        with patch("kml_heatmap.workers.ProcessPoolExecutor") as pool:
+        with patch("flown.workers.ProcessPoolExecutor") as pool:
             results = _export_chunks(plans, paths, metadata, str(tmp_path), 4)
 
         pool.assert_not_called()
@@ -839,7 +839,7 @@ class TestExportChunks:
         plans = _plan_chunks({2025: [0]}, {0: 0}, 4)
         with (
             patch(
-                "kml_heatmap.data_exporter.process_year_chunk",
+                "flown.data_exporter.process_year_chunk",
                 side_effect=RuntimeError("boom"),
             ),
             pytest.raises(RuntimeError, match="Failed to process year 2025: boom"),
@@ -855,7 +855,7 @@ class TestExportChunks:
         stale = _part_paths(str(tmp_path), 2026, 0)[0]
         stale.write_text("partial")
         with (
-            patch("kml_heatmap.data_exporter.process_year_chunk", _failing_chunk),
+            patch("flown.data_exporter.process_year_chunk", _failing_chunk),
             pytest.raises(RuntimeError, match="Failed to process year"),
         ):
             _export_chunks(plans, paths, _metadata([{}, {}]), str(tmp_path), 4)
@@ -875,7 +875,7 @@ class TestExportChunks:
         pool = _RunningChunksPool()
 
         with (
-            patch("kml_heatmap.workers.ProcessPoolExecutor", return_value=pool),
+            patch("flown.workers.ProcessPoolExecutor", return_value=pool),
             pytest.raises(RuntimeError, match="No space left on device"),
         ):
             _export_chunks(plans, paths, metadata, str(tmp_path), 4)
@@ -904,7 +904,7 @@ class TestExportChunks:
             pool = MagicMock()
             pool.return_value.submit.side_effect = broken
 
-        with patch("kml_heatmap.workers.ProcessPoolExecutor", pool):
+        with patch("flown.workers.ProcessPoolExecutor", pool):
             results = _export_chunks(plans, paths, metadata, str(tmp_path), 2)
 
         assert [r.year for r in results] == [2025, 2026]
@@ -932,7 +932,7 @@ class TestExportChunks:
         assert len(plans) == len(years)
         pool = _CountingPool()
 
-        with patch("kml_heatmap.workers.ProcessPoolExecutor", return_value=pool):
+        with patch("flown.workers.ProcessPoolExecutor", return_value=pool):
             results = _export_chunks(plans, paths, metadata, str(tmp_path), 2)
 
         assert [r.year for r in results] == years
@@ -1167,7 +1167,7 @@ class TestSiteOutput:
 
         with SiteOutput(out, out / "data", ("manifest.json",)) as site:
             _stage_site(site, years=(2025, 2026))
-            with patch("kml_heatmap.site_output.os.replace", record):
+            with patch("flown.site_output.os.replace", record):
                 site.publish([2025, 2026])
 
         assert moved == [
@@ -1204,7 +1204,7 @@ class TestSiteOutput:
         out = tmp_path / "out"
         with SiteOutput(out, out / "data") as site:
             with (
-                pytest.raises(KMLHeatmapError, match="Another run"),
+                pytest.raises(FlownError, match="Another run"),
                 SiteOutput(out, out / "data"),
             ):
                 pass
@@ -1219,7 +1219,7 @@ class TestSiteOutput:
     def test_runs_unguarded_where_locks_are_not_supported(self, tmp_path):
         out = tmp_path / "out"
         with patch(
-            "kml_heatmap.site_output.fcntl.flock",
+            "flown.site_output.fcntl.flock",
             side_effect=OSError(errno.ENOLCK, "No locks available"),
         ):
             _publish_site(out)
@@ -1233,7 +1233,7 @@ class TestSiteOutput:
         with SiteOutput(out, out / "data") as site:
             _stage_site(site)
             (site.site_stage / "index.html").unlink()
-            with pytest.raises(KMLHeatmapError, match=r"index\.html missing"):
+            with pytest.raises(FlownError, match=r"index\.html missing"):
                 site.publish([2025])
 
         assert _tree(out) == previous
@@ -1447,7 +1447,7 @@ class TestSiteOutput:
             return real_mkdtemp(**kwargs)
 
         with (
-            patch("kml_heatmap.site_output.tempfile.mkdtemp", mkdtemp),
+            patch("flown.site_output.tempfile.mkdtemp", mkdtemp),
             pytest.raises(OSError, match="No space"),
             SiteOutput(out, out / "data"),
         ):
@@ -1479,7 +1479,7 @@ class TestSiteOutput:
             SiteOutput(link, tmp_path / "out" / "data")
 
     def test_protected_directories_without_home(self):
-        # The exporter's guard is the one of kml_heatmap.validation
+        # The exporter's guard is the one of flown.validation
         with patch.object(Path, "home", side_effect=RuntimeError("no home")):
             assert protected_directories() == (Path("/"),)
 

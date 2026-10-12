@@ -3,19 +3,19 @@
  */
 
 import { vi } from "vitest";
-import { DATA_FORMAT_VERSION } from "../../kml_heatmap/frontend/services/yearDecode";
-import { handleRequest } from "../../kml_heatmap/frontend/services/yearWorker";
-import type { YearWorkerLike } from "../../kml_heatmap/frontend/services/yearDecoder";
+import { DATA_FORMAT_VERSION } from "../../flown/frontend/services/yearDecode";
+import { handleRequest } from "../../flown/frontend/services/yearWorker";
+import type { YearWorkerLike } from "../../flown/frontend/services/yearDecoder";
 import type {
   YearRequest,
   YearResponse,
-} from "../../kml_heatmap/frontend/services/yearWorker";
+} from "../../flown/frontend/services/yearWorker";
 import type {
   KMLDataset,
   RawColumns,
   RawPathSegments,
   RawYearData,
-} from "../../kml_heatmap/frontend/types";
+} from "../../flown/frontend/types";
 
 /**
  * A year worker without a thread: it answers with the real message handler,
@@ -75,7 +75,7 @@ export class FakeYearWorker {
 }
 
 /**
- * Column scales of the wire format, mirroring kml_heatmap/segment_codec.py
+ * Column scales of the wire format, mirroring flown/segment_codec.py
  * (the altitude column counts steps of 20 ft). The helpers below take rows
  * in the units a reader thinks in and encode them, so a test says what it
  * means and the decoder is still checked against an independent encoder.

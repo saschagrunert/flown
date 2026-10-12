@@ -2,45 +2,45 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   DataManager,
   heatmapPoints,
-} from "../../../../kml_heatmap/frontend/ui/dataManager";
+} from "../../../../flown/frontend/ui/dataManager";
 import {
   heatLineFeatures,
   heatWeight,
   segmentSeconds,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import { heatLineTone } from "../../../../kml_heatmap/frontend/calculations/heatTone";
-import { flatCurves } from "../../../../kml_heatmap/frontend/calculations/curves";
-import { heatLinesSource } from "../../../../kml_heatmap/frontend/services/flightLines";
+} from "../../../../flown/frontend/calculations/heatLines";
+import { heatLineTone } from "../../../../flown/frontend/calculations/heatTone";
+import { flatCurves } from "../../../../flown/frontend/calculations/curves";
+import { heatLinesSource } from "../../../../flown/frontend/services/flightLines";
 import {
   exposedHeat,
   heatColumns,
   heatExposure,
-} from "../../../../kml_heatmap/frontend/calculations/heatExposure";
-import { drawHeat } from "../../../../kml_heatmap/frontend/services/heatSource";
-import type { Coordinate } from "../../../../kml_heatmap/frontend/utils/geometry";
-import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
+} from "../../../../flown/frontend/calculations/heatExposure";
+import { drawHeat } from "../../../../flown/frontend/services/heatSource";
+import type { Coordinate } from "../../../../flown/frontend/utils/geometry";
+import { logError } from "../../../../flown/frontend/utils/logger";
 import {
   heatLinesPaint,
   heatmapPaint,
   HEATMAP_RADIUS_PX,
-} from "../../../../kml_heatmap/frontend/ui/heatmapPaint";
+} from "../../../../flown/frontend/ui/heatmapPaint";
 import {
   HEAT_LINES,
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 import {
   createExpression,
   type StylePropertySpecification,
 } from "@maplibre/maplibre-gl-style-spec";
-import { AVIATION_BAND } from "../../../../kml_heatmap/frontend/mapLayers";
-import { domCache } from "../../../../kml_heatmap/frontend/utils/domCache";
+import { AVIATION_BAND } from "../../../../flown/frontend/mapLayers";
+import { domCache } from "../../../../flown/frontend/utils/domCache";
 import type {
   KMLDataset,
   LoadingState,
   PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
-import type { DataLoaderOptions } from "../../../../kml_heatmap/frontend/services/dataLoader";
+} from "../../../../flown/frontend/types";
+import type { DataLoaderOptions } from "../../../../flown/frontend/services/dataLoader";
 import {
   createMockApp,
   createDataset,
@@ -62,7 +62,7 @@ const loaderMocks = vi.hoisted(() => ({
   options: null as DataLoaderOptions | null,
 }));
 
-vi.mock("../../../../kml_heatmap/frontend/services/dataLoader", () => ({
+vi.mock("../../../../flown/frontend/services/dataLoader", () => ({
   DataLoader: vi.fn(function (options: DataLoaderOptions) {
     loaderMocks.options = options;
     return {
@@ -77,7 +77,7 @@ vi.mock("../../../../kml_heatmap/frontend/services/dataLoader", () => ({
 }));
 
 vi.mock(
-  import("../../../../kml_heatmap/frontend/utils/logger"),
+  import("../../../../flown/frontend/utils/logger"),
   async (importOriginal) => ({
     ...(await importOriginal()),
     logError: vi.fn(),
@@ -136,7 +136,7 @@ const toastMock = vi.hoisted(() => ({
   announceStatus: vi.fn(),
   dismissToast: vi.fn(),
 }));
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => toastMock);
+vi.mock("../../../../flown/frontend/utils/toast", () => toastMock);
 
 /** A state of the loader, one year of unknown size unless said otherwise */
 function loading(overrides: Partial<LoadingState> = {}): LoadingState {
