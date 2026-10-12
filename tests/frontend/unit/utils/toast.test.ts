@@ -9,7 +9,7 @@ import {
   dismissToast,
   showToast,
   TOAST_DURATION_MS,
-} from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/utils/toast";
 
 describe("showToast", () => {
   beforeEach(() => {

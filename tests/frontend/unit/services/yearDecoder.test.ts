@@ -1,24 +1,24 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { createYearDecoder } from "../../../../kml_heatmap/frontend/services/yearDecoder";
+import { createYearDecoder } from "../../../../flown/frontend/services/yearDecoder";
 import {
   DATA_FORMAT_VERSION,
   expandYearData,
-} from "../../../../kml_heatmap/frontend/services/yearDecode";
-import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
-import { drawHeat } from "../../../../kml_heatmap/frontend/services/heatSource";
-import { heatColumns } from "../../../../kml_heatmap/frontend/calculations/heatExposure";
+} from "../../../../flown/frontend/services/yearDecode";
+import { logError } from "../../../../flown/frontend/utils/logger";
+import { drawHeat } from "../../../../flown/frontend/services/heatSource";
+import { heatColumns } from "../../../../flown/frontend/calculations/heatExposure";
 import {
   heatLineFeatures,
   heatWeight,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import { heatLineTone } from "../../../../kml_heatmap/frontend/calculations/heatTone";
+} from "../../../../flown/frontend/calculations/heatLines";
+import { heatLineTone } from "../../../../flown/frontend/calculations/heatTone";
 import {
   flatRuns,
   flightColumns,
   flightsOf,
   runsSource,
-} from "../../../../kml_heatmap/frontend/services/flightLines";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/services/flightLines";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { createSegment } from "../../testHelpers";
 import {
   dataset,
@@ -28,7 +28,7 @@ import {
   yearBytes,
 } from "../../yearFixtures";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => ({
+vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logDebug: vi.fn(),
   logError: vi.fn(),
 }));

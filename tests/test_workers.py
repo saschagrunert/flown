@@ -9,10 +9,10 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-import kml_heatmap.airport_lookup as lookup_module
-import kml_heatmap.workers as workers_module
-from kml_heatmap.logger import logger, set_debug_mode
-from kml_heatmap.workers import init_worker, parse_worker_count
+import flown.airport_lookup as lookup_module
+import flown.workers as workers_module
+from flown.logger import logger, set_debug_mode
+from flown.workers import init_worker, parse_worker_count
 
 MB = 1024 * 1024
 

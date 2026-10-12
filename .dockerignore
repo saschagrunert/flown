@@ -28,10 +28,10 @@ coverage.xml
 node_modules
 # Bundles, source maps, vendored files and flags are built inside the image;
 # never copy stale host builds
-kml_heatmap/static/*.bundle.js*
-kml_heatmap/static/*.map
-kml_heatmap/static/vendor
-kml_heatmap/static/flags
+flown/static/*.bundle.js*
+flown/static/*.map
+flown/static/vendor
+flown/static/flags
 
 # IDE and AI assistant files
 .vscode

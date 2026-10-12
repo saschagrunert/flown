@@ -1,8 +1,8 @@
 {
-  "name": "kml-heatmap",
+  "name": "flown",
   "version": "1.0.0",
   "private": true,
-  "description": "Interactive heatmap visualizations from KML flight data",
+  "description": "Turns KML flight logs into a static site of where you have flown: a heatmap, the flights, airports, statistics, replays, a 3D view and a year in review.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

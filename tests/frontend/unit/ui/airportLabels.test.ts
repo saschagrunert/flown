@@ -9,13 +9,13 @@ import {
   pinScale,
   type CodeHost,
   type CodeMarker,
-} from "../../../../kml_heatmap/frontend/ui/airportLabels";
-import { createAirportElement } from "../../../../kml_heatmap/frontend/features/airports";
+} from "../../../../flown/frontend/ui/airportLabels";
+import { createAirportElement } from "../../../../flown/frontend/features/airports";
 import {
   AIRPORT_HIDE_MARKERS_BELOW_ZOOM,
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 import { resetMapLibreMock } from "../../../mocks/maplibre-gl";
 import { createMapLibreMock } from "../../testHelpers";
 

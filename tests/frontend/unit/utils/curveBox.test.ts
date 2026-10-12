@@ -2,9 +2,9 @@
  * The box a curve of the 3D view lies in (utils/curveBox.ts).
  */
 import { describe, it, expect } from "vitest";
-import { overlaps } from "../../../../kml_heatmap/frontend/utils/viewBox";
-import { boxOf } from "../../../../kml_heatmap/frontend/utils/curveBox";
-import type { Coordinate } from "../../../../kml_heatmap/frontend/utils/geometry";
+import { overlaps } from "../../../../flown/frontend/utils/viewBox";
+import { boxOf } from "../../../../flown/frontend/utils/curveBox";
+import type { Coordinate } from "../../../../flown/frontend/utils/geometry";
 
 const points: Coordinate[] = [
   [47, 11],

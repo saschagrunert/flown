@@ -4,12 +4,12 @@ import {
   FilterView,
   datasetIndex,
   shownSelection,
-} from "../../../../kml_heatmap/frontend/calculations/datasetIndex";
+} from "../../../../flown/frontend/calculations/datasetIndex";
 import type {
   KMLDataset,
   PathInfo,
   PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/types";
 import { createDataset, createSegment } from "../../testHelpers";
 
 const pathInfo: PathInfo[] = [

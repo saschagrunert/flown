@@ -10,7 +10,7 @@ import {
   liftRoomPx,
   unwrapRotation,
   zoomOutSteps,
-} from "../../../../kml_heatmap/frontend/ui/replayCamera";
+} from "../../../../flown/frontend/ui/replayCamera";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { createMapLibreMock } from "../../testHelpers";
 import type { Map as MockMapLibreMap } from "../../../mocks/maplibre-gl";

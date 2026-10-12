@@ -10,37 +10,37 @@ import type { Map as MapLibreMap, StyleSpecification } from "maplibre-gl";
 import {
   followTerrain,
   HILLSHADE_LAYER,
-} from "../../../../kml_heatmap/frontend/ui/terrain";
+} from "../../../../flown/frontend/ui/terrain";
 import {
   followSatellite,
   SATELLITE_LAYER,
-} from "../../../../kml_heatmap/frontend/ui/satellite";
-import { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import { setBaseStyle } from "../../../../kml_heatmap/frontend/mapLayers";
+} from "../../../../flown/frontend/ui/satellite";
+import { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import { setBaseStyle } from "../../../../flown/frontend/mapLayers";
 import {
   liftExaggeration,
   ribbonId,
-} from "../../../../kml_heatmap/frontend/calculations/lift";
+} from "../../../../flown/frontend/calculations/lift";
 import {
   ribbonHeightFt,
   ribbonHeights,
-} from "../../../../kml_heatmap/frontend/calculations/ribbonPaint";
-import { RIBBON_SOURCES } from "../../../../kml_heatmap/frontend/ui/reliefState";
+} from "../../../../flown/frontend/calculations/ribbonPaint";
+import { RIBBON_SOURCES } from "../../../../flown/frontend/ui/reliefState";
 import {
   groundedFlights,
   groundProfilesFt,
   heldGroundedFlights,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
-import type { SmoothedFlights } from "../../../../kml_heatmap/frontend/calculations/smoothing";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/groundProfile";
+import type { SmoothedFlights } from "../../../../flown/frontend/calculations/smoothing";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 import {
   followContextLoss,
   REPLAY_CAMERA_MOVE,
-} from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/utils/mapHelpers";
 import {
   asMapApp,
   createDataset,
@@ -482,15 +482,15 @@ const featureBundle = vi.hoisted(() => ({
   followHeatCloud: vi.fn(),
   followSelectionRibbons: vi.fn(),
 }));
-vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", async () => {
+vi.mock("../../../../flown/frontend/services/featureLoader", async () => {
   const { followTerrain } =
-    await import("../../../../kml_heatmap/frontend/ui/terrain");
+    await import("../../../../flown/frontend/ui/terrain");
   const { ribbonBox, ribbonFeatures, ribbonLiftPx, viewLeaves } =
-    await import("../../../../kml_heatmap/frontend/ui/pathRibbons");
+    await import("../../../../flown/frontend/ui/pathRibbons");
   const { followsLevel } =
-    await import("../../../../kml_heatmap/frontend/calculations/lift");
+    await import("../../../../flown/frontend/calculations/lift");
   const { heldGroundedFlights, releaseGroundedFlights, releaseGroundProfiles } =
-    await import("../../../../kml_heatmap/frontend/calculations/groundProfile");
+    await import("../../../../flown/frontend/calculations/groundProfile");
   const { followHeatCloud, followSelectionRibbons } = featureBundle;
   const bundle = {
     followTerrain,

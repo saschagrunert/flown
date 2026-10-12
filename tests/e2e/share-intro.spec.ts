@@ -10,7 +10,7 @@ import { gotoApp, waitForAppReady } from "./helpers";
 import {
   SHARE_TOKEN_PARAM,
   unpackShareToken,
-} from "../../kml_heatmap/frontend/state/shareToken";
+} from "../../flown/frontend/state/shareToken";
 
 /** The link a copied link resolves to as the page opens */
 function resolvedLink(copied: string): URLSearchParams {

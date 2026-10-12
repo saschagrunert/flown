@@ -7,19 +7,19 @@ import type { StyleSpecification } from "maplibre-gl";
 import {
   followSatellite,
   SATELLITE_LAYER,
-} from "../../../../kml_heatmap/frontend/ui/satellite";
-import { followTerrain } from "../../../../kml_heatmap/frontend/ui/terrain";
+} from "../../../../flown/frontend/ui/satellite";
+import { followTerrain } from "../../../../flown/frontend/ui/terrain";
 import {
   followSatelliteSwitch,
   SATELLITE_UNAVAILABLE_MESSAGE,
-} from "../../../../kml_heatmap/frontend/ui/layerVisibility";
-import { withDataLayers } from "../../../../kml_heatmap/frontend/mapLayers";
-import { UIToggles } from "../../../../kml_heatmap/frontend/ui/uiToggles";
+} from "../../../../flown/frontend/ui/layerVisibility";
+import { withDataLayers } from "../../../../flown/frontend/mapLayers";
+import { UIToggles } from "../../../../flown/frontend/ui/uiToggles";
 import {
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import { syncToggleButton } from "../../../../kml_heatmap/frontend/utils/buttonState";
+} from "../../../../flown/frontend/utils/constants";
+import { syncToggleButton } from "../../../../flown/frontend/utils/buttonState";
 import {
   asMapApp,
   createMockApp,
@@ -30,14 +30,14 @@ import {
 import { resetMapLibreMock } from "../../../mocks/maplibre-gl";
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn(), dismissToast: vi.fn() }));
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => toast);
+vi.mock("../../../../flown/frontend/utils/toast", () => toast);
 
 // The feature bundle, as far as the imagery takes it
 const featureBundle = vi.hoisted(() => ({
   available: true,
   followSatellite: vi.fn(),
 }));
-vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", () => ({
+vi.mock("../../../../flown/frontend/services/featureLoader", () => ({
   loadedFeatures: () => null,
   loadFeatures: vi.fn(() =>
     Promise.resolve(

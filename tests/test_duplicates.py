@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from kml_heatmap.duplicates import (
+from flown.duplicates import (
     _CELL_DEGREES,
     _MIN_AGREEING,
     _SHIFT_TOLERANCE_S,
@@ -22,7 +22,7 @@ from kml_heatmap.duplicates import (
     drop_overlapping_paths,
     same_flight,
 )
-from kml_heatmap.types import TrackPoint
+from flown.types import TrackPoint
 
 # East at 50 m/s (97 kt) at 50 degrees north
 SPEED = 0.0007
@@ -99,7 +99,7 @@ class TestDropOverlappingPaths:
         fine = _recording(start + 60.0, 3500.0, step_s=3.0, lat=50.0001)
         fine = [p._replace(lon=8.0 + SPEED * (p.ts - start)) for p in fine]
 
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             kept = _drop([coarse, fine], ["phone.kml", "panel.kml"])
 
         # The finer recording stays, whichever came first
@@ -118,7 +118,7 @@ class TestDropOverlappingPaths:
             for p in _recording(1060.0, 3500.0, step_s=3.0, lat=50.0001)
         ]
 
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             kept = _drop([coarse, fine], ["phone.kml", "panel.kml"])
 
         assert kept == {2025: [1]}

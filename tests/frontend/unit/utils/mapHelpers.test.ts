@@ -30,7 +30,7 @@ import {
   whenStyleReady,
   withMapStill,
   withoutValidation,
-} from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/utils/mapHelpers";
 import {
   Map as MockMap,
   Popup as MockPopup,
@@ -38,10 +38,10 @@ import {
   resetMapLibreMock,
 } from "../../../mocks/maplibre-gl";
 import { measureSafeArea, setDevicePixelRatio } from "../../testHelpers";
-import { resetSafeArea } from "../../../../kml_heatmap/frontend/utils/safeArea";
-import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
+import { resetSafeArea } from "../../../../flown/frontend/utils/safeArea";
+import { logError } from "../../../../flown/frontend/utils/logger";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => ({
+vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logDebug: vi.fn(),
   logError: vi.fn(),
 }));

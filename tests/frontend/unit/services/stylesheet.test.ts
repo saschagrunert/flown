@@ -6,7 +6,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   loadStylesheet,
   resetStylesheetLoader,
-} from "../../../../kml_heatmap/frontend/services/stylesheet";
+} from "../../../../flown/frontend/services/stylesheet";
 
 describe("loadStylesheet", () => {
   /** Whatever a test appended, gone before the next one queries the head */

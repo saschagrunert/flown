@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from kml_heatmap.helpers import (
+from flown.helpers import (
     calculate_duration_seconds,
     normalize_timestamp_text,
     numeric_filename_key,

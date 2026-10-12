@@ -23,7 +23,7 @@ your own flights:
    [Adding flights](adding-flights.md) describes, obfuscated before they are
    committed (`make obfuscate`, and `make hooks` so a push with a real date is
    refused). Your files may sit in subdirectories of `data/`.
-5. Add the repository variable `KML_HEATMAP_OWN_FLIGHTS` with the value `1`
+5. Add the repository variable `FLOWN_OWN_FLIGHTS` with the value `1`
    (Settings > Secrets and variables > Actions > Variables), see below.
 6. Optionally add a CARTO tile API key as the repository secret `CARTO_API_KEY`
    (same page, Secrets). The base map loads without one (see
@@ -37,7 +37,7 @@ pipeline test (`GOLDEN_FILES` in `tests/test_pipeline_golden.py`), the landing
 and segment tests that read named files of `data/` (marked `repo_data`), and the
 e2e specs, which drive a site built from `data/` and expect a few flights in its
 latest year. With other flights they fail, and then nothing is published.
-`KML_HEATMAP_OWN_FLIGHTS=1` skips them: pytest leaves out the tests marked
+`FLOWN_OWN_FLIGHTS=1` skips them: pytest leaves out the tests marked
 `repo_data`, and the workflow skips its e2e jobs, which the `checks` job then
 accepts as skipped. Everything else still runs, the build of your site, the unit
 tests and the visual snapshots of the fixture site among them. Set it in the
@@ -93,7 +93,7 @@ revalidation:
 Revalidation works with `ETag` or `Last-Modified`. A server that derives its
 ETags from the modification times, as GitHub Pages does, keeps them for the
 files a new build did not change when the site is built with
-`KML_HEATMAP_STABLE_MTIMES=1` (see
+`FLOWN_STABLE_MTIMES=1` (see
 [How the output directory is written](usage.md#how-the-output-directory-is-written)).
 
 The build writes no compressed copies: switch on gzip or brotli at the server
@@ -132,8 +132,8 @@ Graph tags (see [Link previews](output.md#link-previews)). The pages behind them
 (`y/2025.html`, `f/<id>.html`) are written by every build, but their images only
 when the build knows the address of the site, since an `og:image` has to be an
 absolute URL: pass `--site-url https://example.org/flights` (or set
-`KML_HEATMAP_SITE_URL`) with the directory the site is served from. Without it
-the previews unfold as a plain summary without an image. CI fills the address in
+`FLOWN_SITE_URL`) with the directory the site is served from. Without it the
+previews unfold as a plain summary without an image. CI fills the address in
 from the Pages configuration.
 
 ## Behind a login

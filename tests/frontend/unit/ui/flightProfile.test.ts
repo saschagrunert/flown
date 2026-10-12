@@ -10,19 +10,19 @@ import {
   profileSegments,
   PROFILE_HEIGHT_VAR,
   PROFILE_STORAGE_KEY,
-} from "../../../../kml_heatmap/frontend/ui/flightProfile";
-import { DAY_MAX_FLIGHTS } from "../../../../kml_heatmap/frontend/utils/constants";
-import { flightOrder } from "../../../../kml_heatmap/frontend/calculations/flightProfile";
-import type { ReplayCurve } from "../../../../kml_heatmap/frontend/features/replay";
-import { REPLAY_PANEL_HEIGHT_VAR } from "../../../../kml_heatmap/frontend/ui/replayManager";
-import { toggleCrossSection } from "../../../../kml_heatmap/frontend/ui/crossSection";
-import { holdControls } from "../../../../kml_heatmap/frontend/ui/heldControls";
-import * as toast from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/ui/flightProfile";
+import { DAY_MAX_FLIGHTS } from "../../../../flown/frontend/utils/constants";
+import { flightOrder } from "../../../../flown/frontend/calculations/flightProfile";
+import type { ReplayCurve } from "../../../../flown/frontend/features/replay";
+import { REPLAY_PANEL_HEIGHT_VAR } from "../../../../flown/frontend/ui/replayManager";
+import { toggleCrossSection } from "../../../../flown/frontend/ui/crossSection";
+import { holdControls } from "../../../../flown/frontend/ui/heldControls";
+import * as toast from "../../../../flown/frontend/utils/toast";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/state/siteData";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   asMapApp,
   createDataset,

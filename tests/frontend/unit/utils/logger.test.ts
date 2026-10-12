@@ -3,7 +3,7 @@ import {
   initLogger,
   logDebug,
   logError,
-} from "../../../../kml_heatmap/frontend/utils/logger";
+} from "../../../../flown/frontend/utils/logger";
 
 describe("logger utilities", () => {
   beforeEach(() => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Build script for KML Heatmap JavaScript modules
+ * Build script for Flown JavaScript modules
  * Uses esbuild to bundle the TypeScript sources into ES modules
  */
 
@@ -37,12 +37,12 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const STATIC_DIR = join(__dirname, "kml_heatmap/static");
-const FRONTEND_DIR = join(__dirname, "kml_heatmap/frontend");
+const STATIC_DIR = join(__dirname, "flown/static");
+const FRONTEND_DIR = join(__dirname, "flown/frontend");
 
 // `--metafile [path]` keeps esbuild's account of what went into each
 // bundle (bundle-meta.json in the checkout without a path, gitignored and
-// outside kml_heatmap/static, whose JSON files the wheel packages), and
+// outside flown/static, whose JSON files the wheel packages), and
 // `--compare <path>` prints what changed in each bundle since the build
 // that wrote that file (see scripts/README.md)
 const args = parseBuildArgs(
@@ -362,7 +362,7 @@ function analyzeBundleComposition(metafile, fileName) {
   console.log("  Largest modules:");
   for (const [input, bytes] of largestInputs(outputs)) {
     console.log(
-      `    ${formatBytes(bytes).padStart(10)}  ${input.replace(/^kml_heatmap\/frontend\//, "")}`,
+      `    ${formatBytes(bytes).padStart(10)}  ${input.replace(/^flown\/frontend\//, "")}`,
     );
   }
 }
@@ -384,7 +384,7 @@ function compareBundles(before, after, names) {
     console.log(`  ${name}: ${signed(total)}`);
     for (const [input, delta] of inputs.slice(0, 15)) {
       console.log(
-        `    ${signed(delta).padStart(11)}  ${input.replace(/^kml_heatmap\/frontend\//, "")}`,
+        `    ${signed(delta).padStart(11)}  ${input.replace(/^flown\/frontend\//, "")}`,
       );
     }
     if (inputs.length > 15) {

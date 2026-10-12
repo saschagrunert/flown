@@ -3,9 +3,9 @@ requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kml-heatmap"
+name = "flown"
 dynamic = ["version"]
-description = "Interactive heatmap visualizations from KML flight data"
+description = "Turns KML flight logs into a static site of where you have flown: a heatmap, the flights, airports, statistics, replays, a 3D view and a year in review."
 readme = "README.md"
 requires-python = ">=3.14"
 license = "Apache-2.0"
@@ -51,20 +51,20 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/saschagrunert/kml-heatmap"
-Repository = "https://github.com/saschagrunert/kml-heatmap"
+Homepage = "https://github.com/saschagrunert/flown"
+Repository = "https://github.com/saschagrunert/flown"
 
 [tool.setuptools.dynamic]
-version = {attr = "kml_heatmap.__version__"}
+version = {attr = "flown.__version__"}
 
 [project.scripts]
-kml-heatmap = "kml_heatmap.cli:main"
+flown = "flown.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["kml_heatmap*"]
+include = ["flown*"]
 
 [tool.setuptools.package-data]
-kml_heatmap = [
+flown = [
     "templates/*",
     # The vendored third-party files sit in a subdirectory, which the
     # patterns below do not reach
@@ -91,7 +91,7 @@ addopts = [
 ]
 markers = [
     # A copy of the repository with flights of its own skips them with
-    # KML_HEATMAP_OWN_FLIGHTS=1 (see tests/conftest.py and doc/hosting.md)
+    # FLOWN_OWN_FLIGHTS=1 (see tests/conftest.py and doc/hosting.md)
     "repo_data: reads named flights of this repository's data/",
 ]
 # A deprecation in lxml or the next Python release fails the suite instead
@@ -108,7 +108,7 @@ branch = true
 # The scripts are measured too: pre_push.py keeps real dates from being
 # pushed and check_locks.py gates the lock files, and a gate that stops
 # checking fails open. `pytest --cov` without a value measures these.
-source = ["kml_heatmap", "scripts"]
+source = ["flown", "scripts"]
 
 [tool.coverage.report]
 # One to three points below what the suite reaches, so a real regression fails

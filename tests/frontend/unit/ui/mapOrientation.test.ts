@@ -4,9 +4,9 @@ import {
   THREE_D_HINT_MESSAGE,
   THREE_D_TIP_MS,
   THREE_D_TIP_STORAGE_KEY,
-} from "../../../../kml_heatmap/frontend/ui/mapOrientation";
-import { HEAT_LINES } from "../../../../kml_heatmap/frontend/utils/constants";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/ui/mapOrientation";
+import { HEAT_LINES } from "../../../../flown/frontend/utils/constants";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
 import {
   asMapApp,
   createMockApp,
@@ -17,9 +17,9 @@ import {
   dismissToast,
   showToast,
   type ToastAction,
-} from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/utils/toast";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => ({
+vi.mock("../../../../flown/frontend/utils/toast", () => ({
   dismissToast: vi.fn(),
   // The toast, which the tip watches the focus of
   showToast: vi.fn(() => document.createElement("div")),
@@ -31,15 +31,12 @@ vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => ({
  * would make every test one on a touch screen; they start with a mouse.
  */
 const device = vi.hoisted(() => ({ touch: false }));
-vi.mock(
-  "../../../../kml_heatmap/frontend/utils/device",
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import("../../../../kml_heatmap/frontend/utils/device")
-    >()),
-    isTouchDevice: () => device.touch,
-  }),
-);
+vi.mock("../../../../flown/frontend/utils/device", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../../flown/frontend/utils/device")
+  >()),
+  isTouchDevice: () => device.touch,
+}));
 
 describe("MapOrientation", () => {
   let app: MockApp;

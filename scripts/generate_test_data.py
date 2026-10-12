@@ -344,12 +344,12 @@ Examples:
     # --output-dir: only a mounted directory reaches the host.
     name = output_dir.resolve().name
     print("\nOr with Docker (writes the site to out/):")
-    print("  mkdir -p out ~/.cache/kml-heatmap")
+    print("  mkdir -p out ~/.cache/flown")
     print(
         '  docker run --rm --user "$(id -u):$(id -g)" '
         f'-v "{output_dir.resolve()}:/data/{name}" '
-        '-v "$PWD/out:/data/out" -v ~/.cache/kml-heatmap:/cache '
-        f"kml-heatmap {name} --output-dir out"
+        '-v "$PWD/out:/data/out" -v ~/.cache/flown:/cache '
+        f"flown {name} --output-dir out"
     )
 
 

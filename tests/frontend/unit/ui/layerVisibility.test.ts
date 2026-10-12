@@ -10,16 +10,16 @@ import {
   followLayerVisibility,
   highlightsSelection,
   setColorLayer,
-} from "../../../../kml_heatmap/frontend/ui/layerVisibility";
-import { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
+} from "../../../../flown/frontend/ui/layerVisibility";
+import { LayerManager } from "../../../../flown/frontend/ui/layerManager";
 import {
   AVIATION_SHOWN_STATE,
   HEAT_SHOWN_STATE,
-} from "../../../../kml_heatmap/frontend/mapLayers";
+} from "../../../../flown/frontend/mapLayers";
 import {
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 import {
   asMapApp,
   createDataset,

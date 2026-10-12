@@ -2,12 +2,12 @@
  * Web Mercator as MapLibre draws the flat map (utils/mercator.ts).
  */
 import { describe, it, expect } from "vitest";
-import { DEGREES_TO_RADIANS } from "../../../../kml_heatmap/frontend/utils/geometry";
+import { DEGREES_TO_RADIANS } from "../../../../flown/frontend/utils/geometry";
 import {
   lngLatOfMercator,
   mercatorOf,
   mercatorY,
-} from "../../../../kml_heatmap/frontend/utils/mercator";
+} from "../../../../flown/frontend/utils/mercator";
 
 describe("mercatorOf", () => {
   it("puts null island in the middle of the world and the antimeridian at its edges", () => {

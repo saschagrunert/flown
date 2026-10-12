@@ -6,8 +6,8 @@ import {
   NOT_SHARED_HINT,
   PathSelection,
   type PickList,
-} from "../../../../kml_heatmap/frontend/ui/pathSelection";
-import { resetSafeArea } from "../../../../kml_heatmap/frontend/utils/safeArea";
+} from "../../../../flown/frontend/ui/pathSelection";
+import { resetSafeArea } from "../../../../flown/frontend/utils/safeArea";
 import {
   createMockApp,
   createDataset,
@@ -16,15 +16,15 @@ import {
   measureSafeArea,
   type MockApp,
 } from "../../testHelpers";
-import { DataManager } from "../../../../kml_heatmap/frontend/ui/dataManager";
-import { AUTO_ZOOM_FOLLOW } from "../../../../kml_heatmap/frontend/utils/constants";
-import { frameFlights } from "../../../../kml_heatmap/frontend/ui/frameFlights";
-import { loadFeatures } from "../../../../kml_heatmap/frontend/services/featureLoader";
-import { SHARE_FRAME_UNAVAILABLE_MESSAGE } from "../../../../kml_heatmap/frontend/ui/lazyBundles";
+import { DataManager } from "../../../../flown/frontend/ui/dataManager";
+import { AUTO_ZOOM_FOLLOW } from "../../../../flown/frontend/utils/constants";
+import { frameFlights } from "../../../../flown/frontend/ui/frameFlights";
+import { loadFeatures } from "../../../../flown/frontend/services/featureLoader";
+import { SHARE_FRAME_UNAVAILABLE_MESSAGE } from "../../../../flown/frontend/ui/lazyBundles";
 
 // The data manager is real, so the paths follow the selection the way they
 // do in the app; it loads nothing here, and its heat is never drawn
-vi.mock("../../../../kml_heatmap/frontend/services/dataLoader", () => ({
+vi.mock("../../../../flown/frontend/services/dataLoader", () => ({
   DataLoader: vi.fn(function () {
     return { destroy: vi.fn(), getDecoder: () => new Promise(() => {}) };
   }),
@@ -34,7 +34,7 @@ vi.mock("../../../../kml_heatmap/frontend/services/dataLoader", () => ({
 // the view waits for before it frames the flight, as the bundle frames it
 // (ui/frameFlights.ts): where a fit of the flights starts from
 // (cameraForBounds) is what these look at
-vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", () => ({
+vi.mock("../../../../flown/frontend/services/featureLoader", () => ({
   loadedFeatures: () => null,
   loadFeatures: vi.fn(() => Promise.resolve({ frameFlights })),
   loadWrapped: vi.fn(),
@@ -44,7 +44,7 @@ vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", () => ({
 
 const toastMock = vi.hoisted(() => ({ announceStatus: vi.fn() }));
 vi.mock(
-  import("../../../../kml_heatmap/frontend/utils/toast"),
+  import("../../../../flown/frontend/utils/toast"),
   async (importOriginal) => ({ ...(await importOriginal()), ...toastMock }),
 );
 

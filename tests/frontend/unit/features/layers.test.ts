@@ -12,9 +12,9 @@ import {
   selectRanks,
   DEFAULT_ALTITUDE_RANGE,
   DEFAULT_AIRSPEED_RANGE,
-} from "../../../../kml_heatmap/frontend/features/layers";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
-import { scalePosition } from "../../../../kml_heatmap/frontend/utils/colors";
+} from "../../../../flown/frontend/features/layers";
+import type { PathSegment } from "../../../../flown/frontend/types";
+import { scalePosition } from "../../../../flown/frontend/utils/colors";
 import { segmentOf } from "../../testHelpers";
 
 describe("layers feature", () => {

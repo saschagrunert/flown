@@ -5,16 +5,16 @@ import {
   createAirportMarkers,
   loadInitialData,
   resolveYearSelection,
-} from "../../../../kml_heatmap/frontend/appInitializer";
+} from "../../../../flown/frontend/appInitializer";
 import {
   FilterManager,
   publishDataset,
-} from "../../../../kml_heatmap/frontend/ui/filterManager";
+} from "../../../../flown/frontend/ui/filterManager";
 import type {
   Airport,
   KMLDataset,
   Metadata,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/types";
 import {
   createMockApp,
   createDataset,
@@ -24,14 +24,14 @@ import {
   type MockApp,
 } from "../../testHelpers";
 import { Marker as MockMarker } from "../../../mocks/maplibre-gl";
-import { NO_DATA_MESSAGE } from "../../../../kml_heatmap/frontend/ui/actions";
+import { NO_DATA_MESSAGE } from "../../../../flown/frontend/ui/actions";
 
 const toastMock = vi.hoisted(() => ({
   showToast: vi.fn(),
   announceStatus: vi.fn(),
   dismissToast: vi.fn(),
 }));
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () => toastMock);
+vi.mock("../../../../flown/frontend/utils/toast", () => toastMock);
 
 function setupDOM(): void {
   document.body.innerHTML = `

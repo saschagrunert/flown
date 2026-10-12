@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-import kml_heatmap.validation as val_mod
-from kml_heatmap.validation import (
+import flown.validation as val_mod
+from flown.validation import (
     find_kml_files,
     foreign_site_files,
     is_protected_directory,

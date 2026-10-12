@@ -16,8 +16,8 @@ setup, the checks that run in CI and the conventions used in this repository.
   that Prettier and ruff write.
 
 ```bash
-git clone https://github.com/saschagrunert/kml-heatmap.git
-cd kml-heatmap
+git clone https://github.com/saschagrunert/flown.git
+cd flown
 
 python -m venv .venv && source .venv/bin/activate
 pip install --require-hashes -r requirements-test.lock -r requirements-build.lock
@@ -61,7 +61,7 @@ A site built from the fixture flights of the visual snapshots finishes offline
 in under a minute and shows that the setup works:
 
 ```bash
-npm run build && python -m kml_heatmap --no-terrain tests/fixtures/visual --output-dir out
+npm run build && python -m flown --no-terrain tests/fixtures/visual --output-dir out
 python -m http.server 8000 --bind 127.0.0.1 -d out   # then open http://127.0.0.1:8000/
 ```
 
@@ -136,8 +136,8 @@ here, not an oversight: adding the parentheses back is undone on the next
   3.14 and refuses the push when it cannot check. The published site carries no
   flight date finer than the year either way; this is about the KML files this
   repository commits.
-- The frontend build output in `kml_heatmap/static/` is gitignored: the bundles
-  with their `.map` files (listed in
+- The frontend build output in `flown/static/` is gitignored: the bundles with
+  their `.map` files (listed in
   [Frontend](doc/development/frontend.md#architecture)), `vendor/` (the
   third-party code copied out of `node_modules`) and `flags/` (the country flags
   of `flag-icons`). It is built by `npm run build` and, for the image, inside
@@ -255,5 +255,5 @@ the visual job says so.
 
 There are no releases: the site is deployed from `main` (see the `site` and
 `deploy` jobs of `.github/workflows/test.yml`). The version is declared once, in
-`kml_heatmap/__init__.py`; `package.json` and `package-lock.json` repeat it and
+`flown/__init__.py`; `package.json` and `package-lock.json` repeat it and
 `scripts/check_locks.py` fails the lint job when the three disagree.

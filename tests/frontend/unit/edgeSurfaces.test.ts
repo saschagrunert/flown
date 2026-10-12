@@ -27,7 +27,7 @@ describe("the surfaces across the map's edges on a phone", () => {
   beforeAll(() => {
     style = document.createElement("style");
     style.textContent = readFileSync(
-      resolve(__dirname, "../../../kml_heatmap/static/styles.css"),
+      resolve(__dirname, "../../../flown/static/styles.css"),
       "utf8",
     );
     document.head.append(style);

@@ -3,10 +3,10 @@ import {
   StateManager,
   sanitizeSavedState,
   storageKey,
-} from "../../../../kml_heatmap/frontend/ui/stateManager";
+} from "../../../../flown/frontend/ui/stateManager";
 import { LngLat } from "../../../mocks/maplibre-gl";
-import { createDefaultState } from "../../../../kml_heatmap/frontend/state/store";
-import { TOGGLE_KEYS } from "../../../../kml_heatmap/frontend/state/toggles";
+import { createDefaultState } from "../../../../flown/frontend/state/store";
+import { TOGGLE_KEYS } from "../../../../flown/frontend/state/toggles";
 import { createMockApp, asMapApp, type MockApp } from "../../testHelpers";
 
 describe("sanitizeSavedState", () => {
@@ -145,15 +145,15 @@ describe("sanitizeSavedState", () => {
 
 describe("storageKey", () => {
   it("keys the state by the directory of the page", () => {
-    expect(storageKey("/a/")).toBe("kml-heatmap-state:/a/");
+    expect(storageKey("/a/")).toBe("flown-state:/a/");
     // The page itself and its folder are the same map
-    expect(storageKey("/a/index.html")).toBe("kml-heatmap-state:/a/");
+    expect(storageKey("/a/index.html")).toBe("flown-state:/a/");
     expect(storageKey("/b/")).not.toBe(storageKey("/a/"));
   });
 
   it("keeps the original key for a map at the root of its origin", () => {
-    expect(storageKey("/")).toBe("kml-heatmap-state");
-    expect(storageKey("/index.html")).toBe("kml-heatmap-state");
+    expect(storageKey("/")).toBe("flown-state");
+    expect(storageKey("/index.html")).toBe("flown-state");
   });
 });
 
@@ -174,7 +174,7 @@ describe("StateManager", () => {
   }
 
   /** Storage key of the map the tests run at, the root of the origin */
-  const KEY = "kml-heatmap-state";
+  const KEY = "flown-state";
 
   beforeEach(() => {
     mockLocalStorage = {};
@@ -697,7 +697,7 @@ describe("StateManager", () => {
 
       stateManager.saveMapState();
 
-      expect(Object.keys(mockLocalStorage)).toEqual(["kml-heatmap-state:/b/"]);
+      expect(Object.keys(mockLocalStorage)).toEqual(["flown-state:/b/"]);
     });
 
     it("does nothing if map is not initialized", () => {
@@ -903,7 +903,7 @@ describe("StateManager", () => {
     });
 
     it("does not restore the state of another map on the same origin (regression)", () => {
-      mockLocalStorage["kml-heatmap-state:/a/"] = JSON.stringify({
+      mockLocalStorage["flown-state:/a/"] = JSON.stringify({
         schemaVersion: 3,
         center: { lat: 48.0, lng: 11.0 },
         zoom: 12,
@@ -927,7 +927,7 @@ describe("StateManager", () => {
         zoom: 12,
         selectedYear: "2024",
       });
-      setLocation("", "/kml-heatmap/");
+      setLocation("", "/flown/");
 
       expect(stateManager.loadState()).toBeNull();
       expect(Object.keys(mockLocalStorage)).toEqual([KEY]);

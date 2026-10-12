@@ -3,18 +3,18 @@
  * and gives back.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { ReplayManager } from "../../../../kml_heatmap/frontend/ui/replayManager";
-import { CHASE_REDUCED_MOTION_MESSAGE } from "../../../../kml_heatmap/frontend/ui/replayManager";
+import type { ReplayManager } from "../../../../flown/frontend/ui/replayManager";
+import { CHASE_REDUCED_MOTION_MESSAGE } from "../../../../flown/frontend/ui/replayManager";
 import {
   CHASE_PITCH,
   CHASE_ZOOM,
-} from "../../../../kml_heatmap/frontend/ui/chaseCamera";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
+} from "../../../../flown/frontend/ui/chaseCamera";
+import * as motion from "../../../../flown/frontend/utils/motion";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import {
   followContextLoss,
   isReplayCameraMove,
-} from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/utils/mapHelpers";
 import {
   createReplayManager,
   createReplayMockApp,
@@ -26,7 +26,7 @@ import {
   type MockApp,
 } from "./replayTestSetup";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/htmlGenerators", () => ({
+vi.mock("../../../../flown/frontend/utils/htmlGenerators", () => ({
   generateSegmentPopupHtml: vi.fn(() => "<div>popup</div>"),
 }));
 

@@ -3,8 +3,8 @@ import {
   appendCurve,
   flatCurves,
   flightCurves,
-} from "../../../../kml_heatmap/frontend/calculations/curves";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/curves";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { createSegment } from "../../testHelpers";
 
 /** A flight of `count` segments of path `pathId`, turning as it goes */

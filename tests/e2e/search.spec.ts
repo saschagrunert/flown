@@ -11,7 +11,7 @@
 import { test, expect, type Page } from "./fixtures";
 import { gotoApp } from "./helpers";
 import { mapPopup } from "./map";
-import { PLACE_DEBOUNCE_MS } from "../../kml_heatmap/frontend/services/photon";
+import { PLACE_DEBOUNCE_MS } from "../../flown/frontend/services/photon";
 
 /** Photon's answer to any text: one city with its extent */
 const ANSWER = {

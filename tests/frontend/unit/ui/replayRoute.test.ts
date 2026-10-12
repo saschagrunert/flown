@@ -2,8 +2,8 @@
  * The replay route: the flight's whole track along its curve.
  */
 import { describe, it, expect } from "vitest";
-import { routeCoordinates } from "../../../../kml_heatmap/frontend/ui/replayManager";
-import { flatCurves } from "../../../../kml_heatmap/frontend/calculations/curves";
+import { routeCoordinates } from "../../../../flown/frontend/ui/replayManager";
+import { flatCurves } from "../../../../flown/frontend/calculations/curves";
 import { createSegment } from "../../testHelpers";
 
 describe("routeCoordinates", () => {

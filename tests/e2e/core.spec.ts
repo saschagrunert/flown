@@ -23,7 +23,7 @@ import {
   watchPopupRemovals,
   zoomControl,
 } from "./map";
-import { DOUBLE_TAP_MS } from "../../kml_heatmap/frontend/utils/mapHelpers";
+import { DOUBLE_TAP_MS } from "../../flown/frontend/utils/mapHelpers";
 
 /**
  * Two airports with flights, as far apart as the data allows, so that the
@@ -348,7 +348,7 @@ test.describe("Core", () => {
   });
 
   test("page title is set correctly", async ({ page }) => {
-    await expect(page).toHaveTitle("KML Heatmap");
+    await expect(page).toHaveTitle("Flown");
   });
 
   test("map config is loaded with correct structure", async ({ page }) => {
@@ -405,13 +405,13 @@ test.describe("Core", () => {
     const link = footer.locator("a");
     await expect(link).toHaveAttribute(
       "href",
-      "https://github.com/saschagrunert/kml-heatmap",
+      "https://github.com/saschagrunert/flown",
     );
     // The project's code, not the pilot's: on a fork's site the link still
     // goes upstream
     await expect(link).toHaveAttribute(
       "aria-label",
-      "KML Heatmap source code on GitHub",
+      "Flown source code on GitHub",
     );
     // The whole box is the target, not only the icon in its middle
     const [box, target] = await Promise.all([

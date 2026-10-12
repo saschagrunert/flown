@@ -12,8 +12,8 @@ import {
   matchesMedia,
   shareLinkLabel,
   TouchClock,
-} from "../../../../kml_heatmap/frontend/utils/device";
-import { MOBILE_BREAKPOINT_PX } from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/device";
+import { MOBILE_BREAKPOINT_PX } from "../../../../flown/frontend/utils/constants";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -59,7 +59,7 @@ describe("device", () => {
       // but too short for them: every width rule says so too
       for (const name of ["styles", "features", "wrapped"]) {
         const css = readFileSync(
-          resolve(__dirname, `../../../../kml_heatmap/static/${name}.css`),
+          resolve(__dirname, `../../../../flown/static/${name}.css`),
           "utf8",
         );
         for (const [, query] of css.matchAll(/@media ([^{]*width[^{]*)\{/g)) {

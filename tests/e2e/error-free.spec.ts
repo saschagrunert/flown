@@ -258,7 +258,7 @@ test.describe("Error-Free Interactions", () => {
     });
 
     test("zoom level is saved to state", async ({ page }) => {
-      await page.evaluate(() => localStorage.removeItem("kml-heatmap-state"));
+      await page.evaluate(() => localStorage.removeItem("flown-state"));
       await page.reload();
       await waitForAppReady(page);
 
@@ -270,7 +270,7 @@ test.describe("Error-Free Interactions", () => {
     });
 
     test("zoom level is restored on reload", async ({ page }) => {
-      await page.evaluate(() => localStorage.removeItem("kml-heatmap-state"));
+      await page.evaluate(() => localStorage.removeItem("flown-state"));
       await page.reload();
       await waitForAppReady(page);
 

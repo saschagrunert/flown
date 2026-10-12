@@ -33,7 +33,7 @@ import {
   ribbonCount,
   segmentDetails,
 } from "./map";
-import { BASE_STYLE_UNAVAILABLE_MESSAGE } from "../../kml_heatmap/frontend/baseStyle";
+import { BASE_STYLE_UNAVAILABLE_MESSAGE } from "../../flown/frontend/baseStyle";
 
 /** The layers of the flights, bottom to top (MAP_LAYERS in constants.ts) */
 const FLIGHT_LAYERS = [

@@ -11,14 +11,14 @@ import {
   HEATMAP_LEAST_CONTRIBUTION,
   HEATMAP_LEAST_POINT_CONTRIBUTION,
   HEATMAP_RADIUS_PX,
-} from "../../../../kml_heatmap/frontend/ui/heatmapPaint";
+} from "../../../../flown/frontend/ui/heatmapPaint";
 import {
   HEAT_LINES,
   HEATMAP_CLUSTER,
   MAP_LAYERS,
   MAP_MAX_ZOOM,
   MAP_MIN_ZOOM,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 
 describe("heatmapPaint", () => {
   const paint = heatmapPaint();

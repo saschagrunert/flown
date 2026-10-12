@@ -12,13 +12,13 @@ import {
   decodeYear,
   decodeYearBytes,
   expandYearData,
-} from "../../../../kml_heatmap/frontend/services/yearDecode";
+} from "../../../../flown/frontend/services/yearDecode";
 import { path, rawYear, yearBytes } from "../../yearFixtures";
 import type {
   KMLDataset,
   RawPathSegments,
   RawYearData,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/types";
 
 describe("decodeYear", () => {
   it("lays the paths out in flat columns, a point more than rows per path", () => {

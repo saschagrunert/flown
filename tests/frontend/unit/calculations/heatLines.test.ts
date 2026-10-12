@@ -5,13 +5,13 @@ import {
   heatWeight,
   CRUISE_SPEED_MS,
   segmentSeconds,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
+} from "../../../../flown/frontend/calculations/heatLines";
 import {
   flatCurves,
   FLAT_TURN_STEP_DEG,
-} from "../../../../kml_heatmap/frontend/calculations/curves";
-import { smoothFlights } from "../../../../kml_heatmap/frontend/calculations/smoothing";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/curves";
+import { smoothFlights } from "../../../../flown/frontend/calculations/smoothing";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { createSegment } from "../../testHelpers";
 
 /** Degrees of latitude per metre */

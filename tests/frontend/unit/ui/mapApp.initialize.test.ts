@@ -2,15 +2,15 @@
  * MapApp.initialize: data loading, year selection and restored state.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { createDefaultState } from "../../../../kml_heatmap/frontend/state/store";
+import { createDefaultState } from "../../../../flown/frontend/state/store";
 import {
   MAP_STALL_MESSAGE,
   MAP_STALL_MS,
   MapApp,
   RESET_VIEW_DONE_MESSAGE,
   startViewPadding,
-} from "../../../../kml_heatmap/frontend/mapApp";
-import { resetSafeArea } from "../../../../kml_heatmap/frontend/utils/safeArea";
+} from "../../../../flown/frontend/mapApp";
+import { resetSafeArea } from "../../../../flown/frontend/utils/safeArea";
 import { measureSafeArea } from "../../testHelpers";
 import {
   Marker as MockMarker,
@@ -20,55 +20,47 @@ import {
 import {
   loadFeatures,
   loadWrapped,
-} from "../../../../kml_heatmap/frontend/services/featureLoader";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
-import { INPUT_EVENTS } from "../../../../kml_heatmap/frontend/utils/constants";
-import * as toast from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/services/featureLoader";
+import * as motion from "../../../../flown/frontend/utils/motion";
+import { INPUT_EVENTS } from "../../../../flown/frontend/utils/constants";
+import * as toast from "../../../../flown/frontend/utils/toast";
 
 // The instances the mocked manager constructors hand out live in the setup
 // module, which is loaded before the mocks are registered
 const m = await vi.hoisted(() => import("./mapAppTestSetup"));
 
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () =>
-  m.modules.logger(),
-);
-vi.mock("../../../../kml_heatmap/frontend/utils/domCache", () =>
+vi.mock("../../../../flown/frontend/utils/logger", () => m.modules.logger());
+vi.mock("../../../../flown/frontend/utils/domCache", () =>
   m.modules.domCache(),
 );
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () =>
-  m.modules.toast(),
-);
-vi.mock("../../../../kml_heatmap/frontend/ui/mobileBar", () =>
-  m.modules.mobileBar(),
-);
-vi.mock("../../../../kml_heatmap/frontend/ui/dataManager", () =>
+vi.mock("../../../../flown/frontend/utils/toast", () => m.modules.toast());
+vi.mock("../../../../flown/frontend/ui/mobileBar", () => m.modules.mobileBar());
+vi.mock("../../../../flown/frontend/ui/dataManager", () =>
   m.modules.dataManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/filterManager", () =>
+vi.mock("../../../../flown/frontend/ui/filterManager", () =>
   m.modules.filterManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/airportManager", () =>
+vi.mock("../../../../flown/frontend/ui/airportManager", () =>
   m.modules.airportManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/replayManager", () =>
+vi.mock("../../../../flown/frontend/ui/replayManager", () =>
   m.modules.replayManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/layerManager", () =>
+vi.mock("../../../../flown/frontend/ui/layerManager", () =>
   m.modules.layerManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/stateManager", () =>
+vi.mock("../../../../flown/frontend/ui/stateManager", () =>
   m.modules.stateManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/wrappedManager", () =>
+vi.mock("../../../../flown/frontend/ui/wrappedManager", () =>
   m.modules.wrappedManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", () =>
+vi.mock("../../../../flown/frontend/services/featureLoader", () =>
   m.modules.featureLoader(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/uiToggles", () =>
-  m.modules.uiToggles(),
-);
-vi.mock("../../../../kml_heatmap/frontend/ui/pathSelection", () =>
+vi.mock("../../../../flown/frontend/ui/uiToggles", () => m.modules.uiToggles());
+vi.mock("../../../../flown/frontend/ui/pathSelection", () =>
   m.modules.pathSelection(),
 );
 /** What the start view keeps off the edges with no panels over them */

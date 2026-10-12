@@ -57,7 +57,7 @@ test.describe("State Persistence", () => {
 
   test.describe("localStorage", () => {
     test("state is saved to localStorage", async ({ page }) => {
-      await page.evaluate(() => localStorage.removeItem("kml-heatmap-state"));
+      await page.evaluate(() => localStorage.removeItem("flown-state"));
 
       await toggleLayer(page, "heatmap");
       await expectToggle(layerButton(page, "heatmap"), false);

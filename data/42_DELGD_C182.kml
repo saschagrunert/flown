@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<kml xmlns:gx="http://www.google.com/kml/ext/2.2" creator="kml-heatmap" xmlns="http://www.opengis.net/kml/2.2">
+<kml xmlns:gx="http://www.google.com/kml/ext/2.2" creator="flown" xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>SkyDemon Track Log</name>
     <Style id="skydemonLogStyle">

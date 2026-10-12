@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { withTimeout } from "../../../../kml_heatmap/frontend/utils/withTimeout";
+import { withTimeout } from "../../../../flown/frontend/utils/withTimeout";
 
 describe("withTimeout", () => {
   beforeEach(() => {

@@ -16,7 +16,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { GeoJSONSource } from "maplibre-gl";
 // Type-only import so the window.mapApp / MAP_CONFIG globals are declared
-import type {} from "../../kml_heatmap/frontend/globals";
+import type {} from "../../flown/frontend/globals";
 
 /** Matches ZOOM_OFFSET in utils/constants.ts */
 const ZOOM_OFFSET = 1;

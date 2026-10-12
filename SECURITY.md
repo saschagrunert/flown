@@ -10,7 +10,7 @@ fixes land on `main` and are deployed with the next site build.
 Please do not open a public issue for security problems. Use GitHub's private
 vulnerability reporting instead:
 
-https://github.com/saschagrunert/kml-heatmap/security/advisories/new
+https://github.com/saschagrunert/flown/security/advisories/new
 
 Include the affected component (Python pipeline, frontend, container image or
 CI), steps to reproduce and, if possible, a suggested fix. You will get a

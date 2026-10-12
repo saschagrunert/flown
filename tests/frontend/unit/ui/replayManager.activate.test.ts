@@ -2,25 +2,25 @@
  * ReplayManager: activation, initialization and layer handling.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { ReplayManager } from "../../../../kml_heatmap/frontend/ui/replayManager";
+import type { ReplayManager } from "../../../../flown/frontend/ui/replayManager";
 import {
   REPLAY_LEGEND_HEIGHT_VAR,
   REPLAY_PANEL_HEIGHT_VAR,
-} from "../../../../kml_heatmap/frontend/ui/replayManager";
+} from "../../../../flown/frontend/ui/replayManager";
 import {
   REPLAY_PRECONDITION_MESSAGE,
   REPLAY_TOO_MANY_MESSAGE,
-} from "../../../../kml_heatmap/frontend/ui/replayButton";
-import { STILL_LOADING_MESSAGE } from "../../../../kml_heatmap/frontend/ui/actions";
+} from "../../../../flown/frontend/ui/replayButton";
+import { STILL_LOADING_MESSAGE } from "../../../../flown/frontend/ui/actions";
 import {
   LIVE_REGION_DELAY_MS,
   TOAST_STATUS_ID,
-} from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/utils/toast";
 import {
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import type { AirportMarker } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/utils/constants";
+import type { AirportMarker } from "../../../../flown/frontend/types";
 import {
   createReplayManager,
   createReplayMockApp,
@@ -41,10 +41,10 @@ import {
   isHeld,
   segmentOf,
 } from "../../testHelpers";
-import { setColorLayer } from "../../../../kml_heatmap/frontend/ui/layerVisibility";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
+import { setColorLayer } from "../../../../flown/frontend/ui/layerVisibility";
+import * as motion from "../../../../flown/frontend/utils/motion";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/htmlGenerators", () => ({
+vi.mock("../../../../flown/frontend/utils/htmlGenerators", () => ({
   generateSegmentPopupHtml: vi.fn(() => "<div>popup</div>"),
 }));
 

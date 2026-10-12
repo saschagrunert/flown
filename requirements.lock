@@ -181,7 +181,7 @@ lxml==6.1.3 \
     --hash=sha256:fe91993149523aa59941b9e3c90e2eb45f57ad014697aef6c8b13339a59c019e \
     --hash=sha256:febd35ef45f603c2d74b74655efdbf45e14f55fc0aef4ac82b663ca829b283e0 \
     --hash=sha256:ff88a92cafde90888511242d1c54afcc1a8adbb6dc0a88fa7f87e29e92400d4a
-    # via kml-heatmap (pyproject.toml)
+    # via flown (pyproject.toml)
 minify-html==0.18.1 \
     --hash=sha256:00f407d32f3f8369901f0e6c92610f351f69dacf4ed594d373924f54fbf01ded \
     --hash=sha256:01ac739abdf9da1ce253afc060f04e7704f3288b96c14fa301957757a3c06780 \
@@ -233,7 +233,7 @@ minify-html==0.18.1 \
     --hash=sha256:f8354721d4b3ace0400d7b4302b14f080cdb8acaf28f6891d9318a2b4623de57 \
     --hash=sha256:f8fca598b171ee603b8ed399bedd2de00d202cfcb0e98feadb21deb11d5d669b \
     --hash=sha256:fe625fae576d20f0fe5981f0f7a5fe6d96608bbb8daf4815f7a0b28be7d62472
-    # via kml-heatmap (pyproject.toml)
+    # via flown (pyproject.toml)
 rcssmin==1.2.2 \
     --hash=sha256:0162c32ce946978edc834d4fba705ac5f9422d7f556f3264cc4fc67c7ee39171 \
     --hash=sha256:0519a25f4af4221dcec652b2fe2e35d2a2465d7d68c2d529d47ef164e767942b \
@@ -306,4 +306,4 @@ rcssmin==1.2.2 \
     --hash=sha256:f17dc92553a46412c49f972f0ab31088032b9482a9c421bc2d39691a5d8842aa \
     --hash=sha256:f6696d73585c6ec01c154123bc772184a7ea6571d10092a41693050cef1fd6a9 \
     --hash=sha256:fc3cfd3548c2a95a9bdab56914083b2c8eaf40b6b60801ae22bf01c6a05662c9
-    # via kml-heatmap (pyproject.toml)
+    # via flown (pyproject.toml)

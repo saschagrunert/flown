@@ -38,11 +38,11 @@ FIXTURE_HASH_FILE = "fixture.sha1"
 # the year the spec pins, and a hash no commit has.
 BUILD_ENVIRONMENT = {
     "SOURCE_DATE_EPOCH": "1735689600",
-    "KML_HEATMAP_COMMIT": "0000000",
-    "KML_HEATMAP_REPOSITORY": "",
+    "FLOWN_COMMIT": "0000000",
+    "FLOWN_REPOSITORY": "",
     # Without the airport database the build still succeeds, with other
     # airport names in the rail
-    "KML_HEATMAP_REQUIRE_AIRPORT_DB": "1",
+    "FLOWN_REQUIRE_AIRPORT_DB": "1",
     # A key in the environment of whoever runs this adds the keyed layers
     "CARTO_API_KEY": "",
 }
@@ -88,10 +88,10 @@ def main() -> int:
     # fresh one with fresh copies of the fixture databases keeps the build
     # offline (a copy older than 30 days would be downloaded again) and
     # independent of what earlier builds left in the user's cache.
-    with tempfile.TemporaryDirectory(prefix="kml-heatmap-visual-") as cache_dir:
+    with tempfile.TemporaryDirectory(prefix="flown-visual-") as cache_dir:
         shutil.copy(AIRPORTS, cache_dir)
         shutil.copy(RUNWAYS, cache_dir)
-        env = {**os.environ, **BUILD_ENVIRONMENT, "KML_HEATMAP_CACHE_DIR": cache_dir}
+        env = {**os.environ, **BUILD_ENVIRONMENT, "FLOWN_CACHE_DIR": cache_dir}
         # Hashed before the build: a fixture that changes while it runs
         # leaves a site the check refuses
         inputs = fixture_hash()
@@ -99,7 +99,7 @@ def main() -> int:
             [
                 sys.executable,
                 "-m",
-                "kml_heatmap",
+                "flown",
                 str(FIXTURE_DIR),
                 "--output-dir",
                 str(SITE_DIR),

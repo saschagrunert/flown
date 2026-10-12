@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { DOMCache } from "../../../../kml_heatmap/frontend/utils/domCache";
+import { DOMCache } from "../../../../flown/frontend/utils/domCache";
 import {
   hideControls,
   restoreControls,
-} from "../../../../kml_heatmap/frontend/ui/wrappedChrome";
+} from "../../../../flown/frontend/ui/wrappedChrome";
 
 describe("DOMCache", () => {
   let domCache: DOMCache;

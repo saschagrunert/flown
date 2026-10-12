@@ -8,12 +8,12 @@ import {
   followSelectionHighlight,
   selectionLines,
   selectionOpacity,
-} from "../../../../kml_heatmap/frontend/ui/selectionHighlight";
+} from "../../../../flown/frontend/ui/selectionHighlight";
 import {
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import { flatCurves } from "../../../../kml_heatmap/frontend/calculations/curves";
+} from "../../../../flown/frontend/utils/constants";
+import { flatCurves } from "../../../../flown/frontend/calculations/curves";
 import {
   asMapApp,
   createDataset,

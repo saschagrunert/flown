@@ -1,15 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type {
-  Metadata,
-  PathInfo,
-} from "../../../../kml_heatmap/frontend/types";
-import type { SiteData } from "../../../../kml_heatmap/frontend/state/siteData";
-import { filterPaths } from "../../../../kml_heatmap/frontend/calculations/statistics";
+import type { Metadata, PathInfo } from "../../../../flown/frontend/types";
+import type { SiteData } from "../../../../flown/frontend/state/siteData";
+import { filterPaths } from "../../../../flown/frontend/calculations/statistics";
 
 type AirportsModule =
-  typeof import("../../../../kml_heatmap/frontend/features/airports");
+  typeof import("../../../../flown/frontend/features/airports");
 type CountriesModule =
-  typeof import("../../../../kml_heatmap/frontend/features/countries");
+  typeof import("../../../../flown/frontend/features/countries");
 
 describe("airports feature", () => {
   let mod: AirportsModule;
@@ -19,11 +16,9 @@ describe("airports feature", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    mod = await import("../../../../kml_heatmap/frontend/features/airports");
-    countries =
-      await import("../../../../kml_heatmap/frontend/features/countries");
-    ({ siteData } =
-      await import("../../../../kml_heatmap/frontend/state/siteData"));
+    mod = await import("../../../../flown/frontend/features/airports");
+    countries = await import("../../../../flown/frontend/features/countries");
+    ({ siteData } = await import("../../../../flown/frontend/state/siteData"));
   });
 
   const mockPathInfo: PathInfo[] = [

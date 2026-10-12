@@ -8,7 +8,7 @@ import {
   createSegment,
   type MockApp,
 } from "../../testHelpers";
-import { siteData } from "../../../../kml_heatmap/frontend/state/siteData";
+import { siteData } from "../../../../flown/frontend/state/siteData";
 
 export { el } from "../../testHelpers";
 

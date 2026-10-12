@@ -6,14 +6,14 @@ import {
   flightsOf,
   heatLinesSource,
   runsSource,
-} from "../../../../kml_heatmap/frontend/services/flightLines";
+} from "../../../../flown/frontend/services/flightLines";
 import {
   heatLineFeatures,
   heatWeight,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import { heatLineTone } from "../../../../kml_heatmap/frontend/calculations/heatTone";
-import { runLines } from "../../../../kml_heatmap/frontend/ui/pathRuns";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/heatLines";
+import { heatLineTone } from "../../../../flown/frontend/calculations/heatTone";
+import { runLines } from "../../../../flown/frontend/ui/pathRuns";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { createSegment } from "../../testHelpers";
 
 /** A position as the lines are written, to 7 decimals (1 cm) */

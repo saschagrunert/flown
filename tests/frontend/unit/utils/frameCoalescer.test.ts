@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { frameCoalescer } from "../../../../kml_heatmap/frontend/utils/frameCoalescer";
+import { frameCoalescer } from "../../../../flown/frontend/utils/frameCoalescer";
 import { stubAnimationFrames } from "../../testHelpers";
 
 describe("frameCoalescer", () => {

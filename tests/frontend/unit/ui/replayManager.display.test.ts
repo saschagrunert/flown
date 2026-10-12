@@ -2,15 +2,15 @@
  * ReplayManager: path redraw, frame display updates and the airplane popup.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { ReplayManager } from "../../../../kml_heatmap/frontend/ui/replayManager";
+import type { ReplayManager } from "../../../../flown/frontend/ui/replayManager";
 import {
   getColorForAirspeed,
   getColorForAltitude,
-} from "../../../../kml_heatmap/frontend/utils/colors";
-import * as replayFeature from "../../../../kml_heatmap/frontend/features/replay";
-import { generateSegmentPopupHtml } from "../../../../kml_heatmap/frontend/utils/htmlGenerators";
-import * as mapHelpers from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import type { ReplayAirplane } from "../../../../kml_heatmap/frontend/ui/replayState";
+} from "../../../../flown/frontend/utils/colors";
+import * as replayFeature from "../../../../flown/frontend/features/replay";
+import { generateSegmentPopupHtml } from "../../../../flown/frontend/utils/htmlGenerators";
+import * as mapHelpers from "../../../../flown/frontend/utils/mapHelpers";
+import type { ReplayAirplane } from "../../../../flown/frontend/ui/replayState";
 import {
   createReplayManager,
   createReplayMockApp,
@@ -24,7 +24,7 @@ import {
 } from "./replayTestSetup";
 import { segmentOf } from "../../testHelpers";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/htmlGenerators", () => ({
+vi.mock("../../../../flown/frontend/utils/htmlGenerators", () => ({
   generateSegmentPopupHtml: vi.fn(() => "<div>popup</div>"),
 }));
 

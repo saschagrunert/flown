@@ -11,11 +11,11 @@ extend-exclude = [
 [default.extend-words]
 # Unicode general category "decimal number", used in Hypothesis strategies
 Nd = "Nd"
-# The PNG filter of Alan W. Paeth (kml_heatmap/png.py)
+# The PNG filter of Alan W. Paeth (flown/png.py)
 paeth = "paeth"
 # The National Elevation Dataset, in the attribution of the terrain tiles
 NED = "NED"
-# German month names, which kml_heatmap/date_tokens.py takes out of names
+# German month names, which flown/date_tokens.py takes out of names
 januar = "januar"
 februar = "februar"
 juni = "juni"
@@ -23,9 +23,9 @@ juli = "juli"
 oktober = "oktober"
 dezember = "dezember"
 # The time zone of India and Ireland, and the German "is", which
-# kml_heatmap/date_tokens.py tells apart by their case
+# flown/date_tokens.py tells apart by their case
 ist = "ist"
-# The German "before" of Vorweihnachten, which kml_heatmap/date_tokens.py
+# The German "before" of Vorweihnachten, which flown/date_tokens.py
 # matches as a part of the word
 vor = "vor"
 

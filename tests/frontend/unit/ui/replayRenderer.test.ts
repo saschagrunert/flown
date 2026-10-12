@@ -3,45 +3,45 @@ import {
   AirplaneMarker,
   ReplayRenderer,
   findSegmentIndexAtTime,
-} from "../../../../kml_heatmap/frontend/ui/replayRenderer";
+} from "../../../../flown/frontend/ui/replayRenderer";
 import {
   appendTrailSegment,
   trailFeatureCollection,
   truncateTrail,
-} from "../../../../kml_heatmap/frontend/ui/replayTrail";
+} from "../../../../flown/frontend/ui/replayTrail";
 import {
   AUTO_ZOOM_DURATION_MS,
   AUTO_ZOOM_SETTLE_MS,
   RECENTER_PAN_DURATION_MS,
   SEEK_PAN_THROTTLE_MS,
   liftRoomPx,
-} from "../../../../kml_heatmap/frontend/ui/replayCamera";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
+} from "../../../../flown/frontend/ui/replayCamera";
+import * as motion from "../../../../flown/frontend/utils/motion";
 import {
   liftExaggeration,
   liftFt,
   liftOffsetPx,
   ribbonId,
-} from "../../../../kml_heatmap/frontend/calculations/lift";
-import { ReplayState } from "../../../../kml_heatmap/frontend/ui/replayState";
-import type { MapApp } from "../../../../kml_heatmap/frontend/mapApp";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/lift";
+import { ReplayState } from "../../../../flown/frontend/ui/replayState";
+import type { MapApp } from "../../../../flown/frontend/mapApp";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   getColorForAirspeed,
   getColorForAltitude,
-} from "../../../../kml_heatmap/frontend/utils/colors";
-import * as replayFeature from "../../../../kml_heatmap/frontend/features/replay";
-import { generateSegmentPopupHtml } from "../../../../kml_heatmap/frontend/utils/htmlGenerators";
-import * as mapHelpers from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/utils/colors";
+import * as replayFeature from "../../../../flown/frontend/features/replay";
+import { generateSegmentPopupHtml } from "../../../../flown/frontend/utils/htmlGenerators";
+import * as mapHelpers from "../../../../flown/frontend/utils/mapHelpers";
 import {
   AUTO_ZOOM_MIN,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/utils/constants";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { createMapLibreMock } from "../../testHelpers";
 import { Point, type Map as MockMapLibreMap } from "../../../mocks/maplibre-gl";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/htmlGenerators", () => ({
+vi.mock("../../../../flown/frontend/utils/htmlGenerators", () => ({
   generateSegmentPopupHtml: vi.fn(() => "<div>popup</div>"),
 }));
 

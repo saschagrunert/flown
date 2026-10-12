@@ -19,48 +19,48 @@ import {
   growHeatCloud,
   heatCloudLevel,
   prepareHeatCloud,
-} from "../../../../kml_heatmap/frontend/ui/heatCloud";
+} from "../../../../flown/frontend/ui/heatCloud";
 import {
   HEAT_CLOUD_LAYER,
   HeatCloudLayer,
   type HeatCloudStyle,
-} from "../../../../kml_heatmap/frontend/ui/heatCloudLayer";
+} from "../../../../flown/frontend/ui/heatCloudLayer";
 import {
   cloudExposure,
   cloudLook,
-} from "../../../../kml_heatmap/frontend/ui/heatCloudShaders";
-import { toggleReplayAll } from "../../../../kml_heatmap/frontend/ui/replayAll";
-import { ReplayAllPlayer } from "../../../../kml_heatmap/frontend/ui/replayAllPlayer";
+} from "../../../../flown/frontend/ui/heatCloudShaders";
+import { toggleReplayAll } from "../../../../flown/frontend/ui/replayAll";
+import { ReplayAllPlayer } from "../../../../flown/frontend/ui/replayAllPlayer";
 import {
   REPLAY_ALL_LAYER,
   SHARE_INTRO_LAYER,
-} from "../../../../kml_heatmap/frontend/ui/replayAllLayer";
+} from "../../../../flown/frontend/ui/replayAllLayer";
 import {
   CLOUD_POINT_FLOATS,
   type CloudPoints,
-} from "../../../../kml_heatmap/frontend/calculations/heatCloud";
-import { mercatorOf } from "../../../../kml_heatmap/frontend/utils/mercator";
+} from "../../../../flown/frontend/calculations/heatCloud";
+import { mercatorOf } from "../../../../flown/frontend/utils/mercator";
 import {
   LIFT_MAX_ZOOM,
   liftExaggeration,
   RELIEF_MAX_LEVEL,
-} from "../../../../kml_heatmap/frontend/calculations/lift";
+} from "../../../../flown/frontend/calculations/lift";
 import {
   groundedFlights,
   heldFlights,
   heldGroundedFlights,
   levelGroundFt,
   releaseGroundProfiles,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
-import { setBaseStyle } from "../../../../kml_heatmap/frontend/mapLayers";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import { CULL_FROM_ZOOM } from "../../../../kml_heatmap/frontend/utils/viewBox";
+} from "../../../../flown/frontend/calculations/groundProfile";
+import { setBaseStyle } from "../../../../flown/frontend/mapLayers";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
+import { CULL_FROM_ZOOM } from "../../../../flown/frontend/utils/viewBox";
 import {
   FEET_TO_METERS,
   MAP_LAYERS,
   MAP_SOURCES,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/utils/constants";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   asMapApp,
   createDataset,
@@ -71,7 +71,7 @@ import { resetMapLibreMock } from "../../../mocks/maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 const logger = vi.hoisted(() => ({ logError: vi.fn() }));
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", async (original) => ({
+vi.mock("../../../../flown/frontend/utils/logger", async (original) => ({
   ...(await original<object>()),
   logError: logger.logError,
 }));
@@ -85,11 +85,11 @@ const cuts = vi.hoisted(() => ({
   last: [] as unknown[],
 }));
 vi.mock(
-  "../../../../kml_heatmap/frontend/calculations/heatCloud",
+  "../../../../flown/frontend/calculations/heatCloud",
   async (original) => {
     const actual =
       await original<
-        typeof import("../../../../kml_heatmap/frontend/calculations/heatCloud")
+        typeof import("../../../../flown/frontend/calculations/heatCloud")
       >();
     return {
       ...actual,

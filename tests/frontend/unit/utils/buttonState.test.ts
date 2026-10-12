@@ -6,8 +6,8 @@ import {
   setUnavailable,
   syncLegend,
   syncToggleButton,
-} from "../../../../kml_heatmap/frontend/utils/buttonState";
-import { AppStore } from "../../../../kml_heatmap/frontend/state/store";
+} from "../../../../flown/frontend/utils/buttonState";
+import { AppStore } from "../../../../flown/frontend/state/store";
 
 describe("buttonState", () => {
   let button: HTMLButtonElement;
@@ -93,7 +93,7 @@ describe("buttonState", () => {
 
     beforeEach(() => {
       style = document.createElement("style");
-      style.textContent = readFileSync("kml_heatmap/static/styles.css", "utf8");
+      style.textContent = readFileSync("flown/static/styles.css", "utf8");
       document.head.append(style);
     });
 

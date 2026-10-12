@@ -4,10 +4,10 @@ import {
   buildDatasetInSlices,
   combineYearData,
   transferablesOf,
-} from "../../../../kml_heatmap/frontend/services/yearDataset";
-import { decodeYear } from "../../../../kml_heatmap/frontend/services/yearDecode";
+} from "../../../../flown/frontend/services/yearDataset";
+import { decodeYear } from "../../../../flown/frontend/services/yearDecode";
 import { dataset, path, rawYear } from "../../yearFixtures";
-import type { RawYearData } from "../../../../kml_heatmap/frontend/types";
+import type { RawYearData } from "../../../../flown/frontend/types";
 
 /** A year of `paths` paths with `rows` rows each */
 function longYear(paths: number, rows: number): RawYearData {

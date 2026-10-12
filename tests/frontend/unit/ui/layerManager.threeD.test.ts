@@ -6,15 +6,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Point, type Map as MapLibreMap } from "maplibre-gl";
 import { LngLatBounds } from "../../../mocks/maplibre-gl";
-import type { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+import type { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { createDataset, createSegment, type MockApp } from "../../testHelpers";
-import { liftOffsetPx } from "../../../../kml_heatmap/frontend/calculations/lift";
+import { liftOffsetPx } from "../../../../flown/frontend/calculations/lift";
 import {
   groundedFlights,
   heldGroundedFlights,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/calculations/groundProfile";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
 import {
   type RunFeature,
   ALTITUDE,
@@ -34,15 +34,15 @@ const featureBundle = vi.hoisted(() => ({
   followHeatCloud: vi.fn(),
   followSelectionRibbons: vi.fn(),
 }));
-vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", async () => {
+vi.mock("../../../../flown/frontend/services/featureLoader", async () => {
   const { followTerrain } =
-    await import("../../../../kml_heatmap/frontend/ui/terrain");
+    await import("../../../../flown/frontend/ui/terrain");
   const { ribbonBox, ribbonFeatures, ribbonLiftPx, viewLeaves } =
-    await import("../../../../kml_heatmap/frontend/ui/pathRibbons");
+    await import("../../../../flown/frontend/ui/pathRibbons");
   const { followsLevel } =
-    await import("../../../../kml_heatmap/frontend/calculations/lift");
+    await import("../../../../flown/frontend/calculations/lift");
   const { heldGroundedFlights, releaseGroundedFlights, releaseGroundProfiles } =
-    await import("../../../../kml_heatmap/frontend/calculations/groundProfile");
+    await import("../../../../flown/frontend/calculations/groundProfile");
   const { followHeatCloud, followSelectionRibbons } = featureBundle;
   const bundle = {
     followTerrain,

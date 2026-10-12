@@ -5,13 +5,13 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { LngLat, Point } from "maplibre-gl";
-import { followCloudReadout } from "../../../../kml_heatmap/frontend/ui/cloudReadout";
+import { followCloudReadout } from "../../../../flown/frontend/ui/cloudReadout";
 import {
   readoutKept,
   releaseReadoutData,
-} from "../../../../kml_heatmap/frontend/calculations/cloudReadout";
-import { heatWeight } from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/calculations/cloudReadout";
+import { heatWeight } from "../../../../flown/frontend/calculations/heatLines";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import {
   asMapApp,
   createDataset,
@@ -20,8 +20,8 @@ import {
   type MockApp,
 } from "../../testHelpers";
 import { resetMapLibreMock } from "../../../mocks/maplibre-gl";
-import { LIVE_REGION_DELAY_MS } from "../../../../kml_heatmap/frontend/utils/toast";
-import { resetSafeArea } from "../../../../kml_heatmap/frontend/utils/safeArea";
+import { LIVE_REGION_DELAY_MS } from "../../../../flown/frontend/utils/toast";
+import { resetSafeArea } from "../../../../flown/frontend/utils/safeArea";
 
 /**
  * A flight of `path_id` across 8° E along `lat`, 1,000 ft above the ground

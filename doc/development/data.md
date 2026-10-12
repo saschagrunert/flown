@@ -30,8 +30,8 @@ hashes of its dependencies, and recompiles that lock last.
 
 ## Split tracks and recordings of one flight
 
-`_join_split_lines` in `kml_heatmap/parser_standard.py` joins the `LineString`s
-of a file that are one flight in pieces. A line continues the one before it
+`_join_split_lines` in `flown/parser_standard.py` joins the `LineString`s of a
+file that are one flight in pieces. A line continues the one before it
 (`_continues`) when both have the same name, the one before has not landed
 (`_ends_on_ground`: it came back down to within 30 m of its lowest altitude
 after climbing 150 m above that, or its last three points stand within 15 m of
@@ -42,16 +42,16 @@ and altitude) joins them. A document `TimeSpan` over a flight out and one back,
 or two untimed flights of a placemark named after the aircraft, stay two
 flights. `gx:Track`s are never joined.
 
-After `drop_duplicate_paths` in `kml_heatmap/path_content.py` has dropped the
-exact copies, `drop_overlapping_paths` in `kml_heatmap/duplicates.py` drops a
-recording of a flight another one of the same year records as well: two timed
-recordings are one flight when they overlap in time by more than half of the
-shorter one and are within 300 m of each other at 20 moments spread over the
-time they share (two of them may be further apart). That holds for recordings on
-the real clock, the files of a user who does not obfuscate them. Obfuscated
-files, though, start every flight at midnight on January 1st, so two recordings
-of one flight line up only if they were started in the same second, and every
-flight of a year overlaps every other.
+After `drop_duplicate_paths` in `flown/path_content.py` has dropped the exact
+copies, `drop_overlapping_paths` in `flown/duplicates.py` drops a recording of a
+flight another one of the same year records as well: two timed recordings are
+one flight when they overlap in time by more than half of the shorter one and
+are within 300 m of each other at 20 moments spread over the time they share
+(two of them may be further apart). That holds for recordings on the real clock,
+the files of a user who does not obfuscate them. Obfuscated files, though, start
+every flight at midnight on January 1st, so two recordings of one flight line up
+only if they were started in the same second, and every flight of a year
+overlaps every other.
 
 Two real clocks may be off, though: a phone on its own clock, a logger that
 writes GPS time (18 s ahead of UTC), or one that writes the local time as UTC.
@@ -107,10 +107,10 @@ The recording that names the aircraft stays, its registration first and then its
 type, and of two that name as much the one with more points; the warning names
 both files. Recordings without times are not compared.
 
-Both drops run in `select_exported_paths` in `kml_heatmap/data_exporter.py`,
-before `_export_site` in `kml_heatmap/renderer.py` takes the map extent and the
-airports from the paths that are left: a dropped copy or recording neither
-widens the map nor adds an airport.
+Both drops run in `select_exported_paths` in `flown/data_exporter.py`, before
+`_export_site` in `flown/renderer.py` takes the map extent and the airports from
+the paths that are left: a dropped copy or recording neither widens the map nor
+adds an airport.
 
 The parser drops XML comments and processing instructions while it reads a file
 (`remove_comments` in `_parse_kml_tree`), so a comment inside a `<coordinates>`,
@@ -120,7 +120,7 @@ obfuscator reads a `<when>` past a comment the same way.
 ## Groundspeed
 
 The groundspeed of a row is the average over the segments that start within a
-minute of it (`SpeedWindow` in `kml_heatmap/segment_calculator.py`,
+minute of it (`SpeedWindow` in `flown/segment_calculator.py`,
 `SPEED_WINDOW_SECONDS` wide), standing still included. A segment longer than the
 window (`outlasts_the_window`: a paused logger, a lost fix) stays out of it,
 since it would enter with all of its time and take the minute before it down to
@@ -130,30 +130,30 @@ minutes. A row without times gets its share of the path's average speed.
 
 ## Year file format
 
-The year files are data format 6 (`FORMAT_VERSION` in
-`kml_heatmap/segment_codec.py`, `DATA_FORMAT_VERSION` in
-`services/yearDecode.ts`; bump both together, the page refuses any other).
+The year files are data format 6 (`FORMAT_VERSION` in `flown/segment_codec.py`,
+`DATA_FORMAT_VERSION` in `services/yearDecode.ts`; bump both together, the page
+refuses any other).
 
 Format 6 writes the groundspeeds in whole knots instead of tenths of a knot. The
 exporter rounds them to whole knots already (`exported_knots` in
-`kml_heatmap/export_pipeline.py`), so the tenths only added a trailing zero to
-every speed difference: 2.3 % of the year files on `data/`, 0.9 % gzipped. The
-encoder refuses a speed that is not a whole number of knots. Times stay at a
-tenth of a second, which the replay needs for fixes less than a second apart.
+`flown/export_pipeline.py`), so the tenths only added a trailing zero to every
+speed difference: 2.3 % of the year files on `data/`, 0.9 % gzipped. The encoder
+refuses a speed that is not a whole number of knots. Times stay at a tenth of a
+second, which the replay needs for fixes less than a second apart.
 
 Format 5 wrote the altitudes in steps of 20 ft instead of 100 ft, which cost
 about 4 % more gzipped year files on `data/`, and added the landings of every
 flight with timestamps to its `path_info`: `landings`, `touch_and_goes`,
-`go_arounds` and the `touchdowns` as `[airport, runway]`.
-`kml_heatmap/landings.py` reads them with the parse of each file (in the parse
-workers) from the full-precision track, with the fields and the runways of the
-OurAirports database (`load_runway_database` caches `runways.csv` next to
-`airports.csv`), and the parse cache keeps them with the paths; its key covers
-both databases. The page only adds them up.
+`go_arounds` and the `touchdowns` as `[airport, runway]`. `flown/landings.py`
+reads them with the parse of each file (in the parse workers) from the
+full-precision track, with the fields and the runways of the OurAirports
+database (`load_runway_database` caches `runways.csv` next to `airports.csv`),
+and the parse cache keeps them with the paths; its key covers both databases.
+The page only adds them up.
 
 Format 4 added a `ground` column per path: the ground under every row in steps
 of 10 ft, as differences like the other columns, left out for a path whose
-ground is not known. `kml_heatmap/terrain.py` computes it at build time from the
+ground is not known. `flown/terrain.py` computes it at build time from the
 Terrarium elevation tiles of AWS, shifted to meet the altitudes the flight
 recorded taxiing at both ends, so the correction lives in one place and the page
 only reads the result (`groundProfileFt` in `calculations/groundProfile.ts`
@@ -165,7 +165,7 @@ AGL when a flight had none and was measured above its own lowest altitude.
 
 `airports.json` is not versioned: the site is always built with its data, and
 the page reads it as it is. Its `code` field (the ICAO code in the name,
-`airport_icao_code` in `kml_heatmap/airport_lookup.py`, which also merges the
+`airport_icao_code` in `flown/airport_lookup.py`, which also merges the
 airports) came with format 4 of the year files as an addition: the page shows
 the code the export found rather than reading the name again, and an airport
 without a code shows none.
@@ -189,9 +189,9 @@ fetch thread keeps one connection to the host, through the proxy that
 `HTTPS_PROXY` names unless `NO_PROXY` exempts the host, and a redirect away from
 the host or from https is refused. Offline, or for a tile that cannot be
 fetched, the build goes on and the flights under it get no ground; one warning
-says how many. `KML_HEATMAP_REQUIRE_TERRAIN=1` fails it instead, which the CI
-job that deploys the site sets. The ground is sampled once in the main process
-and kept as one array of elevations per path, aligned with its points
+says how many. `FLOWN_REQUIRE_TERRAIN=1` fails it instead, which the CI job that
+deploys the site sets. The ground is sampled once in the main process and kept
+as one array of elevations per path, aligned with its points
 (`sample_path_elevations`), which is what the export chunks are handed: a
 million points take tens of megabytes this way, where a mapping of coordinates
 took more than a gigabyte. `--no-terrain` skips the tiles altogether, which

@@ -9,7 +9,7 @@ one list below, rather than from one copy of it per build.
 
 --package has to run with the Python of the environment the wheel went into,
 outside the checkout: run as a script, only scripts/ is put in front of the
-import path, so `kml_heatmap` is the installed package and not the sources.
+import path, so `flown` is the installed package and not the sources.
 """
 
 import argparse
@@ -20,7 +20,7 @@ from pathlib import Path
 # The bundles build.js writes, the stylesheets and the vendored files the
 # page imports, by their paths in the package's static/ and in a generated
 # site alike: BUNDLE_FILES, CSS_FILES and VENDOR_FILES of
-# kml_heatmap/site_assets.py, which tests/test_scripts.py holds this list
+# flown/site_assets.py, which tests/test_scripts.py holds this list
 # to. Written out rather than imported, since the builds of the image run
 # this with a Python that does not have the package.
 ASSETS = (
@@ -66,7 +66,7 @@ def package_problems() -> list[str]:
     names, build.js keeps the sources out) stays with the site and the
     container and out of the wheel.
     """
-    package = importlib.resources.files("kml_heatmap")
+    package = importlib.resources.files("flown")
     problems = [
         f"{name} is not shipped"
         for name in PACKAGE_FILES
@@ -87,12 +87,12 @@ def main(argv: list[str] | None = None) -> int:
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("site", nargs="?", type=Path, help="a generated site")
     target.add_argument(
-        "--package", action="store_true", help="the installed kml_heatmap package"
+        "--package", action="store_true", help="the installed flown package"
     )
     args = parser.parse_args(argv)
 
     if args.package:
-        print(f"Checking the package at {importlib.resources.files('kml_heatmap')}")
+        print(f"Checking the package at {importlib.resources.files('flown')}")
         problems = package_problems()
         checked = len(PACKAGE_FILES)
     else:

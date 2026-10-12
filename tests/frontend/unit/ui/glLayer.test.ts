@@ -19,7 +19,7 @@ import {
   setProjection,
   worldCopies,
   type LayerShaders,
-} from "../../../../kml_heatmap/frontend/ui/glLayer";
+} from "../../../../flown/frontend/ui/glLayer";
 import { Map as MockMap } from "../../../mocks/maplibre-gl";
 
 /** A WebGL2 context that records what is asked of it */

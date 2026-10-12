@@ -10,7 +10,7 @@ import {
   REPLAY_BUTTON_LABEL,
   REPLAY_PRECONDITION_MESSAGE,
   updateReplayButtonState,
-} from "../../../../kml_heatmap/frontend/ui/replayButton";
+} from "../../../../flown/frontend/ui/replayButton";
 
 function button(): HTMLButtonElement {
   return document.getElementById("replay-btn") as HTMLButtonElement;

@@ -7,12 +7,12 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from kml_heatmap.constants import (
+from flown.constants import (
     ALTITUDE_GAIN_HYSTERESIS_FT,
     METERS_TO_FEET,
     SECONDS_PER_HOUR,
 )
-from kml_heatmap.export_pipeline import (
+from flown.export_pipeline import (
     _segment_groundspeed,
     altitude_gain_m,
     build_path_info,
@@ -20,10 +20,10 @@ from kml_heatmap.export_pipeline import (
     path_duration,
     process_path_segments,
 )
-from kml_heatmap.helpers import parse_timestamp_epoch
-from kml_heatmap.segment_calculator import SegmentSpeed, SpeedWindow
-from kml_heatmap.segment_codec import ALTITUDE_STEP
-from kml_heatmap.types import PathMetadata, TrackPoint
+from flown.helpers import parse_timestamp_epoch
+from flown.segment_calculator import SegmentSpeed, SpeedWindow
+from flown.segment_codec import ALTITUDE_STEP
+from flown.types import PathMetadata, TrackPoint
 
 
 def _metadata(fields: dict[str, Any]) -> PathMetadata:
@@ -179,8 +179,8 @@ class TestBuildPathInfo:
 
     def test_names_match_the_exported_airports(self, tmp_path, parse_data):
         """The frontend counts a path for an airport by comparing these names."""
-        from kml_heatmap.airports import deduplicate_airports
-        from kml_heatmap.export_writers import export_airports_data
+        from flown.airports import deduplicate_airports
+        from flown.export_writers import export_airports_data
         from tests.conftest import parse_kml_coordinates
 
         kml = tmp_path / "1_DEAGJ_DA20.kml"
@@ -208,8 +208,8 @@ class TestBuildPathInfo:
 
     def test_a_local_flight_names_its_marker(self, tmp_path, parse_data):
         """A single-airport name puts a marker on the map: the path names it."""
-        from kml_heatmap.airports import deduplicate_airports
-        from kml_heatmap.export_writers import (
+        from flown.airports import deduplicate_airports
+        from flown.export_writers import (
             export_airports_data,
             exported_airport_names,
         )

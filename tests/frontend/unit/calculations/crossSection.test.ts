@@ -16,9 +16,9 @@ import {
   toFrame,
   windowSeconds,
   type SectionRequest,
-} from "../../../../kml_heatmap/frontend/calculations/crossSection";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
-import type { Coordinate } from "../../../../kml_heatmap/frontend/utils/geometry";
+} from "../../../../flown/frontend/calculations/crossSection";
+import type { PathSegment } from "../../../../flown/frontend/types";
+import type { Coordinate } from "../../../../flown/frontend/utils/geometry";
 
 /** Degrees of longitude of 5 km east at 50 degrees north */
 const FIVE_KM_EAST = 5000 / (111320 * Math.cos((50 * Math.PI) / 180));

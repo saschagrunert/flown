@@ -10,24 +10,24 @@ import {
   playShareIntro,
   SHARE_INTRO_LEAST_MS,
   SHARE_INTRO_MS,
-} from "../../../../kml_heatmap/frontend/ui/shareIntro";
-import * as replayAll from "../../../../kml_heatmap/frontend/calculations/replayAll";
+} from "../../../../flown/frontend/ui/shareIntro";
+import * as replayAll from "../../../../flown/frontend/calculations/replayAll";
 import {
   LEG_PAUSE_S,
   REPLAY_ALL_POINT_FLOATS,
   type ReplayAllPoints,
-} from "../../../../kml_heatmap/frontend/calculations/replayAll";
-import { ReplayAllPlayer } from "../../../../kml_heatmap/frontend/ui/replayAllPlayer";
-import { flightClockOf } from "../../../../kml_heatmap/frontend/calculations/flightClock";
-import { MAP_LAYERS } from "../../../../kml_heatmap/frontend/utils/constants";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
-import * as pathSelection from "../../../../kml_heatmap/frontend/ui/pathSelection";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
-import { mercatorOf } from "../../../../kml_heatmap/frontend/utils/mercator";
+} from "../../../../flown/frontend/calculations/replayAll";
+import { ReplayAllPlayer } from "../../../../flown/frontend/ui/replayAllPlayer";
+import { flightClockOf } from "../../../../flown/frontend/calculations/flightClock";
+import { MAP_LAYERS } from "../../../../flown/frontend/utils/constants";
+import * as motion from "../../../../flown/frontend/utils/motion";
+import * as pathSelection from "../../../../flown/frontend/ui/pathSelection";
+import type { PathSegment } from "../../../../flown/frontend/types";
+import { mercatorOf } from "../../../../flown/frontend/utils/mercator";
 import {
   heldGroundedFlights,
   releaseGroundedFlights,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
+} from "../../../../flown/frontend/calculations/groundProfile";
 import {
   asMapApp,
   createDataset,
@@ -39,11 +39,11 @@ import {
 const LAYER = "share-intro";
 
 vi.mock(
-  "../../../../kml_heatmap/frontend/calculations/replayAll",
+  "../../../../flown/frontend/calculations/replayAll",
   async (original) => {
     const module =
       await original<
-        typeof import("../../../../kml_heatmap/frontend/calculations/replayAll")
+        typeof import("../../../../flown/frontend/calculations/replayAll")
       >();
     return { ...module, fitTilted: vi.fn(module.fitTilted) };
   },

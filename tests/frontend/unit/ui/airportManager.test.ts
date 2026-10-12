@@ -2,23 +2,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AirportManager,
   popupOffsets,
-} from "../../../../kml_heatmap/frontend/ui/airportManager";
-import { createAirportMarkers } from "../../../../kml_heatmap/frontend/appInitializer";
+} from "../../../../flown/frontend/ui/airportManager";
+import { createAirportMarkers } from "../../../../flown/frontend/appInitializer";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
+} from "../../../../flown/frontend/state/siteData";
 import {
   DOUBLE_TAP_MS,
   panPopupIntoView,
-} from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
-import type {
-  AirportMarker,
-  PathInfo,
-} from "../../../../kml_heatmap/frontend/types";
-import { MAP_SOURCES } from "../../../../kml_heatmap/frontend/utils/constants";
-import { AirportCodes } from "../../../../kml_heatmap/frontend/ui/airportLabels";
+} from "../../../../flown/frontend/utils/mapHelpers";
+import * as motion from "../../../../flown/frontend/utils/motion";
+import type { AirportMarker, PathInfo } from "../../../../flown/frontend/types";
+import { MAP_SOURCES } from "../../../../flown/frontend/utils/constants";
+import { AirportCodes } from "../../../../flown/frontend/ui/airportLabels";
 import {
   createMockApp,
   createDataset,
@@ -26,24 +23,24 @@ import {
   type MockApp,
 } from "../../testHelpers";
 import type { Popup as MockPopup } from "../../../mocks/maplibre-gl";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
 
 const { loadFeatures, listFlights } = vi.hoisted(() => ({
   listFlights: vi.fn(),
   loadFeatures: vi.fn(),
 }));
-vi.mock("../../../../kml_heatmap/frontend/ui/airportFlights", () => ({
+vi.mock("../../../../flown/frontend/ui/airportFlights", () => ({
   listFlights,
 }));
-vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", () => ({
+vi.mock("../../../../flown/frontend/services/featureLoader", () => ({
   loadedFeatures: () => null,
   loadFeatures,
 }));
 vi.mock(
-  "../../../../kml_heatmap/frontend/utils/mapHelpers",
+  "../../../../flown/frontend/utils/mapHelpers",
   async (importOriginal) => ({
     ...(await importOriginal<
-      typeof import("../../../../kml_heatmap/frontend/utils/mapHelpers")
+      typeof import("../../../../flown/frontend/utils/mapHelpers")
     >()),
     panPopupIntoView: vi.fn(),
   }),

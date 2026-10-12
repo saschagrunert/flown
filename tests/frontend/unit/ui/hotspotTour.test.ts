@@ -16,21 +16,18 @@ import {
   TOUR_TURN_DEG,
   toggleHotspotTour,
   tourZoom,
-} from "../../../../kml_heatmap/frontend/ui/hotspotTour";
+} from "../../../../flown/frontend/ui/hotspotTour";
 import {
   resetSiteData,
   siteData,
-} from "../../../../kml_heatmap/frontend/state/siteData";
-import type {
-  PathInfo,
-  PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import { SELECTION_CONTROL_IDS } from "../../../../kml_heatmap/frontend/ui/heldControls";
-import { LIVE_REGION_DELAY_MS } from "../../../../kml_heatmap/frontend/utils/toast";
-import * as crossSection from "../../../../kml_heatmap/frontend/ui/crossSection";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
-import * as toast from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/state/siteData";
+import type { PathInfo, PathSegment } from "../../../../flown/frontend/types";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
+import { SELECTION_CONTROL_IDS } from "../../../../flown/frontend/ui/heldControls";
+import { LIVE_REGION_DELAY_MS } from "../../../../flown/frontend/utils/toast";
+import * as crossSection from "../../../../flown/frontend/ui/crossSection";
+import * as motion from "../../../../flown/frontend/utils/motion";
+import * as toast from "../../../../flown/frontend/utils/toast";
 import {
   asMapApp,
   createDataset,

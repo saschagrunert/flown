@@ -26,7 +26,7 @@ import {
 import {
   SHARE_TOKEN_PARAM,
   unpackShareToken,
-} from "../../kml_heatmap/frontend/state/shareToken";
+} from "../../flown/frontend/state/shareToken";
 
 /** Fail loudly if the cards no longer overflow, rather than time out */
 async function expectScrollable(column: Locator): Promise<void> {

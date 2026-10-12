@@ -2,16 +2,16 @@
  * Test helper types and utilities
  */
 import { vi, type Mock } from "vitest";
-import type { MapApp } from "../../kml_heatmap/frontend/mapApp";
+import type { MapApp } from "../../flown/frontend/mapApp";
 import type {
   PathInfo,
   PathSegment,
   KMLDataset,
   Metadata,
-} from "../../kml_heatmap/frontend/types";
-import { datasetIndex } from "../../kml_heatmap/frontend/calculations/datasetIndex";
-import { ReplayState } from "../../kml_heatmap/frontend/ui/replayState";
-import { ReliefState } from "../../kml_heatmap/frontend/ui/reliefState";
+} from "../../flown/frontend/types";
+import { datasetIndex } from "../../flown/frontend/calculations/datasetIndex";
+import { ReplayState } from "../../flown/frontend/ui/replayState";
+import { ReliefState } from "../../flown/frontend/ui/reliefState";
 import {
   AppStore,
   DEFAULT_AIRSPEED_RANGE,
@@ -20,31 +20,31 @@ import {
   isMapHeld,
   STORE_ACCESSOR_KEYS,
   type StoreState,
-} from "../../kml_heatmap/frontend/state/store";
-import { TOGGLES } from "../../kml_heatmap/frontend/state/toggles";
-import { TouchClock } from "../../kml_heatmap/frontend/utils/device";
-import { segmentsForPathIds } from "../../kml_heatmap/frontend/calculations/statistics";
-import { runLines } from "../../kml_heatmap/frontend/ui/pathRuns";
-import { DAY_MAX_FLIGHTS } from "../../kml_heatmap/frontend/utils/constants";
+} from "../../flown/frontend/state/store";
+import { TOGGLES } from "../../flown/frontend/state/toggles";
+import { TouchClock } from "../../flown/frontend/utils/device";
+import { segmentsForPathIds } from "../../flown/frontend/calculations/statistics";
+import { runLines } from "../../flown/frontend/ui/pathRuns";
+import { DAY_MAX_FLIGHTS } from "../../flown/frontend/utils/constants";
 import {
   REPLAY_PRECONDITION_MESSAGE,
   REPLAY_TOO_MANY_MESSAGE,
-} from "../../kml_heatmap/frontend/ui/replayButton";
-import { followLayerVisibility } from "../../kml_heatmap/frontend/ui/layerVisibility";
+} from "../../flown/frontend/ui/replayButton";
+import { followLayerVisibility } from "../../flown/frontend/ui/layerVisibility";
 import {
   syncLegend,
   syncToggleButton,
-} from "../../kml_heatmap/frontend/utils/buttonState";
+} from "../../flown/frontend/utils/buttonState";
 import { Map as MockMapLibreMap, mockControl } from "../mocks/maplibre-gl";
 import {
   addDataLayers,
   AirportLayerHandle,
   MapLayerHandle,
-} from "../../kml_heatmap/frontend/mapLayers";
+} from "../../flown/frontend/mapLayers";
 import {
   HEATMAP_LAYER_IDS,
   MAP_LAYERS,
-} from "../../kml_heatmap/frontend/utils/constants";
+} from "../../flown/frontend/utils/constants";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 /**

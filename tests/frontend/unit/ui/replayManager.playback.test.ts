@@ -5,9 +5,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   MAX_FRAME_DELTA_MS,
   type ReplayManager,
-} from "../../../../kml_heatmap/frontend/ui/replayManager";
-import * as mapHelpers from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import { AUTO_ZOOM_FOLLOW } from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/ui/replayManager";
+import * as mapHelpers from "../../../../flown/frontend/utils/mapHelpers";
+import { AUTO_ZOOM_FOLLOW } from "../../../../flown/frontend/utils/constants";
 import {
   createReplayManager,
   createReplayMockApp,
@@ -21,7 +21,7 @@ import {
   type MockApp,
 } from "./replayTestSetup";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/htmlGenerators", () => ({
+vi.mock("../../../../flown/frontend/utils/htmlGenerators", () => ({
   generateSegmentPopupHtml: vi.fn(() => "<div>popup</div>"),
 }));
 

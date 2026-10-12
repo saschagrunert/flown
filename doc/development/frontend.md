@@ -8,7 +8,7 @@ the flights is in [Rendering](rendering.md) and [Heat](heat.md), the tests in
 
 ## Architecture
 
-- **TypeScript modules** in `kml_heatmap/frontend/`
+- **TypeScript modules** in `flown/frontend/`
   - `mapApp.ts` - The entry point of the first visit and the app itself: it owns
     the map and its life, runs the first load, dispatches clicks on the map and
     fetches the lazy bundles. What it sets up once and then leaves to the store
@@ -39,12 +39,12 @@ the flights is in [Rendering](rendering.md) and [Heat](heat.md), the tests in
     writes each icon's plain paths as one (`lucidePathsPlugin` in `build.js`);
     the GitHub mark and the top-down aircraft are drawn in `utils/icons.ts`
     because Lucide carries neither
-- **Stylesheets** in `kml_heatmap/static/` (`styles.css`, `features.css`,
+- **Stylesheets** in `flown/static/` (`styles.css`, `features.css`,
   `wrapped.css` and `search.css`, see [Stylesheets](#stylesheets))
-- **Build output** in `kml_heatmap/static/` (`mapApp.bundle.js`,
-  `features.bundle.js`, `wrapped.bundle.js`, `search.bundle.js`,
-  `extras.bundle.js`, `shared.bundle.js`, `yearWorker.bundle.js`, their source
-  maps, `vendor/` and `flags/`)
+- **Build output** in `flown/static/` (`mapApp.bundle.js`, `features.bundle.js`,
+  `wrapped.bundle.js`, `search.bundle.js`, `extras.bundle.js`,
+  `shared.bundle.js`, `yearWorker.bundle.js`, their source maps, `vendor/` and
+  `flags/`)
 - **Build scripts** `build.js` and `scripts/*.js`, plain JavaScript with JSDoc
   types that `tsconfig.node.json` checks (`npm run typecheck`). The type checks
   run TypeScript 7 (the `typescript7` alias of `package.json`, called by path
@@ -126,20 +126,20 @@ anyway.
 ### Vendored libraries
 
 The same command takes MapLibre GL JS and html-to-image out of `node_modules`
-into `kml_heatmap/static/vendor/`, which is what the published page loads them
-from (html-to-image with `import()`, on the first export, as one module that
+into `flown/static/vendor/`, which is what the published page loads them from
+(html-to-image with `import()`, on the first export, as one module that
 `scripts/vendor.js` bundles from the package's own), and the country flags of
-`flag-icons` into `kml_heatmap/static/flags/` (`scripts/vendor.js`). All of it
-is gitignored, and `make clean` removes it. MapLibre is copied with five fixes
-made to its minified code (`VENDOR_PATCHES`): two for bugs of 6.10, where tiles
-under a camera that looks at a point above the relief (the chase view) were
-culled and a GeoJSON tile that loads empty kept the raw data of before, one for
-WebKit on Linux (WebKitGTK and WPE, the WebKit of the e2e tests), whose page
-process crashed or hung as MapLibre's worker took apart an elevation tile it was
-sent as an ImageBitmap: there the tile is read into plain pixels on the main
-thread first, as MapLibre does where OffscreenCanvas is missing (every other
-browser keeps the bitmap), and two that let MapLibre's worker read a GeoJSON
-source from a `blob:` URL without the main thread (see
+`flag-icons` into `flown/static/flags/` (`scripts/vendor.js`). All of it is
+gitignored, and `make clean` removes it. MapLibre is copied with five fixes made
+to its minified code (`VENDOR_PATCHES`): two for bugs of 6.10, where tiles under
+a camera that looks at a point above the relief (the chase view) were culled and
+a GeoJSON tile that loads empty kept the raw data of before, one for WebKit on
+Linux (WebKitGTK and WPE, the WebKit of the e2e tests), whose page process
+crashed or hung as MapLibre's worker took apart an elevation tile it was sent as
+an ImageBitmap: there the tile is read into plain pixels on the main thread
+first, as MapLibre does where OffscreenCanvas is missing (every other browser
+keeps the bitmap), and two that let MapLibre's worker read a GeoJSON source from
+a `blob:` URL without the main thread (see
 [The heat sources and the year worker](heat.md#the-heat-sources-and-the-year-worker)).
 Each fix has to find its code exactly once, or the build fails: after a bump of
 MapLibre, drop the fix it has made unnecessary, or match its code again. Its
@@ -159,8 +159,8 @@ the statistics rail falls back to the ISO country code.
 ## Stylesheets
 
 The styles are split the same way as the bundles and travel with them:
-`kml_heatmap/static/styles.css` is linked in the page, `features.css`,
-`wrapped.css` and `search.css` are fetched alongside their bundles (see
+`flown/static/styles.css` is linked in the page, `features.css`, `wrapped.css`
+and `search.css` are fetched alongside their bundles (see
 `services/featureLoader.ts`), and each has its own budget in
 `tests/test_asset_budget.py` (see [Size budgets](budgets.md#stylesheets)). A
 rule belongs in `features.css` when its selector names replay, in `wrapped.css`

@@ -21,17 +21,17 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const FRONTEND_DIR = join(REPO_ROOT, "kml_heatmap/frontend");
+const FRONTEND_DIR = join(REPO_ROOT, "flown/frontend");
 /** Files outside the sources that change what a built site renders */
 const BUILD_FILES = [
   "build.js",
   "scripts/build-helpers.js",
   "scripts/vendor.js",
   "tsconfig.json",
-  "kml_heatmap/static/styles.css",
-  "kml_heatmap/static/features.css",
-  "kml_heatmap/static/wrapped.css",
-  "kml_heatmap/static/search.css",
+  "flown/static/styles.css",
+  "flown/static/features.css",
+  "flown/static/wrapped.css",
+  "flown/static/search.css",
 ].map((name) => join(REPO_ROOT, name));
 
 /**
@@ -65,7 +65,7 @@ function buildPackageVersions() {
 }
 
 /** First line of every bundle; the capture group is the source hash */
-export const BANNER_PATTERN = /^\/\* kml-heatmap build ([0-9a-f]{12}) \*\//;
+export const BANNER_PATTERN = /^\/\* flown build ([0-9a-f]{12}) \*\//;
 
 /**
  * Recursively list files under a directory
@@ -113,7 +113,7 @@ export function computeSourceHash() {
  * @returns {string}
  */
 export function buildBanner(sourceHash) {
-  return `/* kml-heatmap build ${sourceHash} */`;
+  return `/* flown build ${sourceHash} */`;
 }
 
 /**
@@ -121,11 +121,11 @@ export function buildBanner(sourceHash) {
  * modules of the Python package, its templates and the files right in its
  * static directory, but no bundle or source map (computeSourceHash covers
  * those) and no hidden file. Keep in step with _generator_files in
- * kml_heatmap/site_assets.py.
+ * flown/site_assets.py.
  * @returns {string[]}
  */
 function generatorFiles() {
-  const packageDir = join(REPO_ROOT, "kml_heatmap");
+  const packageDir = join(REPO_ROOT, "flown");
   /**
    * @param {string} dir
    * @param {string} suffix
@@ -172,7 +172,7 @@ function hashFiles(files) {
 
 /**
  * Hash of the generator a site was built with, as its map_config.js carries
- * it ("generator", see generator_hash in kml_heatmap/site_assets.py). The
+ * it ("generator", see generator_hash in flown/site_assets.py). The
  * e2e site check compares the two: the build dates its files to the day, or
  * earlier, so their times cannot tell whether the generator changed since.
  * @returns {string}

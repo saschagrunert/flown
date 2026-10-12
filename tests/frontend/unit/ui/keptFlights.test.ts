@@ -2,10 +2,7 @@
  * Which flights the 3D view's layers and panels count (ui/keptFlights.ts).
  */
 import { describe, it, expect } from "vitest";
-import {
-  idsKey,
-  keptFlights,
-} from "../../../../kml_heatmap/frontend/ui/keptFlights";
+import { idsKey, keptFlights } from "../../../../flown/frontend/ui/keptFlights";
 import { createDataset, createSegment } from "../../testHelpers";
 
 const data = createDataset(

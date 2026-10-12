@@ -473,7 +473,7 @@ class TestFlightEnds:
 class TestMain:
     def test_fails_closed_when_it_cannot_check(self, monkeypatch, capsys):
         def broken(*_args):
-            raise ImportError("no module named kml_heatmap")
+            raise ImportError("no module named flown")
 
         monkeypatch.setattr(pre_push, "check", broken)
         monkeypatch.setattr(sys, "argv", ["pre-push", "origin"])
@@ -598,7 +598,7 @@ class TestHookWrapper:
     @pytest.mark.skipif(MAKE is None, reason="needs make")
     def test_make_hooks_updates_an_older_copy_of_the_wrapper(self, repo, tmp_path):
         hook = _with_remote(repo, tmp_path)
-        hook.write_text("#!/bin/sh\n# kml-heatmap pre-push hook: older\nexit 1\n")
+        hook.write_text("#!/bin/sh\n# flown pre-push hook: older\nexit 1\n")
         (repo / "scripts").mkdir()
         shutil.copy(WRAPPER, repo / "scripts" / WRAPPER.name)
 

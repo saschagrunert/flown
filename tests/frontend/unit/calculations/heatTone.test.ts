@@ -7,7 +7,7 @@ import {
   HEAT_KNEE,
   heatTone,
   heatUntone,
-} from "../../../../kml_heatmap/frontend/calculations/heatTone";
+} from "../../../../flown/frontend/calculations/heatTone";
 
 describe("heatTone", () => {
   it("leaves the heat up to the knee as it is", () => {

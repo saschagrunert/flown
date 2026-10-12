@@ -7,11 +7,11 @@
  * colors, bearing) are used.
  */
 import { vi } from "vitest";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
-import { icon } from "../../../../kml_heatmap/frontend/utils/icons";
-import { LIVE_REGION_DELAY_MS } from "../../../../kml_heatmap/frontend/utils/toast";
-import { ReplayManager } from "../../../../kml_heatmap/frontend/ui/replayManager";
-import { MAP_SOURCES } from "../../../../kml_heatmap/frontend/utils/constants";
+import type { PathSegment } from "../../../../flown/frontend/types";
+import { icon } from "../../../../flown/frontend/utils/icons";
+import { LIVE_REGION_DELAY_MS } from "../../../../flown/frontend/utils/toast";
+import { ReplayManager } from "../../../../flown/frontend/ui/replayManager";
+import { MAP_SOURCES } from "../../../../flown/frontend/utils/constants";
 import {
   asMapApp,
   createDataset,

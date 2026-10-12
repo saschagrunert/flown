@@ -6,10 +6,10 @@ import {
   renderControlIcons,
   setControlIcon,
   DEFAULT_ICON_SIZE,
-} from "../../../../kml_heatmap/frontend/utils/icons";
-import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
+} from "../../../../flown/frontend/utils/icons";
+import { logError } from "../../../../flown/frontend/utils/logger";
 
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () => ({
+vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logError: vi.fn(),
   logDebug: vi.fn(),
 }));

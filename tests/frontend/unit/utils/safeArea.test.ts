@@ -7,7 +7,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   resetSafeArea,
   safeAreaInsets,
-} from "../../../../kml_heatmap/frontend/utils/safeArea";
+} from "../../../../flown/frontend/utils/safeArea";
 import { measureSafeArea } from "../../testHelpers";
 
 describe("safeAreaInsets", () => {

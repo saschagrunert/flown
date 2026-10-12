@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from kml_heatmap.aircraft import (
+from flown.aircraft import (
     AircraftInfo,
     load_aircraft_data,
     merge_aircraft_data,
@@ -407,7 +407,7 @@ class TestLoadAircraftData:
             )
         )
 
-        with caplog.at_level("WARNING", logger="kml_heatmap"):
+        with caplog.at_level("WARNING", logger="flown"):
             aircraft = load_aircraft_data(path)
 
         assert aircraft == {"D-EABC": "Cessna 172"}

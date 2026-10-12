@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from kml_heatmap.airports import AirportData
-from kml_heatmap.export_writers import (
+from flown.airports import AirportData
+from flown.export_writers import (
     export_airports_data,
     export_metadata,
     exported_country_codes,
@@ -252,6 +252,6 @@ class TestFreeTextAirportNames:
         ]
 
     def test_without_an_airport_database(self, caplog):
-        with patch("kml_heatmap.export_writers.load_airport_database", return_value={}):
+        with patch("flown.export_writers.load_airport_database", return_value={}):
             assert free_text_airport_names([_airport("Anna - Bob")]) == []
         assert "Cannot check the published airport names" in caplog.text

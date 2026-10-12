@@ -278,7 +278,7 @@ export function measure(path) {
  * Fail the build when it wrote any JavaScript but `expected`.
  *
  * The site publishes the bundles by name (SITE_FILES in
- * kml_heatmap/site_assets.py) and the page preloads the shared chunk by
+ * flown/site_assets.py) and the page preloads the shared chunk by
  * name. A module the lazy entry points share without the app, another
  * entry point or a second dynamic import would make esbuild write further
  * chunks, all called shared.bundle.js; that has to be a decision about

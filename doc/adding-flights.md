@@ -60,7 +60,7 @@ type from the file name instead of a model name (see
 ## 4. Obfuscate the new files
 
 ```bash
-make obfuscate          # python -m kml_heatmap.obfuscate data
+make obfuscate          # python -m flown.obfuscate data
 make check-obfuscation  # every file in data/ passes
 ```
 
@@ -93,7 +93,7 @@ Without podman or docker, build from the checkout instead:
 
 ```bash
 npm ci && npm run build
-python -m kml_heatmap data --output-dir docs
+python -m flown data --output-dir docs
 python -m http.server 8000 --bind 127.0.0.1 -d docs
 ```
 
@@ -103,8 +103,8 @@ without one today, and the flights do not depend on it.
 
 ## 6. Check the result
 
-`python -m kml_heatmap --list data` is the quick way to see that a flight is in:
-it prints a line for every flight with its year, aircraft and airports, and says
+`python -m flown --list data` is the quick way to see that a flight is in: it
+prints a line for every flight with its year, aircraft and airports, and says
 why the site would leave any of them out, without building anything.
 
 In the build output (on a terminal; where the output goes to a file or a pipe,

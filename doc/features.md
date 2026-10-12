@@ -757,7 +757,7 @@ view (see [Shared links](#shared-links)):
   mode flag from the 9th (once called Isolate, hence the name). The shorter
   strings of the releases before that flag (6 to 8 flags) are no longer read;
   such a link opens with the layers of a first visit. The slots and parameters
-  of every toggle are listed in `kml_heatmap/frontend/state/toggles.ts`
+  of every toggle are listed in `flown/frontend/state/toggles.ts`
   - Example: `?v=100100000`
 - Map position (`?lat=51.5&lng=13.4&z=10`). A centre without `z` opens at
   zoom 10. `z` counts in 256 pixel tiles, as links always did, which is one more
@@ -814,16 +814,15 @@ they take in `p`:
 
 The token is a stream of bits written six to a URL-safe base64 character
 (`A`-`Z`, `a`-`z`, `0`-`9`, `-`, `_`), laid out in
-`kml_heatmap/frontend/state/shareToken.ts`: a format version, a bit for each
-value saying whether the link has it, the switches written as `1`, and then each
-value at exactly the precision the link writes it in (the centre to six
-decimals, the zoom to two, bearing and tilt to a tenth of a degree, a
-registration at six bits a character). The selected flights come last: their ids
-sorted, and the gaps between them Rice-coded, about 6 characters a flight for a
-hundred flights instead of the 11 of an id in `p` and its `%2C`. `debug` is left
-out. A link with a value the token has no room for is copied as the long link
-instead, and a token that does not resolve opens the page as a link without one
-would.
+`flown/frontend/state/shareToken.ts`: a format version, a bit for each value
+saying whether the link has it, the switches written as `1`, and then each value
+at exactly the precision the link writes it in (the centre to six decimals, the
+zoom to two, bearing and tilt to a tenth of a degree, a registration at six bits
+a character). The selected flights come last: their ids sorted, and the gaps
+between them Rice-coded, about 6 characters a flight for a hundred flights
+instead of the 11 of an id in `p` and its `%2C`. `debug` is left out. A link
+with a value the token has no room for is copied as the long link instead, and a
+token that does not resolve opens the page as a link without one would.
 
 ## Smart features
 

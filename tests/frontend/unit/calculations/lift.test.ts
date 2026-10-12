@@ -17,19 +17,19 @@ import {
   reliefPixelM,
   ribbonId,
   switchesExaggeration,
-} from "../../../../kml_heatmap/frontend/calculations/lift";
+} from "../../../../flown/frontend/calculations/lift";
 import {
   airplaneLiftPx,
   heightAtZoomFt,
-} from "../../../../kml_heatmap/frontend/calculations/airplaneLift";
+} from "../../../../flown/frontend/calculations/airplaneLift";
 import {
   keptGrounded,
   smoothGrounded,
-} from "../../../../kml_heatmap/frontend/calculations/smoothGrounded";
+} from "../../../../flown/frontend/calculations/smoothGrounded";
 import {
   smoothFlights,
   smoothLine,
-} from "../../../../kml_heatmap/frontend/calculations/smoothing";
+} from "../../../../flown/frontend/calculations/smoothing";
 import {
   groundProfileFt,
   groundProfilesFt,
@@ -38,24 +38,24 @@ import {
   heldGroundedFlights,
   releaseGroundedFlights,
   releaseGroundProfiles,
-} from "../../../../kml_heatmap/frontend/calculations/groundProfile";
+} from "../../../../flown/frontend/calculations/groundProfile";
 import {
   groundOffsetStepFt,
   ribbonOf,
   ribbonPieces,
   ribbonProperties,
   screenCut,
-} from "../../../../kml_heatmap/frontend/calculations/ribbons";
+} from "../../../../flown/frontend/calculations/ribbons";
 import {
   ribbonHeightFt,
   ribbonHeights,
-} from "../../../../kml_heatmap/frontend/calculations/ribbonPaint";
+} from "../../../../flown/frontend/calculations/ribbonPaint";
 import { resetMapLibreMock } from "../../../mocks/maplibre-gl";
 import {
   FEET_TO_METERS,
   METERS_TO_FEET,
-} from "../../../../kml_heatmap/frontend/utils/constants";
-import type { PathSegment } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/utils/constants";
+import type { PathSegment } from "../../../../flown/frontend/types";
 import { createMapLibreMock } from "../../testHelpers";
 
 const METRES_PER_DEGREE = 111320;

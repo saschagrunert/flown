@@ -4,7 +4,7 @@
  */
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { followAttributionHeight } from "../../../../kml_heatmap/frontend/ui/appChrome";
+import { followAttributionHeight } from "../../../../flown/frontend/ui/appChrome";
 
 /** The ResizeObservers made since the last test, with what each observes */
 const observers: {

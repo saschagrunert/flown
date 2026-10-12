@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-import kml_heatmap.airports as airports_module
-from kml_heatmap.airports import (
+import flown.airports as airports_module
+from flown.airports import (
     AirportDeduplicator,
     AltitudeSample,
     airport_elevation,
@@ -19,9 +19,9 @@ from kml_heatmap.airports import (
     route_airports,
     sample_path_altitudes,
 )
-from kml_heatmap.constants import AIRPORT_GRID_SIZE_DEGREES
-from kml_heatmap.geometry import haversine_distance
-from kml_heatmap.types import PathMetadata, TrackPoint
+from flown.constants import AIRPORT_GRID_SIZE_DEGREES
+from flown.geometry import haversine_distance
+from flown.types import PathMetadata, TrackPoint
 
 
 def _path(*points):

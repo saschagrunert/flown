@@ -1,4 +1,4 @@
-"""Tests for the ground under the flights (kml_heatmap.terrain).
+"""Tests for the ground under the flights (flown.terrain).
 
 No test reaches the network: the tiles are made here, as PNGs written by a
 small encoder of this file with every filter type, or answered by a tile
@@ -23,18 +23,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import kml_heatmap.png as png_module
-import kml_heatmap.terrain as terrain_module
-import kml_heatmap.terrain_fetch as fetch_module
-import kml_heatmap.terrain_pixels as pixels_module
-import kml_heatmap.workers as workers_module
-from kml_heatmap.constants import KM_TO_NAUTICAL_MILES, METERS_TO_FEET
-from kml_heatmap.exceptions import TerrainUnavailableError
-from kml_heatmap.geometry import METRES_PER_DEGREE
-from kml_heatmap.logger import logger
-from kml_heatmap.path_content import PATH_ID_BITS
-from kml_heatmap.png import PngError, decode_png
-from kml_heatmap.segment_codec import (
+import flown.png as png_module
+import flown.terrain as terrain_module
+import flown.terrain_fetch as fetch_module
+import flown.terrain_pixels as pixels_module
+import flown.workers as workers_module
+from flown.constants import KM_TO_NAUTICAL_MILES, METERS_TO_FEET
+from flown.exceptions import TerrainUnavailableError
+from flown.geometry import METRES_PER_DEGREE
+from flown.logger import logger
+from flown.path_content import PATH_ID_BITS
+from flown.png import PngError, decode_png
+from flown.segment_codec import (
     ALTITUDE_STEP,
     COORDINATE_SCALE,
     FORMAT_VERSION,
@@ -42,7 +42,7 @@ from kml_heatmap.segment_codec import (
     SPEED_SCALE,
     TIME_SCALE,
 )
-from kml_heatmap.terrain import (
+from flown.terrain import (
     TERRAIN_ZOOM,
     TILE_SIZE,
     TerrariumTiles,
@@ -52,8 +52,8 @@ from kml_heatmap.terrain import (
     sample_elevations,
     sample_path_elevations,
 )
-from kml_heatmap.types import TrackPoint
-from kml_heatmap.workers import init_worker
+from flown.types import TrackPoint
+from flown.workers import init_worker
 from tests.conftest import FlatTiles
 
 # --- A PNG encoder, the decoder's counterpart ---------------------------
@@ -495,7 +495,7 @@ class TestSamplePathElevations:
         x, y = _global_pixel(50.0, 12.0)
         missing = TileKey(TERRAIN_ZOOM, int(x) // TILE_SIZE, int(y) // TILE_SIZE)
 
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             by_path = sample_path_elevations(
                 paths, FunctionTiles(lambda gx, gy: 5.0, missing=[missing])
             )
@@ -603,7 +603,7 @@ def no_retry_pauses(monkeypatch):
     the whole backoff, seven seconds of it; the tests of the pauses record
     them with a patch of their own.
     """
-    monkeypatch.setattr("kml_heatmap.terrain_fetch.time.sleep", lambda _: None)
+    monkeypatch.setattr("flown.terrain_fetch.time.sleep", lambda _: None)
 
 
 @pytest.fixture(autouse=True)
@@ -753,11 +753,11 @@ class TestTerrariumTiles:
 
         monkeypatch.setattr(fetch_module, "HTTPSConnection", Recording)
         TerrariumTiles(tmp_path).pixels({TileKey(10, 1, 1): [0]})
-        assert seen["headers"]["User-Agent"].startswith("kml-heatmap/")
+        assert seen["headers"]["User-Agent"].startswith("flown/")
 
     def test_pixels_that_cannot_be_kept_are_decoded_again(self, tmp_path, caplog):
         """Keeping them is a saving for the next build, never a failure."""
-        with caplog.at_level(logging.DEBUG, logger="kml_heatmap"):
+        with caplog.at_level(logging.DEBUG, logger="flown"):
             pixels_module._keep_pixel_planes(
                 tmp_path / "missing" / "10-546-341.png", b"png", b"planes"
             )
@@ -886,7 +886,7 @@ class TestTerrariumTiles:
 
         pauses: list[float] = []
         monkeypatch.setattr(fetch_module, "HTTPSConnection", _answers(answer))
-        monkeypatch.setattr("kml_heatmap.terrain_fetch.time.sleep", pauses.append)
+        monkeypatch.setattr("flown.terrain_fetch.time.sleep", pauses.append)
         wanted = {TileKey(10, x, 1): [0] for x in range(3)}
 
         answered = TerrariumTiles(tmp_path).pixels(wanted)
@@ -905,7 +905,7 @@ class TestTerrariumTiles:
         connections.answer = staticmethod(answer)
         tiles = TerrariumTiles(tmp_path)
         monkeypatch.setattr(
-            "kml_heatmap.terrain_fetch.time.sleep", lambda _: tiles._offline.set()
+            "flown.terrain_fetch.time.sleep", lambda _: tiles._offline.set()
         )
 
         assert tiles.pixels({TileKey(10, 1, 1): [0]}) == {}
@@ -918,7 +918,7 @@ class TestTerrariumTiles:
             raise TimeoutError("slow")
 
         monkeypatch.setattr(fetch_module, "HTTPSConnection", _answers(answer))
-        monkeypatch.setattr("kml_heatmap.terrain_fetch.time.sleep", pauses.append)
+        monkeypatch.setattr("flown.terrain_fetch.time.sleep", pauses.append)
 
         assert TerrariumTiles(tmp_path).pixels({TileKey(10, 1, 1): [0]}) == {}
         assert pauses == [
@@ -1296,7 +1296,7 @@ class TestTerrariumTiles:
         pool = self._failing_pool(at_start, in_map)
         monkeypatch.setattr(workers_module, "ProcessPoolExecutor", pool)
 
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             by_path = sample_path_elevations({1: points}, tiles)
 
         assert list(by_path[1]) == [7.0] * len(points)
@@ -1321,7 +1321,7 @@ class TestTerrariumTiles:
             fetch_module, "decode_cached_tile", MagicMock(side_effect=MemoryError)
         )
 
-        with caplog.at_level(logging.WARNING, logger="kml_heatmap"):
+        with caplog.at_level(logging.WARNING, logger="flown"):
             by_path = sample_path_elevations({1: points}, tiles)
 
         assert by_path == {}
@@ -1358,7 +1358,7 @@ class TestTerrariumTiles:
             TerrariumTiles(tmp_path).pixels({TileKey(10, 1, 1): [0]})
 
     def test_the_default_cache_is_below_the_cache_directory(self):
-        from kml_heatmap.cache import CACHE_DIR
+        from flown.cache import CACHE_DIR
 
         assert TerrariumTiles().cache_dir == CACHE_DIR / "terrain"
 
@@ -1505,7 +1505,7 @@ class TestGroundProfile:
 
 # --- Parity with the frontend -------------------------------------------
 
-FRONTEND = Path(__file__).parent.parent / "kml_heatmap" / "frontend"
+FRONTEND = Path(__file__).parent.parent / "flown" / "frontend"
 
 
 _TS_OPERATORS = {

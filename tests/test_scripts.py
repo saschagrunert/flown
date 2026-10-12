@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kml_heatmap import site_assets
-from kml_heatmap.constants import KM_TO_NAUTICAL_MILES
-from kml_heatmap.export_pipeline import path_duration
-from kml_heatmap.geometry import haversine_distance
-from kml_heatmap.segment_calculator import calculate_fallback_groundspeed
+from flown import site_assets
+from flown.constants import KM_TO_NAUTICAL_MILES
+from flown.export_pipeline import path_duration
+from flown.geometry import haversine_distance
+from flown.segment_calculator import calculate_fallback_groundspeed
 from tests.conftest import parse_kml_file
 
 if TYPE_CHECKING:
@@ -203,7 +203,7 @@ class TestBuildVisualSite:
         calls = []
 
         def run(command, *, cwd, env, check):
-            cache = Path(env["KML_HEATMAP_CACHE_DIR"])
+            cache = Path(env["FLOWN_CACHE_DIR"])
             calls.append(
                 {
                     "command": command,
@@ -224,7 +224,7 @@ class TestBuildVisualSite:
         assert call["command"] == [
             sys.executable,
             "-m",
-            "kml_heatmap",
+            "flown",
             str(build_visual_site.FIXTURE_DIR),
             "--output-dir",
             str(site),
@@ -237,7 +237,7 @@ class TestBuildVisualSite:
         env = call["env"]
         assert env["CARTO_API_KEY"] == ""
         assert env["SOURCE_DATE_EPOCH"] == "1735689600"
-        assert env["KML_HEATMAP_REQUIRE_AIRPORT_DB"] == "1"
+        assert env["FLOWN_REQUIRE_AIRPORT_DB"] == "1"
         # The rest of the environment is passed on
         assert env["PATH"] == os.environ["PATH"]
 

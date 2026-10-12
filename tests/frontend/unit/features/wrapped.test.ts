@@ -9,17 +9,17 @@ import {
   findFurthestAirport,
   generateFunFacts,
   selectDiverseFacts,
-} from "../../../../kml_heatmap/frontend/features/wrapped";
-import * as countries from "../../../../kml_heatmap/frontend/features/countries";
-import { calculateFilteredStatistics } from "../../../../kml_heatmap/frontend/calculations/panelStats";
+} from "../../../../flown/frontend/features/wrapped";
+import * as countries from "../../../../flown/frontend/features/countries";
+import { calculateFilteredStatistics } from "../../../../flown/frontend/calculations/panelStats";
 import type {
   FunFact,
   PathInfo,
   PathSegment,
   YearStats,
-} from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/types";
 import { segmentOf } from "../../testHelpers";
-import { markup } from "../../../../kml_heatmap/frontend/utils/markup";
+import { markup } from "../../../../flown/frontend/utils/markup";
 
 describe("wrapped feature", () => {
   const mockPathInfo: PathInfo[] = [
@@ -595,7 +595,7 @@ describe("wrapped feature", () => {
       // string in front of an assertion. The strings are all written in one
       // place, so that is where the rule is checked.
       const source = readFileSync(
-        join(cwd(), "kml_heatmap/frontend/features/wrapped.ts"),
+        join(cwd(), "flown/frontend/features/wrapped.ts"),
         "utf8",
       );
       const texts = [...source.matchAll(/^\s*text: markup`(.*)`,$/gm)].map(

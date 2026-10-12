@@ -1,20 +1,20 @@
 /**
  * MapApp: store-driven controls, the statistics rail, map events and setup.
  */
-import { DAY_MAX_FLIGHTS } from "../../../../kml_heatmap/frontend/utils/constants";
+import { DAY_MAX_FLIGHTS } from "../../../../flown/frontend/utils/constants";
 import {
   REPLAY_HIDDEN_MESSAGE,
   REPLAY_PRECONDITION_MESSAGE,
   REPLAY_TOO_MANY_MESSAGE,
-} from "../../../../kml_heatmap/frontend/ui/replayButton";
+} from "../../../../flown/frontend/ui/replayButton";
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { MapApp } from "../../../../kml_heatmap/frontend/mapApp";
+import { MapApp } from "../../../../flown/frontend/mapApp";
 import {
   cartoTransformRequest,
   BASE_STYLE_RETRY_MS,
   BASE_STYLE_UNAVAILABLE_MESSAGE,
   FALLBACK_STYLE,
-} from "../../../../kml_heatmap/frontend/baseStyle";
+} from "../../../../flown/frontend/baseStyle";
 import {
   CROSS_SECTION_UNAVAILABLE_MESSAGE,
   REPLAY_UNAVAILABLE_MESSAGE,
@@ -22,8 +22,8 @@ import {
   STATS_UNAVAILABLE_MESSAGE,
   TOUR_UNAVAILABLE_MESSAGE,
   WRAPPED_UNAVAILABLE_MESSAGE,
-} from "../../../../kml_heatmap/frontend/ui/lazyBundles";
-import { logError } from "../../../../kml_heatmap/frontend/utils/logger";
+} from "../../../../flown/frontend/ui/lazyBundles";
+import { logError } from "../../../../flown/frontend/utils/logger";
 import {
   AttributionControl,
   lastMap,
@@ -34,66 +34,58 @@ import {
 import {
   dismissToast,
   showToast,
-} from "../../../../kml_heatmap/frontend/utils/toast";
+} from "../../../../flown/frontend/utils/toast";
 import {
   loadFeatures,
   loadSearch,
   loadWrapped,
   noticeSiteUpdate,
   wasSiteUpdated,
-} from "../../../../kml_heatmap/frontend/services/featureLoader";
+} from "../../../../flown/frontend/services/featureLoader";
 import {
   DOUBLE_TAP_MS,
   REPLAY_CAMERA_MOVE,
-} from "../../../../kml_heatmap/frontend/utils/mapHelpers";
-import * as motion from "../../../../kml_heatmap/frontend/utils/motion";
+} from "../../../../flown/frontend/utils/mapHelpers";
+import * as motion from "../../../../flown/frontend/utils/motion";
 import { segmentOf } from "../../testHelpers";
-import type { KMLDataset } from "../../../../kml_heatmap/frontend/types";
+import type { KMLDataset } from "../../../../flown/frontend/types";
 
 // The instances the mocked manager constructors hand out live in the setup
 // module, which is loaded before the mocks are registered
 const m = await vi.hoisted(() => import("./mapAppTestSetup"));
 
-vi.mock("../../../../kml_heatmap/frontend/utils/logger", () =>
-  m.modules.logger(),
-);
-vi.mock("../../../../kml_heatmap/frontend/utils/domCache", () =>
+vi.mock("../../../../flown/frontend/utils/logger", () => m.modules.logger());
+vi.mock("../../../../flown/frontend/utils/domCache", () =>
   m.modules.domCache(),
 );
-vi.mock("../../../../kml_heatmap/frontend/utils/toast", () =>
-  m.modules.toast(),
-);
-vi.mock("../../../../kml_heatmap/frontend/ui/mobileBar", () =>
-  m.modules.mobileBar(),
-);
-vi.mock("../../../../kml_heatmap/frontend/ui/dataManager", () =>
+vi.mock("../../../../flown/frontend/utils/toast", () => m.modules.toast());
+vi.mock("../../../../flown/frontend/ui/mobileBar", () => m.modules.mobileBar());
+vi.mock("../../../../flown/frontend/ui/dataManager", () =>
   m.modules.dataManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/filterManager", () =>
+vi.mock("../../../../flown/frontend/ui/filterManager", () =>
   m.modules.filterManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/airportManager", () =>
+vi.mock("../../../../flown/frontend/ui/airportManager", () =>
   m.modules.airportManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/replayManager", () =>
+vi.mock("../../../../flown/frontend/ui/replayManager", () =>
   m.modules.replayManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/layerManager", () =>
+vi.mock("../../../../flown/frontend/ui/layerManager", () =>
   m.modules.layerManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/stateManager", () =>
+vi.mock("../../../../flown/frontend/ui/stateManager", () =>
   m.modules.stateManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/wrappedManager", () =>
+vi.mock("../../../../flown/frontend/ui/wrappedManager", () =>
   m.modules.wrappedManager(),
 );
-vi.mock("../../../../kml_heatmap/frontend/services/featureLoader", () =>
+vi.mock("../../../../flown/frontend/services/featureLoader", () =>
   m.modules.featureLoader(),
 );
-vi.mock("../../../../kml_heatmap/frontend/ui/uiToggles", () =>
-  m.modules.uiToggles(),
-);
-vi.mock("../../../../kml_heatmap/frontend/ui/pathSelection", () =>
+vi.mock("../../../../flown/frontend/ui/uiToggles", () => m.modules.uiToggles());
+vi.mock("../../../../flown/frontend/ui/pathSelection", () =>
   m.modules.pathSelection(),
 );
 

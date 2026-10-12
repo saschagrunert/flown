@@ -12,7 +12,7 @@ import {
   PHOTON_URL,
   PLACE_RESULTS,
   placeKey,
-} from "../../../../kml_heatmap/frontend/services/photon";
+} from "../../../../flown/frontend/services/photon";
 
 /** A feature of Photon's answer at a point, with these properties */
 function feature(

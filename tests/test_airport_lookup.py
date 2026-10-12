@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import kml_heatmap.airport_lookup as lookup_module
-from kml_heatmap.airport_lookup import (
+import flown.airport_lookup as lookup_module
+from flown.airport_lookup import (
     MAX_DOWNLOAD_BYTES,
     REQUIRE_DATABASE_ENV,
     REQUIRED_COLUMNS,
@@ -35,8 +35,8 @@ from kml_heatmap.airport_lookup import (
     split_route_name,
     standardize_airport_names,
 )
-from kml_heatmap.cache import REGULAR_FILE_MODE
-from kml_heatmap.exceptions import AirportDatabaseError
+from flown.cache import REGULAR_FILE_MODE
+from flown.exceptions import AirportDatabaseError
 
 VALID_CSV = (
     b'"id","ident","type","name","latitude_deg","longitude_deg","iso_country"\n'
@@ -210,7 +210,7 @@ class TestDownloadAirportDatabase:
             patch.object(
                 lookup_module, "urlopen", return_value=_mock_response(VALID_CSV)
             ),
-            caplog.at_level(logging.INFO, logger="kml_heatmap"),
+            caplog.at_level(logging.INFO, logger="flown"),
         ):
             assert _download_airport_database() is True
 
@@ -444,7 +444,7 @@ class TestDownloadFailureMarker:
         """A read-only mount: nothing is downloaded that could not be kept."""
         with (
             patch.object(lookup_module, "CACHE_FILE", tmp_path / "airports.csv"),
-            patch("kml_heatmap.airport_lookup.os.access", return_value=False),
+            patch("flown.airport_lookup.os.access", return_value=False),
             patch.object(lookup_module, "urlopen") as mock_urlopen,
         ):
             assert _download_airport_database() is False
@@ -457,7 +457,7 @@ class TestDownloadFailureMarker:
         blocker.write_text("not a directory")
         with (
             patch.object(lookup_module, "CACHE_DIR", blocker / "cache"),
-            caplog.at_level(logging.DEBUG, logger="kml_heatmap"),
+            caplog.at_level(logging.DEBUG, logger="flown"),
         ):
             lookup_module._ensure_cache_file()
         assert "Cannot create cache directory" in caplog.text
@@ -728,7 +728,7 @@ class TestLoadAirportDatabase:
         with (
             patch.object(lookup_module, "CACHE_FILE", tmp_path / "missing.csv"),
             patch.object(lookup_module, "urlopen", side_effect=OSError("offline")),
-            caplog.at_level(logging.WARNING, logger="kml_heatmap"),
+            caplog.at_level(logging.WARNING, logger="flown"),
         ):
             assert load_airport_database() == {}
         assert (
@@ -991,7 +991,7 @@ class TestRefreshAirportDatabases:
             patch.object(
                 lookup_module, "urlopen", side_effect=OSError("offline")
             ) as mock_urlopen,
-            caplog.at_level(logging.WARNING, logger="kml_heatmap"),
+            caplog.at_level(logging.WARNING, logger="flown"),
         ):
             db = load_airport_database()
 
@@ -1008,7 +1008,7 @@ class TestRefreshAirportDatabases:
 
         with (
             patch.object(lookup_module, "urlopen", side_effect=OSError("offline")),
-            caplog.at_level(logging.WARNING, logger="kml_heatmap"),
+            caplog.at_level(logging.WARNING, logger="flown"),
         ):
             assert load_airport_database() == {}
 
@@ -1023,7 +1023,7 @@ class TestRefreshAirportDatabases:
             patch.object(
                 lookup_module, "urlopen", return_value=_mock_response(VALID_CSV)
             ),
-            caplog.at_level(logging.WARNING, logger="kml_heatmap"),
+            caplog.at_level(logging.WARNING, logger="flown"),
         ):
             db = load_airport_database()
 
@@ -1034,9 +1034,7 @@ class TestRefreshAirportDatabases:
     def test_a_file_it_cannot_touch_is_reported(self, cache, caplog):
         cache["airports.csv"].write_bytes(VALID_CSV)
         with (
-            patch(
-                "kml_heatmap.airport_lookup.os.utime", side_effect=PermissionError("ro")
-            ),
+            patch("flown.airport_lookup.os.utime", side_effect=PermissionError("ro")),
             caplog.at_level(logging.WARNING),
         ):
             lookup_module.refresh_airport_databases()

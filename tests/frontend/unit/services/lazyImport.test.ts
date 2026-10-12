@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   importWithRetry,
   versioned,
-} from "../../../../kml_heatmap/frontend/services/lazyImport";
+} from "../../../../flown/frontend/services/lazyImport";
 
 /** What an import of `file` asked for, from the failure there is */
 const asked = async (file: string, failedImports: number): Promise<string> =>

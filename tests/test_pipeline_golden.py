@@ -15,12 +15,12 @@ from pprint import pformat
 import pytest
 from lxml import html as lxml_html
 
-from kml_heatmap.airport_lookup import airport_icao_code
-from kml_heatmap.geometry import haversine_distance
-from kml_heatmap.obfuscate import obfuscate_kml_files
-from kml_heatmap.path_content import PATH_ID_BITS
-from kml_heatmap.renderer import create_progressive_heatmap
-from kml_heatmap.segment_codec import (
+from flown.airport_lookup import airport_icao_code
+from flown.geometry import haversine_distance
+from flown.obfuscate import obfuscate_kml_files
+from flown.path_content import PATH_ID_BITS
+from flown.renderer import create_progressive_heatmap
+from flown.segment_codec import (
     ALTITUDE_STEP,
     COORDINATE_SCALE,
     FORMAT_VERSION,
@@ -28,8 +28,8 @@ from kml_heatmap.segment_codec import (
     decode_ground,
     decode_rows,
 )
-from kml_heatmap.site_assets import CARTO_STYLE_URL, CARTO_TILEJSON_URL
-from kml_heatmap.terrain import TILE_SIZE
+from flown.site_assets import CARTO_STYLE_URL, CARTO_TILEJSON_URL
+from flown.terrain import TILE_SIZE
 from tests.conftest import parse_data as _load_js
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -159,7 +159,7 @@ def _build_site(out, inputs):
     bundle.parent.mkdir(parents=True)
     bundle.write_text("/* test bundle */", encoding="utf-8")
     with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr("kml_heatmap.site_assets.BUNDLE_FILE", bundle)
+        monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", bundle)
         return create_progressive_heatmap(
             [str(p) for p in inputs],
             str(out / "site" / "index.html"),
@@ -184,7 +184,7 @@ def _observed_values(data_dir):
         data = _load_js(data_dir / str(year) / "data.json")
         path_ids[year] = [info["id"] for info in data["path_info"]]
         # Full stops, touch-and-goes and go-arounds, and the touchdowns by
-        # field and runway (see kml_heatmap.landings)
+        # field and runway (see flown.landings)
         landings[year] = tuple(
             sum(info.get(key, 0) for info in data["path_info"])
             for key in ("landings", "touch_and_goes", "go_arounds")
@@ -517,7 +517,7 @@ def test_no_date_of_a_name_is_exported(tmp_path):
     And, as for the timestamps, the site is the same whether or not the
     inputs were obfuscated.
     """
-    from kml_heatmap.date_tokens import find_date_tokens, find_weekday_tokens
+    from flown.date_tokens import find_date_tokens, find_weekday_tokens
 
     sources = {}
     for label in ("a", "b"):

@@ -16,12 +16,12 @@ import {
   tightenMarkup,
 } from "../../../scripts/build-helpers.js";
 
-const FRONTEND_DIR = join(__dirname, "../../../kml_heatmap/frontend");
+const FRONTEND_DIR = join(__dirname, "../../../flown/frontend");
 
 /** A metafile of one output and the bytes each input takes of it */
 const metafile = (name: string, inputs: Record<string, number>) => ({
   outputs: {
-    [`kml_heatmap/static/${name}`]: {
+    [`flown/static/${name}`]: {
       bytes: Object.values(inputs).reduce((sum, bytes) => sum + bytes, 0),
       inputs: Object.fromEntries(
         Object.entries(inputs).map(([input, bytesInOutput]) => [
@@ -46,7 +46,7 @@ describe("formatBytes", () => {
 describe("largestInputs", () => {
   it("lists the modules that take the most of a bundle first", () => {
     const { outputs } = metafile("a.js", { x: 5, y: 50, z: 20 });
-    const output = outputs["kml_heatmap/static/a.js"]!;
+    const output = outputs["flown/static/a.js"]!;
     expect(largestInputs(output, 2)).toEqual([
       ["y", 50],
       ["z", 20],
@@ -194,7 +194,7 @@ describe("tightenMarkup", () => {
 describe("the popups the unit tests import", () => {
   it("are the tightened ones a minified build ships", async () => {
     const { generateAirportPopupHtml } =
-      await import("../../../kml_heatmap/frontend/utils/htmlGenerators");
+      await import("../../../flown/frontend/utils/htmlGenerators");
     expect(String(generateAirportPopupHtml)).not.toMatch(/\n\s+</);
   });
 });

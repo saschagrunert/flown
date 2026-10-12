@@ -11,10 +11,10 @@ import {
   projectRelative,
   turnTime,
   type ChaseTarget,
-} from "../../../../kml_heatmap/frontend/ui/chaseCamera";
-import { liftMetres } from "../../../../kml_heatmap/frontend/calculations/lift";
-import { turnOf } from "../../../../kml_heatmap/frontend/utils/geometry";
-import { REPLAY_CAMERA_MOVE } from "../../../../kml_heatmap/frontend/utils/mapHelpers";
+} from "../../../../flown/frontend/ui/chaseCamera";
+import { liftMetres } from "../../../../flown/frontend/calculations/lift";
+import { turnOf } from "../../../../flown/frontend/utils/geometry";
+import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { Map as MockMapLibreMap } from "../../../mocks/maplibre-gl";
 import { createMapLibreMock } from "../../testHelpers";

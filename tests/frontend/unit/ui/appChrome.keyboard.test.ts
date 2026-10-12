@@ -3,7 +3,7 @@
  * (followKeyboard in ui/appChrome.ts)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { followKeyboard } from "../../../../kml_heatmap/frontend/ui/appChrome";
+import { followKeyboard } from "../../../../flown/frontend/ui/appChrome";
 
 /** The visual viewport, whose resize the keyboard's coming and going is */
 let viewport: EventTarget & { scale: number };

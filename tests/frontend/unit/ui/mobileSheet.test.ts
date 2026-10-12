@@ -8,7 +8,7 @@ import type { Mock } from "vitest";
 import {
   MobileSheet,
   type SheetRow,
-} from "../../../../kml_heatmap/frontend/ui/mobileSheet";
+} from "../../../../flown/frontend/ui/mobileSheet";
 
 function rows(sheet: MobileSheet): HTMLElement[] {
   return Array.from(sheet.root.querySelectorAll<HTMLElement>(".sheet-row"));
@@ -374,7 +374,7 @@ describe("MobileSheet", () => {
 
       const style = document.createElement("style");
       style.textContent = readFileSync(
-        resolve(__dirname, "../../../../kml_heatmap/static/styles.css"),
+        resolve(__dirname, "../../../../flown/static/styles.css"),
         "utf8",
       );
       document.head.append(style);

@@ -5,17 +5,14 @@ import {
   encodeStateToUrl,
   SHARE_INTRO_PARAM,
   takeShareIntro,
-} from "../../../../kml_heatmap/frontend/state/urlState";
-import {
-  MAX_ZOOM,
-  MIN_ZOOM,
-} from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/state/urlState";
+import { MAX_ZOOM, MIN_ZOOM } from "../../../../flown/frontend/utils/constants";
 import {
   initialToggles,
   TOGGLES,
   type ToggleKey,
-} from "../../../../kml_heatmap/frontend/state/toggles";
-import type { AppState } from "../../../../kml_heatmap/frontend/types";
+} from "../../../../flown/frontend/state/toggles";
+import type { AppState } from "../../../../flown/frontend/types";
 
 /**
  * Small seeded PRNG (mulberry32) so the property test is reproducible

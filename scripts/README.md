@@ -57,11 +57,11 @@ carry no real dates anyway.
 make build INPUT_DIR=kml_test_10000
 
 # Or with Docker
-mkdir -p out ~/.cache/kml-heatmap
+mkdir -p out ~/.cache/flown
 docker run --rm --user "$(id -u):$(id -g)" \
   -v "$PWD/kml_test_10000:/data/kml_test_10000" -v "$PWD/out:/data/out" \
-  -v ~/.cache/kml-heatmap:/cache \
-  kml-heatmap kml_test_10000 --output-dir out
+  -v ~/.cache/flown:/cache \
+  flown kml_test_10000 --output-dir out
 ```
 
 ### Performance testing
@@ -100,8 +100,8 @@ else reads together:
   and `CONTRIBUTING.md` and `doc/development/testing.md` quote exactly the same
   image reference. A document that is missing, or quotes no image, fails the
   check too, rather than leaving the command it moved to unchecked.
-- `__version__` in `kml_heatmap/__init__.py` matches `version` in `package.json`
-  and both version fields of `package-lock.json`.
+- `__version__` in `flown/__init__.py` matches `version` in `package.json` and
+  both version fields of `package-lock.json`.
 - The Python version of `.python-version` is the one of the `python` base images
   in the `Dockerfile`, `requires-python`, mypy's `python_version` and ruff's
   `target-version`, and the Node.js major version of `.nvmrc` is the one of the
@@ -153,12 +153,12 @@ python scripts/build_visual_site.py
 Checks that a generated site has every file the page loads (the page, its
 configuration, the seven bundles, the four stylesheets, the vendored MapLibre
 and html-to-image files and `data/metadata.json`), each of them not empty, or
-with `--package`, that the installed `kml_heatmap` package ships the template
-and the same assets and none of their source maps. CI runs it on the wheel it
-installed, on the site that wheel generates and on the sites the container image
-generates (all in the `packaging` job), from the one list in the script. Run
-`--package` with the Python of the environment the package is installed in,
-outside the checkout, so the installed package is imported and not the sources.
+with `--package`, that the installed `flown` package ships the template and the
+same assets and none of their source maps. CI runs it on the wheel it installed,
+on the site that wheel generates and on the sites the container image generates
+(all in the `packaging` job), from the one list in the script. Run `--package`
+with the Python of the environment the package is installed in, outside the
+checkout, so the installed package is imported and not the sources.
 
 ```bash
 python scripts/check_site_files.py docs
@@ -178,12 +178,12 @@ builds run it with the runner's Python.
 
 ```bash
 python scripts/smoke_site.py prepare /tmp/smoke
-KML_HEATMAP_CACHE_DIR=/tmp/smoke/cache \
-  kml-heatmap --no-terrain /tmp/smoke/input --output-dir /tmp/smoke/site
+FLOWN_CACHE_DIR=/tmp/smoke/cache \
+  flown --no-terrain /tmp/smoke/input --output-dir /tmp/smoke/site
 python scripts/smoke_site.py check /tmp/smoke
 ```
 
-The cache directory is the one the build reads: `KML_HEATMAP_CACHE_DIR` for the
+The cache directory is the one the build reads: `FLOWN_CACHE_DIR` for the
 installed package, the `/cache` mount for the image.
 
 ## e2e_durations.js
@@ -222,7 +222,7 @@ build that wrote that file, the largest change first: build `main` with
 ## source-hash.js
 
 The content hash of everything that shapes a built site: the TypeScript sources
-in `kml_heatmap/frontend/`, the files in `BUILD_FILES` (`build.js`,
+in `flown/frontend/`, the files in `BUILD_FILES` (`build.js`,
 `scripts/build-helpers.js`, `scripts/vendor.js`, `tsconfig.json` and the three
 stylesheets) and the versions `package-lock.json` pins for `BUILD_PACKAGES`
 (esbuild, Lucide as the one package bundled into the page, and MapLibre,
@@ -231,9 +231,9 @@ html-to-image and flag-icons, which are vendored next to the bundles).
 (`tests/e2e/site-check.ts`) compares that line in the `mapApp.bundle.js` of the
 site under test (`docs/`, or `visual-site/` for the snapshots) with the
 checkout, so the e2e tests refuse to run against a stale site, and the generator
-warns when the bundle it is about to publish is stale.
-`kml_heatmap/site_assets.py` mirrors the hash in Python; `TestSourceHashParity`
-in `tests/test_site_assets.py` checks that both implementations agree. Two more
+warns when the bundle it is about to publish is stale. `flown/site_assets.py`
+mirrors the hash in Python; `TestSourceHashParity` in
+`tests/test_site_assets.py` checks that both implementations agree. Two more
 hashes live there: `computeGeneratorHash`, of the Python package, its templates
 and the static files besides the bundles, which `generator_hash` in
 `site_assets.py` writes into `map_config.js` (`TestGeneratorHashParity`), and
@@ -245,11 +245,11 @@ compares both with the checkout.
 
 Copies the third-party files the published page loads (the three modules of
 MapLibre GL JS with its stylesheet) out of `node_modules` into
-`kml_heatmap/static/vendor/`, bundles the module of html-to-image into one file
-next to them (the package ships it as a dozen, and the page imports it with
+`flown/static/vendor/`, bundles the module of html-to-image into one file next
+to them (the package ships it as a dozen, and the page imports it with
 `import()` on the first export), and copies every country flag of `flag-icons`
-into `kml_heatmap/static/flags/`. Both directories are generated and gitignored,
-and each build replaces them, so a file dropped from the list does not linger. A
+into `flown/static/flags/`. Both directories are generated and gitignored, and
+each build replaces them, so a file dropped from the list does not linger. A
 copy differs from its original in the closing `sourceMappingURL` comment, left
 off because the maps (five megabytes for MapLibre) are not shipped and every
 DevTools session would ask for them and get a 404, and the MapLibre modules in
@@ -275,9 +275,8 @@ name one of them is left out, and the build fails when the number of such rules
 is not the one recorded, so a bump that adds or renames a control gets looked
 at. Serving the files from the site keeps the page working during a CDN outage,
 keeps visitors' addresses away from CDNs and leaves `package-lock.json` as the
-one place their versions are pinned. `kml_heatmap/site_assets.py` keeps its own
-list of the files it publishes, in step with `VENDOR_FILES` and
-`VENDOR_MODULES`, which `tests/test_site_assets.py` checks;
-`tests/frontend/unit/vendor.test.ts` checks both against `node_modules`. The
-wheel ships `vendor/` but not `flags/`, and the Python side publishes only the
-flags of the countries an export visited.
+one place their versions are pinned. `flown/site_assets.py` keeps its own list
+of the files it publishes, in step with `VENDOR_FILES` and `VENDOR_MODULES`,
+which `tests/test_site_assets.py` checks; `tests/frontend/unit/vendor.test.ts`
+checks both against `node_modules`. The wheel ships `vendor/` but not `flags/`,
+and the Python side publishes only the flags of the countries an export visited.

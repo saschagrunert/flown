@@ -9,15 +9,15 @@ import {
   PathHover,
   type HoverRun,
   type RunsOnLayer,
-} from "../../../../kml_heatmap/frontend/ui/pathHover";
-import type { LayerManager } from "../../../../kml_heatmap/frontend/ui/layerManager";
+} from "../../../../flown/frontend/ui/pathHover";
+import type { LayerManager } from "../../../../flown/frontend/ui/layerManager";
 import type {
   PathHit,
   PathRunProperties,
   PathSegment,
-} from "../../../../kml_heatmap/frontend/types";
-import { getColorForAltitude } from "../../../../kml_heatmap/frontend/utils/colors";
-import * as statistics from "../../../../kml_heatmap/frontend/calculations/statistics";
+} from "../../../../flown/frontend/types";
+import { getColorForAltitude } from "../../../../flown/frontend/utils/colors";
+import * as statistics from "../../../../flown/frontend/calculations/statistics";
 import {
   createDataset,
   createMapLibreMock,

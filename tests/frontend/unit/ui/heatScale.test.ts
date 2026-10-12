@@ -8,21 +8,21 @@ import {
   createExpression,
   type StylePropertySpecification,
 } from "@maplibre/maplibre-gl-style-spec";
-import { heatScale } from "../../../../kml_heatmap/frontend/ui/heatScale";
-import { HEAT_FLIGHT_DENSITY } from "../../../../kml_heatmap/frontend/calculations/heatExposure";
+import { heatScale } from "../../../../flown/frontend/ui/heatScale";
+import { HEAT_FLIGHT_DENSITY } from "../../../../flown/frontend/calculations/heatExposure";
 import {
   heatLinesPaint,
   heatmapPaint,
   heatmapRadiusPx,
   intensityAt,
-} from "../../../../kml_heatmap/frontend/ui/heatmapPaint";
-import { heatmapPoints } from "../../../../kml_heatmap/frontend/ui/dataManager";
+} from "../../../../flown/frontend/ui/heatmapPaint";
+import { heatmapPoints } from "../../../../flown/frontend/ui/dataManager";
 import {
   heatLineFeatures,
   heatWeight,
-} from "../../../../kml_heatmap/frontend/calculations/heatLines";
-import { DEGREES_TO_RADIANS } from "../../../../kml_heatmap/frontend/utils/geometry";
-import { MAP_LAYERS } from "../../../../kml_heatmap/frontend/utils/constants";
+} from "../../../../flown/frontend/calculations/heatLines";
+import { DEGREES_TO_RADIANS } from "../../../../flown/frontend/utils/geometry";
+import { MAP_LAYERS } from "../../../../flown/frontend/utils/constants";
 import { asMapApp, createMockApp, createSegment } from "../../testHelpers";
 
 /**
