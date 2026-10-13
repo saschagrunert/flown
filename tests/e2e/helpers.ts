@@ -410,7 +410,7 @@ export function setAircraftFilter(page: Page, aircraft: string): Promise<void> {
  */
 export async function waitForStatsContent(page: Page): Promise<Locator> {
   const panel = page.locator("#stats-panel");
-  await expect(panel.locator(".kh-stats")).toBeVisible();
+  await expect(panel.locator(".stats-body")).toBeVisible();
   await expect(panel).not.toHaveAttribute("aria-busy", "true");
   return panel;
 }

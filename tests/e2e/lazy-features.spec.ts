@@ -200,7 +200,7 @@ test.describe("the lazy bundles", () => {
     await expect(panel).toContainText("Flights");
     // Styled, not merely filled: the lead figures' grid is in wrapped.css
     const lead = await panel
-      .locator(".kh-stats-lead")
+      .locator(".stats-lead")
       .evaluate((el) => getComputedStyle(el).display);
     expect(lead).toBe("grid");
     expect(requested).toHaveLength(1);
@@ -262,9 +262,7 @@ test.describe("the lazy bundles", () => {
 
     // The list used to be part of the feature bundle, which the first
     // popup fetched with its stylesheet
-    await expect(
-      mapPopup(page).locator(".kh-popup-flight").first(),
-    ).toBeVisible();
+    await expect(mapPopup(page).locator(".popup-flight").first()).toBeVisible();
     expect(requested.flat()).toEqual([]);
     expect(css.flat()).toEqual([]);
   });

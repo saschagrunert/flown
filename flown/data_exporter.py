@@ -1,4 +1,4 @@
-"""Data export functionality for flight heatmaps.
+"""Data export of the flights for the site.
 
 Exports flight data to JSON files for the browser frontend:
 - <year>/data.json: per-year path info and segments

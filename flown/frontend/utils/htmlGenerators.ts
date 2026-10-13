@@ -68,29 +68,29 @@ export const AIRPORT_POPUP_ID = "airport-popup";
 export function generateAirportPopupHtml(params: AirportPopupParams): string {
   const googleMapsLink = `https://www.google.com/maps?q=${params.lat},${params.lon}`;
   const homeBadge = params.isHomeBase
-    ? '<span class="kh-popup-home-badge">HOME</span>'
+    ? '<span class="popup-home-badge">HOME</span>'
     : "";
 
   return `
-    <div id="${AIRPORT_POPUP_ID}" class="popup-container kh-popup-airport" tabindex="-1" role="group" aria-label="${escapeHtml(params.name || "Unknown")}">
-        <div class="popup-header kh-popup-header-airport${params.isHomeBase ? " kh-popup-header-home" : ""}">
+    <div id="${AIRPORT_POPUP_ID}" class="popup-container popup-airport" tabindex="-1" role="group" aria-label="${escapeHtml(params.name || "Unknown")}">
+        <div class="popup-header popup-header-airport${params.isHomeBase ? " popup-header-home" : ""}">
             <span class="popup-header-icon">${icon("airport", 20)}</span>
             <span>${escapeHtml(params.name || "Unknown")}</span>
             ${homeBadge}
         </div>
-        <div class="kh-popup-block">
+        <div class="popup-block">
             <div class="popup-section-label">Coordinates</div>
             <a href="${googleMapsLink}"
                target="_blank"
                rel="noopener noreferrer"
-               class="kh-popup-link">
+               class="popup-link">
                 <span>${params.latDms}<br>${params.lonDms}</span>
                 ${icon("externalLink", 16, "Opens Google Maps in a new tab")}
             </a>
         </div>
-        <div class="popup-metric kh-popup-metric-flights">
-            <span class="kh-popup-metric-label">Flights shown</span>
-            <span class="popup-metric-value kh-popup-accent">${params.flightCount}</span>
+        <div class="popup-metric popup-metric-flights">
+            <span class="popup-metric-label">Flights shown</span>
+            <span class="popup-metric-value popup-accent">${params.flightCount}</span>
         </div>
     </div>`;
 }
@@ -110,7 +110,7 @@ export interface SegmentPopupParams {
  * Generate path segment popup HTML with position, altitude, and groundspeed.
  * The data-driven altitude/speed colours travel as `data-metric-color`; the
  * CSP allows no style attribute, so applyMetricColors() carries them into
- * the custom properties `.kh-popup-metric-colored` reads. A segment without
+ * the custom properties `.popup-metric-colored` reads. A segment without
  * a speed (0, a log without timing) shows none rather than 0 kt.
  */
 export function generateSegmentPopupHtml(params: SegmentPopupParams): string {
@@ -134,16 +134,16 @@ export function generateSegmentPopupHtml(params: SegmentPopupParams): string {
 
   return `
     <div class="popup-container">
-        <div class="popup-header kh-popup-header-segment">
+        <div class="popup-header popup-header-segment">
             <span class="popup-header-icon">${icon(headerIcon, 20)}</span>
             <span>${escapeHtml(title)}</span>
         </div>
-        <div class="popup-coords kh-popup-block">
-            ${lat} ${lon}<br><span class="kh-popup-track">Track: ${trackStr}</span>
+        <div class="popup-coords popup-block">
+            ${lat} ${lon}<br><span class="popup-track">Track: ${trackStr}</span>
         </div>
-        <div class="kh-popup-block">
+        <div class="popup-block">
             <div class="popup-section-label">Altitude (MSL)</div>
-            <div class="popup-metric kh-popup-metric-colored" data-metric-color="${altColor}">
+            <div class="popup-metric popup-metric-colored" data-metric-color="${altColor}">
                 <span class="popup-metric-value">${formatNumber(altFtRounded)} ft</span>
                 <span class="popup-metric-unit">(${formatNumber(altMRounded)} m)</span>
             </div>
@@ -162,9 +162,9 @@ function speedBlock(params: SegmentPopupParams): string {
     params.speedRange.ranks,
   );
   return `
-        <div class="kh-popup-block">
+        <div class="popup-block">
             <div class="popup-section-label">Groundspeed</div>
-            <div class="popup-metric kh-popup-metric-colored" data-metric-color="${speedColor}">
+            <div class="popup-metric popup-metric-colored" data-metric-color="${speedColor}">
                 <span class="popup-metric-value">${formatNumber(speedKt)} kt</span>
                 <span class="popup-metric-unit">(${formatNumber(speedKt * NAUTICAL_MILES_TO_KM)} km/h)</span>
             </div>
@@ -175,7 +175,7 @@ function speedBlock(params: SegmentPopupParams): string {
 export function applyMetricColors(root: ParentNode): void {
   for (const el of root.querySelectorAll<HTMLElement>("[data-metric-color]")) {
     const color = el.dataset["metricColor"]!;
-    el.style.setProperty("--kh-metric-color", color);
-    el.style.setProperty("--kh-metric-bg", rgbToRgba(color, 0.15));
+    el.style.setProperty("--metric-color", color);
+    el.style.setProperty("--metric-bg", rgbToRgba(color, 0.15));
   }
 }

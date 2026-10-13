@@ -61,7 +61,7 @@ describe("listFlights", () => {
     mock
       .setLngLat([12, 51])
       .setHTML(
-        '<div class="popup-container kh-popup-airport" tabindex="-1"></div>',
+        '<div class="popup-container popup-airport" tabindex="-1"></div>',
       )
       .addTo(mockApp.map!);
     return {
@@ -72,9 +72,7 @@ describe("listFlights", () => {
   }
 
   function buttons(container: HTMLElement): HTMLButtonElement[] {
-    return [
-      ...container.querySelectorAll<HTMLButtonElement>(".kh-popup-flight"),
-    ];
+    return [...container.querySelectorAll<HTMLButtonElement>(".popup-flight")];
   }
 
   beforeEach(() => {
@@ -106,13 +104,13 @@ describe("listFlights", () => {
       // No code, no aircraft: the name stands in, escaped
       "EDDP → Somewhere <b>odd</b> · 2025",
     ]);
-    expect(container.querySelector(".kh-popup-flight b")).toBeNull();
-    const list = container.querySelector(".kh-popup-flights")!;
+    expect(container.querySelector(".popup-flight b")).toBeNull();
+    const list = container.querySelector(".popup-flights")!;
     expect(list.getAttribute("role")).toBe("group");
     expect(list.getAttribute("aria-label")).toBe("Flights");
     // Each with the checkbox that adds it, named after it
     expect(
-      [...container.querySelectorAll(".kh-pick")].map((box) =>
+      [...container.querySelectorAll(".pick-box")].map((box) =>
         box.getAttribute("aria-label"),
       ),
     ).toEqual([
@@ -160,7 +158,7 @@ describe("listFlights", () => {
       "EDAQ → EDDP · D-EAGJ · 2025 · 30 nm",
     ]);
     expect(
-      [...container.querySelectorAll(".kh-pick")].map((box) =>
+      [...container.querySelectorAll(".pick-box")].map((box) =>
         box.getAttribute("aria-label"),
       ),
     ).toEqual([
@@ -229,7 +227,7 @@ describe("listFlights", () => {
 
     listFlights(asMapApp(mockApp), popup, "LOWW Vienna");
 
-    expect(container.querySelector(".kh-popup-flights")).toBeNull();
+    expect(container.querySelector(".popup-flights")).toBeNull();
   });
 
   it("hands a click on a row or its checkbox to the selection, with the list's order", () => {
@@ -238,7 +236,7 @@ describe("listFlights", () => {
     const pick = mockApp.pathSelection.pickFromList;
 
     buttons(container)[1]!.click();
-    container.querySelectorAll<HTMLElement>(".kh-pick")[2]!.click();
+    container.querySelectorAll<HTMLElement>(".pick-box")[2]!.click();
 
     // What that means, with Shift, in share mode and during a replay, is
     // PathSelection's to say
@@ -248,7 +246,7 @@ describe("listFlights", () => {
       ),
     ).toEqual([
       [12, buttons(container)[1], [11, 12, 13]],
-      [13, container.querySelectorAll(".kh-pick")[2], [11, 12, 13]],
+      [13, container.querySelectorAll(".pick-box")[2], [11, 12, 13]],
     ]);
   });
 
@@ -261,7 +259,7 @@ describe("listFlights", () => {
     const pressed = (): (string | null)[] =>
       buttons(container).map((b) => b.getAttribute("aria-pressed"));
     const ticked = (): boolean[] =>
-      [...container.querySelectorAll<HTMLInputElement>(".kh-pick")].map(
+      [...container.querySelectorAll<HTMLInputElement>(".pick-box")].map(
         (box) => box.checked,
       );
     expect(pressed()).toEqual(["true", "true", "false"]);
@@ -279,7 +277,7 @@ describe("listFlights", () => {
     mockApp.selectedPathIds = new Set([11, 12, 13]);
     const { popup, container } = openPopup();
     listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
-    const list = container.querySelector(".kh-popup-flights")!;
+    const list = container.querySelector(".popup-flights")!;
 
     // Still pressed for a screen reader
     expect(
@@ -299,9 +297,9 @@ describe("listFlights", () => {
     listFlights(asMapApp(mockApp), popup, "Somewhere <b>odd</b>");
 
     expect(buttons(container)).toHaveLength(1);
-    expect(
-      container.querySelector(".kh-popup-flights")!.classList,
-    ).not.toContain("is-all-pressed");
+    expect(container.querySelector(".popup-flights")!.classList).not.toContain(
+      "is-all-pressed",
+    );
   });
 
   it("shows the runways the flights of the filter touched down on", () => {
@@ -327,7 +325,7 @@ describe("listFlights", () => {
       "Flights",
     ]);
     const runways = labels[0]!.nextElementSibling!;
-    expect(runways.className).toBe("kh-popup-runways");
+    expect(runways.className).toBe("popup-runways");
     expect(runways.textContent).toBe("RWY 26R · 67%, RWY 08L · 33%");
   });
 

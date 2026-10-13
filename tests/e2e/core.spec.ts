@@ -328,12 +328,12 @@ test.describe("Core", () => {
     page,
   }) => {
     await toggleStatsPanel(page);
-    const group = page.locator(".kh-stats-group").first();
+    const group = page.locator(".stats-group").first();
     await expect(group).toBeVisible();
 
     // The site publishes an SVG per country it visited, so the mark is the
     // same on every platform, Windows included
-    const flag = group.locator("img.kh-stats-group-flag");
+    const flag = group.locator("img.stats-group-flag");
     await expect(flag).toHaveAttribute("src", /^flags\/[a-z]{2}\.svg$/);
     const src = await flag.getAttribute("src");
     const response = await page.request.get(new URL(src!, page.url()).href);

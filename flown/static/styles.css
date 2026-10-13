@@ -11,7 +11,7 @@
 
    A rule belongs in features.css when its selector names replay or the
    flight profile, in wrapped.css when it names Wrapped or what the
-   statistics panel renders (.kh-stats-*, bar the rail's title and loading
+   statistics panel renders (.stats-*, bar the rail's title and loading
    state), in search.css when it names the search panel or its pulse on
    the map, and here otherwise; a selector list that names more than one is
    written out in each file, with the selectors that belong there. Design
@@ -427,7 +427,7 @@ main {
    and the popup's list of flights below too: one rule */
 .control-column.is-at-end,
 #stats-panel.is-at-end,
-.kh-popup-flights.is-at-end {
+.popup-flights.is-at-end {
   mask-image: none;
 }
 #left-buttons {
@@ -956,7 +956,7 @@ main {
   border-bottom: 1px solid var(--color-divider);
   flex-shrink: 0;
 }
-#stats-rail-header .kh-stats-title {
+#stats-rail-header .stats-title {
   flex: 1;
   min-width: 0;
 }
@@ -2301,10 +2301,10 @@ main > #map .maplibregl-ctrl-bottom-right {
 }
 
 /* Generated markup: stats panel, popups and the initialisation error state */
-.kh-popup-airport {
+.popup-airport {
   min-width: 220px;
 }
-.kh-popup-header-airport {
+.popup-header-airport {
   font-size: var(--text-base);
   color: var(--color-accent-green);
   margin-bottom: var(--space-sm);
@@ -2313,11 +2313,11 @@ main > #map .maplibregl-ctrl-bottom-right {
 }
 /* The home base's popup is in the home colour, like its marker and badge,
    where every other airport's is in the green of theirs */
-.kh-popup-header-airport.kh-popup-header-home {
+.popup-header-airport.popup-header-home {
   color: var(--color-home-blue-light);
   border-color: var(--color-home-blue-light);
 }
-.kh-popup-home-badge {
+.popup-home-badge {
   font-size: var(--text-sm);
   background: var(--color-home-blue-deep);
   color: var(--color-text);
@@ -2325,10 +2325,10 @@ main > #map .maplibregl-ctrl-bottom-right {
   border-radius: var(--radius-bar);
   margin-left: var(--space-xs);
 }
-.kh-popup-block {
+.popup-block {
   margin-bottom: var(--space-sm);
 }
-.kh-popup-link {
+.popup-link {
   color: var(--color-accent-blue);
   text-decoration: none;
   font-size: var(--text-sm);
@@ -2338,19 +2338,19 @@ main > #map .maplibregl-ctrl-bottom-right {
   justify-content: space-between;
   gap: var(--space-sm);
 }
-.kh-popup-link .icon {
+.popup-link .icon {
   flex-shrink: 0;
 }
-.kh-popup-link:hover {
+.popup-link:hover {
   text-decoration: underline;
 }
-.kh-popup-link:focus-visible {
+.popup-link:focus-visible {
   outline: var(--focus-ring);
   outline-offset: 2px;
 }
 /* A figure, not a control: the accent's bar and tint are what a toggle that
    is on looks like, and made the box read as one */
-.kh-popup-metric-flights {
+.popup-metric-flights {
   background: var(--color-bg-raised);
   border-left: none;
   display: flex;
@@ -2360,15 +2360,15 @@ main > #map .maplibregl-ctrl-bottom-right {
 /* One button per flight, the keyboard's way to a single flight. A busy
    airport lists hundreds, so the list scrolls instead of the popup
    growing past the map. */
-.kh-popup-flights-label {
+.popup-flights-label {
   margin-top: var(--space-sm);
 }
 /* The runways the flights used, above the list, in the type of its rows */
-.kh-popup-runways {
+.popup-runways {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
-.kh-popup-flights {
+.popup-flights {
   display: grid;
   gap: 2px;
   max-height: 9.5rem;
@@ -2383,7 +2383,7 @@ main > #map .maplibregl-ctrl-bottom-right {
     transparent 100%
   );
 }
-.kh-popup-flight {
+.popup-flight {
   font: inherit;
   font-size: var(--text-sm);
   text-align: left;
@@ -2397,7 +2397,7 @@ main > #map .maplibregl-ctrl-bottom-right {
 }
 /* A row: the checkbox that adds the flight to the selection, and the
    button that picks it alone (ui/airportFlights.ts) */
-.kh-popup-flights > * {
+.popup-flights > * {
   display: flex;
   align-items: center;
   min-height: 24px;
@@ -2405,7 +2405,7 @@ main > #map .maplibregl-ctrl-bottom-right {
 /* A rule in the gap between two rows (the list holds nothing else): bare
    lines of text did not read as something to pick. A shadow, so the rows
    keep their height. */
-.kh-popup-flights > * + * {
+.popup-flights > * + * {
   box-shadow: 0 -1px var(--color-divider);
 }
 /* The checkbox of a flight in a list, in the colour of a selection; the
@@ -2413,7 +2413,7 @@ main > #map .maplibregl-ctrl-bottom-right {
    proportion to the text of the row: at 24 px it dwarfed it. A target of
    16 px meets WCAG 2.5.8 by its spacing: 5 px either side and rows 24 px
    apart (28 px in the flight list) leave a 24 px circle around it clear. */
-.kh-pick {
+.pick-box {
   flex: none;
   width: 16px;
   height: 16px;
@@ -2422,11 +2422,11 @@ main > #map .maplibregl-ctrl-bottom-right {
   accent-color: var(--color-accent-blue);
   cursor: pointer;
 }
-.kh-popup-flight:hover {
+.popup-flight:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
 }
-.kh-popup-flight[aria-pressed="true"] {
+.popup-flight[aria-pressed="true"] {
   background: rgba(var(--color-accent-blue-rgb), 0.15);
   color: var(--color-accent-blue);
 }
@@ -2434,41 +2434,40 @@ main > #map .maplibregl-ctrl-bottom-right {
    every row, and the list looked like a choice already made. While every
    row is pressed that says nothing, and they are drawn as rows to pick
    from; they stay pressed for a screen reader (ui/airportFlights.ts). */
-.kh-popup-flights.is-all-pressed
-  .kh-popup-flight[aria-pressed="true"]:not(:hover) {
+.popup-flights.is-all-pressed .popup-flight[aria-pressed="true"]:not(:hover) {
   background: none;
   color: var(--color-text-secondary);
 }
-.kh-popup-flight:focus-visible,
-.kh-popup-airport:focus-visible {
+.popup-flight:focus-visible,
+.popup-airport:focus-visible {
   outline: var(--focus-ring);
   outline-offset: -2px;
 }
 /* The same label as `.popup-section-label` above it: the popup had two
    label idioms in four rows, one uppercase and muted, one sentence case */
-.kh-popup-metric-label {
+.popup-metric-label {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-.kh-popup-accent {
+.popup-accent {
   color: var(--color-accent-blue);
 }
-.kh-popup-header-segment {
+.popup-header-segment {
   color: var(--color-accent-blue);
   border-color: var(--color-accent-blue);
 }
-.kh-popup-track {
+.popup-track {
   display: inline-block;
   margin-top: var(--space-xs);
 }
-.kh-popup-metric-colored {
-  background: var(--kh-metric-bg);
-  border-color: var(--kh-metric-color);
+.popup-metric-colored {
+  background: var(--metric-bg);
+  border-color: var(--metric-color);
 }
-.kh-popup-metric-colored .popup-metric-value {
-  color: var(--kh-metric-color);
+.popup-metric-colored .popup-metric-value {
+  color: var(--metric-color);
 }
 /* A finger gets the touch size the controls have (--btn-min-height): the
    toasts' buttons were 28px high, a popup's close 24px square and its
@@ -2487,7 +2486,7 @@ main > #map .maplibregl-ctrl-bottom-right {
   .popup-header {
     padding-right: calc(var(--btn-min-height) - var(--space-md));
   }
-  .kh-popup-flight {
+  .popup-flight {
     min-height: var(--btn-min-height);
   }
 }
@@ -2498,7 +2497,7 @@ main > #map .maplibregl-ctrl-bottom-right {
    shows is in wrapped.css, which arrives with the panel's code the first
    time the rail opens (ui/statsPanel.ts). Until then it says so.
    -------------------------------------------------------------------------- */
-.kh-stats-title {
+.stats-title {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -2507,15 +2506,15 @@ main > #map .maplibregl-ctrl-bottom-right {
   font-weight: 600;
   color: var(--color-text);
 }
-.kh-stats-title-text {
+.stats-title-text {
   min-width: 0;
 }
-.kh-stats-loading {
+.stats-loading {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
-.kh-init-error {
+.init-error {
   display: flex;
   align-items: center;
   justify-content: center;

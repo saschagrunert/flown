@@ -79,7 +79,7 @@ if TYPE_CHECKING:
 __all__ = [
     "FlightDataExport",
     "ParsedFile",
-    "create_progressive_heatmap",
+    "build_site",
     "export_flight_data",
     "foreign_output_error",
     "load_cached",
@@ -392,7 +392,7 @@ def _collector_paused() -> Iterator[None]:
     close to half the time of loading the parse cache. Afterwards they live
     until the export is written, so they are frozen out of the collector's
     walks (``gc.freeze``) for the rest of the run: sampling the ground under
-    them was a third slower otherwise. ``create_progressive_heatmap`` hands
+    them was a third slower otherwise. ``build_site`` hands
     them back to the collector when it is done.
     """
     enabled = gc.isenabled()
@@ -882,7 +882,7 @@ def export_flight_data(
     writes them, plus the extent the map is fitted to, which
     ``map_config.js`` carries for a published site. ``data_dir`` is expected
     to be empty or missing. The inputs are validated and parsed as
-    ``create_progressive_heatmap`` does, and raise the same errors.
+    ``build_site`` does, and raise the same errors.
     """
     valid_files = _validated_files(kml_files)
     logger.info("Parsing %d KML file(s)...", len(valid_files))
@@ -922,7 +922,7 @@ def export_flight_data(
         gc.unfreeze()
 
 
-def create_progressive_heatmap(
+def build_site(
     kml_files: list[str],
     output_file: str = "index.html",
     data_dir: str = "data",

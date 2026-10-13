@@ -6,12 +6,7 @@
 # Python
 **/__pycache__
 **/*.py[cod]
-**/*$py.class
-**/*.so
-.Python
-env
 venv
-ENV
 .venv
 .mypy_cache
 .pytest_cache
@@ -49,8 +44,8 @@ stubs
 # Test and coverage output
 htmlcov
 coverage
-test-results
-playwright-report
+test-results*
+playwright-report*
 .pre-commit-cache
 
 # Generated site and input data

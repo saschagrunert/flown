@@ -213,7 +213,7 @@ test: ## Build the frontend bundles and the site in docs/, then run the JavaScri
 	npm run build
 	python -m flown data --output-dir docs
 	npm run test:coverage -- --sequence.shuffle
-	pytest -n auto --cov --cov-branch --cov-report=xml:coverage/coverage.xml --cov-report=term
+	pytest -n auto --cov --cov-report=xml:coverage/coverage.xml --cov-report=term
 
 # The dependencies are declared once, in pyproject.toml: the runtime
 # dependencies become requirements.lock, the test and dev extras

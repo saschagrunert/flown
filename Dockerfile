@@ -39,9 +39,7 @@ RUN node -e ' \
 COPY build.js tsconfig.json ./
 COPY scripts/*.js ./scripts/
 COPY flown/frontend/ ./flown/frontend/
-COPY flown/static/styles.css flown/static/features.css \
-    flown/static/wrapped.css flown/static/search.css \
-    flown/static/local.css ./flown/static/
+COPY flown/static/*.css ./flown/static/
 RUN npm run build
 
 # Stage 2: the Python package without the TypeScript sources. A stage of its

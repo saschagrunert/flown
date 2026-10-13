@@ -3,10 +3,8 @@
   "include": ["tests/**/*", "playwright.config.ts"],
   "exclude": ["node_modules", "flown/static"],
   "compilerOptions": {
-    "noEmit": true,
     "allowJs": true,
     "checkJs": true,
-    "types": ["vitest/globals", "@playwright/test", "node"],
-    "allowUmdGlobalAccess": true
+    "types": ["vitest/globals", "@playwright/test", "node"]
   }
 }

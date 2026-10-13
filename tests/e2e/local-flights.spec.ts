@@ -151,6 +151,9 @@ test.describe("Your flights", () => {
   test("builds dropped files, shows them after the reload, and goes back to the site's", async ({
     page,
   }) => {
+    // Six loads of the page, each drawing the map anew: 25 to 34 s of the
+    // desktop project's 45 s on green runs
+    test.slow();
     const collector = await attachErrorCollectors(page);
     await gotoApp(page);
     const siteFlights = await page.evaluate(

@@ -47,8 +47,8 @@ node_modules
 /htmlcov/
 
 # Playwright test results
-test-results/
-playwright-report/
+test-results*/
+playwright-report*/
 
 # Test data
 kml_test_*

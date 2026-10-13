@@ -13,10 +13,10 @@ import {
 
 /** Value of the lead figure with the given label */
 function leadValue(panel: HTMLElement, label: string): string | null {
-  for (const item of panel.querySelectorAll(".kh-stats-lead-item")) {
-    const itemLabel = item.querySelector(".kh-stats-lead-label")?.textContent;
+  for (const item of panel.querySelectorAll(".stats-lead-item")) {
+    const itemLabel = item.querySelector(".stats-lead-label")?.textContent;
     if (itemLabel === label) {
-      return item.querySelector(".kh-stats-lead-value")!.textContent.trim();
+      return item.querySelector(".stats-lead-value")!.textContent.trim();
     }
   }
   return null;
@@ -24,11 +24,11 @@ function leadValue(panel: HTMLElement, label: string): string | null {
 
 /** Text of the metric row with the given label, as "label value alt" */
 function metricRow(panel: HTMLElement, label: string): string | null {
-  for (const row of panel.querySelectorAll(".kh-stats-metric")) {
-    const rowLabel = row.querySelector(".kh-stats-metric-label")?.textContent;
+  for (const row of panel.querySelectorAll(".stats-metric")) {
+    const rowLabel = row.querySelector(".stats-metric-label")?.textContent;
     if (rowLabel === label) {
-      const value = row.querySelector(".kh-stats-metric-value")?.textContent;
-      const alt = row.querySelector(".kh-stats-metric-alt")?.textContent;
+      const value = row.querySelector(".stats-metric-value")?.textContent;
+      const alt = row.querySelector(".stats-metric-alt")?.textContent;
       return alt ? `${value} (${alt})` : `${value}`;
     }
   }
@@ -80,7 +80,7 @@ describe("StatsManager", () => {
 
     const railTitle = document.createElement("h2");
     railTitle.id = "stats-rail-title";
-    railTitle.innerHTML = '<span class="kh-stats-title-text">Statistics</span>';
+    railTitle.innerHTML = '<span class="stats-title-text">Statistics</span>';
     document.body.appendChild(railTitle);
 
     statsPanel = document.createElement("div");
@@ -152,7 +152,7 @@ describe("StatsManager", () => {
             }),
         );
       const title = document.querySelector(
-        "#stats-rail-title .kh-stats-title-text",
+        "#stats-rail-title .stats-title-text",
       )!;
       statsManager.updateStatsForSelection();
       expect(title.textContent).toBe("Statistics");
@@ -175,7 +175,7 @@ describe("StatsManager", () => {
         .spyOn(panelStats, "filterStatisticsInSlices")
         .mockImplementation(() => new Promise<FilteredStatistics>(() => {}));
       const title = document.querySelector(
-        "#stats-rail-title .kh-stats-title-text",
+        "#stats-rail-title .stats-title-text",
       )!;
       mockApp.flightListVisible = true;
       title.textContent = "Flights";
@@ -312,7 +312,7 @@ describe("StatsManager", () => {
       const section = [...statsPanel.querySelectorAll("section")].find(
         (candidate) => candidate.textContent?.includes("Landings"),
       );
-      const rows = [...section!.querySelectorAll(".kh-stats-metric")].map(
+      const rows = [...section!.querySelectorAll(".stats-metric")].map(
         (row) => row.textContent,
       );
       expect(rows).toEqual([
@@ -351,15 +351,15 @@ describe("StatsManager", () => {
       expect(statsPanel.classList.contains("is-at-end")).toBe(true);
     });
 
-    it("renders headings and sections with kh- classes", () => {
+    it("renders headings and sections with  classes", () => {
       statsManager.updateStatsPanel(mockStats, false);
 
       expect(
         document.getElementById("stats-rail-title")!.textContent,
       ).toContain("Statistics");
       const sections = [
-        ...statsPanel.querySelectorAll("h3.kh-stats-section-title"),
-      ].map((el) => el.querySelector(".kh-stats-section-label")!.textContent);
+        ...statsPanel.querySelectorAll("h3.stats-section-title"),
+      ].map((el) => el.querySelector(".stats-section-label")!.textContent);
       expect(sections).toEqual([
         "Distance",
         "Speed",
@@ -370,8 +370,8 @@ describe("StatsManager", () => {
       // Section titles are real headings, lists are real lists
       expect(statsPanel.querySelector('[role="list"]')).toBeNull();
       expect(statsPanel.querySelector('[role="listitem"]')).toBeNull();
-      expect(statsPanel.querySelectorAll("ul.kh-stats-list > li").length).toBe(
-        statsPanel.querySelectorAll("ul.kh-stats-list li").length,
+      expect(statsPanel.querySelectorAll("ul.stats-list > li").length).toBe(
+        statsPanel.querySelectorAll("ul.stats-list li").length,
       );
       // Every rule lives in the stylesheet, none of it inline
       expect(statsPanel.querySelector("[style]")).toBeNull();
@@ -385,9 +385,9 @@ describe("StatsManager", () => {
     it("leads with distance, flight time, flights and airports", () => {
       statsManager.updateStatsPanel(mockStats, false);
 
-      const labels = [
-        ...statsPanel.querySelectorAll(".kh-stats-lead-label"),
-      ].map((el) => el.textContent);
+      const labels = [...statsPanel.querySelectorAll(".stats-lead-label")].map(
+        (el) => el.textContent,
+      );
       expect(labels).toEqual([
         "Distance",
         "Total flight time",
@@ -399,7 +399,7 @@ describe("StatsManager", () => {
       expect(leadValue(statsPanel, "Flights")).toBe("50");
       expect(leadValue(statsPanel, "Airports")).toBe("3");
       // The metric equivalent of the distance stays on the lead figure
-      expect(statsPanel.querySelector(".kh-stats-lead-alt")!.textContent).toBe(
+      expect(statsPanel.querySelector(".stats-lead-alt")!.textContent).toBe(
         "5,000.4km",
       );
     });
@@ -411,16 +411,14 @@ describe("StatsManager", () => {
       );
 
       // A missing figure still occupies its cell, so the grid stays full
-      expect(statsPanel.querySelectorAll(".kh-stats-lead-item")).toHaveLength(
-        4,
-      );
+      expect(statsPanel.querySelectorAll(".stats-lead-item")).toHaveLength(4);
       expect(leadValue(statsPanel, "Total flight time")).toBe("—");
       expect(leadValue(statsPanel, "Flights")).toBe("50");
     });
 
     it("names the year and the aircraft of the filter the figures are of", () => {
       const note = (): string =>
-        statsPanel.querySelector(".kh-stats-note")!.textContent;
+        statsPanel.querySelector(".stats-note")!.textContent;
       mockApp.selectedYear = "all";
       mockApp.selectedAircraft = "all";
       statsManager.updateStatsPanel(mockStats, false);
@@ -430,14 +428,14 @@ describe("StatsManager", () => {
       mockApp.selectedAircraft = "D-<b>X</b>";
       statsManager.updateStatsPanel(mockStats, false);
       expect(note()).toBe("2025 · D-<b>X</b>");
-      expect(statsPanel.querySelector(".kh-stats-note b")).toBeNull();
+      expect(statsPanel.querySelector(".stats-note b")).toBeNull();
 
       // A year from the link, before it is checked against the years
       mockApp.selectedYear = '<a href="x">2025</a>';
       mockApp.selectedAircraft = "all";
       statsManager.updateStatsPanel(mockStats, false);
       expect(note()).toBe('<a href="x">2025</a> · All aircraft');
-      expect(statsPanel.querySelector(".kh-stats-note a")).toBeNull();
+      expect(statsPanel.querySelector(".stats-note a")).toBeNull();
     });
 
     it("renders the selection indicator", () => {
@@ -446,7 +444,7 @@ describe("StatsManager", () => {
       expect(
         document.getElementById("stats-rail-title")!.textContent,
       ).toContain("Statistics of the selection");
-      expect(statsPanel.querySelector(".kh-stats-note")!.textContent).toBe(
+      expect(statsPanel.querySelector(".stats-note")!.textContent).toBe(
         "Showing statistics for 50 selected flights",
       );
     });
@@ -457,10 +455,10 @@ describe("StatsManager", () => {
         true,
       );
 
-      expect(statsPanel.querySelector(".kh-stats-note")!.textContent).toBe(
+      expect(statsPanel.querySelector(".stats-note")!.textContent).toBe(
         "Showing statistics for 1 selected flight",
       );
-      expect(statsPanel.querySelector(".kh-stats-footer")!.textContent).toBe(
+      expect(statsPanel.querySelector(".stats-footer")!.textContent).toBe(
         "1 data point",
       );
     });
@@ -510,25 +508,25 @@ describe("StatsManager", () => {
     it("lists every aircraft with registration, type and flights", () => {
       statsManager.updateStatsPanel(mockStats, false);
 
-      const aircraft = [...statsPanel.querySelectorAll(".kh-stats-aircraft")];
+      const aircraft = [...statsPanel.querySelectorAll(".stats-aircraft")];
       expect(aircraft).toHaveLength(2);
-      expect(aircraft[0]!.querySelector(".kh-stats-code")!.textContent).toBe(
+      expect(aircraft[0]!.querySelector(".stats-code")!.textContent).toBe(
         "D-ABCD",
       );
       expect(
-        aircraft[0]!.querySelector(".kh-stats-aircraft-type")!.textContent,
+        aircraft[0]!.querySelector(".stats-aircraft-type")!.textContent,
       ).toBe("DA40");
       expect(
-        aircraft[0]!.querySelector(".kh-stats-metric-value")!.textContent,
+        aircraft[0]!.querySelector(".stats-metric-value")!.textContent,
       ).toBe("30 flights");
       // The noun in the face of the text, the count in that of the figures
       expect(
-        aircraft[0]!.querySelector(".kh-stats-metric-value .kh-stats-noun")!
+        aircraft[0]!.querySelector(".stats-metric-value .stats-noun")!
           .textContent,
       ).toBe("flights");
       // Second aircraft carries no type
-      expect(aircraft[1]!.querySelector(".kh-stats-aircraft-type")).toBeNull();
-      expect(aircraft[1]!.querySelector(".kh-stats-code")!.textContent).toBe(
+      expect(aircraft[1]!.querySelector(".stats-aircraft-type")).toBeNull();
+      expect(aircraft[1]!.querySelector(".stats-code")!.textContent).toBe(
         "D-EFGH",
       );
     });
@@ -539,7 +537,7 @@ describe("StatsManager", () => {
       statsManager.updateStatsPanel(mockStats, false);
 
       const counts = Array.from(
-        statsPanel.querySelectorAll(".kh-stats-section-count"),
+        statsPanel.querySelectorAll(".stats-section-count"),
       ).map((el) => el.textContent);
       expect(counts).toContain(String(mockStats.num_airports));
       expect(counts).toContain(String(mockStats.aircraft_list.length));
@@ -548,14 +546,14 @@ describe("StatsManager", () => {
     it("moves the data point count into the footer", () => {
       statsManager.updateStatsPanel(mockStats, false);
 
-      expect(statsPanel.querySelector(".kh-stats-footer")!.textContent).toBe(
+      expect(statsPanel.querySelector(".stats-footer")!.textContent).toBe(
         "10,000 data points",
       );
       // And not also one of the lead figures. Match the label the lead grid
       // would render, not the pre-redesign "Data Points:" markup, which
       // nothing emits any more and so could never fail.
       const leadLabels = Array.from(
-        statsPanel.querySelectorAll(".kh-stats-lead-label"),
+        statsPanel.querySelectorAll(".stats-lead-label"),
       ).map((el) => el.textContent);
       expect(leadLabels).not.toContain("Data Points");
     });
@@ -567,7 +565,7 @@ describe("StatsManager", () => {
         "https://github.com/saschagrunert/flown/commit/5b3ab4048d1c";
       statsManager.updateStatsPanel(mockStats, false);
 
-      const build = statsPanel.querySelector(".kh-stats-build")!;
+      const build = statsPanel.querySelector(".stats-build")!;
       expect(build.textContent).toBe("Built 21 Sep 2026 from 5b3ab40");
       expect(build.querySelector("time")!.getAttribute("datetime")).toBe(
         "2026-09-21",
@@ -586,7 +584,7 @@ describe("StatsManager", () => {
         mockApp.config.commitUrl = commitUrl;
         statsManager.updateStatsPanel(mockStats, false);
 
-        const build = statsPanel.querySelector(".kh-stats-build")!;
+        const build = statsPanel.querySelector(".stats-build")!;
         expect(build.textContent).toBe("Built 21 Sep 2026 from 5b3ab40");
         expect(build.querySelector("a")).toBeNull();
       }
@@ -596,14 +594,14 @@ describe("StatsManager", () => {
       mockApp.config.builtOn = "2026-09-21";
       mockApp.config.commit = "";
       statsManager.updateStatsPanel(mockStats, false);
-      expect(statsPanel.querySelector(".kh-stats-build")!.textContent).toBe(
+      expect(statsPanel.querySelector(".stats-build")!.textContent).toBe(
         "Built 21 Sep 2026",
       );
 
       mockApp.config.builtOn = "not a date";
       mockApp.config.commit = "5b3ab40";
       statsManager.updateStatsPanel(mockStats, false);
-      expect(statsPanel.querySelector(".kh-stats-build")!.textContent).toBe(
+      expect(statsPanel.querySelector(".stats-build")!.textContent).toBe(
         "Built from 5b3ab40",
       );
 
@@ -611,7 +609,7 @@ describe("StatsManager", () => {
       mockApp.config.builtOn = undefined;
       mockApp.config.commit = undefined;
       statsManager.updateStatsPanel(mockStats, false);
-      expect(statsPanel.querySelector(".kh-stats-build")).toBeNull();
+      expect(statsPanel.querySelector(".stats-build")).toBeNull();
     });
 
     /** Statistics for the three airports the country fixture knows */
@@ -627,14 +625,14 @@ describe("StatsManager", () => {
       // The list is shown outright, not behind a disclosure
       expect(statsPanel.querySelector("details")).toBeNull();
       expect(
-        statsPanel.querySelector(".kh-stats-airports-summary")!.textContent,
+        statsPanel.querySelector(".stats-airports-summary")!.textContent,
       ).toBe("3 airports in 2 countries");
 
-      const groups = statsPanel.querySelector(".kh-stats-groups")!;
+      const groups = statsPanel.querySelector(".stats-groups")!;
       expect(groups).not.toBeNull();
 
       // Every airport keeps its code and its full name
-      const airports = [...groups.querySelectorAll(".kh-stats-airport")].map(
+      const airports = [...groups.querySelectorAll(".stats-airport")].map(
         (el) => el.textContent,
       );
       expect(airports).toHaveLength(3);
@@ -650,18 +648,18 @@ describe("StatsManager", () => {
       );
 
       expect(
-        statsPanel.querySelector(".kh-stats-airports-summary")!.textContent,
+        statsPanel.querySelector(".stats-airports-summary")!.textContent,
       ).toBe("1 airport");
     });
 
     it("groups airports by country", () => {
       statsManager.updateStatsPanel(namedAirports, false);
 
-      const groups = [...statsPanel.querySelectorAll(".kh-stats-group")].map(
+      const groups = [...statsPanel.querySelectorAll(".stats-group")].map(
         (group) => ({
-          name: group.querySelector(".kh-stats-group-name")!.textContent,
-          count: group.querySelector(".kh-stats-group-count")!.textContent,
-          code: group.querySelector(".kh-stats-group-code")!.textContent,
+          name: group.querySelector(".stats-group-name")!.textContent,
+          count: group.querySelector(".stats-group-count")!.textContent,
+          code: group.querySelector(".stats-group-code")!.textContent,
         }),
       );
       expect(groups).toEqual([
@@ -670,14 +668,14 @@ describe("StatsManager", () => {
       ]);
 
       // Each group lists its own airports
-      const lists = statsPanel.querySelectorAll("ul.kh-stats-airport-list");
+      const lists = statsPanel.querySelectorAll("ul.stats-airport-list");
       expect(
-        [...lists[0]!.querySelectorAll(".kh-stats-airport")].map(
+        [...lists[0]!.querySelectorAll(".stats-airport")].map(
           (el) => el.textContent,
         ),
       ).toEqual(["EDAQHalle-Oppin", "EDDMMunich"]);
       expect(
-        [...lists[1]!.querySelectorAll(".kh-stats-airport")].map(
+        [...lists[1]!.querySelectorAll(".stats-airport")].map(
           (el) => el.textContent,
         ),
       ).toEqual(["LOWWVienna"]);
@@ -693,25 +691,25 @@ describe("StatsManager", () => {
         false,
       );
 
-      const groups = [...statsPanel.querySelectorAll(".kh-stats-group")].map(
-        (group) => group.querySelector(".kh-stats-group-name")!.textContent,
+      const groups = [...statsPanel.querySelectorAll(".stats-group")].map(
+        (group) => group.querySelector(".stats-group-name")!.textContent,
       );
       expect(groups).toEqual(["Germany", "Other"]);
       // Only one country is known, so the summary counts one
       expect(
-        statsPanel.querySelector(".kh-stats-airports-summary")!.textContent,
+        statsPanel.querySelector(".stats-airports-summary")!.textContent,
       ).toBe("2 airports in 1 country");
     });
 
     it("keeps the airport list visible across re-renders", () => {
       statsManager.updateStatsPanel(namedAirports, false);
-      const before = statsPanel.querySelectorAll(".kh-stats-airport").length;
+      const before = statsPanel.querySelectorAll(".stats-airport").length;
       expect(before).toBe(3);
 
       // Selecting a path rebuilds the panel from scratch
       statsManager.updateStatsPanel(namedAirports, true);
 
-      expect(statsPanel.querySelectorAll(".kh-stats-airport")).toHaveLength(3);
+      expect(statsPanel.querySelectorAll(".stats-airport")).toHaveLength(3);
       expect(statsPanel.querySelector("details")).toBeNull();
     });
 
@@ -762,11 +760,9 @@ describe("StatsManager", () => {
 
       expect(leadValue(statsPanel, "Distance")).toBe("0.0nm");
       // The four lead figures always stand, the sections below them do not
-      expect(statsPanel.querySelectorAll(".kh-stats-lead-item")).toHaveLength(
-        4,
-      );
+      expect(statsPanel.querySelectorAll(".stats-lead-item")).toHaveLength(4);
       expect(leadValue(statsPanel, "Total flight time")).toBe("—");
-      expect(statsPanel.querySelectorAll(".kh-stats-section")).toHaveLength(0);
+      expect(statsPanel.querySelectorAll(".stats-section")).toHaveLength(0);
       expect(statsPanel.querySelector("details")).toBeNull();
       expect(text).not.toContain("Average distance");
       expect(text).not.toContain("Longest flight");
@@ -800,13 +796,13 @@ describe("StatsManager", () => {
       app.currentData = mockApp.currentData;
       const panel = document.createElement("div");
       panel.id = "stats-panel";
-      panel.innerHTML = '<p class="kh-stats-loading">Loading statistics…</p>';
+      panel.innerHTML = '<p class="stats-loading">Loading statistics…</p>';
       statsPanel.remove();
       document.body.appendChild(panel);
       try {
         new StatsManager(asMapApp(app));
 
-        expect(panel.querySelector(".kh-stats-loading")).toBeNull();
+        expect(panel.querySelector(".stats-loading")).toBeNull();
         expect(leadValue(panel, "Flights")).toBe("2");
       } finally {
         panel.remove();
@@ -1054,7 +1050,7 @@ describe("StatsManager", () => {
 
       mockApp.selectedYear = "2025";
 
-      expect(statsPanel.querySelector(".kh-stats-loading")).not.toBeNull();
+      expect(statsPanel.querySelector(".stats-loading")).not.toBeNull();
       expect(statsPanel.getAttribute("aria-busy")).toBe("true");
       finish({
         ...panelStats.calculateFilteredStatistics({
@@ -1082,12 +1078,12 @@ describe("StatsManager", () => {
 
       expect(slices).toHaveBeenCalledTimes(1);
       expect(slices.mock.results[0]!.value).toBeInstanceOf(Promise);
-      expect(statsPanel.querySelector(".kh-stats-loading")).not.toBeNull();
+      expect(statsPanel.querySelector(".stats-loading")).not.toBeNull();
       expect(statsPanel.getAttribute("aria-busy")).toBe("true");
 
       await vi.runAllTimersAsync();
 
-      expect(statsPanel.querySelector(".kh-stats-loading")).toBeNull();
+      expect(statsPanel.querySelector(".stats-loading")).toBeNull();
       expect(statsPanel.hasAttribute("aria-busy")).toBe(false);
       expect(leadValue(statsPanel, "Flights")).toBe("1");
     });

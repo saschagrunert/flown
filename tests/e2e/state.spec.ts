@@ -249,7 +249,7 @@ test.describe("State Persistence", () => {
       // with the panel fetches ahead (ui/statsPanel.ts)
       const panel = await waitForStatsContent(page);
       await expect(panel).toContainText("Flights");
-      await expect(panel.locator(".kh-stats-loading")).toHaveCount(0);
+      await expect(panel.locator(".stats-loading")).toHaveCount(0);
     });
 
     test("URL map position overrides localStorage position", async ({

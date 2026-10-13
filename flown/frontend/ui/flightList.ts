@@ -242,13 +242,13 @@ function rowsHtml(rows: FlightRow[]): string {
         i === 0
           ? '<th scope="row">' +
             pickBox(id, escapeHtml(flightLabel(row.path, row.totals?.km))) +
-            '<button type="button" class="kh-flight" data-path-id="' +
+            '<button type="button" class="flight-btn" data-path-id="' +
             id +
             '" aria-pressed="false">' +
             text +
             "</button></th>"
           : "<td" +
-            (column.numeric ? ' class="kh-num"' : "") +
+            (column.numeric ? ' class="num"' : "") +
             (detail ? ' title="' + escapeHtml(detail) + '"' : "") +
             ">" +
             text +
@@ -267,7 +267,7 @@ function headerHtml(): string {
       '<th scope="col" data-sort="' +
       column.key +
       '"' +
-      (column.numeric ? ' class="kh-num"' : "") +
+      (column.numeric ? ' class="num"' : "") +
       '><button type="button"' +
       (column.title ? ' title="' + escapeHtml(column.title) + '"' : "") +
       ">" +
@@ -303,18 +303,18 @@ export class FlightList {
 
     if (this.panel) {
       this.panel.innerHTML =
-        '<div class="kh-flights-bar">' +
-        '<input type="search" class="kh-flights-search" ' +
+        '<div class="flights-bar">' +
+        '<input type="search" class="flights-search" ' +
         'placeholder="Airport, registration or type" ' +
         'aria-label="Search flights" autocomplete="off" spellcheck="false">' +
-        '<span class="kh-flights-count" role="status"></span>' +
+        '<span class="flights-count" role="status"></span>' +
         "</div>" +
-        '<div class="kh-flights-scroll">' +
-        '<table class="kh-flights"><thead>' +
+        '<div class="flights-scroll">' +
+        '<table class="flights-table"><thead>' +
         headerHtml() +
         "</thead><tbody></tbody></table></div>";
       this.body = this.panel.querySelector("tbody");
-      this.count = this.panel.querySelector(".kh-flights-count");
+      this.count = this.panel.querySelector(".flights-count");
       this.search = this.panel.querySelector("input");
 
       this.search?.addEventListener("input", () => this.writeRows(), {
@@ -400,7 +400,7 @@ export class FlightList {
       if (this.panel) this.panel.hidden = !flights;
       if (flights) {
         const title = document.querySelector(
-          "#stats-rail-title .kh-stats-title-text",
+          "#stats-rail-title .stats-title-text",
         );
         if (title) title.textContent = "Flights";
       } else {
@@ -433,7 +433,7 @@ export class FlightList {
     this.view = view;
     // No Year column while one year is shown (see wrapped.css)
     this.body.parentElement!.classList.toggle(
-      "kh-one-year",
+      "one-year",
       app.selectedYear !== "all",
     );
     this.rows = data && view ? flightRows(view.paths, flightTotals(data)) : [];
@@ -450,7 +450,7 @@ export class FlightList {
     this.body.innerHTML =
       shown.length > 0
         ? rowsHtml(shown)
-        : '<tr><td class="kh-flights-empty" colspan="' +
+        : '<tr><td class="flights-empty" colspan="' +
           COLUMNS.length +
           '">' +
           (total > 0 ? "No flight matches" : "No flights") +

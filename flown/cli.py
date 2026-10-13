@@ -338,9 +338,9 @@ def _generate(
     aircraft_files = _find_aircraft_files(kml_files, roots)
 
     # Lazy for the same reasons as the previews above
-    from .renderer import create_progressive_heatmap, preflight  # noqa: PLC0415
+    from .renderer import build_site, preflight  # noqa: PLC0415
 
-    # Checked again inside create_progressive_heatmap, which is public API;
+    # Checked again inside build_site, which is public API;
     # checking here stops before --obfuscate-inputs rewrites the inputs
     preflight(output_file, data_dir, [*kml_files, *aircraft_files], force)
 
@@ -352,7 +352,7 @@ def _generate(
     # Reads the cache directory at import, like the others above
     from .terrain import TerrariumTiles  # noqa: PLC0415
 
-    result = create_progressive_heatmap(
+    result = build_site(
         kml_files,
         output_file,
         data_dir,

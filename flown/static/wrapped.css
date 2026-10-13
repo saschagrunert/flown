@@ -1382,12 +1382,12 @@ body:has(#wrapped-modal:not([hidden]))
    labelled sections of label/value rows. Numbers carry the emphasis; the
    labels stay quiet.
    ========================================================================== */
-.kh-stats {
+.stats-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
 }
-.kh-stats-note {
+.stats-note {
   margin: 0 0 calc(var(--space-lg) * -1 + var(--space-sm));
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-control);
@@ -1400,7 +1400,7 @@ body:has(#wrapped-modal:not([hidden]))
 /* Lead figures: two per row. The dividers are borders on the items, not
    gaps over a coloured container: a dataset without timing data renders
    three figures, and the empty fourth cell has to read as the panel. */
-.kh-stats-lead {
+.stats-lead {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   background-color: var(--color-bg-primary);
@@ -1408,7 +1408,7 @@ body:has(#wrapped-modal:not([hidden]))
   border-radius: var(--radius-panel);
   overflow: hidden;
 }
-.kh-stats-lead-item {
+.stats-lead-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1418,13 +1418,13 @@ body:has(#wrapped-modal:not([hidden]))
   border-left: 1px solid var(--color-divider);
   min-width: 0;
 }
-.kh-stats-lead-item:nth-child(-n + 2) {
+.stats-lead-item:nth-child(-n + 2) {
   border-top: 0;
 }
-.kh-stats-lead-item:nth-child(odd) {
+.stats-lead-item:nth-child(odd) {
   border-left: 0;
 }
-.kh-stats-lead-value {
+.stats-lead-value {
   font-family: var(--font-mono);
   font-size: var(--text-lg);
   font-weight: 600;
@@ -1437,24 +1437,24 @@ body:has(#wrapped-modal:not([hidden]))
 }
 /* Numbers are set in the monospace face, the words beside them are not:
    "12 flights" was monospace from end to end */
-.kh-stats-lead-unit,
-.kh-stats-unit,
-.kh-stats-noun {
+.stats-lead-unit,
+.stats-unit,
+.stats-noun {
   font-family: var(--font-ui);
 }
-.kh-stats-lead-unit {
+.stats-lead-unit {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text-muted);
   margin-left: var(--unit-gap);
 }
-.kh-stats-lead-alt {
+.stats-lead-alt {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   white-space: nowrap;
 }
-.kh-stats-lead-label {
+.stats-lead-label {
   /* Bottom-aligned: a figure with an alt line must not push its label
      below the one beside it */
   margin-top: auto;
@@ -1466,12 +1466,12 @@ body:has(#wrapped-modal:not([hidden]))
 }
 
 /* Sections */
-.kh-stats-section {
+.stats-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
 }
-.kh-stats-section-title {
+.stats-section-title {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -1484,13 +1484,13 @@ body:has(#wrapped-modal:not([hidden]))
   letter-spacing: 0.08em;
   color: var(--color-text-muted);
 }
-.kh-stats-section-title .icon {
+.stats-section-title .icon {
   color: var(--color-text-dim);
 }
-.kh-stats-section-label {
+.stats-section-label {
   min-width: 0;
 }
-.kh-stats-section-count {
+.stats-section-count {
   margin-left: auto;
   padding: 0 var(--space-xs);
   border-radius: var(--radius-pill);
@@ -1501,13 +1501,13 @@ body:has(#wrapped-modal:not([hidden]))
   color: var(--color-text-secondary);
 }
 
-.kh-stats-list {
+.stats-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 /* Metric rows: label left, value stack right */
-.kh-stats-metric {
+.stats-metric {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1515,27 +1515,27 @@ body:has(#wrapped-modal:not([hidden]))
   padding: var(--space-xs) 0;
   font-size: var(--text-sm);
 }
-.kh-stats-metric + .kh-stats-metric {
+.stats-metric + .stats-metric {
   border-top: 1px solid var(--color-divider);
 }
-.kh-stats-metric-label {
+.stats-metric-label {
   min-width: 0;
   color: var(--color-text-secondary);
 }
-.kh-stats-metric-values {
+.stats-metric-values {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   flex-shrink: 0;
   text-align: right;
 }
-.kh-stats-metric-value {
+.stats-metric-value {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--color-text);
   white-space: nowrap;
 }
-.kh-stats-metric-alt {
+.stats-metric-alt {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
@@ -1546,27 +1546,27 @@ body:has(#wrapped-modal:not([hidden]))
    monospace face, whose word space is a full character wide and left the
    unit reading as a word of its own.
 
-   Muted, like `.kh-stats-lead-unit`: throughout the panel the unit is a step
+   Muted, like `.stats-lead-unit`: throughout the panel the unit is a step
    quieter than the figure it belongs to, so the number is what the eye lands
    on. A metric row drew its unit at full strength and was the one figure in
    the panel that did. The two conversion lines are muted throughout, so
    there the unit simply matches. */
-.kh-stats-unit {
+.stats-unit {
   margin-left: var(--unit-gap);
   color: var(--color-text-muted);
 }
 
 /* Aircraft rows put a registration over its type */
-.kh-stats-aircraft .kh-stats-metric-label {
+.stats-aircraft .stats-metric-label {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.kh-stats-aircraft-type {
+.stats-aircraft-type {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
-.kh-stats-code {
+.stats-code {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--color-text);
@@ -1574,16 +1574,16 @@ body:has(#wrapped-modal:not([hidden]))
 
 /* Airports: a count line above the list, which flows with the panel rather
    than becoming a second scroller inside it */
-.kh-stats-airports-summary {
+.stats-airports-summary {
   margin: 0 0 var(--space-sm);
   padding: 0;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
-.kh-stats-groups {
+.stats-groups {
   min-width: 0;
 }
-.kh-stats-group {
+.stats-group {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -1595,13 +1595,13 @@ body:has(#wrapped-modal:not([hidden]))
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
 }
-.kh-stats-group:first-child {
+.stats-group:first-child {
   padding-top: var(--space-sm);
 }
 /* The flag of the group, where the site carries one. It is an SVG published
    beside the page, not an emoji: emoji carry their own colour and weight,
    and Windows has no flag glyphs at all. */
-.kh-stats-group-flag {
+.stats-group-flag {
   flex-shrink: 0;
   width: 16px;
   height: 12px;
@@ -1613,7 +1613,7 @@ body:has(#wrapped-modal:not([hidden]))
 }
 
 /* The ISO code, for a site built without the flags */
-.kh-stats-group-code {
+.stats-group-code {
   flex-shrink: 0;
   min-width: 22px;
   padding: 0 var(--space-xs);
@@ -1625,28 +1625,28 @@ body:has(#wrapped-modal:not([hidden]))
   letter-spacing: 0;
   text-align: center;
 }
-.kh-stats-group-name {
+.stats-group-name {
   min-width: 0;
 }
-.kh-stats-group-count {
+.stats-group-count {
   margin-left: auto;
   font-family: var(--font-mono);
   letter-spacing: 0;
   color: var(--color-text-muted);
 }
-.kh-stats-airport {
+.stats-airport {
   display: flex;
   align-items: baseline;
   gap: var(--space-sm);
   padding: var(--space-xs) 0;
   font-size: var(--text-sm);
 }
-.kh-stats-airport .kh-stats-code {
+.stats-airport .stats-code {
   flex-shrink: 0;
   min-width: 44px;
   font-size: var(--text-xs);
 }
-.kh-stats-airport-name {
+.stats-airport-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1654,7 +1654,7 @@ body:has(#wrapped-modal:not([hidden]))
   color: var(--color-text-secondary);
 }
 
-.kh-stats-footer {
+.stats-footer {
   margin: 0;
   padding-top: var(--space-sm);
   border-top: 1px solid var(--color-divider);
@@ -1663,25 +1663,25 @@ body:has(#wrapped-modal:not([hidden]))
   color: var(--color-text-muted);
 }
 /* Reads as a second line of the footer, not as a section of its own: the
-   margin takes back the gap .kh-stats puts between its children */
-.kh-stats-build {
+   margin takes back the gap .stats-body puts between its children */
+.stats-build {
   margin: calc(var(--space-xs) - var(--space-lg)) 0 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
-.kh-stats-build a {
+.stats-build a {
   color: inherit;
   text-underline-offset: 2px;
 }
-.kh-stats-build a:hover,
-.kh-stats-build a:focus-visible {
+.stats-build a:hover,
+.stats-build a:focus-visible {
   color: var(--color-text);
 }
 /* Fine print on a phone, below the 12px floor (see --text-fine) */
 @media (max-width: 767.98px), (max-height: 480px) {
-  .kh-stats-footer,
-  .kh-stats-build {
+  .stats-footer,
+  .stats-build {
     font-size: var(--text-fine);
   }
 }
@@ -1724,8 +1724,8 @@ body:has(#wrapped-modal:not([hidden]))
   border-bottom-color: var(--color-accent-blue);
 }
 #stats-rail-tabs button:focus-visible,
-.kh-flights-search:focus-visible,
-.kh-flights button:focus-visible {
+.flights-search:focus-visible,
+.flights-table button:focus-visible {
   outline: var(--focus-ring);
   outline-offset: -2px;
 }
@@ -1737,13 +1737,13 @@ body:has(#wrapped-modal:not([hidden]))
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
-.kh-flights-bar {
+.flights-bar {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
 }
-.kh-flights-search {
+.flights-search {
   flex: 1;
   min-width: 0;
   min-height: 32px;
@@ -1756,10 +1756,10 @@ body:has(#wrapped-modal:not([hidden]))
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
 }
-.kh-flights-count {
+.flights-count {
   color: var(--color-text-muted);
 }
-.kh-flights-scroll {
+.flights-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -1768,55 +1768,55 @@ body:has(#wrapped-modal:not([hidden]))
 }
 /* The phone's sheet stops above the bar, which keeps clear of the home
    indicator already */
-body:has(.mobile-bar) .kh-flights-scroll {
+body:has(.mobile-bar) .flights-scroll {
   padding-bottom: 0;
 }
 /* Seven columns, one of them with its sort arrow, fit the 316 px rail in
    the small size with 3 px on either side of a cell; the phone's sheet is
    wider and keeps the panel's size */
-.kh-flights {
+.flights-table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-body:has(.mobile-bar) .kh-flights {
+body:has(.mobile-bar) .flights-table {
   font-size: var(--text-base);
 }
 /* A finger's sort buttons: the height of the text alone was 14 px */
-body:has(.mobile-bar) .kh-flights thead button {
+body:has(.mobile-bar) .flights-table thead button {
   min-width: 24px;
   min-height: 44px;
 }
 /* One year leaves its column the same on every row, and the rail too
    narrow for the landings (ui/flightList.ts) */
-.kh-one-year :is(th, td):nth-child(3) {
+.one-year :is(th, td):nth-child(3) {
   display: none;
 }
-.kh-flights th,
-.kh-flights td {
+.flights-table th,
+.flights-table td {
   height: 28px;
   padding: 0 3px;
   text-align: left;
   font-weight: 400;
 }
-.kh-flights tr > :first-child {
+.flights-table tr > :first-child {
   padding-left: var(--space-md);
 }
-.kh-flights tr > :last-child {
+.flights-table tr > :last-child {
   padding-right: var(--space-md);
 }
-.kh-flights .kh-num {
+.flights-table .num {
   text-align: right;
 }
-.kh-flights thead th {
+.flights-table thead th {
   position: sticky;
   top: 0;
   background: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-divider);
 }
-.kh-flights button {
+.flights-table button {
   font: inherit;
   color: inherit;
   background: none;
@@ -1824,49 +1824,49 @@ body:has(.mobile-bar) .kh-flights thead button {
   padding: 0;
   cursor: pointer;
 }
-.kh-flights thead button {
+.flights-table thead button {
   font-weight: 600;
   color: var(--color-text-muted);
 }
-.kh-flights thead button:hover,
-.kh-flights [aria-sort] button {
+.flights-table thead button:hover,
+.flights-table [aria-sort] button {
   color: var(--color-text);
 }
 /* aria-sort says the direction; the arrow is not read out as well */
-.kh-flights [aria-sort="ascending"] button::after {
+.flights-table [aria-sort="ascending"] button::after {
   content: "▲" / "";
 }
-.kh-flights [aria-sort="descending"] button::after {
+.flights-table [aria-sort="descending"] button::after {
   content: "▼" / "";
 }
-.kh-flights tbody tr {
+.flights-table tbody tr {
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
 }
-.kh-flights tbody tr:hover {
+.flights-table tbody tr:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
 }
-.kh-flights tbody tr:has([aria-pressed="true"]) {
+.flights-table tbody tr:has([aria-pressed="true"]) {
   background: rgba(var(--color-accent-blue-rgb), 0.15);
   color: var(--color-accent-blue);
 }
-.kh-flights .kh-flight {
+.flights-table .flight-btn {
   font-family: var(--font-mono);
 }
-.kh-flights .kh-flights-empty {
+.flights-table .flights-empty {
   padding: var(--space-md);
   white-space: normal;
   color: var(--color-text-muted);
 }
 @media (pointer: coarse) {
   /* Under 16 px iOS zooms the page into a field that takes focus */
-  .kh-flights-search {
+  .flights-search {
     font-size: 16px;
   }
-  .kh-flights th,
-  .kh-flights td {
+  .flights-table th,
+  .flights-table td {
     height: 40px;
   }
 }

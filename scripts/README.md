@@ -151,14 +151,15 @@ python scripts/build_visual_site.py
 ## check_site_files.py
 
 Checks that a generated site has every file the page loads (the page, its
-configuration, the seven bundles, the four stylesheets, the vendored MapLibre
-and html-to-image files and `data/metadata.json`), each of them not empty, or
-with `--package`, that the installed `flown` package ships the template and the
-same assets and none of their source maps. CI runs it on the wheel it installed,
-on the site that wheel generates and on the sites the container image generates
-(all in the `packaging` job), from the one list in the script. Run `--package`
-with the Python of the environment the package is installed in, outside the
-checkout, so the installed package is imported and not the sources.
+configuration, the bundles and stylesheets `flown/site_assets.py` lists
+(`BUNDLE_FILES`, `CSS_FILES`), the vendored MapLibre and html-to-image files and
+`data/metadata.json`), each of them not empty, or with `--package`, that the
+installed `flown` package ships the template and the same assets and none of
+their source maps. CI runs it on the wheel it installed, on the site that wheel
+generates and on the sites the container image generates (all in the `packaging`
+job), from the one list in the script. Run `--package` with the Python of the
+environment the package is installed in, outside the checkout, so the installed
+package is imported and not the sources.
 
 ```bash
 python scripts/check_site_files.py docs
@@ -205,7 +206,7 @@ node scripts/e2e_durations.js --limit 50 */e2e-timings.json
 What `build.js` does without building, kept apart because `build.js` runs a
 build as it is imported: the GLSL of the custom layers written as a minified
 build ships it (`tightenGlsl`, `tightenShaders`), the sizes of the files, the
-check that the build wrote only the seven bundles the site publishes
+check that the build wrote only the bundles the site publishes
 (`assertExpectedOutputs`), the composition of a bundle and the flags of the
 command. `tests/frontend/unit/glsl.test.ts` holds the tightened shaders of every
 `ui/*Layer.ts` and `ui/*Shaders.ts` to the same tokens as written, and
@@ -223,7 +224,7 @@ build that wrote that file, the largest change first: build `main` with
 
 The content hash of everything that shapes a built site: the TypeScript sources
 in `flown/frontend/`, the files in `BUILD_FILES` (`build.js`,
-`scripts/build-helpers.js`, `scripts/vendor.js`, `tsconfig.json` and the three
+`scripts/build-helpers.js`, `scripts/vendor.js`, `tsconfig.json` and the
 stylesheets) and the versions `package-lock.json` pins for `BUILD_PACKAGES`
 (esbuild, Lucide as the one package bundled into the page, and MapLibre,
 html-to-image and flag-icons, which are vendored next to the bundles).

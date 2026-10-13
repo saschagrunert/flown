@@ -112,8 +112,8 @@ describe("htmlGenerators", () => {
     });
 
     it("escapes the text before marking it up", () => {
-      expect(markFlightTimeUnits("<b>1h 2m</b>", "kh-stats-lead-unit")).toBe(
-        '&lt;b&gt;1<span class="kh-stats-lead-unit">h</span> 2<span class="kh-stats-lead-unit">m</span>&lt;/b&gt;',
+      expect(markFlightTimeUnits("<b>1h 2m</b>", "stats-lead-unit")).toBe(
+        '&lt;b&gt;1<span class="stats-lead-unit">h</span> 2<span class="stats-lead-unit">m</span>&lt;/b&gt;',
       );
     });
   });
@@ -159,28 +159,28 @@ describe("htmlGenerators", () => {
     it("renders name, coordinates link and flight count with classes only", () => {
       const html = generateAirportPopupHtml(params);
 
-      expect(html).toContain('class="popup-container kh-popup-airport"');
+      expect(html).toContain('class="popup-container popup-airport"');
       // Focus lands on it, so it has a name a screen reader can say
       expect(html).toContain('role="group"');
-      expect(html).toContain('class="popup-header kh-popup-header-airport"');
+      expect(html).toContain('class="popup-header popup-header-airport"');
       expect(html).toContain("Frankfurt EDDF");
       expect(html).toContain('href="https://www.google.com/maps?q=50.1,8.67"');
-      expect(html).toContain('class="kh-popup-link"');
+      expect(html).toContain('class="popup-link"');
       expect(html).toContain(params.latDms);
-      expect(html).toContain('class="kh-popup-metric-label">Flights shown');
-      expect(html).toContain('class="popup-metric-value kh-popup-accent">20');
+      expect(html).toContain('class="popup-metric-label">Flights shown');
+      expect(html).toContain('class="popup-metric-value popup-accent">20');
       expect(html).not.toContain("style=");
       expect(html).not.toContain("HOME");
     });
 
     it("renders the home badge for the home base", () => {
       const html = generateAirportPopupHtml({ ...params, isHomeBase: true });
-      expect(html).toContain('<span class="kh-popup-home-badge">HOME</span>');
+      expect(html).toContain('<span class="popup-home-badge">HOME</span>');
       // Its header in the home colour, like its marker and badge, where it
       // was in the green of every other airport's (regression)
-      expect(html).toContain("kh-popup-header-home");
+      expect(html).toContain("popup-header-home");
       expect(generateAirportPopupHtml(params)).not.toContain(
-        "kh-popup-header-home",
+        "popup-header-home",
       );
     });
 
@@ -222,14 +222,14 @@ describe("htmlGenerators", () => {
       const altColor = getColorForAltitude(3000, 0, 5000);
       const speedColor = getColorForAirspeed(120, 0, 200);
       expect(html).toContain(
-        `class="popup-metric kh-popup-metric-colored" data-metric-color="${altColor}"`,
+        `class="popup-metric popup-metric-colored" data-metric-color="${altColor}"`,
       );
       expect(html).toContain(
-        `class="popup-metric kh-popup-metric-colored" data-metric-color="${speedColor}"`,
+        `class="popup-metric popup-metric-colored" data-metric-color="${speedColor}"`,
       );
       // The CSP would block a style attribute
       expect(html).not.toContain("style=");
-      expect(html).toContain('class="popup-header kh-popup-header-segment"');
+      expect(html).toContain('class="popup-header popup-header-segment"');
     });
 
     it("applyMetricColors carries the colours into custom properties", () => {
@@ -239,8 +239,8 @@ describe("htmlGenerators", () => {
 
       const altColor = getColorForAltitude(3000, 0, 5000);
       const metric = host.querySelector<HTMLElement>("[data-metric-color]")!;
-      expect(metric.style.getPropertyValue("--kh-metric-color")).toBe(altColor);
-      expect(metric.style.getPropertyValue("--kh-metric-bg")).toBe(
+      expect(metric.style.getPropertyValue("--metric-color")).toBe(altColor);
+      expect(metric.style.getPropertyValue("--metric-bg")).toBe(
         rgbToRgba(altColor, 0.15),
       );
     });
@@ -306,7 +306,7 @@ describe("htmlGenerators", () => {
     it("computes track from segment coordinates", () => {
       const html = generateSegmentPopupHtml(fullParams);
 
-      expect(html).toContain('<span class="kh-popup-track">Track: 033°</span>');
+      expect(html).toContain('<span class="popup-track">Track: 033°</span>');
       expect(html).not.toContain("N/A");
     });
 

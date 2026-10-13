@@ -12,9 +12,7 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.toml text eol=lf
-*.txt text eol=lf
 *.lock text eol=lf
 *.kml text eol=lf
 Makefile text eol=lf
 Dockerfile text eol=lf
-Dockerfile.* text eol=lf

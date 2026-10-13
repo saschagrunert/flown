@@ -1293,12 +1293,12 @@ describe("appInitializer", () => {
       colorSegmentPopups(lifetime.signal);
       const content = document.createElement("div");
       content.innerHTML =
-        '<div class="kh-popup-metric-colored" data-metric-color="rgb(1, 2, 3)"></div>';
+        '<div class="popup-metric-colored" data-metric-color="rgb(1, 2, 3)"></div>';
       map.firstElementChild!.appendChild(content);
       await Promise.resolve();
 
       const metric = content.firstElementChild as HTMLElement;
-      expect(metric.style.getPropertyValue("--kh-metric-color")).toBe(
+      expect(metric.style.getPropertyValue("--metric-color")).toBe(
         "rgb(1, 2, 3)",
       );
 
@@ -1306,12 +1306,12 @@ describe("appInitializer", () => {
       lifetime.abort();
       const later = document.createElement("div");
       later.innerHTML =
-        '<div class="kh-popup-metric-colored" data-metric-color="rgb(4, 5, 6)"></div>';
+        '<div class="popup-metric-colored" data-metric-color="rgb(4, 5, 6)"></div>';
       map.firstElementChild!.appendChild(later);
       await Promise.resolve();
       expect(
         (later.firstElementChild as HTMLElement).style.getPropertyValue(
-          "--kh-metric-color",
+          "--metric-color",
         ),
       ).toBe("");
       map.remove();

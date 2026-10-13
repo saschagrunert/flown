@@ -1440,7 +1440,7 @@ export const INIT_ERROR_MESSAGE =
 
 /** Markup shown in place of the map when initialization fails */
 export const INIT_ERROR_HTML =
-  '<div class="kh-init-error" role="alert">' + INIT_ERROR_MESSAGE + "</div>";
+  '<div class="init-error" role="alert">' + INIT_ERROR_MESSAGE + "</div>";
 
 /**
  * Create the app, bind the controls and run the initial load. Exported so

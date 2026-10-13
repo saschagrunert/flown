@@ -97,7 +97,6 @@ export default defineConfig(
       globals: {
         console: "readonly",
         process: "readonly",
-        __dirname: "readonly",
         URL: "readonly",
       },
     },

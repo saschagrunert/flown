@@ -545,7 +545,7 @@ describe("MapApp controls and map", () => {
 
       // The rail opens at once, over a panel that says why it is empty
       expect(document.getElementById("stats-rail")!.hidden).toBe(false);
-      expect(panel().querySelector(".kh-stats-loading")!.textContent).toBe(
+      expect(panel().querySelector(".stats-loading")!.textContent).toBe(
         "Loading statistics…",
       );
       expect(panel().getAttribute("aria-busy")).toBe("true");
@@ -581,7 +581,7 @@ describe("MapApp controls and map", () => {
       await heldBundle();
       const title = document.createElement("h2");
       title.id = "stats-rail-title";
-      title.innerHTML = '<span class="kh-stats-title-text">Statistics</span>';
+      title.innerHTML = '<span class="stats-title-text">Statistics</span>';
       document.body.appendChild(title);
       app.selectedPathIds = new Set([...app.selectedPathIds, 1]);
 

@@ -48,7 +48,7 @@ vi.mock(
 
 /** The count the popup shows, as its markup */
 function countHtml(count: number): string {
-  return `<span class="popup-metric-value kh-popup-accent">${count}</span>`;
+  return `<span class="popup-metric-value popup-accent">${count}</span>`;
 }
 
 /** Let the feature bundle "load" */

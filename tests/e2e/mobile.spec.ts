@@ -99,6 +99,12 @@ test.describe("Mobile bar", () => {
   });
 
   test.afterEach(() => {
+    // Not after a test that failed already: in WebKit the screenshot
+    // Playwright takes of it adds a <style> the CSP refuses (see
+    // relevantConsoleErrors in helpers.ts), which only repeated the failure
+    // as a CSP violation of its own
+    const info = test.info();
+    if (info.status !== info.expectedStatus) return;
     expect(errors.pageErrors).toEqual([]);
     expect(errors.cspViolations).toEqual([]);
     expect(relevantConsoleErrors(errors)).toEqual([]);
@@ -432,7 +438,7 @@ test.describe("Mobile bar", () => {
 
     await expect(flightsTab).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#stats-panel")).toBeHidden();
-    const flight = list.locator("tbody .kh-flight").first();
+    const flight = list.locator("tbody .flight-btn").first();
     await expect(flight).toBeVisible();
 
     // A tap picks one flight at a time, and the sheet over the map it is
@@ -449,7 +455,7 @@ test.describe("Mobile bar", () => {
     await page.locator("#mobile-tab-stats").click();
     await expect(flightsTab).toHaveAttribute("aria-selected", "true");
     await page.locator("#stats-tab").click();
-    await expect(page.locator("#stats-panel .kh-stats")).toBeVisible();
+    await expect(page.locator("#stats-panel .stats-body")).toBeVisible();
   });
 
   test("the Wrapped tab opens the year in review", async ({ page }) => {
@@ -935,6 +941,10 @@ test.describe("Mobile bar", () => {
     test("comes with the first flight picked, and its 3D button turns 3D on", async ({
       page,
     }) => {
+      // The ribbons of the 3D view at a phone's pixel ratio in software
+      // WebGL: even without the relief it took 24 to 45 s of the 60 s on
+      // green runs
+      test.slow();
       // The 3D view the tip turns on is not what is looked at, and its
       // relief on a phone's pixel ratio in software WebGL took this test
       // to within seconds of its timeout
@@ -942,7 +952,10 @@ test.describe("Mobile bar", () => {
       const tip = toastMessage(page, "Turn on 3D to lift the flights");
       await toggleStatsPanel(page);
       await page.locator("#flights-tab").click();
-      await page.locator("#flight-list-panel tbody .kh-flight").first().click();
+      await page
+        .locator("#flight-list-panel tbody .flight-btn")
+        .first()
+        .click();
 
       await expect(tip).toBeVisible();
       // Over the map, clear of the bar

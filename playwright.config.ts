@@ -16,6 +16,13 @@ const runsVisual =
   process.env["PLAYWRIGHT_BROWSERS_PATH"] === "/ms-playwright" ||
   !!process.env["VISUAL_SNAPSHOTS"];
 const chromiumPath = process.env["CHROMIUM_PATH"];
+/**
+ * A second run in the same CI job (the tests without a tile API key, see the
+ * e2e job of .github/workflows/test.yml) writes its traces, report and test
+ * durations beside the first run's: Playwright empties its output directory
+ * when it starts, and the first run's traces would go with it.
+ */
+const runSuffix = process.env["E2E_RUN"] ? `-${process.env["E2E_RUN"]}` : "";
 const launchOptions = chromiumPath
   ? { launchOptions: { executablePath: chromiumPath } }
   : {};
@@ -71,11 +78,17 @@ export default defineConfig<object, SiteOptions>({
   // duration of every test, which it uploads from every run: the tests that
   // creep up on their timeout show there before they time out
   // (scripts/e2e_durations.js lists the slowest).
+  outputDir: `test-results${runSuffix}`,
   reporter: [
     [isCI ? "dot" : "list"],
-    ["html", { open: "never" }],
+    ["html", { open: "never", outputFolder: `playwright-report${runSuffix}` }],
     ...(isCI
-      ? [["json", { outputFile: "test-results/e2e-timings.json" }] as const]
+      ? [
+          [
+            "json",
+            { outputFile: `test-results${runSuffix}/e2e-timings.json` },
+          ] as const,
+        ]
       : []),
   ],
   // A stale site is refused by a fixture every spec gets (see

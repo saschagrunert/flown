@@ -26,16 +26,14 @@ export const STATS_PANEL_ID = "stats-panel";
  * manager works out the statistics of a large filter
  */
 export const LOADING_HTML =
-  '<p class="kh-stats-loading" role="status">Loading statistics…</p>';
+  '<p class="stats-loading" role="status">Loading statistics…</p>';
 
 /**
  * Title the rail for the statistics of a selection, or of the filter. The
  * stats manager and the loading state share it.
  */
 export function setStatsTitle(isSelection: boolean): void {
-  const textEl = document.querySelector(
-    "#stats-rail-title .kh-stats-title-text",
-  );
+  const textEl = document.querySelector("#stats-rail-title .stats-title-text");
   if (textEl) {
     textEl.textContent = isSelection
       ? "Statistics of the selection"

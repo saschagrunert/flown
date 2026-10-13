@@ -695,8 +695,8 @@ describe("wrappedHtml", () => {
       expect(countryMark("DE", "flags/de.svg", "country", 18, 14)).toBe(
         '<img class="country-flag" src="flags/de.svg" alt="" width="18" height="14" loading="lazy">',
       );
-      expect(countryMark("DE", null, "kh-stats-group", 16, 12)).toBe(
-        '<span class="kh-stats-group-code" aria-hidden="true">DE</span>',
+      expect(countryMark("DE", null, "stats-group", 16, 12)).toBe(
+        '<span class="stats-group-code" aria-hidden="true">DE</span>',
       );
     });
 

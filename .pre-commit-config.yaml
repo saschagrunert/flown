@@ -1,7 +1,10 @@
 ---
 # Install with: pip install pre-commit && pre-commit install
 # Input data (data/) is excluded from the fixers; the generated site (docs/)
-# is not tracked at all. Dependabot bumps the two revs below.
+# is not tracked at all. Dependabot bumps the two revs below. They are
+# commits, with the release in a comment (`pre-commit autoupdate --freeze`
+# writes them so): a tag can be moved to other code, which would then run
+# here on the next commit, before the flights in data/ are checked.
 #
 # The linters and formatters are local hooks (`repo: local`, `language: system`)
 # rather than pinned mirrors, so no hook revision of their own can drift. They
@@ -9,7 +12,7 @@
 # with the virtual environment active and `npm ci` run; see CONTRIBUTING.md.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
     hooks:
       - id: end-of-file-fixer
         exclude: ^data/
@@ -21,7 +24,7 @@ repos:
       - id: check-yaml
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e # frozen: v8.30.1
     hooks:
       - id: gitleaks
 
@@ -29,8 +32,9 @@ repos:
     hooks:
       # ruff is resolved off $PATH, so it is the requirements-test.lock
       # version CI installs as long as the virtual environment is active.
-      # --force-exclude makes it honour the excludes in pyproject.toml even
-      # though pre-commit passes the file names explicitly.
+      # --force-exclude makes it honour its default excludes (and any
+      # pyproject.toml adds) even though pre-commit passes the file names
+      # explicitly.
       - id: ruff-check
         name: ruff check
         entry: ruff check --force-exclude --fix

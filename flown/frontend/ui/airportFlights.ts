@@ -76,7 +76,7 @@ export function flightLabel(path: PathInfo, km = 0): string {
  */
 export function pickBox(id: number, label: string): string {
   return (
-    '<input type="checkbox" class="kh-pick" data-path-id="' +
+    '<input type="checkbox" class="pick-box" data-path-id="' +
     id +
     '" aria-label="Select ' +
     label +
@@ -93,10 +93,10 @@ export function pickBox(id: number, label: string): string {
 export function listFlights(app: MapApp, popup: Popup, name: string): void {
   // A closed popup has no element at all
   const container = popup.isOpen() ? popup.getElement() : undefined;
-  const host = container?.querySelector(".kh-popup-airport");
+  const host = container?.querySelector(".popup-airport");
   const data = app.currentData;
   if (!container || !host || !data) return;
-  if (host.querySelector(".kh-popup-flights")) return;
+  if (host.querySelector(".popup-flights")) return;
 
   // MapLibre closes a popup on a click, never on a key
   container.onkeydown = (event) => {
@@ -118,7 +118,7 @@ export function listFlights(app: MapApp, popup: Popup, name: string): void {
     html +=
       "<div>" +
       pickBox(id, label) +
-      '<button type="button" class="kh-popup-flight" data-path-id="' +
+      '<button type="button" class="popup-flight" data-path-id="' +
       id +
       '">' +
       label +
@@ -132,19 +132,19 @@ export function listFlights(app: MapApp, popup: Popup, name: string): void {
   );
   if (use) {
     const label = document.createElement("div");
-    label.className = "popup-section-label kh-popup-flights-label";
+    label.className = "popup-section-label popup-flights-label";
     label.textContent = "Runways";
     const runways = document.createElement("div");
-    runways.className = "kh-popup-runways";
+    runways.className = "popup-runways";
     runways.textContent = use;
     host.append(label, runways);
   }
 
   const title = document.createElement("div");
-  title.className = "popup-section-label kh-popup-flights-label";
+  title.className = "popup-section-label popup-flights-label";
   title.textContent = "Flights";
   const list = document.createElement("div");
-  list.className = "kh-popup-flights";
+  list.className = "popup-flights";
   list.setAttribute("role", "group");
   list.setAttribute("aria-label", "Flights");
   list.innerHTML = html;
@@ -212,13 +212,13 @@ export function runwayUse(paths: PathInfo[], code?: string): string {
  */
 function markSelected(app: MapApp): void {
   app.pathSelection.markSelected(
-    document.querySelectorAll<HTMLElement>(".kh-popup-flights [data-path-id]"),
+    document.querySelectorAll<HTMLElement>(".popup-flights [data-path-id]"),
   );
-  const buttons = document.querySelectorAll<HTMLElement>(".kh-popup-flight");
+  const buttons = document.querySelectorAll<HTMLElement>(".popup-flight");
   // The one flight of an airport pressed or not is the whole choice, and
   // drawn unpressed both ways a press on it showed nothing
   document
-    .querySelector(".kh-popup-flights")
+    .querySelector(".popup-flights")
     ?.classList.toggle(
       "is-all-pressed",
       buttons.length > 1 &&

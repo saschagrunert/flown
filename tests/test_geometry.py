@@ -92,6 +92,12 @@ class TestLongitudeDifference:
         assert longitude_difference(179.5, -179.5) == pytest.approx(1.0)
         assert longitude_difference(-179.5, 179.5) == pytest.approx(-1.0)
 
+    def test_a_half_turn_that_rounds_up(self):
+        # Found by Hypothesis: the modulo came out as 360, which left 180
+        assert longitude_difference(5.606116679153747e-14, -179.99999999999997) == (
+            -180.0
+        )
+
     @given(longitudes, longitudes)
     def test_bounded(self, lon0, lon1):
         assert -180.0 <= longitude_difference(lon0, lon1) < 180.0

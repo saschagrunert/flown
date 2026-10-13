@@ -63,7 +63,7 @@ export function splitAirportName(label: string, code?: string): AirportLabel {
 }
 
 /** The two surfaces that set a unit in small muted type */
-export type UnitClass = "stat-unit" | "kh-stats-lead-unit";
+export type UnitClass = "stat-unit" | "stats-lead-unit";
 
 /**
  * Mark the h and m of a flight time as units.

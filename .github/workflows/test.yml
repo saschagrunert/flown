@@ -4,8 +4,10 @@
 # alongside the tests, and publishes it to GitHub Pages, but only once every
 # test job has passed. The
 # weekly run only repeats the security job, so a new advisory for a pinned
-# dependency or a leaked secret shows up without a push. The checks job at
-# the end is the one status a ruleset on main requires (see there).
+# dependency or a leaked secret shows up without a push, and runs the real
+# build of Your flights, which needs Pyodide from its CDN (the pyodide job).
+# The checks job at the end is the one status a ruleset on main requires
+# (see there).
 #
 # A pull request Dependabot opens for a Python dependency changes only the
 # range in pyproject.toml, and every job installs the lock files, which it
@@ -171,7 +173,7 @@ jobs:
       # A copy of the repository with flights of its own skips the tests
       # written against these (see doc/hosting.md)
       - name: Run Python tests with coverage
-        run: pytest -n auto --durations=15 --cov --cov-branch --cov-report=xml:coverage/coverage.xml --cov-report=term
+        run: pytest -n auto --durations=15 --cov --cov-report=xml:coverage/coverage.xml --cov-report=term
         env:
           FLOWN_OWN_FLIGHTS: ${{ vars.FLOWN_OWN_FLIGHTS }}
       - name: Upload coverage to Codecov
@@ -338,6 +340,15 @@ jobs:
   # the same on every run and the same as a local run in that image, and no
   # job downloads browsers or installs system packages. WebGL is software
   # rendered there, as it was on the bare runner.
+  #
+  # The image is pulled by a step and the tests run in it with docker run,
+  # not as the job's container: the runner pulls a job's container without
+  # a time limit, and on 2026-10-12 eight jobs of three runs hung in that
+  # pull until their job timed out, 15 to 25 minutes each. The pull step
+  # gives up after two minutes and tries again once; the rest of the job
+  # (Node.js, npm ci, the artifacts) runs on the runner, and the tests read
+  # the checkout and its node_modules mounted at the same path. They run on
+  # the image's own Node.js, which may be older than the runner's.
   e2e:
     name: e2e (${{ matrix.name }})
     needs: e2e-sites
@@ -351,38 +362,43 @@ jobs:
       github.actor == 'dependabot[bot]' &&
       startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright'))
     runs-on: ubuntu-24.04
-    # The heavy tests allow up to five minutes each (the relief tests of
-    # 3d-relief.spec.ts three), so their jobs get longer
+    # Twice the longest job of a green run (about 5.5 minutes), and the image
+    # pull's two attempts on top. The heavy tests allow up to five minutes
+    # each (the relief tests of 3d-relief.spec.ts three), so their jobs get
+    # longer.
     timeout-minutes: ${{ matrix.timeout-minutes || 15 }}
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
-      # Docker caps /dev/shm at 64 MB, which a browser per core outgrows
-      options: --ipc=host
+    env: &playwright-image
+      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     strategy:
       fail-fast: false
       # Every project runs against the published setup, with the dummy key.
       # Without a key only the requests for the base map change, so that
-      # variant (site: none) runs just the tests that make and check those
+      # variant (no-key) runs just the tests that make and check those
       # requests, tagged @keys at the end of their titles, on the desktop,
-      # instead of the whole suite a second time. Its job needs the other
-      # site, so it is one of its own; with the tag it runs six tests, where
-      # the three specs it ran before took two to two and a half minutes.
+      # instead of the whole suite a second time. It needs the other site,
+      # so it is a second run after the first in the job with the shortest
+      # run (webkit-heavy, about two minutes): its six tests took 25 s, in a
+      # job of its own that took 80 s to set up and wait for a runner,
+      # among the 20 jobs of a run that the account's concurrent job limit
+      # already held back.
       #
       # Software WebGL runs one browser per core of the 4-vCPU runner. The
-      # desktop and mobile projects are split into three shards each and
-      # the webkit project into two, on runners of their own. Playwright
-      # splits a project by the number of tests, not their time: with two
+      # desktop project is split into three shards, the mobile and webkit
+      # projects into two each, on runners of their own. Playwright splits a
+      # project by the number of tests, not their time: with two even
       # mobile shards the second needed about 315 s of tests against 150 to
       # 220 s of the first (the phone's state.spec.ts tests take 30 to 44 s
       # each), and the one webkit job ran its 114 tests for 6.7 minutes, the
-      # longest job of the run. The desktop shards are weighted
-      # (PWTEST_SHARD_WEIGHTS, the share of the tests each shard gets, in
-      # file order; whole numbers, Playwright reads them with parseInt, so
-      # "0.85" would be 0 and leave a shard empty): the last one always drew
-      # the slow specs state,
-      # selection and wrapped-export, 955 s of tests against 681 s of the
-      # first. The variable is Playwright's own but not documented; should
-      # an update drop it, the shards split evenly again, as before.
+      # longest job of the run. So the desktop and mobile shards are
+      # weighted (PWTEST_SHARD_WEIGHTS, the share of the tests each shard
+      # gets, in file order; whole numbers, Playwright reads them with
+      # parseInt, so "0.85" would be 0 and leave a shard empty). The last
+      # desktop shard always drew the slow specs state, selection and
+      # wrapped-export, 955 s of tests against 681 s of the first. Three
+      # even mobile shards ran 130, 140 and 202 s of tests; weighted 3:2,
+      # the durations of two runs put the two shards at 225 to 235 s each,
+      # under the desktop shards. The variable is Playwright's own but not
+      # documented; should an update drop it, the shards split evenly again.
       #
       # The tests tagged @heavy (HEAVY in tests/e2e/fixtures.ts) draw the 3D
       # view or turn the globe with the flights on it, which takes seconds per
@@ -395,9 +411,12 @@ jobs:
       # where they all time out would outlast the job and lose its report.
       # The relief tests among them still run one after the other in one
       # worker (3d-relief.spec.ts, which sorts first so that worker starts
-      # them at once). The other jobs of the desktop and webkit-desktop
-      # projects leave them out. A tag that matches nothing leaves the heavy
-      # jobs with no tests, which fails them.
+      # them at once). In the desktop project that chain took 283 s of the
+      # heavy job's 286 s of tests, so its last two tests (tagged @heavy-2,
+      # HEAVY_SECOND in tests/e2e/fixtures.ts, about 104 s) run in a second
+      # heavy job. The other jobs of the desktop and webkit-desktop projects
+      # leave them all out. A tag that matches nothing leaves the heavy jobs
+      # with no tests, which fails them.
       matrix:
         include:
           - name: desktop-1
@@ -418,22 +437,25 @@ jobs:
           - name: desktop-heavy
             project: desktop
             grep: "@heavy"
+            grep-invert: "@heavy-2"
             workers: 2
             retries: 0
-            timeout-minutes: 25
-          - name: desktop-no-key
+            # Five relief tests of up to 3 minutes each, one after the other
+            timeout-minutes: 20
+          - name: desktop-heavy-2
             project: desktop
-            site: none
-            grep: "@keys"
+            grep: "@heavy-2"
+            workers: 2
+            retries: 0
+            timeout-minutes: 15
           - name: mobile-1
             project: mobile
-            shard: 1/3
+            shard: 1/2
+            shard-weights: &mobile-weights "3:2"
           - name: mobile-2
             project: mobile
-            shard: 2/3
-          - name: mobile-3
-            project: mobile
-            shard: 3/3
+            shard: 2/2
+            shard-weights: *mobile-weights
           # The phone interface in Safari's engine
           - name: webkit-1
             project: webkit
@@ -446,37 +468,52 @@ jobs:
           - name: webkit-desktop
             project: webkit-desktop
             grep-invert: "@heavy"
-          # The project does not retry
+          # The project does not retry. The tests without a tile API key
+          # run after these (see above).
           - name: webkit-heavy
             project: webkit-desktop
             grep: "@heavy"
             workers: 2
-            timeout-minutes: 20
+            # All seven relief tests of up to 3 minutes each, one after the
+            # other, and the tests without a key after them
+            timeout-minutes: 25
             # WebKit's own output in the job log: its page crashed once in
             # the sloped relief test without a page or console error, after
             # blocking the main thread for 30 s
             debug: pw:browser
+            no-key: true
     steps:
       - *checkout
       - name: Set up Node.js
         uses: ./.github/actions/setup-toolchain
       - name: Install npm dependencies
         run: npm ci
+      # Two attempts of two minutes each; a pull takes about 30 s
+      - &pull-playwright-image
+        name: Pull the Playwright image
+        id: pull
+        run: |
+          for attempt in 1 2; do
+            if timeout 120 docker pull --quiet "$PLAYWRIGHT_IMAGE"; then exit 0; fi
+            echo "::warning::pulling the Playwright image failed or took over two minutes (attempt $attempt)"
+          done
+          exit 1
       # tests/e2e/site-check.ts compares the hash of the sources the site
       # was built from, which its bundles and map_config.js carry, with
-      # this checkout. The site with the dummy key, or the one without
-      # (site: none), into
-      # docs/, where the test server looks
+      # this checkout. The site with the dummy key into docs/, where the
+      # test server looks.
       - name: Download the site
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: e2e-site-${{ matrix.site || 'dummy' }}
+          name: e2e-site-dummy
           path: docs
+      # CI is the runner's, which playwright.config.ts reads; the image
+      # brings the browsers and PLAYWRIGHT_BROWSERS_PATH. Docker caps
+      # /dev/shm at 64 MB, which a browser per core outgrows (--ipc=host).
       - name: Run the E2E tests
-        shell: bash
         env:
           # Checked against docs/map_config.js by tests/e2e/site-check.ts
-          E2E_API_KEYS: ${{ matrix.site || 'dummy' }}
+          E2E_API_KEYS: dummy
           PROJECT: ${{ matrix.project }}
           SHARD: ${{ matrix.shard }}
           PWTEST_SHARD_WEIGHTS: ${{ matrix.shard-weights }}
@@ -492,7 +529,31 @@ jobs:
           if [ -n "$GREP_INVERT" ]; then args+=(--grep-invert="$GREP_INVERT"); fi
           if [ -n "$WORKERS" ]; then args+=(--workers="$WORKERS"); fi
           if [ -n "$RETRIES" ]; then args+=(--retries="$RETRIES"); fi
-          npx playwright test "${args[@]}"
+          docker run --rm --ipc=host -v "$PWD:$PWD" -w "$PWD" \
+            -e CI -e E2E_API_KEYS -e PWTEST_SHARD_WEIGHTS -e DEBUG \
+            "$PLAYWRIGHT_IMAGE" npx playwright test "${args[@]}"
+      # The site without a key replaces the other in docs/, and the run
+      # writes its results beside the first one's (E2E_RUN, see
+      # playwright.config.ts). Also after a failure of the first run, so a
+      # run reports both, but not without the image: docker run would pull
+      # it again, without the pull step's time limit.
+      - name: Download the site without a tile API key
+        if: ${{ !cancelled() && matrix.no-key && steps.pull.outcome == 'success' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-site-none
+          path: e2e-site-none
+      - name: Run the E2E tests without a tile API key
+        if: ${{ !cancelled() && matrix.no-key && steps.pull.outcome == 'success' }}
+        env:
+          E2E_API_KEYS: none
+          E2E_RUN: no-key
+        run: |
+          rm -rf docs
+          mv e2e-site-none docs
+          docker run --rm --ipc=host -v "$PWD:$PWD" -w "$PWD" \
+            -e CI -e E2E_API_KEYS -e E2E_RUN \
+            "$PLAYWRIGHT_IMAGE" npx playwright test --project=desktop --grep=@keys
       # Also when the job timed out or was cancelled: the traces of the tests
       # that failed until then are what shows why
       - name: Upload Playwright results
@@ -501,8 +562,8 @@ jobs:
         with:
           name: playwright-results-${{ matrix.name }}
           path: |
-            test-results/
-            playwright-report/
+            test-results*/
+            playwright-report*/
           if-no-files-found: ignore
           retention-days: 7
       # The duration of every test (the JSON reporter of playwright.config.ts),
@@ -517,6 +578,14 @@ jobs:
           path: test-results/e2e-timings.json
           if-no-files-found: ignore
           retention-days: 3
+      - name: Upload the test durations without a tile API key
+        if: ${{ always() && matrix.no-key }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-timings-no-key
+          path: test-results-no-key/e2e-timings.json
+          if-no-files-found: ignore
+          retention-days: 3
 
   # Pixel comparisons are only meaningful where the rendering is fixed, so
   # this one runs inside the Playwright image, which is also what the
@@ -525,7 +594,8 @@ jobs:
   # with every flight, but the fixture site of scripts/build_visual_site.py:
   # a few committed flights, the airport and runway fixtures in place of the
   # OurAirports downloads and a fixed build stamp. The e2e-sites job builds
-  # it, since the package needs a Python the image does not carry.
+  # it, since the package needs a Python the image does not carry. The image
+  # is pulled and run as in the e2e job (see there).
   #
   # The image tag has to match the
   # @playwright/test version package-lock.json pins; scripts/check_locks.py
@@ -535,8 +605,9 @@ jobs:
   # Docker-Content-Digest header of
   # https://mcr.microsoft.com/v2/playwright/manifests/<tag>), and the same
   # reference in CONTRIBUTING.md and doc/development/testing.md
-  # (check_locks.py checks all of them). A digest left behind keeps pulling
-  # the old image, whatever the tag next to it says.
+  # (check_locks.py checks all of them). The e2e job holds the reference,
+  # which this job and the pyodide job take with it. A digest left behind
+  # keeps pulling the old image, whatever the tag next to it says.
   visual:
     needs: e2e-sites
     # Not for Dependabot's Playwright bumps, see the top
@@ -545,15 +616,16 @@ jobs:
       github.actor == 'dependabot[bot]' &&
       startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+    # About 1.5 minutes on a green run, and the image pull's two attempts
+    timeout-minutes: 10
+    env: *playwright-image
     steps:
       - *checkout
       - name: Set up Node.js
         uses: ./.github/actions/setup-toolchain
       - name: Install npm dependencies
         run: npm ci
+      - *pull-playwright-image
       # The bundles come with it, so tests/e2e/site-check.ts can check them
       # against the sources in this checkout
       - name: Download the fixture site
@@ -562,7 +634,9 @@ jobs:
           name: visual-site
           path: visual-site
       - name: Compare the page against the committed snapshots
-        run: npx playwright test --project=visual
+        run: |
+          docker run --rm --ipc=host -v "$PWD:$PWD" -w "$PWD" -e CI \
+            "$PLAYWRIGHT_IMAGE" npx playwright test --project=visual
       # The report carries the expected, actual and diff images side by side
       - name: Upload the visual diff
         if: ${{ !success() }}
@@ -633,22 +707,28 @@ jobs:
         if: steps.deps.outputs.audit == 'true'
         run: npm audit --audit-level=high
       # The same gitleaks release as the pre-commit hook, whose rev Dependabot
-      # bumps, pulled by digest like every other image and action here. The
+      # bumps (a commit, with the release in its "# frozen:" comment), pulled
+      # by digest like every other image and action here. The
       # digest is the multi-arch index of the tag; a bump of the hook rev has
       # to update it by hand (`docker manifest inspect -v` or the registry's
       # Docker-Content-Digest header), and the step fails until it does. The
       # config's [[allowlists]] needs gitleaks 8.25 or newer. A pull request
       # and an entry of the merge queue scan only the commits they add on top
-      # of their base (the whole history took over two minutes a run); a push
-      # to main and the weekly run scan the whole history.
+      # of their base, and a push to main the commits it pushed (the whole
+      # history took 80 to 106 s a run); the weekly run and a manual one scan
+      # the whole history. A push whose earlier head the clone does not have
+      # (a branch's first push, a force push) scans the whole history as
+      # well. The pull and the scan have time limits: a weekly scan once sat
+      # silent until the job timed out, and that week's audit never ran.
       - name: Scan the commit history for secrets
         env:
           GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f # v8.30.1
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
-          version=$(awk '$3 == "https://github.com/gitleaks/gitleaks" { found = 1; next } found && $1 == "rev:" { print $2; exit }' .pre-commit-config.yaml)
+          version=$(awk '$3 == "https://github.com/gitleaks/gitleaks" { found = 1; next } found && $1 == "rev:" { print ($4 == "frozen:" ? $5 : $2); exit }' .pre-commit-config.yaml)
           test -n "$version" || { echo "::error::no gitleaks rev in .pre-commit-config.yaml"; exit 1; }
-          pulled=$(docker run --rm "$GITLEAKS_IMAGE" version)
+          pulled=$(timeout 300 docker run --rm "$GITLEAKS_IMAGE" version)
           test "${pulled#v}" = "${version#v}" || {
             echo "::error::the pinned gitleaks image is $pulled, the pre-commit hook $version; update the digest in test.yml"
             exit 1
@@ -656,9 +736,54 @@ jobs:
           range=()
           if [ -n "$BASE_SHA" ]; then
             range=(--log-opts="$BASE_SHA..HEAD")
+          elif [ -n "$BEFORE_SHA" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            range=(--log-opts="$BEFORE_SHA..HEAD")
           fi
-          docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" \
+          timeout 600 docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" \
             git --redact --verbose --config /repo/.gitleaks.toml "${range[@]}" /repo
+
+  # The real build of Your flights, weekly: Pyodide, lxml and the site's
+  # Python from flown-src.zip, fetched by the page's worker from their
+  # hosts (tests/e2e/local-flights-pyodide.spec.ts). The e2e jobs leave it
+  # out, since the hermetic suite blocks every host but the site's and a
+  # build takes a minute or two; so a Pyodide release the pinned version
+  # stops resolving to, or Python of the site that does not run there,
+  # shows within a week. The site is built as in the e2e-sites job, with
+  # the dummy key, and the test runs in the Playwright image as there.
+  pyodide:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env: *playwright-image
+    steps:
+      - *checkout
+      - name: Set up the site build
+        uses: ./.github/actions/site-build-setup
+        with:
+          python-lock: requirements.lock
+      - name: Build the site with a dummy tile API key
+        run: python -m flown data --output-dir docs
+        env:
+          CARTO_API_KEY: e2e-carto
+      - *pull-playwright-image
+      - name: Build two flights with Pyodide in the page
+        env:
+          E2E_API_KEYS: dummy
+          FLOWN_E2E_PYODIDE: "1"
+        run: |
+          docker run --rm --ipc=host -v "$PWD:$PWD" -w "$PWD" \
+            -e CI -e E2E_API_KEYS -e FLOWN_E2E_PYODIDE \
+            "$PLAYWRIGHT_IMAGE" npx playwright test --project=desktop local-flights-pyodide
+      - name: Upload Playwright results
+        if: ${{ !success() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-results-pyodide
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
 
   # The one status a ruleset on main requires of a pull request and of each
   # entry of the merge queue: every test job a pull request runs, whatever
