@@ -564,9 +564,10 @@ const BUDGET_WORKER = { raw: 16 * 1024, gzip: 7 * 1024 };
 // it is there so a Dependabot bump that makes them noticeably larger fails
 // the build and gets looked at. Raise it in the pull request of the bump.
 // MapLibre, which every visit loads before the map can draw, leaves a minor
-// release about 1 % of room each way: maplibre-gl 6.11.0 came to 1,131,419
-// B raw and 303,389 B gzipped with the fixes and the strip.
-const BUDGET_MAPLIBRE = { raw: 1120 * 1024, gzip: 300 * 1024 };
+// release about 1 % of room each way: maplibre-gl 6.12.0 came to 1,144,034
+// B raw and 308,413 B gzipped with the fixes and the strip, as CI measures it
+// (an older Node's zlib packs it about 1.3 KB smaller).
+const BUDGET_MAPLIBRE = { raw: 1130 * 1024, gzip: 305 * 1024 };
 // html-to-image 1.11.13, bundled into one module and loaded on the first
 // export only: 13,667 B raw and 5.3 KB gzipped.
 const BUDGET_HTML_TO_IMAGE = { raw: 14 * 1024, gzip: 5.5 * 1024 };
