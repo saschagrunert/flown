@@ -23,10 +23,8 @@ import {
   waitForMapReady,
   wheelZoomIn,
 } from "./map";
-import {
-  SHARE_TOKEN_PARAM,
-  unpackShareToken,
-} from "../../flown/frontend/state/shareToken";
+import { unpackShareToken } from "../../flown/frontend/state/shareToken";
+import { SHARE_TOKEN_PARAM } from "../../flown/frontend/state/urlState";
 
 /** Fail loudly if the cards no longer overflow, rather than time out */
 async function expectScrollable(column: Locator): Promise<void> {
@@ -466,7 +464,12 @@ test.describe("Wrapped and Export", () => {
 
     await page.locator("#share-btn").click();
 
-    await expect(toastMessage(page, "Link copied")).toBeVisible();
+    // With the token, whether the code that packs it had come or the
+    // clipboard was handed the link to come (UIToggles.shareLink), which
+    // waits for that code: a busy runner may take seconds to fetch it
+    await expect(toastMessage(page, "Link copied")).toBeVisible({
+      timeout: 20_000,
+    });
     const copied = new URL(
       await page.evaluate(() => navigator.clipboard.readText()),
     );

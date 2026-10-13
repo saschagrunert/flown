@@ -582,7 +582,9 @@ export class AirportManager {
     const ranked = Object.entries(markers)
       .map(([name, marker]) => {
         const { lat, lng } = marker.getLatLng();
-        return { name, element: marker.getElement(), lat, lng };
+        const element = marker.getElement();
+        const arm = element.querySelector<HTMLElement>(".airport-code-arm");
+        return { name, element, arm, lat, lng };
       })
       .sort(
         (a, b) => rank(b.name) - rank(a.name) || a.name.localeCompare(b.name),

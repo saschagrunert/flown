@@ -111,11 +111,12 @@ const yearWorkerPlugin = {
 
 /**
  * Take utils/constants.ts for a module without side effects in the year
- * worker's bundle, which uses none of it: the worker reaches it through
- * helpers of the heat lines (utils/mapHelpers.ts, utils/geometry.ts), and
- * esbuild kept 0.85 KB of constants that it cannot tell are free of side
- * effects (MAP_LAYERS and HEATMAP_LAYER_IDS, sums of other constants).
- * With no import of it used, the module is left out.
+ * worker's bundle, which uses the knot of it alone (the heat lines): the
+ * worker reaches it through helpers of the heat lines (utils/mapHelpers.ts,
+ * utils/geometry.ts), and esbuild kept 0.85 KB of constants that it cannot
+ * tell are free of side effects (MAP_LAYERS and HEATMAP_LAYER_IDS, sums of
+ * other constants). With no import of it used, the module is left out; a
+ * constant made of others is marked pure there, so it is left out as well.
  * @type {import("esbuild").Plugin}
  */
 const pureConstantsPlugin = {
@@ -483,8 +484,15 @@ function compareBundles(before, after, names) {
 // dropped, which reads their dataset from the browser before the app starts
 // (startApp in mapApp.ts), the watch for files dragged over the page
 // (ui/fileDropWatch.ts), the button, its row in the phone's More sheet and
-// what Copy link says while those flights are shown.
-const BUDGET_APP = { raw: 173 * 1024, gzip: 61 * 1024 };
+// what Copy link says while those flights are shown. Lowered by 6.5 KB raw
+// and 2.25 KB gzipped (164.87 KB and 58.07 KB gzipped in a local build
+// after) as the phone's bar and the packing of the tokens of shared links
+// moved to the extras bundle, which a phone asks for as the page starts
+// (MapApp.followMobileBar) and every page once it has a moment, the still
+// of an export with them, and the icons only a lazy bundle draws to that
+// bundle (lazyIcon in utils/icons.ts). The reading of a token stays: a
+// link with one is read before anything else reads it.
+const BUDGET_APP = { raw: 166.5 * 1024, gzip: 58.75 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section and the
 // hotspot tour. Fetched only when one of them is first used, so no part of
@@ -537,11 +545,15 @@ const BUDGET_WRAPPED = { raw: 43.5 * 1024, gzip: 15 * 1024 };
 // first time the search opens. About 5.3 KB gzipped (13.25 KB raw) in a
 // local build when it was set.
 const BUDGET_SEARCH = { raw: 14 * 1024, gzip: 5.75 * 1024 };
-// The extras bundle: the sheet of the phone's bar and the export of the map
-// as an image, which were part of the first visit, fetched as soon as a
-// phone's page has a moment and on the first export. 8.88 KB and 3.39 KB
-// gzipped in a local build when it was set.
-const BUDGET_EXTRAS = { raw: 11 * 1024, gzip: 4.5 * 1024 };
+// The extras bundle: the phone's bar and its sheet, the packing of the
+// tokens of shared links and the export of the map as an image, fetched
+// as a phone's page starts and by every page once it has a moment.
+// 8.88 KB and 3.39 KB gzipped in a local build when it was set, for the
+// sheet and the export alone. Raised by 10 KB raw and 3.5 KB gzipped for
+// the phone's bar itself, the packing of the tokens, which Copy link waits
+// for should it come first, and the still of the map an export takes:
+// 18.96 KB and 6.95 KB gzipped in a local build.
+const BUDGET_EXTRAS = { raw: 21 * 1024, gzip: 8 * 1024 };
 // Your flights: the panel that takes the KML files a visitor drops, the
 // store in the browser and the page's side of the build worker, fetched
 // the first time the panel opens or a file is dragged over the page, and at

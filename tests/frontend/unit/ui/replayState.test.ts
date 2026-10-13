@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   ReplayState,
   restingPitch,
+  returnToView,
+  userView,
 } from "../../../../flown/frontend/ui/replayState";
 import type { MapApp } from "../../../../flown/frontend/mapApp";
 
@@ -127,6 +129,53 @@ describe("ReplayState", () => {
       expect(restingPitch(appWith(30, null))).toBe(30);
       expect(restingPitch(appWith(30, 5))).toBe(5);
       expect(restingPitch(appWith(null, null))).toBe(0);
+    });
+  });
+
+  describe("userView", () => {
+    /** A map half way back to the user's view, which ends its move on `end` */
+    const flying = () => {
+      const ends: (() => void)[] = [];
+      const map = {
+        getCenter: () => ({ lat: 1, lng: 2 }),
+        getZoom: () => 3,
+        getBearing: () => 4,
+        getPitch: () => 5,
+        once: (type: string, fn: () => void) => {
+          if (type === "moveend") ends.push(fn);
+        },
+      };
+      const app = { map, replayState: new ReplayState() } as unknown as Pick<
+        MapApp,
+        "map" | "replayState"
+      >;
+      return { app, end: () => ends.splice(0).forEach((fn) => fn()) };
+    };
+    const back = {
+      center: { lat: 50, lng: 8 },
+      zoom: 9,
+      bearing: 0,
+      pitch: 0,
+    };
+
+    it("is the map's camera at rest", () => {
+      expect(userView(flying().app)).toEqual({
+        center: { lat: 1, lng: 2 },
+        zoom: 3,
+        bearing: 4,
+        pitch: 5,
+      });
+    });
+
+    it("is the view the camera flies back to until it gets there", () => {
+      // Wrapped or the tour opened on the way back from the tour or a chase
+      // kept the camera half way there
+      const { app, end } = flying();
+      returnToView(app, back);
+
+      expect(userView(app)).toBe(back);
+      end();
+      expect(userView(app)?.zoom).toBe(3);
     });
   });
 });

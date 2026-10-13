@@ -131,7 +131,7 @@ describe("ReplayManager playback", () => {
       // The first frame of the replay, at its start
       vi.advanceTimersToNextFrame();
 
-      const [lat, lng] = replayManager.state.airplaneMarker!.getLatLng();
+      const [lat, lng] = replayManager.state.airplaneMarker!.position();
       expect(lat).toBeCloseTo(48.0, 3);
       expect(lng).toBeCloseTo(16.0, 3);
     });
@@ -472,7 +472,7 @@ describe("ReplayManager playback", () => {
 
       replayManager.stopReplay();
 
-      expect(replayManager.state.airplaneMarker!.getLatLng()).toEqual([
+      expect(replayManager.state.airplaneMarker!.position()).toEqual([
         48.0, 16.0,
       ]);
     });

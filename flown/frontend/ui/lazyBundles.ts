@@ -4,16 +4,18 @@
  * Replay, the relief, the cross-section and the hotspot tour come with the
  * feature bundle, Wrapped and the statistics panel with the Wrapped bundle,
  * the search of airports and places with the search bundle, the phone's
- * sheet and the export with the extras bundle (services/featureLoader.ts
- * fetches all four). MapApp fetches the first three the first time one of
- * their controls is used (MapApp.loadReplay, loadWrapped, loadStats,
- * toggleFeature and toggleSearch), the bar and Export the extras
- * (ui/mobileBar.ts, ui/uiToggles.ts); this module holds what those share:
+ * bar and sheet, the export and the packing of share tokens with the
+ * extras bundle (services/featureLoader.ts fetches all four). MapApp
+ * fetches the first three the first time one of their controls is used
+ * (MapApp.loadReplay, loadWrapped, loadStats, toggleFeature and
+ * toggleSearch), the extras for the phone layout (MapApp.followMobileBar),
+ * once the page has a moment (initMapApp) and for Export
+ * (ui/uiToggles.ts); this module holds what those share:
  * the message each part of the app shows when its code could not be
  * loaded, `loadLazyBundle`, which shows it and takes back the one of an
- * earlier failure once a later try has worked, the fetch of the Wrapped
- * bundle ahead of a click on its button (`prepareWrappedOnIntent`), so its
- * intro is ready to play, the key that opens the search
+ * earlier failure once a later try has worked, the fetch of a bundle ahead
+ * of a click on its control (`prepareOnIntent`), so Wrapped's intro is
+ * ready to play and Copy link has its token, the key that opens the search
  * (`followSearchKey`) and the parts of the lazy features each app keeps
  * (`featurePart`). It is part of the first visit, like the app: nothing
  * here may reach into the lazy bundles other than through featureLoader.
@@ -25,6 +27,7 @@ import type { HotspotTour } from "./hotspotTour";
 import type { ReplayAllControls } from "./replayAll";
 import type { ReplayAllPlayer } from "./replayAllPlayer";
 import {
+  loadExtras,
   loadWrapped,
   noticeSiteUpdate,
   wasSiteUpdated,
@@ -57,6 +60,9 @@ export const SEARCH_UNAVAILABLE_MESSAGE =
   "Search is unavailable: its code could not be loaded" + TRY_AGAIN;
 export const LOCAL_UNAVAILABLE_MESSAGE =
   "Your flights are unavailable: their code could not be loaded" + TRY_AGAIN;
+export const MOBILE_BAR_UNAVAILABLE_MESSAGE =
+  "The phone's controls are unavailable: their code could not be loaded" +
+  TRY_AGAIN;
 /** Share mode is on, but the code that frames its flights is missing */
 export const SHARE_FRAME_UNAVAILABLE_MESSAGE =
   "The map could not move to the shared flights: its code could not be loaded" +
@@ -160,15 +166,18 @@ export async function loadLazyBundle<T>(
 }
 
 /**
- * Get Wrapped and its intro ready while its button is pointed at or
- * focused, on either layout (see prepareWrappedIntro), once the page has
- * a moment (whenIdle) rather than in the task of the pointer's move. Not
- * under reduced motion, where no intro plays: Wrapped's code comes with
- * the click, as it always has.
+ * Get ready for a control while it is pointed at or focused, on either
+ * layout. Wrapped and its intro (see prepareWrappedIntro) once the page has
+ * a moment (whenIdle) rather than in the task of the pointer's move, and
+ * not under reduced motion, where no intro plays: Wrapped's code comes with
+ * the click, as it always has. The code of share tokens for Copy link,
+ * which writes the link in the moment of the press and cannot wait for it
+ * (UIToggles.shareLink).
  */
-export function prepareWrappedOnIntent(app: MapApp): void {
+export function prepareOnIntent(app: MapApp): void {
   const prepare = (event: Event): void => {
     const id = (event.target as Partial<Element>).id;
+    if (id === "share-btn" || id === "selection-link-btn") void loadExtras();
     if (
       (id === "wrapped-btn" || id === "mobile-tab-wrapped") &&
       !prefersReducedMotion()

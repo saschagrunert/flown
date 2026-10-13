@@ -48,7 +48,7 @@ import {
   MAP_SOURCES,
 } from "../utils/constants";
 import { isPhoneLayout } from "../utils/device";
-import { isBehindGlobe } from "../utils/mapHelpers";
+import { isBehindGlobe, unwrapLng } from "../utils/mapHelpers";
 import {
   AIRPORT_MARKER_CLASS,
   setAirportTarget,
@@ -322,10 +322,16 @@ export function addAirportLabelImages(map: MapLibreMap): void {
   });
 }
 
-/** An airport whose code is placed: its marker, and where it is */
+/**
+ * An airport whose code is placed: its marker, the arm its code is drawn on
+ * (null for a marker without one), and where it is. The longitude is the
+ * airport's in any world: each placing takes it to the copy of the world
+ * the map is centred on, where MapLibre draws the marker.
+ */
 export interface CodeMarker {
   name: string;
   element: HTMLElement;
+  arm: HTMLElement | null;
   lng: number;
   lat: number;
 }
@@ -390,6 +396,8 @@ export class AirportCodes {
   private reservedIn: GeoJSONSource | null = null;
   /** Which of the codes left out looks for a place next in a move */
   private nextRetry = 0;
+  /** The airports whose code's chip is their target (see target) */
+  private readonly chipTargets = new Set<string>();
 
   constructor(
     private readonly host: CodeHost,
@@ -542,12 +550,16 @@ export class AirportCodes {
     // Zoomed out to where the markers are hidden, no dot is drawn; the map
     // has the room of the dots then all the same, and leaves it out by zoom
     const dots = zoom >= AIRPORT_HIDE_MARKERS_BELOW_ZOOM;
+    const centre = map.getCenter().lng;
     for (const marker of ranked) {
       const { element } = marker;
       if (element.hidden) continue;
       if (element.classList.contains("maplibregl-marker-covered")) continue;
       if (isBehindGlobe(map, marker)) continue;
-      const { x, y } = map.project([marker.lng, marker.lat]);
+      // In the world the map shows, where the marker is drawn: an airport
+      // ranked with the map on the other side of the globe was a world away
+      // once it was panned to, and its code left out as off the map
+      const { x, y } = map.project([unwrapLng(marker.lng, centre), marker.lat]);
       if (!dots || x < 0 || y < 0 || x > width || y > height) {
         room.push({ marker, x, y });
         continue;
@@ -602,17 +614,23 @@ export class AirportCodes {
       settle || this.retries(items),
     );
 
+    // The new places before the host is told of a move, so that it reads
+    // where the code is now (an open popup keeps clear of it)
+    const before = this.places;
+    this.places = places;
+    let targetLost = false;
     for (const marker of ranked) {
       const place = places.get(marker.name) ?? null;
-      if (this.draw(marker, place, this.places.get(marker.name) ?? null)) {
+      if (this.draw(marker, place, before.get(marker.name) ?? null)) {
         this.host.moved(marker.name);
+        targetLost ||= !place && this.chipTargets.has(marker.name);
       }
     }
-    this.places = places;
-    if (settle) {
-      this.reserve(room, size);
-      this.target(ranked, drawn, under);
-    }
+    if (settle) this.reserve(room, size);
+    // At rest; and in a move as soon as a code that is its airport's target
+    // goes, which left the airport without one for as long as the map kept
+    // moving, as it does all through a replay that follows the aircraft
+    if (settle || targetLost) this.target(ranked, drawn, under);
   }
 
   /**
@@ -635,6 +653,7 @@ export class AirportCodes {
     under: ReadonlySet<CodeMarker>,
   ): void {
     const targets = new Map<CodeMarker, AirportTarget>();
+    this.chipTargets.clear();
     // The map's other markers come first: replay's airplane is a button
     // that takes the pointer wherever it flies
     const squares = [...this.others];
@@ -646,6 +665,7 @@ export class AirportCodes {
       }
       if (half < MARKER_TARGET_HALF_PX && this.places.get(marker.name)) {
         targets.set(marker, { chip: true, half: null, out: false });
+        this.chipTargets.add(marker.name);
         continue;
       }
       half = Math.max(half, 0);
@@ -762,11 +782,12 @@ export class AirportCodes {
     place: CodePlace | null,
     before: CodePlace | null,
   ): boolean {
-    const arm = marker.element.querySelector<HTMLElement>(".airport-code-arm");
+    const { arm } = marker;
     if (!arm) return false;
     const hidden = arm.classList.contains("is-hidden");
+    // Written only when it changes: every frame of a move draws every code
     if (!place) {
-      arm.classList.add("is-hidden");
+      if (!hidden) arm.classList.add("is-hidden");
       return !hidden;
     }
     if (

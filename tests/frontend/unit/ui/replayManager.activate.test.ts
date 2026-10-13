@@ -174,6 +174,16 @@ describe("ReplayManager activation", () => {
       expect(toastText()).toBe(REPLAY_PRECONDITION_MESSAGE);
     });
 
+    it("refuses to initialize a flight with one time for every point", () => {
+      // It passed as timed and finished at once, nothing drawn
+      const segments = createSegments().map((s) => ({ ...s, time: 600 }));
+      mockApp.currentData = createDataset([{ id: 1 }], segments);
+      mockApp.selectedPathIds = new Set([1]);
+
+      expect(replayManager.initializeReplay()).toBe(false);
+      expect(toastText()).toBe(REPLAY_PRECONDITION_MESSAGE);
+    });
+
     it("shows an explanatory toast when the selection has no timing data", () => {
       mockApp.selectedPathIds = new Set([1]);
       mockApp.hasTimingData = false;
@@ -1062,7 +1072,7 @@ describe("ReplayManager activation", () => {
       replayManager.initializeReplay();
 
       const airplane = replayManager.state.airplaneMarker!;
-      expect(airplane.getLatLng()).toEqual([48.0, 16.0]);
+      expect(airplane.position()).toEqual([48.0, 16.0]);
       const button = airplane.getElement();
       expect(button.tagName).toBe("BUTTON");
       expect(button.getAttribute("aria-label")).toBe("Aircraft position");

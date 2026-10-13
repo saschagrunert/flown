@@ -212,9 +212,9 @@ export class DataManager {
             failedYears.join(", ") +
             // The site was published again since the page was loaded
             (stale ? ". Reload the page to update it." : ""),
-          // The first load of all years has no signal, so it is not given
-          // up when a switch replaces it, and reports its years later: the
-          // Retry of that switch is not one for them
+          // The Retry is the one of the load asked for last (retryYear),
+          // which fetches these years again only if they are among its own:
+          // they may be of an earlier load another caller still waits on
           this.retryYear === "all" || failedYears.includes(this.retryYear)
             ? this.retry
             : undefined,

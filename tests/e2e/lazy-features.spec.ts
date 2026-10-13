@@ -31,7 +31,10 @@ const FEATURES = "features.bundle.js";
 const FEATURES_CSS = "features.css";
 const WRAPPED = "wrapped.bundle.js";
 const WRAPPED_CSS = "wrapped.css";
-/** The phone's sheet and the export, which a desktop fetches on Export */
+/**
+ * The phone's bar, the packing of share tokens and the export, which every
+ * page fetches once it has a moment (initMapApp), after its first visit
+ */
 const EXTRAS = "extras.bundle.js";
 
 /** The requests the page made so far for a bundle, retries included */
@@ -62,9 +65,7 @@ test.describe("the lazy bundles", () => {
     page,
   }) => {
     const requested = [
-      ...[FEATURES, WRAPPED, EXTRAS].map((name) =>
-        trackBundleRequests(page, name),
-      ),
+      ...[FEATURES, WRAPPED].map((name) => trackBundleRequests(page, name)),
       ...[FEATURES_CSS, WRAPPED_CSS].map((name) =>
         trackCssRequests(page, name),
       ),

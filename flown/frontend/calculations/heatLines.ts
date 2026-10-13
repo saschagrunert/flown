@@ -11,7 +11,8 @@
  * cool.
  */
 import type { PathSegment } from "../types";
-import { DEGREES_TO_RADIANS, METRES_PER_DEGREE } from "../utils/geometry";
+import { cellKey, columnWidth, rowDegrees } from "./grid";
+import { KNOTS_TO_METRES_PER_SECOND } from "../utils/constants";
 import { toLngLat, type LngLatTuple } from "../utils/mapHelpers";
 import { appendCurve, flatCurves } from "./curves";
 import type { SmoothedFlights } from "./smoothing";
@@ -30,10 +31,6 @@ const HEAT_CELL_M = 40;
 const MAX_LOGGED_STEP_S = 600;
 /** Most time one segment adds, so a long stand at one spot saturates */
 const MAX_SEGMENT_S = 120;
-const KNOTS_TO_METRES_PER_SECOND = 1852 / 3600;
-/** Rows of the grid are numbered into one key with their column */
-const ROW_STRIDE = 2 ** 22;
-const COLUMN_OFFSET = 2 ** 21;
 
 /**
  * How long a segment took. A segment's time is when it starts, so the time
@@ -102,20 +99,10 @@ export function heatWeight(
 }
 
 /** The cells of the grid: a row per `HEAT_CELL_M` of latitude */
-const ROW_DEGREES = HEAT_CELL_M / METRES_PER_DEGREE;
+const ROW_DEGREES = rowDegrees(HEAT_CELL_M);
 
 function rowOf(lat: number): number {
   return Math.floor(lat / ROW_DEGREES);
-}
-
-/**
- * The width in degrees of the columns of `row` in a grid whose rows are
- * `rowDegrees` of latitude: as wide as a row is high at its middle, so the
- * cells stay square from the equator to the north of Norway. The hotspots'
- * grid is one too, of cells of its own size (calculations/hotspots.ts).
- */
-export function columnWidth(row: number, rowDegrees: number): number {
-  return rowDegrees / Math.cos((row + 0.5) * rowDegrees * DEGREES_TO_RADIANS);
 }
 
 /** A column is `HEAT_CELL_M` wide at the middle of its row (columnWidth) */
@@ -130,14 +117,6 @@ function columnOf(row: number, lng: number): number {
 
 /** Width of the columns by row, in degrees: a row is met again and again */
 const columnWidths = new Map<number, number>();
-
-/**
- * The key of the cell of a row and a column, for a grid of cells of any
- * size (the hotspots use it for theirs, calculations/hotspots.ts)
- */
-export function cellKey(row: number, column: number): number {
-  return row * ROW_STRIDE + column + COLUMN_OFFSET;
-}
 
 /**
  * The time spent around a point: the most any cell of the three by three

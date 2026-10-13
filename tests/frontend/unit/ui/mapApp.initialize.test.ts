@@ -18,9 +18,11 @@ import {
   type Map as MockMap,
 } from "../../../mocks/maplibre-gl";
 import {
+  loadExtras,
   loadFeatures,
   loadWrapped,
 } from "../../../../flown/frontend/services/featureLoader";
+import { MOBILE_BAR_UNAVAILABLE_MESSAGE } from "../../../../flown/frontend/ui/lazyBundles";
 import * as motion from "../../../../flown/frontend/utils/motion";
 import { INPUT_EVENTS } from "../../../../flown/frontend/utils/constants";
 import * as toast from "../../../../flown/frontend/utils/toast";
@@ -107,6 +109,7 @@ describe("MapApp.initialize", () => {
     app.destroy();
     document.body.innerHTML = "";
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     resetMapLibreMock();
   });
 
@@ -220,24 +223,6 @@ describe("MapApp.initialize", () => {
       // Listened for input until it started, and no longer
       expect(listeners()).toHaveLength(INPUT_EVENTS.length);
       expect(listeners().every((signal) => signal?.aborted)).toBe(true);
-    });
-
-    it("reads a shared link's token as the link it packs", async () => {
-      // y=2025&p=a5&sv=4&i=1, packed by Copy link (state/shareToken.ts)
-      window.history.replaceState(null, "", "/?c=AgIT9I52g");
-
-      let restoredFrom = "";
-      mockStateManagerInstance.loadState.mockImplementation(() => {
-        restoredFrom = window.location.search;
-        return null;
-      });
-
-      await initializeApp(app);
-
-      expect(restoredFrom).toBe("?y=2025&p=a5&sv=4");
-      await vi.waitFor(() =>
-        expect(m.playShareIntro).toHaveBeenCalledWith(app),
-      );
     });
 
     it("does not play once the visitor moved the view before the bundle came", async () => {
@@ -790,10 +775,48 @@ describe("MapApp.initialize", () => {
       expectAvailable(true);
     });
 
+    it("asks for the phone's bar again once its code could not be loaded", async () => {
+      const bar = { refreshSheet: vi.fn(), destroy: vi.fn() };
+      m.mobileBar.mountFor.mockReturnValue(bar);
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: true,
+        query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      vi.mocked(loadExtras).mockResolvedValueOnce(null);
+      await initializeApp(app);
+
+      // Said, and the columns show after all (styles.css)
+      await vi.waitFor(() =>
+        expect(toastMock.showToast).toHaveBeenCalledWith(
+          MOBILE_BAR_UNAVAILABLE_MESSAGE,
+          "error",
+        ),
+      );
+      expect(app.mobileBar).toBeNull();
+      const unavailable = (): boolean =>
+        document.body.classList.contains("mobile-bar-unavailable");
+      expect(unavailable()).toBe(true);
+
+      window.dispatchEvent(new Event("online"));
+
+      await vi.waitFor(() => expect(app.mobileBar).toBe(bar));
+      expect(unavailable()).toBe(false);
+    });
+
     it("has the phone's open sheet read its row again", async () => {
       const bar = { refreshSheet: vi.fn(), destroy: vi.fn() };
       m.mobileBar.mountFor.mockReturnValue(bar);
+      // The bar comes with the extras bundle in the phone layout alone
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: true,
+        query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
       await initializeApp(app);
+      await vi.waitFor(() => expect(app.mobileBar).toBe(bar));
       bar.refreshSheet.mockClear();
 
       // The end of the first load and of a camera move are no store keys

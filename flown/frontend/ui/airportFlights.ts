@@ -23,7 +23,7 @@ import type { PathInfo } from "../types";
 import { datasetIndex } from "../calculations/datasetIndex";
 import { flightTotals } from "../calculations/flightTotals";
 import { KM_TO_NAUTICAL_MILES } from "../utils/constants";
-import { escapeHtml } from "../utils/htmlGenerators";
+import { escapeHtml } from "../utils/escape";
 import { airportCode } from "../features/airports";
 import { watchScrollEnd, type ScrollEndWatcher } from "../utils/scrollFade";
 import type { PickList } from "./pathSelection";

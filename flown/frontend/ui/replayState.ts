@@ -38,7 +38,7 @@ export interface ReplayAirplane extends PopupHost {
   readonly marker: Marker;
   readonly popup: Popup;
   /** Latitude first, like the rest of the app */
-  getLatLng(): [lat: number, lon: number];
+  position(): [lat: number, lon: number];
   /** Move the airplane, and its popup with it while that is open */
   setLatLng(position: readonly [lat: number, lon: number]): void;
   /**
@@ -76,6 +76,12 @@ export class ReplayState {
    * otherwise (see restingPitch)
    */
   layingBack: number | null = null;
+  /**
+   * The user's own view the camera flies back to, while it does: the one
+   * the hotspot tour started from, or the one from before a chase, which
+   * the end of either hands back (see returnToView). Null otherwise.
+   */
+  returningTo: ViewCamera | null = null;
   playing = false;
   currentTime = 0;
   maxTime = 0;
@@ -187,4 +193,49 @@ export class ReplayState {
  */
 export function restingPitch(app: Pick<MapApp, "map" | "replayState">): number {
   return app.replayState.layingBack ?? app.map?.getPitch() ?? 0;
+}
+
+/** Where the camera of a map is, as a view of the user's keeps it */
+export interface ViewCamera {
+  center: { lat: number; lng: number };
+  zoom: number;
+  bearing: number;
+  pitch: number;
+}
+
+/**
+ * The view of the map of `app` as the user left it, for what keeps it while
+ * it shows another (Wrapped, the hotspot tour): the one the camera is
+ * flying back to, while it does (returnToView), and not a camera half way
+ * there; otherwise the map's, at the tilt it rests at (restingPitch).
+ */
+export function userView(
+  app: Pick<MapApp, "map" | "replayState">,
+): ViewCamera | null {
+  const map = app.map;
+  if (!map) return null;
+  if (app.replayState.returningTo) return app.replayState.returningTo;
+  const center = map.getCenter();
+  return {
+    center: { lat: center.lat, lng: center.lng },
+    zoom: map.getZoom(),
+    bearing: map.getBearing(),
+    pitch: restingPitch(app),
+  };
+}
+
+/**
+ * Note that the camera of `app`'s map has set off back to the user's view
+ * `camera`, until it gets there or another move ends the one there. Called
+ * after the move has started, whose start ended any move before it.
+ */
+export function returnToView(
+  app: Pick<MapApp, "map" | "replayState">,
+  camera: ViewCamera,
+): void {
+  const state = app.replayState;
+  state.returningTo = camera;
+  app.map?.once("moveend", () => {
+    if (state.returningTo === camera) state.returningTo = null;
+  });
 }

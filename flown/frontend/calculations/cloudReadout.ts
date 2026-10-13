@@ -35,6 +35,7 @@ import {
 import { formatDuration } from "../utils/duration";
 import { formatNumber } from "../utils/formatters";
 import { pluralFlights } from "../utils/htmlGenerators";
+import { ROW_STRIDE } from "./grid";
 import { heatWeight, type SegmentWeight } from "./heatLines";
 import { groundProfilesFt } from "./groundProfile";
 
@@ -68,9 +69,6 @@ const SIGHT_MAX_GAP_RADII = 8;
 const BAND_BIN_FT = 100;
 const BAND_BINS = SIGHT_TOP_FT / BAND_BIN_FT;
 const BAND_WIDTH_BINS = 4;
-
-/** Rows of a grid are numbered into one key with their column */
-const ROW_STRIDE = 2 ** 22;
 
 /**
  * The radius a readout is for where a CSS pixel in the middle of the map

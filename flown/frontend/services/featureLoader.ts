@@ -8,18 +8,19 @@
  * imagery, the profile of the selected flights, the cross-section and
  * the hotspot tour, wrapped.ts (wrapped.bundle.js) for Wrapped and the
  * statistics panel, search.ts (search.bundle.js) for the search of
- * airports and places, and extras.ts (extras.bundle.js) for what only a
- * tap on a control needs: the phone's sheet and the export of the map as
- * an image. They are apart because opening one says nothing about the
+ * airports and places, and extras.ts (extras.bundle.js) for what no
+ * desktop's first visit needs: the phone's bar and its sheet, the tokens
+ * of shared links and the export of the map as an image. They are apart
+ * because opening one says nothing about the
  * others. Each gets one shared promise, and a failure that resolves rather
  * than throws so the caller can say something useful.
  *
  * Their styles ride along in features.css, wrapped.css and search.css for
  * the same reason (see the header of static/styles.css); the extras come
- * without, as the phone's bar is drawn before its sheet. A bundle and its
- * stylesheet have to arrive before a panel is shown, so they are fetched
- * together and a failure of either is a failure of the load: a Wrapped
- * panel without its stylesheet is worse than the toast.
+ * without, as styles.css draws the phone's bar and its sheet. A bundle
+ * and its stylesheet have to arrive before a panel is shown, so they are
+ * fetched together and a failure of either is a failure of the load: a
+ * Wrapped panel without its stylesheet is worse than the toast.
  *
  * A page opened before a deploy and a bundle first wanted after it do not
  * go together: the host serves the new bundle, which imports the old

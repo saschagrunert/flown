@@ -10,9 +10,11 @@ import {
   rankValues,
   RANK_STEPS,
   selectRanks,
-  DEFAULT_ALTITUDE_RANGE,
-  DEFAULT_AIRSPEED_RANGE,
 } from "../../../../flown/frontend/features/layers";
+import {
+  DEFAULT_AIRSPEED_RANGE,
+  DEFAULT_ALTITUDE_RANGE,
+} from "../../../../flown/frontend/state/store";
 import type { PathSegment } from "../../../../flown/frontend/types";
 import { scalePosition } from "../../../../flown/frontend/utils/colors";
 import { segmentOf } from "../../testHelpers";

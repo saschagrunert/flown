@@ -16,6 +16,7 @@ import {
   type Coordinate,
 } from "../utils/geometry";
 import type { PathSegment } from "../types";
+import { KNOTS_TO_METRES_PER_SECOND } from "../utils/constants";
 
 /**
  * Prepare segments for replay
@@ -216,7 +217,11 @@ export function replayCurve(
     for (let i = first; i <= last; i++) times[i] = times[i]! + shift;
     const knots = segments[last]!.groundspeed_knots;
     const metresPerSecond =
-      knots > 0 ? (knots * 1852) / 3600 : joined(last) ? speed(last - 1) : 0;
+      knots > 0
+        ? knots * KNOTS_TO_METRES_PER_SECOND
+        : joined(last)
+          ? speed(last - 1)
+          : 0;
     if (length[last]! > 0 && metresPerSecond) {
       const flown = Math.min(
         length[last]! / metresPerSecond,

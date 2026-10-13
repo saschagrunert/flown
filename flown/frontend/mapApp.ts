@@ -45,7 +45,7 @@ import {
 import { followSelectionHighlight } from "./ui/selectionHighlight";
 import { followHeatLegend } from "./ui/heatLegend";
 import { followStatsPanel } from "./ui/statsPanel";
-import { MobileBar } from "./ui/mobileBar";
+import type { MobileBar } from "./ui/mobileBar";
 import {
   STILL_LOADING_MESSAGE,
   bindActions,
@@ -72,8 +72,9 @@ import {
   whenStyleReady,
 } from "./utils/mapHelpers";
 import { prefersReducedMotion } from "./utils/motion";
-import { isPhoneLayout, TouchClock } from "./utils/device";
+import { followPhoneLayout, isPhoneLayout, TouchClock } from "./utils/device";
 import { resetSafeArea } from "./utils/safeArea";
+import { whenIdle } from "./utils/whenIdle";
 import {
   DAY_MAX_FLIGHTS,
   DEFAULT_ZOOM,
@@ -105,6 +106,7 @@ import { siteData, type SiteData } from "./state/siteData";
 import { ReliefState } from "./ui/reliefState";
 import { watchScrollEnd, type ScrollEndWatcher } from "./utils/scrollFade";
 import {
+  loadExtras,
   loadFeatures,
   loadLocal,
   loadSearch,
@@ -127,7 +129,8 @@ import {
   followSearchKey,
   loadLazyBundle,
   LOCAL_UNAVAILABLE_MESSAGE,
-  prepareWrappedOnIntent,
+  MOBILE_BAR_UNAVAILABLE_MESSAGE,
+  prepareOnIntent,
   REPLAY_UNAVAILABLE_MESSAGE,
   SEARCH_UNAVAILABLE_MESSAGE,
   STATS_UNAVAILABLE_MESSAGE,
@@ -158,8 +161,12 @@ import {
 } from "./calculations/datasetIndex";
 import type { StoreAccessors } from "./state/store";
 import { TOGGLE_KEYS } from "./state/toggles";
-import { resolveShareToken, SHARE_TOKEN_PARAM } from "./state/shareToken";
-import { SHARE_INTRO_PARAM, takeShareIntro } from "./state/urlState";
+import { resolveShareToken } from "./state/shareToken";
+import {
+  SHARE_INTRO_PARAM,
+  SHARE_TOKEN_PARAM,
+  takeShareIntro,
+} from "./state/urlState";
 import type { ReplayManager } from "./ui/replayManager";
 import type { StatsManager } from "./ui/statsManager";
 import type { WrappedManager } from "./ui/wrappedManager";
@@ -519,9 +526,8 @@ export class MapApp {
   }
 
   async initialize(): Promise<void> {
-    // A shared link becomes the ordinary one before anything reads it
-    resolveShareToken();
-    // Before the first save of the state writes the link anew without it
+    // A shared link's token is the ordinary link by now (startApp). Before
+    // the first save of the state writes the link anew without the intro:
     const intro = takeShareIntro();
     // Input from the page open on, while the data and the feature bundle
     // are on their way, makes the view the visitor's, and the intro does
@@ -912,13 +918,14 @@ export class MapApp {
     this.airportManager = new AirportManager(this);
     this.mapOrientation = new MapOrientation(this);
     this.uiToggles = new UIToggles(this);
-    this.mobileBar = MobileBar.mountFor(this);
+    this.mobileBar = null;
+    this.followMobileBar();
     followLayerVisibility(this);
     followHeatLegend(this);
     followSatelliteSwitch(this);
     followSelectionHighlight(this);
     followStatsPanel(this);
-    prepareWrappedOnIntent(this);
+    prepareOnIntent(this);
     followSearchKey(this);
     followKeyboard(this.signal);
     followReplayAvailability(this);
@@ -940,13 +947,53 @@ export class MapApp {
   }
 
   /**
+   * Mount the phone's bar (ui/mobileBar.ts) once the phone layout applies,
+   * at the start or on a turn or a resize later: it comes with the extras
+   * bundle, which a desktop never fetches for it. A phone has asked for the
+   * bundle as the page started (startApp), so the bar stands in for the
+   * control columns as soon as the managers are there; the columns do not
+   * show in the phone layout meanwhile (styles.css). From then on the bar
+   * follows the layout itself. Without its code the columns show after
+   * all, and the next turn into the phone layout asks again, as does the
+   * page coming back online.
+   */
+  private followMobileBar(): void {
+    let loading = false;
+    const mount = (phone: boolean): void => {
+      if (!phone || loading || this.mobileBar) return;
+      loading = true;
+      void loadLazyBundle(loadExtras, MOBILE_BAR_UNAVAILABLE_MESSAGE).then(
+        (extras) => {
+          loading = false;
+          // The columns stand in for the bar meanwhile (styles.css)
+          document.body.classList.toggle("mobile-bar-unavailable", !extras);
+          if (!extras || this.destroyed || this.mobileBar) return;
+          stop();
+          this.mobileBar = extras.MobileBar.mountFor(this);
+        },
+      );
+    };
+    const following = new AbortController();
+    const unfollow = followPhoneLayout(mount);
+    const stop = (): void => {
+      unfollow();
+      following.abort();
+    };
+    window.addEventListener("online", () => mount(isPhoneLayout()), {
+      signal: following.signal,
+    });
+    this.signal.addEventListener("abort", stop, { once: true });
+    mount(isPhoneLayout());
+  }
+
+  /**
    * Go back to what a first visit shows: the newest year, every aircraft,
    * the heatmap and the airports, nothing selected or shared, flat and
    * north up over all the flights. It goes through the year filter, so the
    * dropdowns, the loaded data and the store change together in one batch;
    * the saved state and the link follow the store and the camera as ever.
-   * Out of reach during a replay, like the filters: the button is disabled
-   * (REPLAY_DISABLED_CONTROL_IDS) and the phone's bar steps aside.
+   * Out of reach during a replay, like the filters: the button is held
+   * (ONE_REPLAY_HELD_CONTROL_IDS) and the phone's bar steps aside.
    */
   async resetView(): Promise<void> {
     // Like Share mode with nothing selected: unavailable, and a press says why
@@ -1056,18 +1103,21 @@ export class MapApp {
     );
   }
 
-  /** Whether a flight of the selection has times to replay (canReplay) */
+  /**
+   * Whether a flight of the selection has times to replay (canReplay): more
+   * than one, as the replay keeps it (ReplayManager.filterAndSortSegments)
+   */
   private timedSelection(): boolean {
     const segments = this.fullPathSegments;
     const shown = shownSelection(this);
-    return (
-      shown.size > 0 &&
-      this.hasTimingData &&
-      !!segments &&
-      segmentsForPathIds(segments, shown).some(
-        (segment) => (segment.time ?? 0) > 0,
-      )
-    );
+    if (shown.size === 0 || !this.hasTimingData || !segments) return false;
+    const firstTimes = new Map<number, number>();
+    return segmentsForPathIds(segments, shown).some(({ path_id, time }) => {
+      if (time === undefined) return false;
+      const first = firstTimes.get(path_id);
+      if (first === undefined) firstTimes.set(path_id, time);
+      return first !== undefined && time !== first;
+    });
   }
 
   /**
@@ -1463,6 +1513,9 @@ export async function initMapApp(config: MapConfig): Promise<MapApp> {
     loadLazyBundle(loadLocal, LOCAL_UNAVAILABLE_MESSAGE),
   );
   await app.initialize();
+  // The extras bundle once the page has a moment: Copy link packs its
+  // token with it in the moment of the press (UIToggles.shareLink)
+  whenIdle(() => void loadExtras());
   return app;
 }
 
@@ -1485,7 +1538,14 @@ function opensSharedLink(): boolean {
  * shared link is to the site's flights, whoever follows it.
  */
 export async function startApp(config: MapConfig): Promise<MapApp> {
-  const local = !opensSharedLink() && storedFlag(LOCAL_FLIGHTS_KEY);
+  const shared = opensSharedLink();
+  // A shared link becomes the ordinary one before anything reads it: the
+  // token is read here, its packing for Copy link is in the extras bundle
+  resolveShareToken();
+  // The extras bundle has the phone's bar (MapApp.followMobileBar): a phone
+  // asks for it while the rest of the start runs
+  if (isPhoneLayout()) void loadExtras();
+  const local = !shared && storedFlag(LOCAL_FLIGHTS_KEY);
   // The bundle is asked for the dataset, or only to reopen its panel after
   // the reload that went back to the site's flights
   const bundle =

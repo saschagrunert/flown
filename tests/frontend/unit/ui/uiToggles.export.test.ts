@@ -31,11 +31,11 @@ import {
   resetExtrasLoader,
 } from "../../../../flown/frontend/services/featureLoader";
 import { logError } from "../../../../flown/frontend/utils/logger";
-import { parseUrlParams } from "../../../../flown/frontend/state/urlState";
 import {
+  parseUrlParams,
   SHARE_TOKEN_PARAM,
-  unpackShareToken,
-} from "../../../../flown/frontend/state/shareToken";
+} from "../../../../flown/frontend/state/urlState";
+import { unpackShareToken } from "../../../../flown/frontend/state/shareToken";
 import { SHARE_UNAVAILABLE_MESSAGE } from "../../../../flown/frontend/state/localFlags";
 import type { SavedState } from "../../../../flown/frontend/types";
 import { MAP_COMPLETE_TIMEOUT_MS } from "../../../../flown/frontend/utils/mapHelpers";
@@ -993,6 +993,78 @@ describe("UIToggles export and share", () => {
       expect(resolvedLink(copied).toString()).toBe(
         "y=2025&p=1x%2Ca5&sv=4&lat=50.000000&lng=8.000000&z=10.00&b=-40&t=30",
       );
+    });
+
+    it("hands the clipboard the link with its token to come, in the moment of the press", async () => {
+      // The token's code still on its way: the clipboard takes a promise of
+      // the text, which Safari only takes in the task of the press
+      let arrive!: () => void;
+      resetExtrasLoader(
+        () =>
+          new Promise((resolve, reject) => {
+            arrive = () => void importExtras().then(resolve, reject);
+          }),
+      );
+      const items: { data: Record<string, Promise<Blob>> }[] = [];
+      vi.stubGlobal(
+        "ClipboardItem",
+        class {
+          constructor(readonly data: Record<string, Promise<Blob>>) {
+            items.push(this);
+          }
+        },
+      );
+      const write = vi.fn().mockResolvedValue(undefined);
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("clipboard", { write, writeText });
+      window.history.replaceState(null, "", "/?y=2025");
+      app.isolateSelection = false;
+      app.stateManager.flush.mockReturnValue({
+        schemaVersion: 4,
+        selectedYear: "2025",
+      });
+
+      try {
+        const done = uiToggles.shareLink();
+        // Within the press, before the code has come
+        expect(write).toHaveBeenCalledTimes(1);
+        arrive();
+        await done;
+
+        const text = await (await items[0]!.data["text/plain"]!).text();
+        expect(resolvedLink(text).get("y")).toBe("2025");
+        expect(writeText).not.toHaveBeenCalled();
+        expect(toast()?.textContent).toBe("Link copied");
+      } finally {
+        vi.unstubAllGlobals();
+        resetExtrasLoader(importExtras);
+        await loadExtras();
+      }
+    });
+
+    it("copies the long link while the token's code is on its way, and fetches it", async () => {
+      // The clipboard takes the link only in the moment of the press, which
+      // waiting for the extras bundle would outlast in Safari
+      const importer = vi.fn(() => new Promise<never>(() => {}));
+      resetExtrasLoader(importer);
+      window.history.replaceState(null, "", "/?y=2025");
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("clipboard", { writeText });
+      app.isolateSelection = false;
+      app.stateManager.flush.mockReturnValue({
+        schemaVersion: 4,
+        selectedYear: "2025",
+      });
+
+      try {
+        await uiToggles.shareLink();
+
+        expect(writeText).toHaveBeenCalledWith(window.location.href);
+        expect(importer).toHaveBeenCalledTimes(1);
+      } finally {
+        resetExtrasLoader(importExtras);
+        await loadExtras();
+      }
     });
 
     /** The state a save in share mode writes, which the flush returns */

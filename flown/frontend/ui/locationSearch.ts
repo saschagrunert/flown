@@ -556,7 +556,7 @@ class LocationSearch {
     const group = (label: string, options: string[]): string =>
       options.length === 0
         ? ""
-        : `<div role="group" aria-label="${label}" class="location-search-group">` +
+        : `<div role="group" aria-label="${label}">` +
           `<div class="location-search-heading" aria-hidden="true">${label}</div>` +
           options.join("") +
           "</div>";

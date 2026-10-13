@@ -6,6 +6,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 // Type-only import so the window.mapApp / MAP_CONFIG globals are declared
 import type {} from "../../flown/frontend/globals";
 import { STATE_SCHEMA_VERSION } from "../../flown/frontend/state/urlState";
+import { PHONE_LAYOUT_QUERY } from "../../flown/frontend/utils/device";
 import {
   airportPosition,
   containerPoint,
@@ -119,15 +120,24 @@ export async function gotoApp(page: Page, path = "/"): Promise<void> {
   await waitForAppReady(page);
 }
 
-/** Wait for the app to finish initializing (also after a reload) */
+/**
+ * Wait for the app to finish initializing (also after a reload). In the
+ * phone layout that includes the bar, which comes with the extras bundle
+ * (MapApp.followMobileBar) a moment after the app is there.
+ */
 export async function waitForAppReady(page: Page): Promise<void> {
   await waitForMapReady(page);
   await page.waitForFunction(
-    () => {
+    (phoneLayout) => {
       const app = window.mapApp;
-      return !!app && !app.isInitializing && !!app.map;
+      return (
+        !!app &&
+        !app.isInitializing &&
+        !!app.map &&
+        (!matchMedia(phoneLayout).matches || !!app.mobileBar)
+      );
     },
-    undefined,
+    PHONE_LAYOUT_QUERY,
     { timeout: 20000 },
   );
   // Initializing can zoom the map once more (a restored view, the bounds)

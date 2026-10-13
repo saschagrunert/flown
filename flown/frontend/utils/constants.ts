@@ -2,6 +2,8 @@ export const METERS_TO_FEET = 3.28084;
 export const FEET_TO_METERS = 1.0 / METERS_TO_FEET;
 export const NAUTICAL_MILES_TO_KM = 1.852;
 export const KM_TO_NAUTICAL_MILES = 1.0 / NAUTICAL_MILES_TO_KM;
+/** A knot in metres per second */
+export const KNOTS_TO_METRES_PER_SECOND = (NAUTICAL_MILES_TO_KM * 1000) / 3600;
 /** AGL threshold for cruise statistics */
 export const CRUISE_ALTITUDE_THRESHOLD_FT = 1000;
 
@@ -38,7 +40,7 @@ export const INPUT_EVENTS = [
  * window (Alt or Cmd and Tab) or a screen reader's keys press them. Escape
  * is one, and ends the intro.
  */
-export const KEYS_NOT_INPUT = new Set([
+export const KEYS_NOT_INPUT = /* @__PURE__ */ new Set([
   "Tab",
   "Shift",
   "Control",
@@ -263,14 +265,18 @@ export const HEAT_LINES = {
  * The layers the heatmap toggle shows and hides: the heatmap first (the
  * e2e driver reads it off the front), then the lines it hands over to, and
  * the heatmap of an isolated selection, which only the one of them that
- * is not isolated draws (see DataManager.applyHeatmapEmphasis)
+ * is not isolated draws (see DataManager.applyHeatmapEmphasis). Made by a
+ * call marked pure: reading MAP_LAYERS's members could run a getter for
+ * all esbuild knows, and it kept both in the year worker, which uses the
+ * knot of this module alone.
  */
-export const HEATMAP_LAYER_IDS = [
-  MAP_LAYERS.heat,
-  MAP_LAYERS.heatLinesGlow,
-  MAP_LAYERS.heatLinesCore,
-  MAP_LAYERS.heatIsolated,
-] as const;
+export const HEATMAP_LAYER_IDS = /* @__PURE__ */ (() =>
+  [
+    MAP_LAYERS.heat,
+    MAP_LAYERS.heatLinesGlow,
+    MAP_LAYERS.heatLinesCore,
+    MAP_LAYERS.heatIsolated,
+  ] as const)();
 
 /**
  * Longest frame the replays, their camera and its springs are worked out

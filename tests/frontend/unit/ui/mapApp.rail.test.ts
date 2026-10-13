@@ -816,6 +816,20 @@ describe("MapApp controls and map", () => {
       expect(replayButton().getAttribute("aria-disabled")).toBe("true");
     });
 
+    it("is not offered for a flight with one time for every point", async () => {
+      await initializeApp(app, m.defaultAirports, m.defaultMetadata, {
+        ...m.defaultData,
+        path_segments: [
+          segmentOf({ path_id: 1, altitude_ft: 5000, time: 600 }),
+          segmentOf({ path_id: 1, altitude_ft: 5100, time: 600 }),
+        ],
+      });
+
+      app.selectedPathIds = new Set([...app.selectedPathIds, 1]);
+
+      expect(app.canReplay()).toBe(false);
+    });
+
     it("plays up to a day of flights, and says why not more", async () => {
       // One timed flight and nine without times, of the dataset: the
       // flights the filter shows are the ones counted (shownSelection)

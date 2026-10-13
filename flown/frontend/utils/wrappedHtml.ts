@@ -6,9 +6,25 @@
 import type { FilteredStatistics, FunFact, YearStats } from "../types";
 import { METERS_TO_FEET } from "./constants";
 import { formatNumber } from "./formatters";
-import { escapeHtml, pluralFlights, type AirportCount } from "./htmlGenerators";
+import { escapeHtml } from "./escape";
+import { pluralFlights, type AirportCount } from "./htmlGenerators";
 import { markFlightTimeUnits, splitAirportName } from "./statsFormat";
-import { icon, type IconName } from "./icons";
+import { ArrowUpFromLine, Clock, Earth, Milestone } from "lucide";
+import {
+  lazyIcon,
+  registerIcons,
+  type IconName,
+  type LazyIconName,
+} from "./icons";
+
+// The figures of Wrapped's cards and facts, which nothing else draws; the
+// climb is for the highest one
+registerIcons({
+  clock: Clock,
+  earth: Earth,
+  milestone: Milestone,
+  climb: ArrowUpFromLine,
+});
 
 /**
  * Section heading for a Wrapped card: line icon plus label. An h2 under
@@ -17,12 +33,12 @@ import { icon, type IconName } from "./icons";
  */
 function wrappedSectionTitle(
   className: string,
-  iconName: Parameters<typeof icon>[0],
+  iconName: IconName | LazyIconName,
   label: string,
 ): string {
   return (
     `<h2 id="wrapped-${className}" class="${className}">` +
-    icon(iconName, 20) +
+    lazyIcon(iconName, 20) +
     '<span class="section-title-text">' +
     label +
     "</span></h2>"
@@ -111,7 +127,7 @@ export function generateStatsHtml(
  * emoji each, which put a second icon family (and a platform-dependent one)
  * inside a dialog that is otherwise drawn from `utils/icons`.
  */
-const FACT_ICONS: Record<string, IconName> = {
+const FACT_ICONS: Record<string, IconName | LazyIconName> = {
   distance: "distance",
   aircraft: "aircraft",
   countries: "globe",
@@ -125,7 +141,7 @@ export function generateFunFactsHtml(funFacts: FunFact[]): string {
   let html = wrappedSectionTitle("fun-facts-title", "wrapped", "Facts");
   for (const fact of funFacts) {
     const factIcon = fact.icon ?? FACT_ICONS[fact.category] ?? "wrapped";
-    html += `<div class="fun-fact" data-category="${escapeHtml(fact.category)}"><span class="fun-fact-icon">${icon(factIcon, 20)}</span><span class="fun-fact-text">${fact.text.html}</span></div>`;
+    html += `<div class="fun-fact" data-category="${escapeHtml(fact.category)}"><span class="fun-fact-icon">${lazyIcon(factIcon, 20)}</span><span class="fun-fact-text">${fact.text.html}</span></div>`;
   }
   return html;
 }

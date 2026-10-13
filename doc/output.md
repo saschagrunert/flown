@@ -21,7 +21,7 @@ output-dir/
 ├── wrapped.bundle.js.map
 ├── search.bundle.js       # The search of airports and places, imported on first use
 ├── search.bundle.js.map
-├── extras.bundle.js       # The phone's sheet and the export of the map, imported on first use
+├── extras.bundle.js       # The phone's bar, packing share tokens and the export of the map
 ├── extras.bundle.js.map
 ├── local.bundle.js        # Your flights, the panel for the visitor's own KML files, imported on first use
 ├── local.bundle.js.map

@@ -1784,6 +1784,13 @@ main > #map .maplibregl-ctrl-bottom-right {
     --text-fine: 10px;
   }
 
+  /* The bar stands in for the columns, and its code comes a moment after
+     the page (MapApp.followMobileBar): they show meanwhile only where it
+     could not be loaded */
+  body:not(.mobile-bar-unavailable) :is(#left-buttons, #right-buttons) {
+    display: none;
+  }
+
   #compass-float-btn:not([hidden]) {
     display: inline-flex;
     opacity: 1;
@@ -2470,14 +2477,26 @@ main > #map .maplibregl-ctrl-bottom-right {
   color: var(--metric-color);
 }
 /* A finger gets the touch size the controls have (--btn-min-height): the
-   toasts' buttons were 28px high, a popup's close 24px square and its
-   flight rows 23px tall with 2px between them. The popup's header keeps
-   its text clear of the larger close. */
+   toasts' buttons and the selection chip's, its profile toggle among them,
+   were 28px high, a popup's close 24px square and its flight rows 23px
+   tall with 2px between them. The popup's header keeps its text clear of
+   the larger close. The chip loses its padding above and below for its
+   taller buttons, so it stays as high as a control and clear of the
+   phone's compass a row below it; over the statistics sheet the header
+   under it is as high, so it covers none of the tabs. */
 @media (pointer: coarse) {
-  .toast-button {
+  .toast-button,
+  #selection-chip button {
     min-height: var(--btn-min-height);
     min-width: var(--btn-min-height);
     justify-content: center;
+  }
+  #selection-chip {
+    padding-block: 0;
+  }
+  .stats-open #stats-rail-header {
+    box-sizing: border-box;
+    min-height: calc(var(--btn-min-height) + 2px);
   }
   .maplibregl-popup-close-button {
     width: var(--btn-min-height);

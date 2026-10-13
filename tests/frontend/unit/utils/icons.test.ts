@@ -3,6 +3,8 @@ import {
   icon,
   iconSizeOf,
   isIconName,
+  lazyIcon,
+  registerIcons,
   renderControlIcons,
   setControlIcon,
   DEFAULT_ICON_SIZE,
@@ -63,6 +65,23 @@ describe("icons", () => {
       expect(isIconName(undefined)).toBe(false);
       // Inherited object members are not icons
       expect(isIconName("toString")).toBe(false);
+    });
+  });
+
+  describe("lazyIcon", () => {
+    it("draws a lazy bundle's icon once it is registered, and none before", () => {
+      // The first visit's names are not the lazy ones (icon takes no other)
+      expect(isIconName("earth")).toBe(false);
+      expect(lazyIcon("earth", 16)).toBe("");
+      expect(logError).toHaveBeenCalledWith("Icon not registered: earth");
+
+      registerIcons({ earth: '<circle cx="12" cy="12" r="10"/>' });
+
+      const drawn = lazyIcon("earth", 16);
+      expect(drawn).toContain('<circle cx="12" cy="12" r="10"/>');
+      expect(drawn).toContain('width="16"');
+      // And the first visit's as icon draws them
+      expect(lazyIcon("stats", 20)).toBe(icon("stats", 20));
     });
   });
 

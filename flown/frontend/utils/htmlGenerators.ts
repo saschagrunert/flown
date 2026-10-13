@@ -14,9 +14,7 @@ import { FEET_TO_METERS, NAUTICAL_MILES_TO_KM } from "./constants";
 import { formatNumber, formatTrack } from "./formatters";
 import { calculateBearing, ddToDms, type Coordinate } from "./geometry";
 import { escapeHtml } from "./escape";
-import { icon, type IconName } from "./icons";
-
-export { escapeHtml } from "./escape";
+import { icon } from "./icons";
 
 /**
  * A count with its noun, pluralised: `pluralize(1, "flight")` is "1 flight",
@@ -103,7 +101,8 @@ export interface SegmentPopupParams {
   altRange: Range;
   speedRange: Range;
   title?: string;
-  icon?: IconName;
+  /** The header's icon as markup, the aircraft's where none is given */
+  icon?: string;
 }
 
 /**
@@ -116,7 +115,7 @@ export interface SegmentPopupParams {
 export function generateSegmentPopupHtml(params: SegmentPopupParams): string {
   const { segment } = params;
   const title = params.title || "On this flight";
-  const headerIcon = params.icon ?? "aircraft";
+  const headerIcon = params.icon ?? icon("aircraft", 20);
 
   const altFt = segment.altitude_ft;
   const altFtRounded = Math.round(altFt / 50) * 50;
@@ -135,7 +134,7 @@ export function generateSegmentPopupHtml(params: SegmentPopupParams): string {
   return `
     <div class="popup-container">
         <div class="popup-header popup-header-segment">
-            <span class="popup-header-icon">${icon(headerIcon, 20)}</span>
+            <span class="popup-header-icon">${headerIcon}</span>
             <span>${escapeHtml(title)}</span>
         </div>
         <div class="popup-coords popup-block">

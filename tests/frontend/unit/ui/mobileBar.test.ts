@@ -1,15 +1,7 @@
 /**
  * MobileBar: mounting rules, the five tabs and the sheets they open.
  */
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  afterEach,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { MapApp } from "../../../../flown/frontend/mapApp";
 import type { KMLDataset } from "../../../../flown/frontend/types";
 import {
@@ -17,14 +9,7 @@ import {
   defineStoreAccessors,
   type StoreAccessors,
 } from "../../../../flown/frontend/state/store";
-import {
-  MobileBar,
-  SHEET_UNAVAILABLE_MESSAGE,
-} from "../../../../flown/frontend/ui/mobileBar";
-import {
-  loadExtras,
-  resetExtrasLoader,
-} from "../../../../flown/frontend/services/featureLoader";
+import { MobileBar } from "../../../../flown/frontend/ui/mobileBar";
 import { REPLAY_PRECONDITION_MESSAGE } from "../../../../flown/frontend/ui/replayButton";
 import { NO_DATA_MESSAGE } from "../../../../flown/frontend/ui/actions";
 import { MOBILE_BREAKPOINT_PX } from "../../../../flown/frontend/utils/constants";
@@ -178,18 +163,9 @@ function dismissSheet(): void {
   document.querySelector<HTMLButtonElement>(".sheet-close")!.click();
 }
 
-/** The import of the extras bundle, as the app makes it */
-const importExtras = () => import("../../../../flown/frontend/extras");
-
 describe("MobileBar", () => {
   let app: BarMockApp;
   let bar: MobileBar | null;
-
-  // The sheet comes with the extras bundle; here it has arrived before the
-  // bar mounts, as on a phone that fetched it while the page loaded
-  beforeAll(async () => {
-    expect(await loadExtras()).not.toBeNull();
-  });
 
   const create = (): MobileBar => {
     const created = MobileBar.mountFor(app as unknown as MapApp);
@@ -328,6 +304,22 @@ describe("MobileBar", () => {
       expect(document.querySelector(".mobile-sheet")).toBeNull();
     });
 
+    it("hands the focus of a tab to the column's control as it goes", () => {
+      // Turned across the breakpoint with a sheet open: closing it handed
+      // the focus to its tab, which left the page with it (regression)
+      const heatmap = document.createElement("button");
+      heatmap.id = "heatmap-btn";
+      document.body.append(heatmap);
+      create();
+      tab("layers").click();
+      tab("layers").focus();
+
+      setWidth(DESKTOP_WIDTH);
+
+      expect(document.activeElement).toBe(heatmap);
+      heatmap.remove();
+    });
+
     it("stops listening after destroy", () => {
       const created = create();
       created.destroy();
@@ -335,72 +327,6 @@ describe("MobileBar", () => {
       setWidth(PHONE_WIDTH);
 
       expect(created.isMounted()).toBe(false);
-    });
-  });
-
-  describe("the sheet's code", () => {
-    /** An import of the extras bundle that answers when `arrive` is called */
-    function holdExtras(): () => void {
-      let arrive = (): void => {};
-      resetExtrasLoader(
-        () =>
-          new Promise((resolve, reject) => {
-            arrive = () => void importExtras().then(resolve, reject);
-          }),
-      );
-      return () => arrive();
-    }
-
-    afterEach(async () => {
-      resetExtrasLoader(importExtras);
-      await loadExtras();
-    });
-
-    it("opens the sheet a tab was tapped for once it has arrived", async () => {
-      const arrive = holdExtras();
-      create();
-      expect(document.querySelector(".mobile-sheet")).toBeNull();
-      // Naming no sheet while there is none in the page
-      expect(tab("layers").hasAttribute("aria-controls")).toBe(false);
-
-      tab("layers").click();
-      // Marked open at once: a second tap closes it
-      expect(tab("layers").classList.contains("active")).toBe(true);
-      arrive();
-
-      await vi.waitFor(() => expect(sheetTitle()).toBe("Layers"));
-      expect(bar!.sheetOpen()).toBe(true);
-      expect(tab("layers").getAttribute("aria-controls")).toBe("mobile-sheet");
-      expect(document.getElementById("mobile-sheet")).not.toBeNull();
-    });
-
-    it("opens nothing for a tab tapped again meanwhile", async () => {
-      const arrive = holdExtras();
-      create();
-
-      tab("filter").click();
-      tab("filter").click();
-      expect(tab("filter").classList.contains("active")).toBe(false);
-      arrive();
-
-      await vi.waitFor(() =>
-        expect(document.querySelector(".mobile-sheet")).not.toBeNull(),
-      );
-      expect(bar!.sheetOpen()).toBe(false);
-    });
-
-    it("says so and closes the tab when it cannot be fetched", async () => {
-      resetExtrasLoader(() => Promise.reject(new Error("offline")));
-      create();
-
-      tab("more").click();
-
-      await vi.waitFor(() =>
-        expect(document.querySelector(".toast-notification")?.textContent).toBe(
-          SHEET_UNAVAILABLE_MESSAGE,
-        ),
-      );
-      expect(tab("more").classList.contains("active")).toBe(false);
     });
   });
 

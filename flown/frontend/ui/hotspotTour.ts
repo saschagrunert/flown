@@ -26,10 +26,10 @@
  * place, and the tour stays there until the user steps on, with nothing to
  * pause.
  *
- * It holds the filters, the weighing switches, the selection and the
- * features that would take the map (Replay, Replay all, Wrapped, the
- * cross-section, which it closes) while it runs, as the replay does, and
- * none of those starts it. On a phone the bar steps aside while it runs,
+ * It holds the filters, the selection and the features that would take
+ * the map (Replay, Replay all, Wrapped, the cross-section, which it
+ * closes) while it runs, as the replay does, and none of those starts
+ * it. On a phone the bar steps aside while it runs,
  * as it does for a replay, and the panel takes the bottom edge. The
  * readout of the cloud under the pointer hides meanwhile (features.css):
  * the camera moves under a pointer resting on the map.
@@ -68,7 +68,7 @@ import {
 } from "./cameraScript";
 import { crossSectionOpen, toggleCrossSection } from "./crossSection";
 import { nameButton } from "./crossSectionElements";
-import { restingPitch } from "./replayState";
+import { returnToView, userView } from "./replayState";
 import { followPanelHeight } from "./replayManager";
 import { featurePart } from "./lazyBundles";
 
@@ -299,12 +299,6 @@ export function createHotspotTour(app: MapApp): HotspotTour {
    * ended, as it ends a move for another that starts (see end)
    */
   let moving = false;
-  /**
-   * The view the camera flies back to after the tour, until it gets
-   * there or is stopped: a tour started again on the way goes back to it,
-   * not to wherever the flight back had come to
-   */
-  let returnView: TourCamera | null = null;
   /** Gives the held controls back as they were (see holdControls) */
   let release: (() => void) | null = null;
   /** Ends what follows the map and the store while it runs */
@@ -345,19 +339,14 @@ export function createHotspotTour(app: MapApp): HotspotTour {
       if (crossSectionOpen(app)) toggleCrossSection(app);
       tourMap = map;
       places = stops;
-      const center = map.getCenter();
       const saved: TourView = {
-        center: { lat: center.lat, lng: center.lng },
-        zoom: map.getZoom(),
-        bearing: map.getBearing(),
-        pitch: restingPitch(app),
-        // On the way back from a tour before, the view that one started from
-        ...returnView,
+        // On the way back from a tour before, or from a chase, the view the
+        // camera flies back to (userView)
+        ...userView(app)!,
         globeVisible: app.globeVisible,
         threeDVisible: app.threeDVisible,
         heatmapVisible: app.heatmapVisible,
       };
-      returnView = null;
       savedView = saved;
       // Before the switches, whose change the state manager saves
       app.tourView = saved;
@@ -564,12 +553,9 @@ export function createHotspotTour(app: MapApp): HotspotTour {
       if (prefersReducedMotion()) map.jumpTo(view);
       else {
         map.flyTo({ ...view, duration: TOUR_RETURN_MS });
-        // Until it gets there or is stopped: registered after the flight,
-        // whose start ended the move before it
-        returnView = returning;
-        map.once("moveend", () => {
-          if (returnView === returning) returnView = null;
-        });
+        // A tour started again on the way, or Wrapped opened, keeps that
+        // view, not wherever the flight back has come to
+        returnToView(app, returning);
       }
     }
     if (hadFocus) focusModeControl(app, TOUR_BUTTON_ID);

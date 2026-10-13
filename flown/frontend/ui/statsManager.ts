@@ -11,6 +11,7 @@ import type { FilteredStatistics, PathInfo, PathSegment } from "../types";
 import { segmentsForPathIds } from "../calculations/statistics";
 import {
   calculateFilteredStatistics,
+  filterStatistics,
   filterStatisticsInSlices,
 } from "../calculations/panelStats";
 import { logError } from "../utils/logger";
@@ -18,7 +19,8 @@ import { airportCode } from "../features/airports";
 import { countryFlagSrc, groupByCountry } from "../features/countries";
 import { FEET_TO_METERS, NAUTICAL_MILES_TO_KM } from "../utils/constants";
 import { countryDisplayName, formatNumber } from "../utils/formatters";
-import { escapeHtml, pluralize } from "../utils/htmlGenerators";
+import { escapeHtml } from "../utils/escape";
+import { pluralize } from "../utils/htmlGenerators";
 import {
   formatBuildDate,
   markFlightTimeUnits,
@@ -56,6 +58,10 @@ interface StatsInputs {
 
 /** Stand-in for a measurement the data does not carry */
 const MISSING_VALUE = "—";
+
+/** What the panel says when its statistics could not be worked out */
+export const STATS_FAILED_HTML =
+  '<p class="stats-loading" role="alert">The statistics could not be worked out. Change the filter to try again.</p>';
 
 /** A single measurement: label, primary value and its metric equivalent */
 interface Metric {
@@ -552,6 +558,15 @@ export class StatsManager {
     );
   }
 
+  /** Say in the panel that its statistics could not be worked out */
+  private showStatsFailed(): void {
+    const panel = domCache.get(PANEL_ID);
+    if (!panel) return;
+    panel.innerHTML = STATS_FAILED_HTML;
+    panel.removeAttribute("aria-busy");
+    this.lastHtml = null;
+  }
+
   /**
    * Render the statistics of the current filter, or of the selection when
    * there is one. The calculation walks every segment, so it only runs
@@ -577,10 +592,8 @@ export class StatsManager {
       // Worked out in slices, as Wrapped's (see filterStatisticsInSlices):
       // all the years took a third of a second on a phone in one task.
       const controller = new AbortController();
-      const stats = filterStatisticsInSlices(
-        datasetIndex(data).filter(inputs.year, inputs.aircraft),
-        controller.signal,
-      );
+      const view = datasetIndex(data).filter(inputs.year, inputs.aircraft);
+      const stats = filterStatisticsInSlices(view, controller.signal);
       if (!(stats instanceof Promise)) {
         this.updateStatsPanel(stats, false);
         return;
@@ -600,7 +613,21 @@ export class StatsManager {
           this.updateStatsPanel(filtered, false);
         },
         (error: unknown) => {
-          if (!controller.signal.aborted) logError(error);
+          if (controller.signal.aborted) return;
+          logError(error);
+          this.statsAbort = null;
+          // Worked out in one go instead, rather than a panel left busy
+          // until the filter changes; should that fail too, the panel says
+          // so, and the same inputs do not ask again (lastInputs)
+          let filtered: FilteredStatistics;
+          try {
+            filtered = filterStatistics(view);
+          } catch (failure) {
+            logError(failure);
+            this.showStatsFailed();
+            return;
+          }
+          this.updateStatsPanel(filtered, false);
         },
       );
       return;

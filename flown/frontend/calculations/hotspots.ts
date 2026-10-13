@@ -25,12 +25,8 @@ import {
   type Coordinate,
 } from "../utils/geometry";
 import { formatDuration } from "../utils/duration";
-import {
-  cellKey,
-  columnWidth,
-  heatWeight,
-  type SegmentWeight,
-} from "./heatLines";
+import { cellKey, columnWidth } from "./grid";
+import { heatWeight, type SegmentWeight } from "./heatLines";
 
 /** Edge of a cell of the grid the heat is added up in, in metres */
 const HOTSPOT_CELL_M = 1000;

@@ -5,7 +5,7 @@
  * kept out of formatters.ts and htmlGenerators.ts, which the first visit
  * carries.
  */
-import { escapeHtml } from "./htmlGenerators";
+import { escapeHtml } from "./escape";
 
 const MONTHS = [
   "Jan",
