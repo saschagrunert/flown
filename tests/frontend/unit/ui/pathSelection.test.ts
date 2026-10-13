@@ -1533,6 +1533,23 @@ describe("PathSelection", () => {
       }
     });
 
+    it("keeps the link's title saying why it cannot on the visitor's flights", () => {
+      // Set by Your flights as the page started (ui/localFlights.ts)
+      mockApp.config.localFlights = {} as NonNullable<
+        typeof mockApp.config.localFlights
+      >;
+      linkBtn.title =
+        "Links cannot carry flights that are only in this browser";
+
+      pathSelection.togglePathSelection(1);
+      mockApp.isolateSelection = true;
+
+      expect(linkBtn.title).toBe(
+        "Links cannot carry flights that are only in this browser",
+      );
+      mockApp.config.localFlights = undefined;
+    });
+
     it("hands the focus on to the button that takes the place of the one pressed", () => {
       pathSelection.togglePathSelection(1);
       shareBtn.focus();

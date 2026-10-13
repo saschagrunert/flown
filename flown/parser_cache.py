@@ -55,6 +55,7 @@ __all__ = [
     "get_cache_key",
     "load_cached_parse",
     "parser_fingerprint",
+    "prune_cache_entries_except",
     "prune_stale_cache_entries",
     "save_to_cache",
 ]
@@ -221,6 +222,35 @@ def prune_stale_cache_entries(cache_dir: Path | None = None) -> int:
 
     if removed:
         logger.debug("Removed %d stale parse cache entries", removed)
+    return removed
+
+
+def prune_cache_entries_except(
+    kml_files: Sequence[str], cache_dir: Path | None = None
+) -> int:
+    """Remove every entry but those of ``kml_files`` as they are now.
+
+    For a cache of one person's files alone, the build in the page (see
+    ``flown.browser``): a file they removed must not leave its parse behind,
+    with its real dates and times, for the month ``prune_stale_cache_entries``
+    keeps it. Other files are left alone. Returns the number removed.
+    """
+    if cache_dir is None:
+        cache_dir = KML_CACHE_DIR
+    kept = {_cache_name(Path(kml_file)) for kml_file in kml_files}
+    try:
+        entries = list(cache_dir.iterdir())
+    except OSError:
+        return 0
+    removed = 0
+    for entry in entries:
+        if entry.name in kept or not (
+            _ENTRY_NAME.match(entry.name) or entry.suffix == ".tmp"
+        ):
+            continue
+        with contextlib.suppress(OSError):
+            entry.unlink()
+            removed += 1
     return removed
 
 

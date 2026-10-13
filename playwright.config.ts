@@ -124,9 +124,10 @@ export default defineConfig<object, SiteOptions>({
     },
     {
       name: "mobile",
-      // mobile.spec.ts drives the bottom bar and sheet; the other three are
-      // viewport-agnostic and run against whichever controls the bar puts up
-      testMatch: /(core|layers|mobile|state)\.spec\.ts$/,
+      // mobile.spec.ts drives the bottom bar and sheet; the others are
+      // viewport-agnostic and run against whichever controls the bar puts
+      // up, Your flights from the More sheet
+      testMatch: /(core|layers|local-flights|mobile|state)\.spec\.ts$/,
       grepInvert: DESKTOP_ONLY,
       // The bar and sheet are built at runtime and every interaction here
       // goes through them, so a retry would hide exactly the intermittent

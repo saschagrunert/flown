@@ -10,7 +10,7 @@ Two things a browser has not, the build gets from here: sockets, and threads.
 The airport database and the elevation tiles are fetched with the worker's
 synchronous ``XMLHttpRequest`` instead (``install_network``), which is what
 a worker may do; every pool of the build runs in the worker's one thread
-(``WorkerPool`` falls back on its own, the tile fetcher is told).
+(``configure_workers`` tells the pools, the tile fetcher is told).
 
 The cache directory is read when ``flown.cache`` is imported, so the worker
 sets ``FLOWN_CACHE_DIR`` before it imports anything of the package; the
@@ -24,6 +24,8 @@ import io
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from .validation import KML_SUFFIXES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -121,29 +123,59 @@ def install_network() -> None:
     airport_lookup.urlopen = _xhr_urlopen  # type: ignore[attr-defined,assignment]
 
 
-class _Relay(logging.Handler):
-    """Hands every log line of the build to the page."""
+# The steps of a build the page says, by the log line each starts with:
+# the visitor is told these, not the lines themselves, which are the
+# command line's (sizes, checksums, timings) and a screen reader read out
+# one by one
+PHASES = {
+    "Parsing %d KML file(s)...": "Reading your files…",
+    "📥 Downloading the OurAirports %s...": "Fetching the airport names…",
+    "\nProcessing %d start points...": "Finding the airports…",
+    "\n  Exporting data to JSON files...": "Writing your flights…",
+}
+# The most warnings a build hands back, for the panel to show
+MAX_WARNINGS = 10
 
-    def __init__(self, report: Callable[[str, str], None]) -> None:
+
+class _Relay(logging.Handler):
+    """Tells the page the steps of the build, and keeps its warnings.
+
+    A line of ``PHASES`` is reported as its step; a warning is kept, without
+    the directory the files were written into, for the page to show once the
+    build is done (``warnings``). Errors are not: a build that fails raises,
+    and a file it skips is named with its reason (see ``build``).
+    """
+
+    def __init__(self, report: Callable[[str, str], None], input_dir: str) -> None:
         super().__init__(logging.INFO)
         self._report = report
+        self._prefix = input_dir.rstrip("/") + "/"
+        self._phase: str | None = None
+        self.warnings: list[str] = []
 
     def emit(self, record: logging.LogRecord) -> None:
         with contextlib.suppress(Exception):
-            self._report(record.levelname.lower(), record.getMessage())
+            if record.levelno == logging.WARNING:
+                message = record.getMessage().replace(self._prefix, "").strip()
+                if message not in self.warnings and len(self.warnings) < MAX_WARNINGS:
+                    self.warnings.append(message)
+                return
+            phase = PHASES.get(str(record.msg))
+            if phase is not None and phase != self._phase:
+                self._phase = phase
+                self._report("info", phase)
 
 
 @contextlib.contextmanager
-def _relayed(report: Callable[[str, str], None] | None) -> Iterator[None]:
+def _relayed(
+    report: Callable[[str, str], None] | None, input_dir: str
+) -> Iterator[_Relay]:
     from .logger import logger  # noqa: PLC0415
 
-    if report is None:
-        yield
-        return
-    handler = _Relay(report)
+    handler = _Relay(report or (lambda _level, _message: None), input_dir)
     logger.addHandler(handler)
     try:
-        yield
+        yield handler
     finally:
         logger.removeHandler(handler)
 
@@ -159,7 +191,7 @@ def input_files(input_dir: str | Path) -> tuple[list[str], list[Path]]:
     kml_files = sorted(
         str(path)
         for path in root.iterdir()
-        if path.is_file() and path.suffix.lower() in (".kml", ".kmz")
+        if path.is_file() and path.suffix.lower() in KML_SUFFIXES
     )
     aircraft = root / "aircraft.json"
     return kml_files, [aircraft] if aircraft.is_file() else []
@@ -170,28 +202,43 @@ def build(
     output_dir: str,
     report: Callable[[str, str], None] | None = None,
     terrain: bool = True,
+    flags: list[str] | None = None,
 ) -> BuildOutcome:
     """Build the data files of the flights in ``input_dir`` into ``output_dir``.
 
-    ``report`` is told every log line of the build (its level and its
-    message), which the page shows as progress. ``terrain`` samples the
-    ground under the flights from the elevation tiles, fetched through the
-    worker and kept in the cache directory. Answers with the years, the
-    extent the map opens on and what was found; raises the errors of
-    ``export_flight_data`` for inputs that make no site.
+    ``report`` is told the steps of the build (see ``PHASES``), which the
+    page shows as progress. ``terrain`` samples the ground under the flights
+    from the elevation tiles, fetched through the worker and kept in the
+    cache directory. ``flags`` are the country codes the page has a flag
+    for (its own ``available_flags``): the package in the page has none.
+
+    A file that makes no flight is left out, and named with the reason in
+    ``skipped``: the visitor sees the rest, and which file to look at.
+    Answers with the years, the extent the map opens on, what was found
+    and the warnings of the build; raises the errors of
+    ``export_flight_data`` for inputs that make no site at all. The parses
+    of files that are no longer among the inputs leave the cache.
     """
+    from .parser_cache import prune_cache_entries_except  # noqa: PLC0415
     from .renderer import export_flight_data  # noqa: PLC0415
     from .terrain_fetch import TerrariumTiles  # noqa: PLC0415
     from .workers import configure_workers  # noqa: PLC0415
 
     install_network()
-    configure_workers(1)
+    # No processes in the page: every pool works here, without trying
+    configure_workers(1, processes=False)
     kml_files, aircraft_files = input_files(input_dir)
     source = TerrariumTiles(get=_xhr_tile_get, workers=1) if terrain else None
-    with _relayed(report):
+    with _relayed(report, input_dir) as relay:
         result = export_flight_data(
-            kml_files, output_dir, aircraft_files=aircraft_files, terrain=source
+            kml_files,
+            output_dir,
+            aircraft_files=aircraft_files,
+            terrain=source,
+            skip_unusable=True,
+            flags=flags,
         )
+    prune_cache_entries_except(kml_files)
     extent = result.extent
     return {
         "years": list(result.years),
@@ -202,4 +249,9 @@ def build(
             [extent.min_lat, extent.min_lon],
             [extent.max_lat, extent.max_lon],
         ],
+        "skipped": [
+            {"file": Path(entry.kml_file).name, "reason": entry.reason}
+            for entry in result.skipped
+        ],
+        "warnings": relay.warnings,
     }

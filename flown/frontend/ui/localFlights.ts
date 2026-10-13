@@ -22,6 +22,7 @@
 import type { MapApp, MapConfig } from "../mapApp";
 import { LocalBuilder, type InputFile } from "../services/localBuild";
 import {
+  CACHE_BUSY_MESSAGE,
   clearAll,
   deleteCache,
   fileStamp,
@@ -37,13 +38,22 @@ import {
   type StoredFile,
   type StoredFileWithBytes,
 } from "../services/localStore";
+import { siteData } from "../state/siteData";
+import { setUnavailable } from "../utils/buttonState";
 import { escapeHtml } from "../utils/escape";
 import { formatFileSize } from "../utils/formatters";
 import { icon } from "../utils/icons";
-import { isPageEscape } from "../utils/mapHelpers";
+import { FIELDS, isPageEscape } from "../utils/mapHelpers";
 import { logError } from "../utils/logger";
-import { storeFlag } from "../utils/storedFlag";
-import { askReopen, LOCAL_FLIGHTS_KEY, takeReopen } from "../state/localFlags";
+import { storedFlag, storeFlag } from "../utils/storedFlag";
+import { showToast } from "../utils/toast";
+import {
+  askReopen,
+  keyedToPage,
+  LOCAL_FLIGHTS_KEY,
+  SHARE_UNAVAILABLE_MESSAGE,
+  takeReopen,
+} from "../state/localFlags";
 
 /** The button in the left column, and the row of the phone's More sheet */
 export const LOCAL_BUTTON_ID = "local-flights-btn";
@@ -55,14 +65,36 @@ const PANEL_GAP_PX = 8;
 
 const ACCEPTED = /\.(kml|kmz)$/i;
 const AIRCRAFT_FILE = "aircraft.json";
+/** How a file is named for its aircraft and year, which the hint links to */
+const NAMING_DOCS_URL =
+  "https://github.com/saschagrunert/flown/blob/main/doc/usage.md#kml-file-naming-convention";
+/** The controls that copy a link to the site (ui/uiToggles.ts, shareLink) */
+const SHARE_CONTROL_IDS = ["share-btn", "selection-link-btn"];
+
+/** Set while the visitor asked for their flights without the ground */
+export const NO_TERRAIN_KEY = keyedToPage("flown-local-no-terrain");
+/**
+ * Set in a tab once it started on the visitor's flights: the state in its
+ * address is of them (see localStartConfig)
+ */
+export const OWN_TAB_KEY = keyedToPage("flown-local-tab");
+/**
+ * Where the state of the visitor's flights is saved, as storageKey in
+ * ui/stateManager.ts names it in local mode: named here rather than taken
+ * from there, which would hand one more name across to the app's bundle
+ */
+export const LOCAL_STATE_KEY = keyedToPage("flown-state:local");
 
 export const SITE_FLIGHTS_MESSAGE = "Showing the site's flights";
-export const NO_FILES_MESSAGE =
-  "Drop the KML or KMZ files of your flights here, or choose them";
 export const UNSUPPORTED_FILES_MESSAGE =
   "Only KML and KMZ files, and an aircraft.json next to them, can be shown";
 export const BUILDING_MESSAGE = "Building your flights…";
+export const REBUILDING_MESSAGE =
+  "The site was updated: building your flights again…";
 export const BUILT_MESSAGE = "Built, opening your flights…";
+export const READY_MESSAGE = "Your flights are ready";
+export const LINK_OPENED_SITE_MESSAGE =
+  "This link opened the site's flights, which it is of";
 export const STORAGE_FAILED_MESSAGE =
   "This browser does not let the page keep files";
 export const REMOVED_MESSAGE = "Your files are removed from this browser";
@@ -70,6 +102,11 @@ export const REMOVED_MESSAGE = "Your files are removed from this browser";
 export const MAX_DROP_BYTES = 200 * 1024 * 1024;
 export const TOO_LARGE_MESSAGE =
   "That is more than 200 MB at once; drop fewer files at a time";
+
+/** Said of files the browser would not read (one moved since it was picked) */
+export function unreadableMessage(names: readonly string[]): string {
+  return `Could not read ${names.join(", ")}; pick ${names.length === 1 ? "it" : "them"} again`;
+}
 
 /** What the panel says about what is shown */
 export function shownMessage(info: LocalInfo | null | undefined): string {
@@ -79,29 +116,86 @@ export function shownMessage(info: LocalInfo | null | undefined): string {
   return `Showing your ${flights} from ${files}`;
 }
 
-/** The build of the page, which a dataset of another is not read by */
+/** The build of the page's frontend, which a dataset of another is not read by */
 const BUILD = typeof __BUILD__ === "string" ? __BUILD__ : undefined;
 
 /**
- * Whether the dataset was built from exactly the files kept, by this build
- * of the site: another's may write the year files in another format
+ * The build of the site: its frontend, and its generator, which covers the
+ * Python that builds the dataset (MapConfig.generator). A deploy that
+ * changes either builds the flights again, and fetches that Python anew.
  */
-export function upToDate(info: LocalInfo | null, files: StoredFile[]): boolean {
-  return !!info && info.build === BUILD && info.stamp === fileStamp(files);
+export function siteBuild(
+  config: Pick<MapConfig, "generator">,
+): string | undefined {
+  return config.generator ? `${BUILD ?? ""}:${config.generator}` : BUILD;
+}
+
+/**
+ * Whether the dataset was built from exactly the files kept, by this build
+ * of the site (another's may write the year files in another format), and
+ * with or without the ground as asked for now
+ */
+export function upToDate(
+  info: LocalInfo | null,
+  files: StoredFile[],
+  config: Pick<MapConfig, "generator"> = window.MAP_CONFIG ?? {},
+): boolean {
+  return (
+    !!info &&
+    info.build === siteBuild(config) &&
+    info.stamp === fileStamp(files) &&
+    (info.terrain !== false) === !storedFlag(NO_TERRAIN_KEY)
+  );
 }
 
 function decode(bytes: ArrayBuffer): string {
   return new TextDecoder().decode(bytes);
 }
 
+function ownTab(): boolean {
+  try {
+    return sessionStorage.getItem(OWN_TAB_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markOwnTab(): void {
+  try {
+    sessionStorage.setItem(OWN_TAB_KEY, "1");
+  } catch {
+    // A link in the address bar then opens on the site's flights
+  }
+}
+
+/** Set by a start whose dataset another deploy built: the panel rebuilds */
+let staleAtStart = false;
+/** Set by a start on a link of the site's flights, with the flag set */
+let linkedAway = false;
+
 /**
  * The configuration of a page that starts from the dataset in the
  * browser, or null when there is none (the flag is then cleared, and the
  * page starts from the site's flights as it would without it).
+ *
+ * Two starts go to the site's flights and keep the flag. One with a state
+ * in its address that this tab did not write: a link someone copied, from
+ * before the share token or from an address bar, is of the site's flights
+ * (as mapApp.ts takes a shared link), and would pick its year, aircraft
+ * and ids out of the visitor's. And one whose dataset another deploy of
+ * the site built, which may write the year files in another format: the
+ * panel opens and builds the files again (reopenAfterSwitch), rather than
+ * the visitor finding the site's flights without a word.
  */
 export async function localStartConfig(
   config: MapConfig,
+  // The page's own address: the state saved goes with it, as on any reload
+  reload: () => void = () => location.reload(),
 ): Promise<MapConfig | null> {
+  if (location.search && !ownTab()) {
+    linkedAway = true;
+    return null;
+  }
   const giveUp = (): null => {
     storeFlag(LOCAL_FLIGHTS_KEY, false);
     return null;
@@ -114,30 +208,72 @@ export async function localStartConfig(
     logError("Could not read the flights kept in this browser:", error);
     return giveUp();
   }
-  // Built by another deploy of the site, whose year files may be of
-  // another format, or of other files than the ones kept (a file removed
-  // while the rebuild failed): the page starts on the site's flights, and
-  // the panel builds the files again as soon as they are asked for
-  if (!upToDate(info, files)) return giveUp();
+  if (!info || !files.length) return giveUp();
+  // Of other files than the ones kept (a file removed while the rebuild
+  // failed) as well: built again as the panel opens
+  if (!upToDate(info, files, config)) {
+    staleAtStart = true;
+    return null;
+  }
+  markOwnTab();
   const prefix = `${LOCAL_DATA_DIR}/`;
   const bytesOf = async (url: string): Promise<ArrayBuffer> => {
     const path = url.startsWith(prefix) ? url.slice(prefix.length) : url;
-    const bytes = await readDatasetFile(path);
+    const [bytes, now] = await Promise.all([readDatasetFile(path), readInfo()]);
+    // Built again since the page started, which says so with a toast and
+    // goes on (LocalFlights.build): a year file of the new dataset is of
+    // other flights than the page's metadata, so the page goes to it
+    // whole rather than mix the two
+    if (now?.builtAt !== info.builtAt) {
+      reload();
+      return new Promise<never>(() => {});
+    }
     if (!bytes) throw new Error(`Not in this browser: ${url}`);
     return bytes;
   };
   return {
     ...config,
-    center: info!.center,
-    bounds: info!.bounds,
+    center: info.center,
+    bounds: info.bounds,
     dataDir: LOCAL_DATA_DIR,
     dataSource: {
       fetchJson: async (url): Promise<unknown> =>
         JSON.parse(decode(await bytesOf(url))),
       fetchBytes: bytesOf,
     },
-    localFlights: info!,
+    localFlights: info,
   };
+}
+
+/**
+ * The country codes the site has a flag for (its metadata.json): the build
+ * in the worker has the package, not the flags, which the page serves.
+ * Those the page loaded, where it shows the site's flights; fetched as the
+ * site's build otherwise.
+ */
+async function siteFlags(
+  app: MapApp,
+  config: MapConfig,
+): Promise<string[] | undefined> {
+  const loaded = app.config.localFlights
+    ? undefined
+    : siteData.metadata?.available_flags;
+  if (loaded) return loaded;
+  try {
+    const build = siteBuild(config);
+    const response = await fetch(
+      `${config.dataDir}/metadata.json` +
+        (build ? `?v=${encodeURIComponent(build)}` : ""),
+    );
+    const metadata = (await response.json()) as { available_flags?: unknown };
+    const flags = metadata.available_flags;
+    return Array.isArray(flags)
+      ? flags.filter((flag): flag is string => typeof flag === "string")
+      : undefined;
+  } catch {
+    // Codes instead of flags
+    return undefined;
+  }
 }
 
 const PANEL_HTML =
@@ -154,27 +290,40 @@ const PANEL_HTML =
   icon("upload", 20) +
   '<span class="local-flights-drop-text">Drop KML or KMZ files here, or ' +
   "<span class='local-flights-choose'>choose files</span></span>" +
+  '<span class="local-flights-drop-touch">Choose KML or KMZ files</span>' +
   '<input type="file" multiple accept=".kml,.kmz,.json" ' +
   'aria-label="Choose the KML or KMZ files of your flights"></label>' +
+  '<p class="local-flights-hint">The aircraft and the year come from each ' +
+  "file’s name, such as 1_DEAGJ_DA20.kml " +
+  `(<a href="${NAMING_DOCS_URL}" target="_blank" rel="noopener">how to ` +
+  "name them</a>); up to 200 MB at a time.</p>" +
   '<ul class="local-flights-files" aria-label="Your files"></ul>' +
+  '<ul class="local-flights-warnings" aria-label="What the build said" hidden></ul>' +
   '<p class="local-flights-status" role="status"></p>' +
+  '<p class="local-flights-status is-error" role="alert"></p>' +
+  '<label class="local-flights-terrain"><input type="checkbox"> ' +
+  "Without the ground under the flights</label>" +
   '<div class="local-flights-actions">' +
   '<button type="button" class="btn-surface" data-local="show">Show my flights</button>' +
   '<button type="button" class="btn-surface" data-local="site">Show the site’s flights</button>' +
   '<button type="button" class="btn-surface" data-local="clear">Remove all</button>' +
   "</div>" +
-  '<p class="local-flights-note">Nothing leaves this browser: the files and ' +
-  "the map built from them are kept in its storage. The build fetches its " +
-  "Python runtime from a CDN, the airport names from OurAirports and the " +
-  "ground under the flights from the same elevation tiles as the 3D view, " +
-  "and sends them nothing of the files.</p>";
+  '<p class="local-flights-note">The files and the map built from them are ' +
+  "kept in this browser’s storage, and the files never leave it. The build " +
+  "fetches its Python runtime from a CDN and the airport names from " +
+  "OurAirports. For the ground under the flights it fetches the elevation " +
+  "tiles they cross from AWS, which tells AWS roughly where you flew; " +
+  "without the ground, it fetches none.</p>";
 
 export class LocalFlights {
   readonly panel: HTMLElement;
   private readonly shown: HTMLElement;
   private readonly list: HTMLElement;
+  private readonly warnings: HTMLElement;
   private readonly status: HTMLElement;
+  private readonly alert: HTMLElement;
   private readonly input: HTMLInputElement;
+  private readonly terrainOff: HTMLInputElement;
   private readonly actions: Record<
     "show" | "site" | "clear",
     HTMLButtonElement
@@ -207,8 +356,12 @@ export class LocalFlights {
     this.panel = panel;
     this.shown = panel.querySelector(".local-flights-shown")!;
     this.list = panel.querySelector(".local-flights-files")!;
-    this.status = panel.querySelector(".local-flights-status")!;
-    this.input = panel.querySelector("input")!;
+    this.warnings = panel.querySelector(".local-flights-warnings")!;
+    this.status = panel.querySelector('.local-flights-status[role="status"]')!;
+    this.alert = panel.querySelector('.local-flights-status[role="alert"]')!;
+    this.input = panel.querySelector(".local-flights-drop input")!;
+    this.terrainOff = panel.querySelector(".local-flights-terrain input")!;
+    this.terrainOff.checked = storedFlag(NO_TERRAIN_KEY);
     this.actions = {
       show: panel.querySelector('[data-local="show"]')!,
       site: panel.querySelector('[data-local="site"]')!,
@@ -234,6 +387,16 @@ export class LocalFlights {
         const picked = Array.from(this.input.files ?? []);
         this.input.value = "";
         if (picked.length) void this.add(picked);
+      },
+      listen,
+    );
+    this.terrainOff.addEventListener(
+      "change",
+      () => {
+        storeFlag(NO_TERRAIN_KEY, this.terrainOff.checked);
+        // Built again the way asked for, as a changed set of files is
+        this.clearAlert();
+        if (this.files.length) void this.build();
       },
       listen,
     );
@@ -282,10 +445,15 @@ export class LocalFlights {
       () => void this.clear(),
       listen,
     );
-    panel.addEventListener(
+    // The page's Escape, after whatever is open inside it took its own
+    // (doc/features.md, "Keyboard"): wherever the focus is, but not in a
+    // text field of the page, whose Escape is its own
+    document.addEventListener(
       "keydown",
       (event) => {
-        if (isPageEscape(event)) {
+        const inside =
+          event.target instanceof Node && panel.contains(event.target);
+        if (this.isOpen() && isPageEscape(event, inside ? "" : FIELDS)) {
           event.preventDefault();
           this.close();
         }
@@ -399,39 +567,66 @@ export class LocalFlights {
   private render(): void {
     const local = !!this.app.config.localFlights;
     this.shown.textContent = shownMessage(this.app.config.localFlights);
+    // The files the last build left out, marked with the reason
+    const skipped = new Map(
+      (this.info?.skipped ?? []).map((entry) => [entry.file, entry.reason]),
+    );
     this.list.innerHTML = this.files
-      .map(
-        (file) =>
-          `<li><span class="local-flights-name">${escapeHtml(file.name)}</span>` +
+      .map((file) => {
+        const reason = skipped.get(file.name);
+        return (
+          `<li${reason ? ' class="is-skipped"' : ""}>` +
+          `<span class="local-flights-name">${escapeHtml(file.name)}</span>` +
           `<span class="local-flights-size">${formatFileSize(file.size)}</span>` +
           `<button type="button" class="local-flights-remove" data-remove="${escapeHtml(file.name)}" ` +
           `title="Remove ${escapeHtml(file.name)}" aria-label="Remove ${escapeHtml(file.name)}">` +
           icon("close", 16) +
-          "</button></li>",
-      )
+          "</button>" +
+          (reason
+            ? `<span class="local-flights-reason">Left out: ${escapeHtml(reason)}</span>`
+            : "") +
+          "</li>"
+        );
+      })
       .join("");
+    const warnings = this.files.length ? (this.info?.warnings ?? []) : [];
+    this.warnings.innerHTML = warnings
+      .map((warning) => `<li>${escapeHtml(warning)}</li>`)
+      .join("");
+    this.warnings.hidden = !warnings.length;
     const any = this.files.length > 0;
     // Show my flights: the dataset is there and the page shows the site's;
     // a changed set of files is built again as it is shown
     this.actions.show.hidden = !any || local || this.building;
     this.actions.site.hidden = !local;
     this.actions.clear.hidden = !any && !local;
-    if (!this.building && !this.status.classList.contains("is-error")) {
-      this.say(any ? "" : NO_FILES_MESSAGE);
-    }
+    if (!this.building) this.say("");
   }
 
+  /**
+   * Say `message`: in the status, or as an error in the alert beside it,
+   * two regions that stay in the panel and in the accessibility tree, so a
+   * screen reader hears each as its text changes; an empty one takes no
+   * room (local.css), and is never hidden, which took it out of the tree
+   * and its next text often went unsaid. An error takes the place of the
+   * status; the alert stays until the next thing the visitor does
+   * (clearAlert), so a file refused is still said while the rest build.
+   */
   private say(message: string, error = false): void {
-    this.status.textContent = message;
-    this.status.hidden = !message;
-    this.status.classList.toggle("is-error", error);
-    this.status.setAttribute("role", error ? "alert" : "status");
+    (error ? this.alert : this.status).textContent = message;
+    if (error) this.status.textContent = "";
+  }
+
+  private clearAlert(): void {
+    this.alert.textContent = "";
   }
 
   /** Keep the dropped files and build them */
   async add(dropped: FileList | File[]): Promise<void> {
+    this.clearAlert();
     const files: StoredFileWithBytes[] = [];
     let refused = 0;
+    const unreadable: string[] = [];
     const taken = Array.from(dropped);
     if (taken.reduce((sum, file) => sum + file.size, 0) > MAX_DROP_BYTES) {
       this.say(TOO_LARGE_MESSAGE, true);
@@ -442,14 +637,28 @@ export class LocalFlights {
         refused++;
         continue;
       }
+      let bytes: ArrayBuffer;
+      try {
+        bytes = await file.arrayBuffer();
+      } catch (error) {
+        // A file in the cloud that is not on the device, or one changed
+        // since it was picked
+        logError(`Could not read ${file.name}:`, error);
+        unreadable.push(file.name);
+        continue;
+      }
       files.push({
         name: file.name,
         size: file.size,
-        bytes: await file.arrayBuffer(),
+        bytes,
         added: Date.now(),
       });
     }
-    if (refused) this.say(UNSUPPORTED_FILES_MESSAGE, true);
+    const problems = [
+      ...(refused ? [UNSUPPORTED_FILES_MESSAGE] : []),
+      ...(unreadable.length ? [unreadableMessage(unreadable)] : []),
+    ];
+    if (problems.length) this.say(problems.join(". "), true);
     if (!files.length) return;
     try {
       await putFiles(files);
@@ -464,6 +673,7 @@ export class LocalFlights {
   }
 
   private async remove(name: string): Promise<void> {
+    this.clearAlert();
     this.generation++;
     try {
       await removeFile(name);
@@ -479,10 +689,23 @@ export class LocalFlights {
 
   /** Show the flights of the files kept, built again when they changed */
   private async show(): Promise<void> {
+    this.clearAlert();
     await this.refresh();
     if (!this.files.length) return;
     if (upToDate(this.info, this.files)) this.switchTo(true);
     else await this.build();
+  }
+
+  /**
+   * Build the files kept again: the dataset is of another deploy. One that
+   * fails (offline, or no file makes a flight any more) lets the flag go,
+   * so the next visit opens on the site's flights rather than trying again
+   * on every one; Show my flights tries again when asked to.
+   */
+  async rebuild(): Promise<void> {
+    await this.refresh();
+    if (this.files.length) await this.build(REBUILDING_MESSAGE);
+    if (!upToDate(this.info, this.files)) storeFlag(LOCAL_FLIGHTS_KEY, false);
   }
 
   private showSite(): void {
@@ -490,20 +713,27 @@ export class LocalFlights {
   }
 
   private async clear(): Promise<void> {
+    this.clearAlert();
     this.generation++;
     this.buildAgain = false;
     // The worker goes with its connection to the cache, which can then go
-    // as well: the parsed tracks of the flights are in it
+    // as well: the parsed tracks of the flights are in it. The cache goes
+    // first, so a failure to clear the files leaves no parse of them
+    // behind either.
     this.builder.destroy();
     this.building = false;
     try {
-      await clearAll();
       await deleteCache();
+      await clearAll();
     } catch (error) {
       logError("Could not remove the files:", error);
-      this.say(STORAGE_FAILED_MESSAGE, true);
+      // Another tab of the page holds them: nothing is said to be gone
+      const busy =
+        error instanceof Error && error.message === CACHE_BUSY_MESSAGE;
+      this.say(busy ? CACHE_BUSY_MESSAGE : STORAGE_FAILED_MESSAGE, true);
       return;
     }
+    this.forgetLocalState();
     this.files = [];
     this.info = null;
     if (this.app.config.localFlights) {
@@ -514,6 +744,21 @@ export class LocalFlights {
     this.say(REMOVED_MESSAGE);
   }
 
+  /**
+   * Let go of the state saved for the visitor's flights (their view, year,
+   * aircraft and selection, see ui/stateManager.ts): it is of the dataset
+   * gone, whose next would open on it, with toasts for a year and flights
+   * it has not, and Remove all lets everything of the files go
+   */
+  private forgetLocalState(): void {
+    this.app.stateManager?.cancelSave();
+    try {
+      localStorage.removeItem(LOCAL_STATE_KEY);
+    } catch {
+      // Nothing was kept
+    }
+  }
+
   /** Reload the page on the dataset, or back on the site's flights */
   private switchTo(local: boolean): void {
     storeFlag(LOCAL_FLIGHTS_KEY, local);
@@ -521,31 +766,46 @@ export class LocalFlights {
     this.reload();
   }
 
+  /** Show the dataset just built: the state of the last one goes */
+  private showBuilt(): void {
+    this.forgetLocalState();
+    this.switchTo(true);
+  }
+
   /** Build the dataset of the files kept, and switch to it */
-  private async build(): Promise<void> {
+  private async build(message = BUILDING_MESSAGE): Promise<void> {
     if (this.building) {
       this.buildAgain = true;
       return;
     }
     this.building = true;
     this.buildAgain = false;
-    this.say(BUILDING_MESSAGE);
+    this.say(message);
     this.render();
     const generation = this.generation;
     try {
       // What is built, whatever is kept by the time it is done
       const built = this.files;
+      const terrain = !this.terrainOff.checked;
+      const config = window.MAP_CONFIG ?? this.app.config;
+      // Asked for while the files are read
+      const flags = siteFlags(this.app, config);
       const inputs: InputFile[] = [];
       for (const file of built) {
         // The build takes the bytes over; the store keeps its own
         const bytes = await readFileBytes(file.name);
         if (bytes) inputs.push({ name: file.name, bytes });
       }
-      const outcome = await this.builder.build(inputs, true, (line) => {
-        if (generation === this.generation) {
-          this.say(line.trim() || BUILDING_MESSAGE);
-        }
-      });
+      const outcome = await this.builder.build(
+        inputs,
+        terrain,
+        (line) => {
+          if (generation === this.generation) {
+            this.say(line.trim() || message);
+          }
+        },
+        { flags: await flags, version: siteBuild(config) },
+      );
       // A file went while it built: what it made is of files no longer
       // kept, and a Remove all would come back as the flights it removed
       if (generation !== this.generation) {
@@ -562,18 +822,33 @@ export class LocalFlights {
         bounds: outcome.bounds,
         files: built.map((file) => file.name),
         stamp: fileStamp(built),
-        build: BUILD,
+        build: siteBuild(config),
         builtAt: Date.now(),
+        skipped: outcome.skipped ?? [],
+        warnings: outcome.warnings ?? [],
+        terrain,
       };
       await putDataset(outcome.files, info);
       this.info = info;
-      this.say(BUILT_MESSAGE);
       this.building = false;
       if (this.buildAgain) {
         await this.build();
         return;
       }
-      this.switchTo(true);
+      // The visitor moved on while it built (the first build takes a
+      // while): the page is not reloaded under a replay, the tour or
+      // Wrapped, or with the panel closed, but says it is ready
+      if (this.isOpen() && !this.app.mapHeld) {
+        this.say(BUILT_MESSAGE);
+        this.showBuilt();
+        return;
+      }
+      this.render();
+      this.say(READY_MESSAGE);
+      showToast(READY_MESSAGE, "info", {
+        label: "Show",
+        run: () => this.showBuilt(),
+      });
     } catch (error) {
       this.building = false;
       logError("The build of the flights failed:", error);
@@ -604,9 +879,47 @@ export function toggleLocalFlights(
   current.toggle();
 }
 
-/** The panel after a reload that switched the flights, if it was asked for */
-export function reopenAfterSwitch(app: MapApp): void {
-  if (takeReopen()) toggleLocalFlights(app);
+/**
+ * The controls that copy a link say they cannot while the page shows the
+ * visitor's flights, as an unavailable control does (dimmed, its title
+ * saying why): a link would open the site's flights (ui/uiToggles.ts)
+ */
+function holdShareControls(): void {
+  for (const id of SHARE_CONTROL_IDS) {
+    const control = document.getElementById(id);
+    if (control) setUnavailable(control, true, SHARE_UNAVAILABLE_MESSAGE);
+  }
+}
+
+/**
+ * After the start: the panel reopened after a reload that switched the
+ * flights, if it was asked for, or opened to build the files again for a
+ * dataset another deploy made (localStartConfig)
+ */
+export function reopenAfterSwitch(
+  app: MapApp,
+  // The page's address without the link's state: the visitor's flights
+  showMine: () => void = () => location.replace(location.pathname),
+): void {
+  if (app.config.localFlights) holdShareControls();
+  if (linkedAway) {
+    linkedAway = false;
+    // Said, with the way back: the flag is kept, but a visitor who
+    // followed a link of their own (an old bookmark) lost sight of theirs
+    showToast(LINK_OPENED_SITE_MESSAGE, "info", {
+      label: "Show my flights",
+      run: () => {
+        markOwnTab();
+        showMine();
+      },
+    });
+  }
+  if (staleAtStart) {
+    staleAtStart = false;
+    takeReopen();
+    toggleLocalFlights(app);
+    void current?.rebuild();
+  } else if (takeReopen()) toggleLocalFlights(app);
   else if (app.config.localFlights) {
     // The button says the page shows the visitor's flights
     document.getElementById(LOCAL_BUTTON_ID)?.classList.add("active");

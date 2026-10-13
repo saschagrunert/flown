@@ -115,7 +115,7 @@ export const TOUR_NOTHING_MESSAGE =
 /**
  * Controls held while the tour runs: the filters and the selection, which
  * would change what it tours; the switches it turns on; and what would
- * take the map from it
+ * take the map from it, Your flights among them
  */
 const HELD_CONTROL_IDS = [
   "heatmap-btn",
@@ -131,6 +131,7 @@ const HELD_CONTROL_IDS = [
   "wrapped-btn",
   "cross-section-btn",
   "search-btn",
+  "local-flights-btn",
 ];
 
 /**

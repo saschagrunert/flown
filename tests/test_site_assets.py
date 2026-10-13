@@ -407,6 +407,16 @@ class TestPackageAssets:
         ).read_bytes()
         assert not list(first.glob(".flown-src.zip.*"))
 
+    def test_python_sources_are_world_readable(self, tmp_path):
+        previous = os.umask(0o022)
+        try:
+            with patch("flown.cache.REGULAR_FILE_MODE", 0o644):
+                assets_module._write_python_sources(tmp_path)
+            mode = (tmp_path / "flown-src.zip").stat().st_mode & 0o777
+            assert oct(mode) == "0o644"
+        finally:
+            os.umask(previous)
+
     def test_the_sources_zipped_are_this_package(self, tmp_path):
         assets_module._write_python_sources(tmp_path)
 

@@ -196,14 +196,28 @@ def no_site_url(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_old_names(monkeypatch, tmp_path_factory):
+    """No kml-heatmap cache or variable of the machine the tests run on.
+
+    The command line warns about them (see cli._warn_about_old_names), which
+    every test of its output would see on a machine that has them.
+    """
+    for name in [name for name in os.environ if name.startswith("KML_HEATMAP_")]:
+        monkeypatch.delenv(name)
+    missing = tmp_path_factory.getbasetemp() / "no-kml-heatmap-cache"
+    monkeypatch.setattr("flown.cli._old_cache_dir", lambda: missing)
+
+
+@pytest.fixture(autouse=True)
 def no_worker_limit(monkeypatch):
-    """Lift the cap on workers again after each test.
+    """Lift the cap on workers, and allow processes, again after each test.
 
     It is one setting per process, which ``--jobs`` and the browser build
     set, and a test that set it left every later test of its pytest worker
     with one worker, failing those that count them in a random order.
     """
     monkeypatch.setattr("flown.workers._worker_limit", None)
+    monkeypatch.setattr("flown.workers._processes_allowed", True)
 
 
 @pytest.fixture(autouse=True)

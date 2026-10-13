@@ -69,3 +69,35 @@ test fails on any CSP violation the page reports. A unit test
 against `connect-src`, and every foreign source there against those URLs. A meta
 CSP cannot set `frame-ancestors`, and GitHub Pages sends no such header, so the
 site can be framed; it holds no state an embedding page could change.
+
+### Your flights
+
+The build of the files a visitor drops on the page runs in a worker the page
+starts from its own `localWorker.bundle.js`, and that worker loads more than the
+page does: Pyodide from `cdn.jsdelivr.net` (its module, the interpreter, the
+standard library and the lock file, then the lxml package), the OurAirports
+database from `davidmegginson.github.io`, and the elevation tiles from AWS
+unless the visitor asks for the flights without the ground. The page's meta CSP
+does not reach a worker started by URL: it follows the policy its own script is
+served with, and GitHub Pages sends none. So the worker can fetch and run what
+the page's policy would refuse, and it runs with the page's origin, the
+visitor's files in the browser's storage among what it can read.
+
+What it runs is checked instead. The worker pins one Pyodide release and the
+SHA-384 of each file of it (`PYODIDE_INTEGRITY` in
+`flown/frontend/services/localWorker.ts`): the worker checks every file it
+fetches against its hash before Pyodide gets a byte of it, the two modules are
+imported from the bytes it checked rather than from their URL, and the lock
+file, checked like them, carries the hash each package is checked against the
+same way. A CDN that served other files stops the build (it says the runtime
+could not be loaded), and so does a download that stalls for a minute or a
+runtime that does not start within two minutes of its last file; it cannot run
+code with the site's origin. The package's own Python comes from `flown-src.zip`
+next to the page. The airport database and the tiles are data the build parses,
+never code.
+
+A host that sends a CSP header of its own for every file holds the worker to it
+as well (see [Hosting](doc/hosting.md#headers-and-compression)): it has to allow
+those hosts in `connect-src`, `'wasm-unsafe-eval'` in `script-src`, and `blob:`
+in `script-src` for the two modules, or Your flights says the runtime could not
+be loaded.

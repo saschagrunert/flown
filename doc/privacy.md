@@ -124,7 +124,11 @@ the first time a visitor drops their own flights on it (see
 and GitHub Pages for the OurAirports database as a build does (above), from a
 worker in the browser. The files dropped and everything built from them stay in
 the browser's storage; the requests carry nothing of them beyond which elevation
-tiles the flights touch, as a build's do.
+tiles the flights touch, as a build's do, so AWS learns roughly where they went.
+**Without the ground under the flights**, a choice of the panel, asks AWS for
+none. On a site at `<user>.github.io`, every Pages site of that account can read
+the storage the files are kept in (see
+[Hosting](hosting.md#your-flights-and-the-origin)).
 
 ## Obfuscating the KML files themselves
 
@@ -216,7 +220,13 @@ Kept in the site:
 - Coordinates, altitudes, distances, groundspeeds, to five decimals (about a
   metre), from the start of a recording to its end: the taxiing as well, so the
   spot the flights from a home field start and end at, where the aircraft is
-  parked, can be read off to within a few metres
+  parked, can be read off to within a few metres, unless the build is told to
+  leave the ends out with `--trim-ends METRES`: every flight then loses its
+  points within that distance of where it starts and ends, the taxiing and the
+  parking spot with them (300 covers the apron and the taxiway of most fields; a
+  recording that never leaves that distance is left out). The extent of the map
+  and the airports are worked out from what is left, and the landings counted
+  before, so they stay as they were
 - Airport visit counts
 - Per flight, the number of full-stop landings, touch-and-goes and go-arounds,
   and the field and runway of each touchdown, without a time

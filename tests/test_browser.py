@@ -196,7 +196,11 @@ class TestBuild:
         assert (out / "2025" / "data.json").is_file()
         # The page is not written: the browser has it
         assert not (out / "index.html").exists()
-        assert ("info", "Parsing 1 KML file(s)...") in lines
+        # The steps, not the lines of the command line
+        assert lines[0] == ("info", "Reading your files…")
+        assert {message for _, message in lines} <= set(browser.PHASES.values())
+        assert outcome["skipped"] == []
+        assert outcome["warnings"] == []
         # Nothing of the build is left on the logger
         assert not any(isinstance(h, browser._Relay) for h in logger.handlers)
 
@@ -258,11 +262,102 @@ class TestBuild:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip().endswith("[2025]")
 
-    def test_a_file_that_is_no_kml_fails_the_build(self, tmp_path, js, capsys):
+    def test_a_file_that_makes_no_flight_is_left_out_and_named(self, tmp_path, js):
+        """The rest are shown, and the panel says which file and why."""
         inputs = tmp_path / "input"
         inputs.mkdir()
         (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
         (inputs / "notes.kml").write_text("not xml", encoding="utf-8")
+        (inputs / "plan.kml").write_text(
+            KML.replace(" 110<", "<").replace(" 800<", "<").replace(" 230<", "<"),
+            encoding="utf-8",
+        )
 
-        with pytest.raises(InvalidInputError, match="1 of 2"):
+        outcome = browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+
+        assert outcome["flights"] == 1
+        assert [entry["file"] for entry in outcome["skipped"]] == [
+            "notes.kml",
+            "plan.kml",
+        ]
+        assert all(entry["reason"] for entry in outcome["skipped"])
+        assert "route plan" in outcome["skipped"][1]["reason"]
+        # Named by the file alone, not the directory the worker wrote it to
+        assert not any(str(inputs) in entry["reason"] for entry in outcome["skipped"])
+
+    def test_no_file_with_a_flight_fails_with_the_reasons(self, tmp_path, js):
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "notes.kml").write_text("not xml", encoding="utf-8")
+
+        with pytest.raises(InvalidInputError) as failed:
             browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+        assert str(failed.value).startswith(
+            "No file holds a flight to export (notes.kml: "
+        )
+        assert "see above" not in str(failed.value)
+
+    def test_no_file_with_a_flight_names_the_invalid_ones_too(self, tmp_path, js):
+        """One message for every file: those the validation refused as well."""
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "empty.kml").write_bytes(b"")
+        (inputs / "notes.kml").write_text("not xml", encoding="utf-8")
+
+        with pytest.raises(InvalidInputError) as failed:
+            browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+        assert "empty.kml: " in str(failed.value)
+        assert "notes.kml: " in str(failed.value)
+
+    def test_the_warnings_are_handed_back(self, tmp_path, js):
+        """For the panel to show once the build is done."""
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "export.kml").write_text(KML, encoding="utf-8")
+
+        outcome = browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+
+        assert any(
+            "name no aircraft (export.kml)" in warning
+            for warning in outcome["warnings"]
+        ), outcome["warnings"]
+        assert not any(str(inputs) in warning for warning in outcome["warnings"])
+
+    def test_the_flags_are_those_of_the_page(self, tmp_path, js):
+        """The package in the page has no flags of its own to look at."""
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+
+        browser.build(str(inputs), str(tmp_path / "one"), terrain=False, flags=["de"])
+        browser.build(str(inputs), str(tmp_path / "two"), terrain=False, flags=["fr"])
+
+        def flags(site):
+            return json.loads((tmp_path / site / "metadata.json").read_text()).get(
+                "available_flags"
+            )
+
+        assert flags("one") == ["de"]
+        assert not flags("two")
+
+    def test_the_parses_of_removed_files_leave_the_cache(
+        self, tmp_path, js, monkeypatch
+    ):
+        """Their tracks, with the real dates, are not kept for a month."""
+        cache = tmp_path / "cache" / "kml"
+        cache.mkdir(parents=True, mode=0o700)
+        monkeypatch.setattr("flown.parser_cache.KML_CACHE_DIR", cache)
+        monkeypatch.setattr("flown.renderer.KML_CACHE_DIR", cache, raising=False)
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        kml = inputs / "1_DEAGJ_DA20.kml"
+        kml.write_text(KML, encoding="utf-8")
+        removed = inputs / "2_DEAGJ_DA20.kml"
+        removed.write_text(KML.replace("2025-", "2024-"), encoding="utf-8")
+        browser.build(str(inputs), str(tmp_path / "one"), terrain=False)
+        assert len(list(cache.iterdir())) == 2
+
+        removed.unlink()
+        browser.build(str(inputs), str(tmp_path / "two"), terrain=False)
+
+        assert len(list(cache.iterdir())) == 1

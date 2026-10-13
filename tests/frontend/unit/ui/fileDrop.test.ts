@@ -47,10 +47,12 @@ beforeEach(() => {
 });
 
 describe("showDropSheet", () => {
-  it("makes one sheet with the message, shown, and shows the same again", () => {
+  it("makes one sheet with the message, shown as the drag goes on, and shows the same again", () => {
     const made = showDropSheet(app);
 
     expect(made).toBe(sheet());
+    expect(made.hidden).toBe(true);
+    window.dispatchEvent(drag("dragover", FILES));
     expect(made.hidden).toBe(false);
     expect(made.getAttribute("aria-hidden")).toBe("true");
     expect(made.textContent).toContain(DROP_MESSAGE);
@@ -58,8 +60,26 @@ describe("showDropSheet", () => {
 
     made.hidden = true;
     expect(showDropSheet(app)).toBe(made);
+    window.dispatchEvent(drag("dragover", FILES));
     expect(made.hidden).toBe(false);
     expect(document.querySelectorAll(`#${DROP_SHEET_ID}`)).toHaveLength(1);
+    controller.abort();
+  });
+
+  it("stays away for a drag that ended before the sheet was made", () => {
+    // The bundle arrived after the drop, which nothing here saw
+    const made = showDropSheet(app);
+    expect(made.hidden).toBe(true);
+
+    // Not shown by a dragover of text
+    window.dispatchEvent(drag("dragover", { types: ["text/plain"] }));
+    expect(made.hidden).toBe(true);
+
+    // The next drag is counted from nothing: leaving the window hides it
+    window.dispatchEvent(drag("dragenter", FILES));
+    expect(made.hidden).toBe(false);
+    window.dispatchEvent(drag("dragleave", FILES));
+    expect(made.hidden).toBe(true);
     controller.abort();
   });
 
@@ -74,10 +94,12 @@ describe("showDropSheet", () => {
     expect(made.hidden).toBe(true);
     made.hidden = false;
 
-    // Shown for a drag over an element of the page already, one deep.
-    // Into another element: its dragenter comes before the dragleave of
-    // the one left, so the drag is still over the window
+    // Shown for a drag over an element of the page already, one deep as
+    // its first dragover comes. Into another element: its dragenter comes
+    // before the dragleave of the one left, so the drag is still over the
+    // window
     showDropSheet(app);
+    window.dispatchEvent(drag("dragover", FILES));
     window.dispatchEvent(drag("dragenter", FILES));
     window.dispatchEvent(drag("dragleave", FILES));
     expect(made.hidden).toBe(false);
@@ -91,10 +113,11 @@ describe("showDropSheet", () => {
     expect(made.hidden).toBe(false);
     window.dispatchEvent(drag("dragleave", FILES));
     expect(made.hidden).toBe(true);
-    // Shown again by the page: one deep again, whatever the count was
+    // Shown again by the page: counted afresh, whatever the count was
     window.dispatchEvent(drag("dragenter", FILES));
     window.dispatchEvent(drag("dragenter", FILES));
     showDropSheet(app);
+    window.dispatchEvent(drag("dragover", FILES));
     window.dispatchEvent(drag("dragleave", FILES));
     expect(made.hidden).toBe(true);
     controller.abort();

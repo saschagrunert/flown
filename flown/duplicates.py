@@ -621,6 +621,21 @@ def _name(metadata: Sequence[PathMetadata], index: int) -> str:
     return metadata[index].get("filename") or f"path {index}"
 
 
+def _names(metadata: Sequence[PathMetadata], *indices: int) -> list[str]:
+    """The file names of paths, by their paths where two names are the same.
+
+    Two folders may hold files of one name ("the same flight as in
+    1_DEAGJ_DA20.kml" in 1_DEAGJ_DA20.kml said nothing).
+    """
+    names = [_name(metadata, index) for index in indices]
+    if len(set(names)) < len(names):
+        return [
+            str(metadata[index].get("source") or name)
+            for index, name in zip(indices, names, strict=True)
+        ]
+    return names
+
+
 def drop_overlapping_paths(
     paths_by_year: Mapping[int, list[int]],
     all_path_groups: FlightPathGroup,
@@ -695,8 +710,7 @@ def drop_overlapping_paths(
                 dropped.add(drop)
                 logger.warning(
                     "Skipping a flight in %s: the same flight as in %s, recorded twice",
-                    _name(all_path_metadata, drop),
-                    _name(all_path_metadata, keep),
+                    *_names(all_path_metadata, drop, keep),
                 )
                 if drop == index:
                     break

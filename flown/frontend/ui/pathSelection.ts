@@ -575,6 +575,8 @@ export class PathSelection {
     const label = link?.querySelector(".control-label");
     if (!link || !label) return;
     label.textContent = shareLinkLabel();
+    // The visitor's flights: its title says why it cannot (localFlights.ts)
+    if (this.app.config.localFlights) return;
     link.title = label.textContent + " to these flights";
     link.setAttribute("aria-label", link.title);
   }

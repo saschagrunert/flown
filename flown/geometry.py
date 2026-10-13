@@ -10,7 +10,7 @@ from math import atan2, cos, degrees, hypot, log, pi, radians, sin, sqrt, tan
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     from .types import TrackPoint
 
@@ -25,6 +25,7 @@ __all__ = [
     "longitude_difference",
     "planar_km",
     "planar_metres",
+    "trim_path_ends",
     "true_bearing",
     "web_mercator",
 ]
@@ -56,6 +57,42 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     a = min(1.0, max(0.0, a))
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
     return EARTH_RADIUS_KM * c
+
+
+def trim_path_ends(path: Sequence[TrackPoint], metres: float) -> list[TrackPoint]:
+    """``path`` without its points within ``metres`` of where it starts and ends.
+
+    What is left begins with the first point that is farther from the first
+    point of the path, and ends with the last that is farther from the last:
+    the taxiing at the start and the end, and the spot the aircraft is
+    parked on, go. A path that never leaves the circles (a recording of a
+    taxi) is left with its first point alone, which the export leaves out
+    as a path that does not move: kept whole, it would publish the spot.
+    """
+    if metres <= 0 or len(path) < 2:
+        return list(path)
+    km = metres / 1000
+    first, last = path[0], path[-1]
+    start = next(
+        (
+            index
+            for index, point in enumerate(path)
+            if haversine_distance(first.lat, first.lon, point.lat, point.lon) > km
+        ),
+        len(path),
+    )
+    end = next(
+        (
+            index
+            for index in range(len(path) - 1, -1, -1)
+            if haversine_distance(last.lat, last.lon, path[index].lat, path[index].lon)
+            > km
+        ),
+        -1,
+    )
+    if end - start < 1:
+        return list(path[:1])
+    return list(path[start : end + 1])
 
 
 def longitude_difference(lon0: float, lon1: float) -> float:

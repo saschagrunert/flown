@@ -42,6 +42,7 @@ import {
   runAction,
 } from "./actions";
 import { focusStatsRail } from "./appChrome";
+import { SHARE_UNAVAILABLE_MESSAGE } from "../state/localFlags";
 
 /** The id of the sheet, which the tabs that open it name before it exists */
 const SHEET_ID = "mobile-sheet";
@@ -572,6 +573,12 @@ export class MobileBar {
         icon: "share",
         // What the row does: the share sheet, where the phone has one
         label: shareLinkLabel(),
+        // Dimmed with the reason while the page shows the visitor's flights,
+        // which a link cannot carry, as Copy link in the columns is
+        // (ui/localFlights.ts); a tap still says so
+        hint: () =>
+          app.config.localFlights ? SHARE_UNAVAILABLE_MESSAGE : null,
+        isDisabled: () => !!app.config.localFlights,
         onSelect: () => runAction(app, "shareLink"),
       },
       {

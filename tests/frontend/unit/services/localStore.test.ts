@@ -12,6 +12,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+  CACHE_BUSY_MESSAGE,
   clearAll,
   closeStore,
   deleteCache,
@@ -218,6 +219,39 @@ describe("the connection", () => {
   });
 });
 
+describe("a transaction that fails", () => {
+  it("rejects when the browser aborts it", async () => {
+    // Out of space, say, which aborts the transaction the write is in
+    let aborted = false;
+    const put = vi
+      .spyOn(IDBObjectStore.prototype, "put")
+      .mockImplementation(function (this: IDBObjectStore) {
+        if (!aborted) this.transaction.abort();
+        aborted = true;
+        return {} as IDBRequest<IDBValidKey>;
+      });
+
+    await expect(
+      putFiles([
+        { name: "a.kml", size: 1, added: 1, bytes: new ArrayBuffer(1) },
+      ]),
+    ).rejects.toThrow("IndexedDB aborted");
+    put.mockRestore();
+    await expect(listFiles()).resolves.toEqual([]);
+  });
+
+  it("rejects with what went wrong in it, and nothing else unheard", async () => {
+    const getAll = vi
+      .spyOn(IDBObjectStore.prototype, "getAll")
+      .mockImplementation(() => {
+        throw new Error("broken store");
+      });
+
+    await expect(listFiles()).rejects.toThrow("broken store");
+    getAll.mockRestore();
+  });
+});
+
 describe("deleteCache", () => {
   /** A connection to the worker's cache database, made if it is not there */
   function openCache(): Promise<IDBDatabase> {
@@ -244,15 +278,33 @@ describe("deleteCache", () => {
     await expect(deleteCache()).resolves.toBeUndefined();
   });
 
-  it("rejects while a connection holds the cache open, then goes through", async () => {
+  it("waits for a tab that holds the cache open to let go", async () => {
+    // Another tab's worker, building
+    const held = await openCache();
+    held.onversionchange = () => {};
+    let settled = false;
+    const deleting = deleteCache(1000).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).toBe(false);
+
+    held.close();
+    await deleting;
+
+    expect(
+      (await indexedDB.databases()).map((database) => database.name),
+    ).not.toContain(localCacheDbName());
+  });
+
+  it("says another tab holds the files when it does not let go in time", async () => {
     const held = await openCache();
     // The ask to make way is not taken up: the deletion stays blocked
     held.onversionchange = () => {};
 
-    await expect(deleteCache()).rejects.toThrow("still in use");
+    await expect(deleteCache(20)).rejects.toThrow(CACHE_BUSY_MESSAGE);
 
     held.close();
-    await expect(deleteCache()).resolves.toBeUndefined();
   });
 
   it("is nothing to do without IndexedDB", async () => {

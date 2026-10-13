@@ -3,11 +3,12 @@
  *
  * One worker serves every build of the page; it is started with the first
  * and ended with the panel (ui/localFlights.ts). A build reports its
- * progress as the lines the Python build logs, and answers with the data
+ * progress as the steps the Python build takes, and answers with the data
  * files of a site, which the caller keeps (services/localStore.ts).
  */
 
 import type {
+  BuildOptions,
   BuildOutcome,
   BuildRequest,
   BuildResponse,
@@ -15,7 +16,7 @@ import type {
 } from "./localWorker";
 import { versioned } from "./lazyImport";
 
-export type { BuildOutcome, InputFile };
+export type { BuildOptions, BuildOutcome, InputFile };
 
 /** The worker's bundle, next to the page */
 const LOCAL_WORKER_BUNDLE = "localWorker.bundle.js";
@@ -54,14 +55,15 @@ export class LocalBuilder {
   }
 
   /**
-   * Build the data files of `files`; `progress` is told every line of the
-   * build. Rejects with the build's message for files that make no site,
-   * and with WORKER_FAILED_MESSAGE for a worker that does not answer.
+   * Build the data files of `files`; `progress` is told every step of
+   * the build. Rejects with the build's message for files that make no
+   * site, and with WORKER_FAILED_MESSAGE for a worker that does not answer.
    */
   build(
     files: InputFile[],
     terrain: boolean,
     progress: (message: string) => void,
+    options: BuildOptions = {},
   ): Promise<BuildOutcome> {
     const id = this.nextId++;
     return new Promise<BuildOutcome>((resolve, reject) => {
@@ -77,7 +79,7 @@ export class LocalBuilder {
       this.pending.set(id, { progress, resolve, reject });
       // The bytes go over, not copies: the caller keeps its own in the store
       worker.postMessage(
-        { id, build: { files, terrain } },
+        { id, build: { files, terrain, ...options } },
         files.map((file) => file.bytes),
       );
     });

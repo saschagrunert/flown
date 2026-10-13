@@ -161,8 +161,17 @@ _SPECIAL_TYPES = frozenset(
 def load_aircraft_data(aircraft_file: Path) -> dict[str, str]:
     """Load an aircraft.json mapping of registration to model name."""
     try:
-        data = json.loads(aircraft_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
+        # From the bytes: JSON reads UTF-8 with or without a byte order mark,
+        # and the UTF-16 Notepad saves, on its own
+        data = json.loads(aircraft_file.read_bytes())
+    except UnicodeDecodeError as e:
+        logger.warning(
+            "Failed to read aircraft data from %s: not UTF-8 (%s); save it as UTF-8",
+            aircraft_file,
+            e.reason,
+        )
+        return {}
+    except (ValueError, OSError) as e:
         logger.warning("Failed to read aircraft data from %s: %s", aircraft_file, e)
         return {}
 

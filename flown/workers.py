@@ -33,6 +33,7 @@ __all__ = [
     "default_worker_count",
     "init_worker",
     "parse_worker_count",
+    "processes_allowed",
 ]
 
 # Peak memory of a parse worker per byte of its KML file, with the landings
@@ -44,13 +45,28 @@ WORKER_BASE_BYTES = 100 * 1024 * 1024
 
 # The most workers any pool of the run gets (--jobs), None for every CPU
 _worker_limit: int | None = None
+# Whether a pool may start processes at all (see configure_workers)
+_processes_allowed = True
 
 
-def configure_workers(jobs: int | None) -> None:
-    """Cap every pool of this process at ``jobs`` workers (None lifts the cap)."""
+def configure_workers(jobs: int | None, processes: bool = True) -> None:
+    """Cap every pool of this process at ``jobs`` workers (None lifts the cap).
+
+    Without ``processes``, every pool does its tasks in this process from
+    the start, as it falls back to where it cannot start one, but without
+    trying and without the warning: a runtime that has no processes (the
+    build in the page, see ``flown.browser``), where the attempt failed every
+    time and said so to the visitor.
+    """
     # One setting per process, which the command line sets before any pool
-    global _worker_limit  # noqa: PLW0603
+    global _worker_limit, _processes_allowed  # noqa: PLW0603
     _worker_limit = jobs if jobs is None or jobs > 0 else 1
+    _processes_allowed = processes
+
+
+def processes_allowed() -> bool:
+    """Whether a pool may start processes (see ``configure_workers``)."""
+    return _processes_allowed
 
 
 def _cgroup_cpu_limit() -> int | None:
@@ -151,7 +167,9 @@ class WorkerPool(Executor):
         """Start the pool of ``max_workers`` workers, or fall back already."""
         self._what = what
         self._pool: ProcessPoolExecutor | None = None
-        self._given_up = False
+        self._given_up = not _processes_allowed
+        if self._given_up:
+            return
         try:
             self._pool = ProcessPoolExecutor(
                 max_workers=max_workers, initializer=init_worker, initargs=initargs
