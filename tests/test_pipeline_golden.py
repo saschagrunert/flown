@@ -19,7 +19,7 @@ from flown.airport_lookup import airport_icao_code
 from flown.geometry import haversine_distance
 from flown.obfuscate import obfuscate_kml_files
 from flown.path_content import PATH_ID_BITS
-from flown.renderer import create_progressive_heatmap
+from flown.renderer import build_site
 from flown.segment_codec import (
     ALTITUDE_STEP,
     COORDINATE_SCALE,
@@ -160,7 +160,7 @@ def _build_site(out, inputs):
     bundle.write_text("/* test bundle */", encoding="utf-8")
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", bundle)
-        return create_progressive_heatmap(
+        return build_site(
             [str(p) for p in inputs],
             str(out / "site" / "index.html"),
             str(out / "site" / "data"),

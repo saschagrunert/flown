@@ -352,11 +352,11 @@ test.describe("Path Selection", () => {
     await expect(details).toContainText(/ft/);
     // The colour reaches the metric through the CSSOM, since the CSP
     // blocks the style attribute it used to be written in
-    const colored = details.locator(".kh-popup-metric-colored").first();
+    const colored = details.locator(".popup-metric-colored").first();
     await expect
       .poll(() =>
         colored.evaluate((el) =>
-          (el as HTMLElement).style.getPropertyValue("--kh-metric-color"),
+          (el as HTMLElement).style.getPropertyValue("--metric-color"),
         ),
       )
       .toMatch(/^rgb/);

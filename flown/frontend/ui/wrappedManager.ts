@@ -587,7 +587,7 @@ export class WrappedManager {
     const statsEl = domCache.get("wrapped-stats");
     if (statsEl) {
       const what = this.app.selectedYear === "all" ? "flight history" : "year";
-      statsEl.innerHTML = `<p class="kh-stats-loading" role="status">Preparing your ${what}…</p>`;
+      statsEl.innerHTML = `<p class="stats-loading" role="status">Preparing your ${what}…</p>`;
     }
     for (const card of ["facts", "fleet", "airports"]) {
       domCache.get("wrapped-card-" + card)?.toggleAttribute("hidden", true);

@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
 
     "allowJs": false,
-    "outDir": "./dist",
+    "noEmit": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

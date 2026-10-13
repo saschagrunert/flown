@@ -104,8 +104,13 @@ updates:
       # npm install -D --save-exact typescript7@npm:typescript@<version>
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
-    # A dependency joins the first group it matches, so the named groups come
-    # before the catch-all for the remaining minor and patch updates
+    # The catch-all at the end leaves out every package a named group
+    # takes: the named groups came first, which was meant to keep their
+    # packages out of it, but vitest, eslint and jsdom came in the catch-all
+    # every time, and no testing group pull request ever opened. A change
+    # in one of them that needed a fix of its own (jsdom 30.1.2 no longer
+    # blurring a hidden element) then held back every other development
+    # dependency with it.
     groups:
       # On its own because it cannot be merged as it comes: the visual and
       # e2e jobs run in the Playwright image, whose tag and digest in
@@ -116,11 +121,15 @@ updates:
       playwright:
         patterns:
           - "@playwright/test"
+      # The unit tests' DOM and storage, and the e2e accessibility checks
       testing:
         patterns:
           - "vitest*"
           - "@vitest/*"
           - "fast-check"
+          - "jsdom"
+          - "fake-indexeddb"
+          - "@axe-core/playwright"
       build-tools:
         patterns:
           - "esbuild"
@@ -145,6 +154,26 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # The patterns of the named groups above: a pattern added there
+        # belongs here too (tests/test_dependabot.py)
+        exclude-patterns:
+          - "@playwright/test"
+          - "vitest*"
+          - "@vitest/*"
+          - "fast-check"
+          - "jsdom"
+          - "fake-indexeddb"
+          - "@axe-core/playwright"
+          - "esbuild"
+          - "@babel/parser"
+          - "@babel/types"
+          - "eslint*"
+          - "@eslint/*"
+          - "prettier"
+          - "typescript"
+          - "typescript-eslint"
+          - "maplibre-gl"
+          - "@maplibre/maplibre-gl-style-spec"
 
   # GitHub Actions, pinned by commit SHA in .github/workflows and in the
   # composite actions of .github/actions, which "/" alone does not cover.

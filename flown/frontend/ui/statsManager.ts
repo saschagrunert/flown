@@ -82,14 +82,14 @@ interface Metric {
 function figure(value: string, unit: string): string {
   return (
     escapeHtml(value) +
-    (unit ? '<span class="kh-stats-unit">' + escapeHtml(unit) + "</span>" : "")
+    (unit ? '<span class="stats-unit">' + escapeHtml(unit) + "</span>" : "")
   );
 }
 
 /**
  * One lead figure at the top of the panel.
  *
- * No space in the markup: `.kh-stats-lead-unit` opens one hairline of
+ * No space in the markup: `.stats-lead-unit` opens one hairline of
  * `--unit-gap` with a margin. The h and m that markFlightTimeUnits marks up
  * carry the same class and so are set the same way, which is the point.
  */
@@ -102,7 +102,7 @@ function leadItem(
   return leadItemHtml(
     escapeHtml(value) +
       (unit
-        ? '<span class="kh-stats-lead-unit">' + escapeHtml(unit) + "</span>"
+        ? '<span class="stats-lead-unit">' + escapeHtml(unit) + "</span>"
         : ""),
     label,
     altHtml,
@@ -123,12 +123,12 @@ function leadItemHtml(
   altHtml?: string,
 ): string {
   return (
-    '<div class="kh-stats-lead-item">' +
-    '<span class="kh-stats-lead-value">' +
+    '<div class="stats-lead-item">' +
+    '<span class="stats-lead-value">' +
     valueHtml +
     "</span>" +
-    (altHtml ? '<span class="kh-stats-lead-alt">' + altHtml + "</span>" : "") +
-    '<span class="kh-stats-lead-label">' +
+    (altHtml ? '<span class="stats-lead-alt">' + altHtml + "</span>" : "") +
+    '<span class="stats-lead-label">' +
     escapeHtml(label) +
     "</span>" +
     "</div>"
@@ -138,16 +138,16 @@ function leadItemHtml(
 /** One metric row: muted label left, value (and metric equivalent) right */
 function metricRow(metric: Metric): string {
   return (
-    '<li class="kh-stats-metric">' +
-    '<span class="kh-stats-metric-label">' +
+    '<li class="stats-metric">' +
+    '<span class="stats-metric-label">' +
     escapeHtml(metric.label) +
     "</span>" +
-    '<span class="kh-stats-metric-values">' +
-    '<span class="kh-stats-metric-value">' +
+    '<span class="stats-metric-values">' +
+    '<span class="stats-metric-value">' +
     figure(metric.value, metric.unit) +
     "</span>" +
     (metric.alt
-      ? '<span class="kh-stats-metric-alt">' +
+      ? '<span class="stats-metric-alt">' +
         figure(metric.alt, metric.altUnit ?? "") +
         "</span>"
       : "") +
@@ -163,14 +163,14 @@ function sectionTitle(
   count?: number,
 ): string {
   return (
-    '<h3 class="kh-stats-section-title">' +
+    '<h3 class="stats-section-title">' +
     icon(iconName, 16) +
-    '<span class="kh-stats-section-label">' +
+    '<span class="stats-section-label">' +
     label +
     "</span>" +
     (count === undefined
       ? ""
-      : '<span class="kh-stats-section-count">' + count + "</span>") +
+      : '<span class="stats-section-count">' + count + "</span>") +
     "</h3>"
   );
 }
@@ -183,9 +183,9 @@ function metricSection(
 ): string {
   if (metrics.length === 0) return "";
   return (
-    '<section class="kh-stats-section">' +
+    '<section class="stats-section">' +
     sectionTitle(iconName, label) +
-    '<ul class="kh-stats-list">' +
+    '<ul class="stats-list">' +
     metrics.map(metricRow).join("") +
     "</ul>" +
     "</section>"
@@ -205,25 +205,23 @@ function airportGroups(grouped: Map<string, string[]>): string {
   for (const [code, airports] of grouped) {
     html +=
       countryHeading(
-        "kh-stats-group",
-        "kh-stats-group",
+        "stats-group",
+        "stats-group",
         code,
         code === "Other" ? code : countryDisplayName(code),
         airports.length,
         countryFlagSrc(code),
         16,
         12,
-      ) + '<ul class="kh-stats-list kh-stats-airport-list">';
+      ) + '<ul class="stats-list stats-airport-list">';
     for (const name of airports) {
       const airport = splitAirportName(name, airportCode(name));
       html +=
-        '<li class="kh-stats-airport">' +
+        '<li class="stats-airport">' +
         (airport.code
-          ? '<span class="kh-stats-code">' +
-            escapeHtml(airport.code) +
-            "</span>"
+          ? '<span class="stats-code">' + escapeHtml(airport.code) + "</span>"
           : "") +
-        '<span class="kh-stats-airport-name">' +
+        '<span class="stats-airport-name">' +
         escapeHtml(airport.name) +
         "</span>" +
         "</li>";
@@ -244,12 +242,12 @@ function airportsSection(stats: FilteredStatistics): string {
   }
 
   return (
-    '<section class="kh-stats-section">' +
+    '<section class="stats-section">' +
     sectionTitle("airport", "Airports", stats.num_airports) +
-    '<p class="kh-stats-airports-summary">' +
+    '<p class="stats-airports-summary">' +
     airportSummary(stats.num_airports, numCountries) +
     "</p>" +
-    '<div class="kh-stats-groups">' +
+    '<div class="stats-groups">' +
     airportGroups(grouped) +
     "</div>" +
     "</section>"
@@ -263,27 +261,27 @@ function aircraftSection(stats: FilteredStatistics): string {
   let rows = "";
   for (const aircraft of stats.aircraft_list) {
     rows +=
-      '<li class="kh-stats-metric kh-stats-aircraft">' +
-      '<span class="kh-stats-metric-label">' +
-      '<span class="kh-stats-code">' +
+      '<li class="stats-metric stats-aircraft">' +
+      '<span class="stats-metric-label">' +
+      '<span class="stats-code">' +
       escapeHtml(aircraft.registration) +
       "</span>" +
       (aircraft.type
-        ? '<span class="kh-stats-aircraft-type">' +
+        ? '<span class="stats-aircraft-type">' +
           escapeHtml(aircraft.type) +
           "</span>"
         : "") +
       "</span>" +
-      '<span class="kh-stats-metric-values">' +
-      '<span class="kh-stats-metric-value">' +
+      '<span class="stats-metric-values">' +
+      '<span class="stats-metric-value">' +
       // The count in the figures' face, the noun in the text's
       formatNumber(aircraft.flights) +
-      ' <span class="kh-stats-noun">' +
+      ' <span class="stats-noun">' +
       (aircraft.flights === 1 ? "flight" : "flights") +
       "</span>" +
       "</span>" +
       (aircraft.flight_time_str
-        ? '<span class="kh-stats-metric-alt">' +
+        ? '<span class="stats-metric-alt">' +
           escapeHtml(aircraft.flight_time_str) +
           "</span>"
         : "") +
@@ -292,9 +290,9 @@ function aircraftSection(stats: FilteredStatistics): string {
   }
 
   return (
-    '<section class="kh-stats-section">' +
+    '<section class="stats-section">' +
     sectionTitle("aircraft", "Aircraft", stats.num_aircraft) +
-    '<ul class="kh-stats-list">' +
+    '<ul class="stats-list">' +
     rows +
     "</ul>" +
     "</section>"
@@ -328,7 +326,7 @@ function buildInfo(config: MapApp["config"]): string {
     );
   }
   if (parts.length === 0) return "";
-  return '<p class="kh-stats-build">Built ' + parts.join(" ") + "</p>";
+  return '<p class="stats-build">Built ' + parts.join(" ") + "</p>";
 }
 
 /** Distance rows beyond the lead figure */
@@ -651,13 +649,13 @@ export class StatsManager {
 
     this.titleRail(isSelection);
 
-    let html = '<div class="kh-stats">';
+    let html = '<div class="stats-body">';
 
     // What the figures are of: the selection, or the year and aircraft of
     // the filter, which neither the phone's sheet nor the rail said
     const { selectedYear: year, selectedAircraft: aircraft } = this.app;
     html +=
-      '<div class="kh-stats-note">' +
+      '<div class="stats-note">' +
       (isSelection
         ? "Showing statistics for " +
           pluralize(stats.num_paths, "selected flight")
@@ -671,7 +669,7 @@ export class StatsManager {
     // Lead figures: what the flying adds up to
     const distanceKm = stats.total_distance_nm * NAUTICAL_MILES_TO_KM;
     html +=
-      '<div class="kh-stats-lead">' +
+      '<div class="stats-lead">' +
       leadItem(
         formatNumber(stats.total_distance_nm, 1),
         "nm",
@@ -681,10 +679,7 @@ export class StatsManager {
       // Kept even without timing data so the grid always reads as four cells
       leadItemHtml(
         stats.total_flight_time_str
-          ? markFlightTimeUnits(
-              stats.total_flight_time_str,
-              "kh-stats-lead-unit",
-            )
+          ? markFlightTimeUnits(stats.total_flight_time_str, "stats-lead-unit")
           : escapeHtml(MISSING_VALUE),
         "Total flight time",
       ) +
@@ -701,7 +696,7 @@ export class StatsManager {
 
     // Data points measure the export, not the flying
     html +=
-      '<p class="kh-stats-footer">' +
+      '<p class="stats-footer">' +
       pluralize(stats.total_points, "data point") +
       "</p>";
     html += buildInfo(this.app.config);

@@ -16,8 +16,8 @@ the flights is in [Rendering](rendering.md) and [Heat](heat.md), the tests in
     state put back at start (`ui/stateRestore.ts`), the controls that follow the
     store (`ui/appChrome.ts`) and what the app says when a lazy bundle cannot be
     fetched (`ui/lazyBundles.ts`), with the parts of the lazy features each app
-    keeps once made (`featurePart`). `features.ts`, `wrapped.ts`, `search.ts`
-    and `extras.ts` are the entry points of the four lazy bundles
+    keeps once made (`featurePart`). `features.ts`, `wrapped.ts`, `search.ts`,
+    `extras.ts` and `local.ts` are the entry points of the lazy bundles
   - `calculations/` - Statistics and data processing
   - `features/` - Airports, layers, replay, wrapped
   - `services/` - Data loading and caching
@@ -75,23 +75,23 @@ the tool writes and opens on as the page does).
 
 ## Bundles
 
-`npm run build` produces seven bundles. `mapApp.bundle.js` starts the map,
-`features.bundle.js` holds Replay, the relief, the heat cloud and the ribbons of
-the 3D view (of every flight and of a selection: the 3D view cuts the flights
-once it has arrived, and draws them flat when it cannot be loaded), the
-satellite imagery, the profile of the selected flights, the cross-section
-(`ui/crossSection.ts`, with its corridor, chart, words and elements in the
-`ui/crossSection*.ts` modules beside it; the first visit carries only its
-control in the View group and its row in the phone's More sheet) and the hotspot
-tour (`ui/hotspotTour.ts`, with its places found in `calculations/hotspots.ts`,
-carried the same way), and `wrapped.bundle.js` holds Wrapped, the content of the
-statistics panel and the flight list of its Flights tab (the rail itself is part
-of the app, and says it is loading until the bundle is in; see
-`ui/statsPanel.ts`); the page imports each of the last two the first time one of
-its features is opened, and both as soon as Wrapped's button is pointed at or
-focused, for its intro (`ui/wrappedIntro.ts`), unless the system asks for
-reduced motion. `search.bundle.js` holds the search of airports and places
-(`ui/locationSearch.ts`, with the matching of the site's airports in
+`npm run build` produces the bundles `BUNDLE_FILES` in `flown/site_assets.py`
+lists. `mapApp.bundle.js` starts the map, `features.bundle.js` holds Replay, the
+relief, the heat cloud and the ribbons of the 3D view (of every flight and of a
+selection: the 3D view cuts the flights once it has arrived, and draws them flat
+when it cannot be loaded), the satellite imagery, the profile of the selected
+flights, the cross-section (`ui/crossSection.ts`, with its corridor, chart,
+words and elements in the `ui/crossSection*.ts` modules beside it; the first
+visit carries only its control in the View group and its row in the phone's More
+sheet) and the hotspot tour (`ui/hotspotTour.ts`, with its places found in
+`calculations/hotspots.ts`, carried the same way), and `wrapped.bundle.js` holds
+Wrapped, the content of the statistics panel and the flight list of its Flights
+tab (the rail itself is part of the app, and says it is loading until the bundle
+is in; see `ui/statsPanel.ts`); the page imports each of the last two the first
+time one of its features is opened, and both as soon as Wrapped's button is
+pointed at or focused, for its intro (`ui/wrappedIntro.ts`), unless the system
+asks for reduced motion. `search.bundle.js` holds the search of airports and
+places (`ui/locationSearch.ts`, with the matching of the site's airports in
 `calculations/airportSearch.ts` and the client of Photon in
 `services/photon.ts`); the first visit carries only its button, its row in the
 phone's More sheet and the `/` key (`followSearchKey` in `ui/lazyBundles.ts`),

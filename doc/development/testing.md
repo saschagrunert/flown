@@ -42,7 +42,7 @@ summary. The flags used by CI and `make test` are:
 pytest                                          # Run all tests
 pytest tests/test_parser.py                     # Run specific test file
 pytest -x                                       # Stop on first failure
-pytest -n auto --cov --cov-branch --cov-report=xml:coverage/coverage.xml --cov-report=term
+pytest -n auto --cov --cov-report=xml:coverage/coverage.xml --cov-report=term
 pytest --cov --cov-report=html                  # HTML coverage report (htmlcov/)
 ```
 
@@ -64,11 +64,11 @@ own (see [Hosting](../hosting.md#your-own-site-on-github-pages)).
 
 No test touches the network: `tests/conftest.py` fails any download of a tile
 loudly, the pipeline tests pass a tile source of their own
-(`create_progressive_heatmap(..., terrain=...)`, see `TileSource`), such as the
-flat model of `FlatTiles` in `tests/conftest.py`. A decoding pool that dies or
-cannot start makes the build decode the remaining tiles in its own process, with
-one warning; only a `MemoryError` there leaves the ground out, and that does not
-fail the build either.
+(`build_site(..., terrain=...)`, see `TileSource`), such as the flat model of
+`FlatTiles` in `tests/conftest.py`. A decoding pool that dies or cannot start
+makes the build decode the remaining tiles in its own process, with one warning;
+only a `MemoryError` there leaves the ground out, and that does not fail the
+build either.
 
 ## End-to-end tests
 
@@ -109,25 +109,29 @@ works) and skip otherwise; CI tests a site with a dummy key and, for the tests
 about the base map requests (tagged `@keys` at the end of their titles; tag a
 new one that depends on the key the same way) on the desktop, one without. It
 builds both once, in the `e2e-sites` job, and runs every e2e job in the
-Playwright image the visual job uses, with a browser per core of the runner. The
-`desktop` and `mobile` projects are split into three shards each (`--shard`) and
-the `webkit` project into two; Playwright splits by the number of tests, not
-their time, so more shards even out the slow ones, and the `desktop` shards are
-weighted (`PWTEST_SHARD_WEIGHTS` in the workflow), since the slow specs sort
-last. The tests without a key run in a `desktop` job of their own. The tests
-tagged `@heavy` (`HEAVY` in `tests/e2e/fixtures.ts`: the 3D view with its
-relief, heat cloud or chase view, and the globe turned with the flights loaded)
-of the `desktop` and `webkit-desktop` projects run in a job of their own per
-engine with two browsers (`--grep @heavy --workers=2`), since software WebGL
-takes seconds per frame of them; the other jobs of those projects leave them out
-(`--grep-invert @heavy`). Tag a new spec that waits on frames of either, a
-describe with `HEAVY` and a single test with `@heavy` at the end of its title.
-The relief tests run one after the other in one browser and take the longest, so
-they are in `3d-relief.spec.ts`, which sorts first and starts them at once. In
-CI a failed test of the `desktop` project is retried once, which only tells a
-flaky failure from a steady one: `failOnFlakyTests` fails the run either way.
-The `mobile`, `visual`, `webkit` and `webkit-desktop` projects do not retry, and
-neither do the heavy tests, where one attempt takes minutes.
+Playwright image the visual job uses (pulled by a step with a time limit and run
+with `docker run`), with a browser per core of the runner. The `desktop` project
+is split into three shards (`--shard`), the `mobile` and `webkit` projects into
+two each; Playwright splits by the number of tests, not their time, so the
+`desktop` and `mobile` shards are weighted (`PWTEST_SHARD_WEIGHTS` in the
+workflow), since the slow specs sort last. The tests without a key run after the
+others in the `webkit-heavy` job, the shortest. The tests tagged `@heavy`
+(`HEAVY` in `tests/e2e/fixtures.ts`: the 3D view with its relief, heat cloud or
+chase view, and the globe turned with the flights loaded) of the `desktop` and
+`webkit-desktop` projects run in jobs of their own with two browsers
+(`--grep @heavy --workers=2`), since software WebGL takes seconds per frame of
+them; the other jobs of those projects leave them out (`--grep-invert @heavy`).
+Tag a new spec that waits on frames of either, a describe with `HEAVY` and a
+single test with `@heavy` at the end of its title. The relief tests run one
+after the other in one browser and take the longest, so they are in
+`3d-relief.spec.ts`, which sorts first and starts them at once, and in the
+`desktop` project the last two of them (`HEAVY_SECOND`, tagged `@heavy-2`) run
+in a second heavy job. The real build of Your flights with Pyodide
+(`local-flights-pyodide.spec.ts`, `FLOWN_E2E_PYODIDE=1`) runs in the weekly run
+only. In CI a failed test of the `desktop` project is retried once, which only
+tells a flaky failure from a steady one: `failOnFlakyTests` fails the run either
+way. The `mobile`, `visual`, `webkit` and `webkit-desktop` projects do not
+retry, and neither do the heavy tests, where one attempt takes minutes.
 
 ### The site under test
 

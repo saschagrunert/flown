@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simple HTTP server for serving the generated heatmap."""
+"""Simple HTTP server for serving the generated site."""
 
 import http.server
 import os

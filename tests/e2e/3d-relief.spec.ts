@@ -14,6 +14,7 @@ import {
   test,
   expect,
   HEAVY,
+  HEAVY_SECOND,
   slopeElevationM,
   TERRAIN_ELEVATION_M,
   type Locator,
@@ -411,7 +412,7 @@ test.describe("Map orientation on the relief", HEAVY, () => {
       .toBe(true);
   });
 
-  test.describe("with motion", () => {
+  test.describe("with motion", HEAVY_SECOND, () => {
     // Before the page loads, as in replay.spec.ts: the chase view is off
     // with reduced motion, which the suite asks for
     test.use({ reducedMotion: "no-preference" });
@@ -450,7 +451,7 @@ test.describe("Map orientation on the relief", HEAVY, () => {
     });
   });
 
-  test.describe("on a slope", () => {
+  test.describe("on a slope", HEAVY_SECOND, () => {
     // Elevation tiles that rise and fall with the longitude (see
     // slopeElevationM). The ribbons stand on the ground the build sampled
     // from the real elevation tiles, so they do not follow this one; what

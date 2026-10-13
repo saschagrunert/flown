@@ -73,16 +73,16 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 # Built by `npm run build` and not committed
 BUNDLE_FILE = STATIC_DIR / "mapApp.bundle.js"
 # Replay, imported by the page the first time it is opened, and Wrapped, the
-# search and the extras (the phone's sheet and the export), likewise
-# (frontend/services/featureLoader.ts). Built by the same `npm run build`, so
-# a site without them is a site built wrong rather than a choice.
+# search, the extras (the phone's sheet and the export) and Your flights,
+# likewise (frontend/services/featureLoader.ts). Built by the same `npm run
+# build`, so a site without them is a site built wrong rather than a choice.
 FEATURES_BUNDLE_FILE = STATIC_DIR / "features.bundle.js"
 WRAPPED_BUNDLE_FILE = STATIC_DIR / "wrapped.bundle.js"
 SEARCH_BUNDLE_FILE = STATIC_DIR / "search.bundle.js"
 EXTRAS_BUNDLE_FILE = STATIC_DIR / "extras.bundle.js"
 LOCAL_BUNDLE_FILE = STATIC_DIR / "local.bundle.js"
-# The app and every module the four lazy bundles above use of it, which all
-# five entry points import
+# The app and every module the lazy bundles above use of it, which every
+# entry point imports
 SHARED_BUNDLE_FILE = STATIC_DIR / "shared.bundle.js"
 # The year worker, which parses and decodes the year files off the main
 # thread; the page imports the same file for what it does to year data itself
@@ -153,10 +153,10 @@ VENDOR_FILES = (
 # The stylesheets, in the order the page applies them: styles.css is linked in
 # the head, features.css is fetched with the feature bundle the first time
 # replay is opened, wrapped.css with the Wrapped bundle the first time
-# Wrapped is and search.css with the search bundle the first time the search
-# is (see services/featureLoader.ts). The order matters to the cascade, so it
-# is the order they are written in; the last three style different elements,
-# so which of them lands first does not.
+# Wrapped is, search.css with the search bundle the first time the search is
+# and local.css with Your flights (see services/featureLoader.ts). The order
+# matters to the cascade, so it is the order they are written in; the lazy
+# ones style different elements, so which of them lands first does not.
 CSS_FILES = ("styles.css", "features.css", "wrapped.css", "search.css", "local.css")
 # The Python of this package, zipped, which the page fetches when a visitor
 # drops flights on it and runs with Pyodide in a worker (see browser.py and
@@ -418,7 +418,7 @@ def render_html(
     which the link preview of the page is named by; None leaves the image
     out. ``private`` asks search engines not to index the page.
     """
-    logger.info("\nGenerating progressive HTML...")
+    logger.info("\nGenerating the page...")
 
     data_dir = html.escape(data_dir_name)
     # Low priority: the page's own scripts and styles decide when the map

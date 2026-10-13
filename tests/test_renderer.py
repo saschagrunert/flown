@@ -44,7 +44,7 @@ from flown.renderer import (
     _parse_kml_files,
     _parse_with_error_handling,
     _serve_hint,
-    create_progressive_heatmap,
+    build_site,
     export_flight_data,
     load_cached,
     no_flight_reason,
@@ -1094,9 +1094,7 @@ class TestCreateProgressiveHeatmap:
     def test_refuses_overlapping_output_dir(self, tmp_path, capsys):
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with pytest.raises(OutputRefusedError) as failure:
-            create_progressive_heatmap(
-                [kml_file], str(tmp_path.parent / "index.html"), str(tmp_path)
-            )
+            build_site([kml_file], str(tmp_path.parent / "index.html"), str(tmp_path))
         assert "Refusing" in str(failure.value)
         assert not (tmp_path / "airports.json").exists()
 
@@ -1110,9 +1108,7 @@ class TestCreateProgressiveHeatmap:
         (out / "data" / "airports.json").symlink_to(victim)
 
         with pytest.raises(OutputRefusedError, match="symlink"):
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
         assert victim.read_text() == "precious"
 
@@ -1125,7 +1121,7 @@ class TestCreateProgressiveHeatmap:
         aircraft.write_text("{}")
         out = tmp_path / "out"
         with pytest.raises(FlownError):
-            create_progressive_heatmap(
+            build_site(
                 [kml_file], str(out / "index.html"), str(out / "data"), [aircraft]
             )
 
@@ -1137,9 +1133,7 @@ class TestCreateProgressiveHeatmap:
         out = tmp_path / "out"
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
         # Said once, by the exception the command line prints
         assert "JavaScript bundle not found" not in capsys.readouterr().err
@@ -1155,9 +1149,7 @@ class TestCreateProgressiveHeatmap:
         monkeypatch.setenv("SOURCE_DATE_EPOCH", "yesterday")
         out = tmp_path / "out"
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
-        assert create_progressive_heatmap(
-            [kml_file], str(out / "index.html"), str(out / "data")
-        )
+        assert build_site([kml_file], str(out / "index.html"), str(out / "data"))
         warnings = [
             record.getMessage()
             for record in caplog.records
@@ -1173,7 +1165,7 @@ class TestCreateProgressiveHeatmap:
     @pytest.mark.usefixtures("bundle")
     def test_no_valid_files(self, tmp_path):
         with pytest.raises(FlownError):
-            create_progressive_heatmap(
+            build_site(
                 [str(tmp_path / "missing.kml")],
                 str(tmp_path / "o" / "index.html"),
                 str(tmp_path / "o" / "data"),
@@ -1188,7 +1180,7 @@ class TestCreateProgressiveHeatmap:
         (input_dir / "manifest.json").write_text("{}")
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
+            build_site(
                 [kml_file], str(input_dir / "index.html"), str(input_dir / "data")
             )
 
@@ -1202,7 +1194,7 @@ class TestCreateProgressiveHeatmap:
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
+            build_site(
                 [kml_file],
                 str(tmp_path / "a" / "index.html"),
                 str(tmp_path / "b" / "data"),
@@ -1221,7 +1213,7 @@ class TestCreateProgressiveHeatmap:
         empty.write_text("")
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
+            build_site(
                 [good, str(empty)],
                 str(tmp_path / "o" / "index.html"),
                 str(tmp_path / "o" / "data"),
@@ -1239,7 +1231,7 @@ class TestCreateProgressiveHeatmap:
         (input_dir / "empty.kml").write_text("<kml><Document/></kml>")
         out = tmp_path / "out"
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
+            build_site(
                 [str(input_dir / "empty.kml")],
                 str(out / "index.html"),
                 str(out / "data"),
@@ -1257,7 +1249,7 @@ class TestCreateProgressiveHeatmap:
             lambda *args, **kwargs: pytest.fail("parsed nothing"),
         )
         with pytest.raises(InvalidInputError, match="No valid KML files"):
-            create_progressive_heatmap(
+            build_site(
                 [], str(tmp_path / "o" / "index.html"), str(tmp_path / "o" / "data")
             )
 
@@ -1270,7 +1262,7 @@ class TestCreateProgressiveHeatmap:
             empty.write_text("")
             files.append(str(empty))
         with pytest.raises(InvalidInputError) as failure:
-            create_progressive_heatmap(
+            build_site(
                 files, str(tmp_path / "o" / "index.html"), str(tmp_path / "o" / "data")
             )
         assert str(failure.value) == (
@@ -1284,9 +1276,7 @@ class TestCreateProgressiveHeatmap:
         out = tmp_path / "out"
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
         err = capsys.readouterr().err
         assert f"{kml_file}: no track with a determinable year" in err
@@ -1312,9 +1302,7 @@ class TestCreateProgressiveHeatmap:
         out = tmp_path / "out"
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
-                [good, bad], str(out / "index.html"), str(out / "data")
-            )
+            build_site([good, bad], str(out / "index.html"), str(out / "data"))
 
         err = capsys.readouterr().err
         assert f"{bad}: {reason}" in err
@@ -1331,9 +1319,7 @@ class TestCreateProgressiveHeatmap:
         ]
         out = tmp_path / "out"
 
-        assert create_progressive_heatmap(
-            files, str(out / "index.html"), str(out / "data")
-        )
+        assert build_site(files, str(out / "index.html"), str(out / "data"))
 
     @pytest.mark.usefixtures("bundle")
     def test_map_bounds_leave_out_excluded_paths(self, tmp_path):
@@ -1343,9 +1329,7 @@ class TestCreateProgressiveHeatmap:
         ]
         out = tmp_path / "out"
 
-        assert create_progressive_heatmap(
-            files, str(out / "index.html"), str(out / "data")
-        )
+        assert build_site(files, str(out / "index.html"), str(out / "data"))
 
         assert _map_bounds(out) == [[51.13, 12.05], [51.55, 13.76]]
 
@@ -1360,9 +1344,7 @@ class TestCreateProgressiveHeatmap:
             ),
             pytest.raises(FlownError) as failure,
         ):
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
         assert str(failure.value) == "Export failed: Failed to process year 2025"
         assert isinstance(failure.value, ExportError)
         assert not (out / "index.html").exists()
@@ -1371,9 +1353,7 @@ class TestCreateProgressiveHeatmap:
     def test_full_disk_leaves_the_previous_site(self, tmp_path, capsys):
         out = tmp_path / "out"
         first = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml", 2025)
-        assert create_progressive_heatmap(
-            [first], str(out / "index.html"), str(out / "data")
-        )
+        assert build_site([first], str(out / "index.html"), str(out / "data"))
         previous = _tree(out)
 
         second = _write_kml(tmp_path / "input" / "2_DEAGJ_DA20.kml", 2026)
@@ -1388,9 +1368,7 @@ class TestCreateProgressiveHeatmap:
             patch("flown.data_exporter.atomic_write", atomic_write),
             pytest.raises(ExportError) as failure,
         ):
-            create_progressive_heatmap(
-                [first, second], str(out / "index.html"), str(out / "data")
-            )
+            build_site([first, second], str(out / "index.html"), str(out / "data"))
 
         assert "Export failed" in str(failure.value)
         assert "No space left on device" in str(failure.value)
@@ -1402,9 +1380,7 @@ class TestCreateProgressiveHeatmap:
     def test_failure_after_the_data_export_leaves_the_previous_site(self, tmp_path):
         out = tmp_path / "out"
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml", 2025)
-        assert create_progressive_heatmap(
-            [kml_file], str(out / "index.html"), str(out / "data")
-        )
+        assert build_site([kml_file], str(out / "index.html"), str(out / "data"))
         previous = _tree(out)
 
         other = _write_kml(tmp_path / "input" / "2_DEAGJ_DA20.kml", 2026)
@@ -1415,9 +1391,7 @@ class TestCreateProgressiveHeatmap:
             ),
             pytest.raises(ExportError),
         ):
-            create_progressive_heatmap(
-                [kml_file, other], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file, other], str(out / "index.html"), str(out / "data"))
 
         assert _tree(out) == previous
         assert _stages(out) == []
@@ -1434,9 +1408,7 @@ class TestCreateProgressiveHeatmap:
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
         assert "symlink" in str(failure.value)
         assert victim.read_text() == "precious"
@@ -1453,23 +1425,19 @@ class TestCreateProgressiveHeatmap:
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
         assert "--force" in str(failure.value)
         assert isinstance(failure.value, OutputRefusedError)
         assert _tree(out) == {"README.md": b"docs", "index.html": b"my own page"}
 
-        assert create_progressive_heatmap(
+        assert build_site(
             [kml_file], str(out / "index.html"), str(out / "data"), force=True
         )
         assert (out / "index.html").read_text() != "my own page"
         assert (out / "README.md").read_text() == "docs"
         # The site is the tool's now, and the next run replaces it as such
-        assert create_progressive_heatmap(
-            [kml_file], str(out / "index.html"), str(out / "data")
-        )
+        assert build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
     @pytest.mark.usefixtures("bundle")
     @pytest.mark.parametrize(
@@ -1486,9 +1454,7 @@ class TestCreateProgressiveHeatmap:
             (out / "index.html").write_text("an earlier page")
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
-        assert create_progressive_heatmap(
-            [kml_file], str(out / "index.html"), str(out / "data")
-        )
+        assert build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
     @pytest.mark.usefixtures("bundle")
     def test_stable_mtimes_on_request(self, tmp_path, monkeypatch):
@@ -1496,9 +1462,7 @@ class TestCreateProgressiveHeatmap:
         out = tmp_path / "out"
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
-        assert create_progressive_heatmap(
-            [kml_file], str(out / "index.html"), str(out / "data")
-        )
+        assert build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
         files = [path for path in out.rglob("*") if path.is_file()]
         assert files
@@ -1513,9 +1477,7 @@ class TestCreateProgressiveHeatmap:
         (out / "CNAME").write_text("maps.example.org")
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
-        assert create_progressive_heatmap(
-            [kml_file], str(out / "index.html"), str(out / "data")
-        )
+        assert build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
         assert not (out / "mapApp.bundle.js.map").exists()
         assert (out / "mapApp.bundle.js").exists()
@@ -1536,7 +1498,7 @@ class TestCreateProgressiveHeatmap:
         (out / "robots.txt").write_text("User-agent: *\nAllow: /\n")
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
-        assert create_progressive_heatmap(
+        assert build_site(
             [kml_file], str(out / "index.html"), str(out / "data"), private=private
         )
 
@@ -1551,9 +1513,7 @@ class TestCreateProgressiveHeatmap:
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         out = tmp_path / "out"
         assert (
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
             is not None
         )
         assert (out / "data" / "2025" / "data.json").exists()
@@ -1569,7 +1529,7 @@ class TestCreateProgressiveHeatmap:
         out.mkdir()
 
         assert (
-            create_progressive_heatmap(
+            build_site(
                 [kml_file], str(out / "index.html"), str(out / "data"), [aircraft]
             )
             is not None
@@ -1607,13 +1567,11 @@ class TestCreateProgressiveHeatmap:
 
         everything = tmp_path / "all"
         fewer = tmp_path / "fewer"
-        assert create_progressive_heatmap(
+        assert build_site(
             kml_files, str(everything / "index.html"), str(everything / "data")
         )
         removed = kml_files.pop(0)
-        assert create_progressive_heatmap(
-            kml_files, str(fewer / "index.html"), str(fewer / "data")
-        )
+        assert build_site(kml_files, str(fewer / "index.html"), str(fewer / "data"))
 
         before = ids_by_waypoint(everything)
         after = ids_by_waypoint(fewer)
@@ -1684,7 +1642,7 @@ class TestLinkPreviews:
     ):
         out = tmp_path / "out"
 
-        assert create_progressive_heatmap(
+        assert build_site(
             self._inputs(tmp_path),
             str(out / "index.html"),
             str(out / "data"),
@@ -1718,7 +1676,7 @@ class TestLinkPreviews:
         monkeypatch.setenv("FLOWN_SITE_URL", f"{self.SITE}/")
         out = tmp_path / "out"
 
-        assert create_progressive_heatmap(
+        assert build_site(
             self._inputs(tmp_path)[:1], str(out / "index.html"), str(out / "data")
         )
 
@@ -1730,7 +1688,7 @@ class TestLinkPreviews:
     def test_without_a_site_url_the_pages_go_without_images(self, tmp_path):
         out = tmp_path / "out"
 
-        assert create_progressive_heatmap(
+        assert build_site(
             self._inputs(tmp_path), str(out / "index.html"), str(out / "data")
         )
 
@@ -1747,13 +1705,13 @@ class TestLinkPreviews:
     ):
         out = tmp_path / "out"
         inputs = self._inputs(tmp_path)
-        assert create_progressive_heatmap(
+        assert build_site(
             inputs, str(out / "index.html"), str(out / "data"), site_url=self.SITE
         )
         (gone,) = self._ids(out, parse_data)["2026"]
         (out / "notes.txt").write_text("mine")
 
-        assert create_progressive_heatmap(
+        assert build_site(
             inputs[:1], str(out / "index.html"), str(out / "data"), site_url=self.SITE
         )
 
@@ -1773,11 +1731,11 @@ class TestLinkPreviews:
     def test_dropping_the_site_url_removes_the_images(self, tmp_path):
         out = tmp_path / "out"
         inputs = self._inputs(tmp_path)
-        assert create_progressive_heatmap(
+        assert build_site(
             inputs, str(out / "index.html"), str(out / "data"), site_url=self.SITE
         )
 
-        assert create_progressive_heatmap(
+        assert build_site(
             inputs, str(out / "index.html"), str(out / "data"), site_url=""
         )
 
@@ -1789,7 +1747,7 @@ class TestLinkPreviews:
         out = tmp_path / "out"
 
         with pytest.raises(FlownError) as failure:
-            create_progressive_heatmap(
+            build_site(
                 self._inputs(tmp_path),
                 str(out / "index.html"),
                 str(out / "data"),
@@ -1929,9 +1887,7 @@ class TestPipelineErrors:
             ),
             pytest.raises(ExportError, match="disk gone"),
         ):
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
 
     @pytest.mark.usefixtures("bundle")
     def test_an_input_error_of_the_export_keeps_its_kind(self, tmp_path):
@@ -1944,6 +1900,4 @@ class TestPipelineErrors:
             ),
             pytest.raises(InvalidInputError, match=r"^No flight paths$"),
         ):
-            create_progressive_heatmap(
-                [kml_file], str(out / "index.html"), str(out / "data")
-            )
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))

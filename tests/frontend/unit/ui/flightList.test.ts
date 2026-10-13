@@ -85,7 +85,7 @@ const segments = [
 ];
 
 const RAIL = `
-  <h2 id="stats-rail-title"><span class="kh-stats-title-text">Statistics</span></h2>
+  <h2 id="stats-rail-title"><span class="stats-title-text">Statistics</span></h2>
   <div id="stats-rail-tabs" role="tablist" hidden>
     <button id="stats-tab" role="tab" aria-selected="true">Statistics</button>
     <button id="flights-tab" role="tab" aria-selected="false" tabindex="-1">Flights</button>
@@ -116,7 +116,7 @@ describe("FlightList", () => {
     input.dispatchEvent(new Event("input"));
   };
   const count = (): string =>
-    panel().querySelector(".kh-flights-count")!.textContent;
+    panel().querySelector(".flights-count")!.textContent;
   const title = (): string =>
     document.querySelector("#stats-rail-title")!.textContent;
 
@@ -161,15 +161,15 @@ describe("FlightList", () => {
 
   it("leaves the Year column out while one year is shown", () => {
     const table = (): HTMLElement => panel().querySelector("table")!;
-    expect(table().classList.contains("kh-one-year")).toBe(false);
+    expect(table().classList.contains("one-year")).toBe(false);
 
     mockApp.selectedYear = "2025";
-    expect(table().classList.contains("kh-one-year")).toBe(true);
+    expect(table().classList.contains("one-year")).toBe(true);
     // The column the stylesheet hides is the year's
     expect(COLUMNS[2]!.key).toBe("year");
 
     mockApp.selectedYear = "all";
-    expect(table().classList.contains("kh-one-year")).toBe(false);
+    expect(table().classList.contains("one-year")).toBe(false);
   });
 
   it("says the touch-and-goes with the full stops", () => {
@@ -281,7 +281,7 @@ describe("FlightList", () => {
 
     first!.querySelector("button")!.click();
     second!.querySelector("td")!.click();
-    third!.querySelector<HTMLElement>(".kh-pick")!.click();
+    third!.querySelector<HTMLElement>(".pick-box")!.click();
 
     // A plain pick, Ctrl, Shift and the checkbox are PathSelection's
     expect(
@@ -311,7 +311,7 @@ describe("FlightList", () => {
     // also of one aircraft in one year
     expect(
       rows().map((row) =>
-        row.querySelector(".kh-pick")!.getAttribute("aria-label"),
+        row.querySelector(".pick-box")!.getAttribute("aria-label"),
       ),
     ).toEqual([
       "Select EDAQ → EDDP · D-EAGJ · 2025 · 11 nm",
@@ -368,7 +368,7 @@ describe("FlightList", () => {
       );
     const ticked = (): boolean[] =>
       rows().map(
-        (row) => row.querySelector<HTMLInputElement>(".kh-pick")!.checked,
+        (row) => row.querySelector<HTMLInputElement>(".pick-box")!.checked,
       );
     expect(pressed()).toEqual(["false", "false", "false"]);
 

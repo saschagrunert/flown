@@ -58,7 +58,7 @@ test.describe("Flight list", () => {
       () => window.mapApp!.currentData!.path_info.length,
     );
     await expect(panel.locator("tbody tr")).toHaveCount(flights);
-    await expect(panel.locator(".kh-flights-count")).toHaveText(
+    await expect(panel.locator(".flights-count")).toHaveText(
       `${flights.toLocaleString("en-US")} flights`,
     );
     await expect(page.locator("#stats-rail-title")).toContainText("Flights");
@@ -69,7 +69,7 @@ test.describe("Flight list", () => {
     await expect(page).toHaveURL(/[?&]l=1(&|$)/);
 
     await page.locator("#stats-tab").click();
-    await expect(page.locator("#stats-panel .kh-stats")).toBeVisible();
+    await expect(page.locator("#stats-panel .stats-body")).toBeVisible();
     await expect(panel).toBeHidden();
   });
 
@@ -93,7 +93,7 @@ test.describe("Flight list", () => {
   test("the open list has no WCAG A/AA violations", async ({ page }) => {
     const panel = await openFlightList(page);
     await panel.locator('th[data-sort="time"] button').click();
-    await panel.locator("tbody .kh-flight").first().click();
+    await panel.locator("tbody .flight-btn").first().click();
 
     await expectNoA11yViolations(page, "flight list");
   });
@@ -150,12 +150,12 @@ test.describe("Flight list", () => {
       (text) => text !== "—",
     )!;
 
-    await panel.locator(".kh-flights-search").fill(registration.toLowerCase());
+    await panel.locator(".flights-search").fill(registration.toLowerCase());
 
     const kept = await columnText(panel, 1);
     expect(kept.length).toBeGreaterThan(0);
     expect(new Set(kept)).toEqual(new Set([registration]));
-    await expect(panel.locator(".kh-flights-count")).toHaveText(
+    await expect(panel.locator(".flights-count")).toHaveText(
       new RegExp(
         `^${kept.length} of ${total.toLocaleString("en-US")} flights$`,
       ),
@@ -163,12 +163,12 @@ test.describe("Flight list", () => {
 
     const route = (await columnText(panel, 0))[0]!;
     const code = route.split(" → ")[0]!;
-    await panel.locator(".kh-flights-search").fill(code);
+    await panel.locator(".flights-search").fill(code);
     for (const text of await columnText(panel, 0)) {
       expect(text).toContain(code);
     }
 
-    await panel.locator(".kh-flights-search").fill("no such flight");
+    await panel.locator(".flights-search").fill("no such flight");
     await expect(panel.locator("tbody")).toHaveText("No flight matches");
   });
 });
@@ -194,7 +194,7 @@ test.describe("Flight list selection", () => {
 
   test("selects a flight alone, and adds one with Shift", async ({ page }) => {
     const panel = await openFlightList(page);
-    const buttons = panel.locator("tbody .kh-flight");
+    const buttons = panel.locator("tbody .flight-btn");
     const second = buttons.nth(1);
     const id = Number(await second.getAttribute("data-path-id"));
 

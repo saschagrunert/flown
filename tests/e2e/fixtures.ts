@@ -403,5 +403,13 @@ export const test = base.extend<
  */
 export const HEAVY = { tag: "@heavy" };
 
+/**
+ * The heavy tests the desktop project runs in a second heavy job, nested in
+ * a describe tagged HEAVY: the relief tests run one after the other in one
+ * worker, and all of them in one job made that chain the longest job of the
+ * run (see the e2e job of .github/workflows/test.yml).
+ */
+export const HEAVY_SECOND = { tag: "@heavy-2" };
+
 export { expect };
 export type { Locator, Page } from "@playwright/test";

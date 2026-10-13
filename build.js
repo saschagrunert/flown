@@ -229,13 +229,15 @@ const markupPlugin = {
 // (replay) and wrapped.ts (Wrapped and the statistics panel) are entry
 // points of their own that the app imports the first time each is used
 // (services/featureLoader.ts), and so are search.ts (the search of airports
-// and places) and extras.ts (the phone's sheet and the export). With
+// and places), extras.ts (the phone's sheet and the export) and local.ts
+// (Your flights). With
 // splitting, what the entry points have in common is moved into a chunk that
 // each of them imports, so there is a single instance of every module that
 // holds state (the DOM cache, the toast live region).
 //
 // esbuild makes one chunk for every set of entry points that reach a module,
-// so five entry points could share code in up to twenty-six chunks. Every lazy
+// so the entry points could share code in a chunk for every combination of
+// two or more of them. Every lazy
 // entry point imports mapApp.ts for that reason: everything the app reaches
 // is then reached by all of them, and the one chunk that holds it (the app
 // itself; mapApp.bundle.js only starts it) can carry a fixed name instead of

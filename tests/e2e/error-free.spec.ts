@@ -138,7 +138,7 @@ test.describe("Error-Free Interactions", () => {
       await centerOnAirport(page, name, 10);
       await focusAirportMarker(page, name);
       await page.keyboard.press("Enter");
-      await page.locator(".kh-popup-flight").first().click();
+      await page.locator(".popup-flight").first().click();
       await expect
         .poll(() => page.evaluate(() => window.mapApp!.selectedPathIds.size))
         .toBe(1);

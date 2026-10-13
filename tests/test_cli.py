@@ -58,7 +58,7 @@ def _run(argv, create_return=True):
     mock_create = MagicMock(return_value=create_return)
     with (
         patch("sys.argv", ["flown", *argv]),
-        patch("flown.renderer.create_progressive_heatmap", mock_create),
+        patch("flown.renderer.build_site", mock_create),
     ):
         main()
     return mock_create
@@ -225,7 +225,7 @@ class TestFileCollection:
                 "sys.argv",
                 ["flown", str(kml), str(missing), "--output-dir", str(out)],
             ),
-            patch("flown.renderer.create_progressive_heatmap", mock_create),
+            patch("flown.renderer.build_site", mock_create),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -286,7 +286,7 @@ class TestOutputHandling:
         with (
             patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
             patch(
-                "flown.renderer.create_progressive_heatmap",
+                "flown.renderer.build_site",
                 side_effect=ExportError("Export failed: disk full"),
             ),
             pytest.raises(SystemExit) as exc_info,
@@ -311,7 +311,7 @@ class TestOutputHandling:
         _, kml, out = workspace
         with (
             patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
-            patch("flown.renderer.create_progressive_heatmap", side_effect=error),
+            patch("flown.renderer.build_site", side_effect=error),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -412,7 +412,7 @@ class TestOutputHandling:
         _, kml, out = workspace
         with (
             patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
-            patch("flown.renderer.create_progressive_heatmap", side_effect=error),
+            patch("flown.renderer.build_site", side_effect=error),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -549,7 +549,7 @@ class TestObfuscateFlag:
                     str(out),
                 ],
             ),
-            patch("flown.renderer.create_progressive_heatmap", mock_create),
+            patch("flown.renderer.build_site", mock_create),
             patch("flown.obfuscate.obfuscate_kml_files", side_effect=obfuscate),
         ):
             main()

@@ -43,7 +43,7 @@ export default defineConfig({
       // only CI runs still shows when its tests stop reaching it. build.js
       // itself builds as it is imported, so its helpers live in scripts/.
       include: ["flown/frontend/**/*.{js,ts}", "scripts/*.js"],
-      exclude: ["**/node_modules/**", "**/tests/**"],
+      exclude: ["**/node_modules/**"],
       clean: true,
       // One to three points below what the suite reaches, so a real
       // regression fails the build while a new defensive branch does not.

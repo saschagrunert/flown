@@ -56,9 +56,9 @@ test.describe("Keyboard", () => {
     // Opened from the keyboard, the popup takes focus
     const popup = mapPopup(page);
     await expect(popup).toBeVisible();
-    await expect(popup.locator(".kh-popup-airport")).toBeFocused();
+    await expect(popup.locator(".popup-airport")).toBeFocused();
 
-    const flights = popup.locator(".kh-popup-flight");
+    const flights = popup.locator(".popup-flight");
     await expect(flights).toHaveCount(airport.flights);
     // Route, aircraft and year; never a date or a time of day
     for (const label of await flights.allTextContents()) {
@@ -88,7 +88,7 @@ test.describe("Keyboard", () => {
       .poll(() => page.evaluate(() => window.mapApp!.selectedPathIds.size))
       .toBe(1);
     await expect(
-      popup.locator('.kh-popup-flight[aria-pressed="true"]'),
+      popup.locator('.popup-flight[aria-pressed="true"]'),
     ).toHaveCount(1);
     // Exactly one flight: replay is now within reach
     await expect(page.locator("#replay-btn")).toHaveAttribute(
@@ -136,8 +136,8 @@ test.describe("Keyboard", () => {
     });
     await page.mouse.click(marker.x, marker.y);
 
-    await expect(page.locator(".kh-popup-flight").first()).toBeVisible();
-    await expect(page.locator(".kh-popup-airport")).not.toBeFocused();
+    await expect(page.locator(".popup-flight").first()).toBeVisible();
+    await expect(page.locator(".popup-airport")).not.toBeFocused();
   });
 
   test("Share mode says it is unavailable without a selection", async ({

@@ -196,6 +196,17 @@ def no_site_url(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_worker_limit(monkeypatch):
+    """Lift the cap on workers again after each test.
+
+    It is one setting per process, which ``--jobs`` and the browser build
+    set, and a test that set it left every later test of its pytest worker
+    with one worker, failing those that count them in a random order.
+    """
+    monkeypatch.setattr("flown.workers._worker_limit", None)
+
+
+@pytest.fixture(autouse=True)
 def private_parse_cache(monkeypatch, tmp_path_factory):
     """Give every test its own parse cache directory (in this process).
 

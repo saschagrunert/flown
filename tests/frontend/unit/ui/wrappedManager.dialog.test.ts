@@ -155,7 +155,7 @@ describe("WrappedManager dialog", () => {
       );
       expect(el("wrapped-year").textContent).toBe("2024");
       expect(el("wrapped-cards-column").getAttribute("aria-busy")).toBe("true");
-      const loading = el("wrapped-stats").querySelector(".kh-stats-loading");
+      const loading = el("wrapped-stats").querySelector(".stats-loading");
       expect(loading?.getAttribute("role")).toBe("status");
       expect(loading?.textContent).toBe("Preparing your year…");
       expect(statValue("Flights")).toBeUndefined();
@@ -166,7 +166,7 @@ describe("WrappedManager dialog", () => {
 
       await vi.runAllTimersAsync();
       expect(el("wrapped-cards-column").hasAttribute("aria-busy")).toBe(false);
-      expect(el("wrapped-stats").querySelector(".kh-stats-loading")).toBeNull();
+      expect(el("wrapped-stats").querySelector(".stats-loading")).toBeNull();
       expect(statValue("Flights")).toBe("3");
     });
 

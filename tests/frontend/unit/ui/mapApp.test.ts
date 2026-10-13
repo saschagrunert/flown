@@ -256,7 +256,7 @@ describe("MapApp", () => {
 
       expect(loggerMock.logError).toHaveBeenCalledWith(error);
       expect(mapEl.innerHTML).toBe(INIT_ERROR_HTML);
-      expect(mapEl.querySelector(".kh-init-error")!.textContent).toBe(
+      expect(mapEl.querySelector(".init-error")!.textContent).toBe(
         "The map could not start. Reload the page to try again.",
       );
     });
@@ -307,7 +307,7 @@ describe("MapApp", () => {
 
       await initMapApp(config).catch(reportInitFailure);
 
-      const notice = mapEl.querySelector(".kh-init-error")!;
+      const notice = mapEl.querySelector(".init-error")!;
       expect(notice.textContent).toBe(
         "WebGL 2 is not available. Turn on hardware acceleration or try another browser.",
       );
@@ -333,7 +333,7 @@ describe("MapApp", () => {
       await initMapApp(config).catch(reportInitFailure);
 
       expect(loggerMock.logError).toHaveBeenCalledWith(error);
-      expect(mapEl.querySelector(".kh-init-error")).not.toBeNull();
+      expect(mapEl.querySelector(".init-error")).not.toBeNull();
       delete window.mapApp;
     });
   });
