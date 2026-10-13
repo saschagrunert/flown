@@ -833,12 +833,6 @@ export class WrappedManager {
       control?.focus();
       if (control && document.activeElement === control) return;
     }
-
-    // Not even that: do not leave focus inside the hidden dialog
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && active.closest("#wrapped-modal")) {
-      active.blur();
-    }
   }
 
   /** Cancel the deferred map move, resize and restore timers */
@@ -943,16 +937,21 @@ export class WrappedManager {
       }, MAP_RESTORE_DELAY_MS);
     }
 
+    // Focus leaves the dialog while it is still shown, as a hidden element
+    // cannot be blurred, and goes back only once it is gone: the mobile bar
+    // is hidden under the dialog (wrapped.css), and its Wrapped tab cannot
+    // take focus until then
     const modal = domCache.get("wrapped-modal");
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && modal?.contains(active)) active.blur();
     if (modal) modal.hidden = true;
     this.setWrappedVisible(false);
+    this.releaseFocus();
 
     // Remove Escape key handler
     if (this.escapeHandler) {
       document.removeEventListener("keydown", this.escapeHandler);
       this.escapeHandler = null;
     }
-
-    this.releaseFocus();
   }
 }
