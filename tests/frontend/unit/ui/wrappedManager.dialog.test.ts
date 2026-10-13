@@ -714,6 +714,24 @@ describe("WrappedManager dialog", () => {
       expect(document.activeElement).toBe(tab);
     });
 
+    it("focuses the Wrapped tab once the dialog is hidden", () => {
+      // The bar is hidden under the dialog (wrapped.css) and its tab cannot
+      // take focus until the dialog is gone (regression)
+      el("wrapped-btn").remove();
+      const tab = document.createElement("button");
+      tab.id = "mobile-tab-wrapped";
+      document.body.appendChild(tab);
+      const focus = tab.focus.bind(tab);
+      tab.focus = () => {
+        if (el("wrapped-modal").hidden) focus();
+      };
+      openWrapped();
+
+      wrappedManager.closeWrapped();
+
+      expect(document.activeElement).toBe(tab);
+    });
+
     it("takes the airport markers out of the tab order while open, and only them", () => {
       // MapLibre listens on the canvas container for every drag, pinch and
       // wheel. Inert, it would freeze the overview map of the dialog.
