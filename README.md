@@ -12,7 +12,10 @@ and a year-in-review summary. The
 [live demo](https://saschagrunert.github.io/flown) shows the flights of this
 repository.
 
-To publish your own flights the same way, fork this repository and follow
+To see your own flights without setting anything up, open the live demo and drop
+your KML files on it: [Your flights](doc/features.md#your-flights) builds them
+in your browser, and they never leave it. To publish them the same way, fork
+this repository and follow
 [Your own site on GitHub Pages](doc/hosting.md#your-own-site-on-github-pages);
 [Adding flights](#adding-flights) takes each new flight from the export to the
 site.

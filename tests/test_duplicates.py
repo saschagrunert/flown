@@ -17,12 +17,13 @@ from flown.duplicates import (
     _clock_known,
     _clock_shifts,
     _clocks_may_line_up,
+    _names,
     _one_flight,
     _Timed,
     drop_overlapping_paths,
     same_flight,
 )
-from flown.types import TrackPoint
+from flown.types import PathMetadata, TrackPoint
 
 # East at 50 m/s (97 kt) at 50 degrees north
 SPEED = 0.0007
@@ -601,3 +602,24 @@ class TestClocksMayLineUp:
         assert not _clocks_may_line_up(
             shorter, self._moved(JUNE_2025 + offset, 1200.0), False
         )
+
+
+def _metadata(*entries: dict[str, str]) -> list[PathMetadata]:
+    return cast("list[PathMetadata]", list(entries))
+
+
+class TestNames:
+    def test_by_file_name(self):
+        metadata = _metadata(
+            {"filename": "1_DEAGJ_DA20.kml", "source": "a/1_DEAGJ_DA20.kml"},
+            {"filename": "2_DEAGJ_DA20.kml", "source": "a/2_DEAGJ_DA20.kml"},
+        )
+        assert _names(metadata, 1, 0) == ["2_DEAGJ_DA20.kml", "1_DEAGJ_DA20.kml"]
+
+    def test_by_path_where_the_names_are_the_same(self):
+        """Two folders with files of one name."""
+        metadata = _metadata(
+            {"filename": "1_DEAGJ_DA20.kml", "source": "a/1_DEAGJ_DA20.kml"},
+            {"filename": "1_DEAGJ_DA20.kml", "source": "b/1_DEAGJ_DA20.kml"},
+        )
+        assert _names(metadata, 1, 0) == ["b/1_DEAGJ_DA20.kml", "a/1_DEAGJ_DA20.kml"]

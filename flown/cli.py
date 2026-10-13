@@ -10,6 +10,7 @@ ends in one line on stderr.
 
 import argparse
 import logging
+import math
 import os
 import sys
 from pathlib import Path
@@ -37,6 +38,45 @@ MAX_REPORTED_VIOLATIONS = 5
 EXIT_FAILED = 1
 EXIT_USAGE = 2
 EXIT_INTERRUPTED = 130
+
+
+# What the environment variables were called before the rename to Flown
+OLD_ENV_PREFIX = "KML_HEATMAP_"
+
+
+def _old_cache_dir() -> Path | None:
+    """Where kml-heatmap kept its cache, None without a home (containers)."""
+    try:
+        return Path.home() / ".cache" / "kml-heatmap"
+    except RuntimeError:
+        return None
+
+
+def _warn_about_old_names() -> None:
+    """Say what the rename from kml-heatmap left behind, which nothing reads.
+
+    A deploy that set ``KML_HEATMAP_REQUIRE_AIRPORT_DB=1`` to fail without
+    the airport database would now publish without it, without a word; the
+    old cache directory keeps the parsed flights, real dates among them,
+    that nothing reads or prunes any more.
+    """
+    old = sorted(name for name in os.environ if name.startswith(OLD_ENV_PREFIX))
+    if old:
+        logger.warning(
+            "%s %s no longer read; rename %s",
+            ", ".join(old),
+            "is" if len(old) == 1 else "are",
+            ", ".join(
+                f"{name} to {name.replace(OLD_ENV_PREFIX, 'FLOWN_', 1)}" for name in old
+            ),
+        )
+    old_cache = _old_cache_dir()
+    if old_cache is not None and old_cache.is_dir():
+        logger.warning(
+            "%s is the cache of kml-heatmap, which Flown does not read; it "
+            "holds parsed flights with their dates, and can be removed",
+            old_cache,
+        )
 
 
 def _fatal(message: str, status: int = EXIT_FAILED) -> NoReturn:
@@ -291,6 +331,7 @@ def _generate(
     site_url: str | None = None,
     private: bool = False,
     quiet: bool = False,
+    trim_ends: float = 0,
 ) -> None:
     """Generate the site into ``output_dir``.
 
@@ -302,6 +343,8 @@ def _generate(
     images are named by (see ``flown.previews``); None takes it from
     ``FLOWN_SITE_URL``. ``private`` asks search engines not to index
     the site. ``quiet`` leaves out the banner and prints one line at the end.
+    ``trim_ends`` leaves out the points of every flight within that many
+    metres of where it starts and ends (see ``geometry.trim_path_ends``).
 
     The generated site never carries a flight date finer than the year,
     whatever the inputs hold: the exported paths keep their year, their
@@ -363,6 +406,7 @@ def _generate(
         # a second time
         site_url=site_url or "",
         private=private,
+        trim_ends=trim_ends,
     )
     if quiet:
         # The line the quiet run is for: where the site went
@@ -381,6 +425,17 @@ def _refresh_airports() -> None:
 
     refresh_airport_databases()
     logger.info("Marked the cached airport database for a fresh download")
+
+
+def _metres(text: str) -> float:
+    """``--trim-ends``: a distance of at least 0 metres."""
+    try:
+        metres = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number of metres: {text!r}") from None
+    if not math.isfinite(metres) or metres < 0:
+        raise argparse.ArgumentTypeError(f"must be at least 0, not {text}")
+    return metres
 
 
 def _jobs(text: str) -> int:
@@ -519,6 +574,19 @@ a refused output directory, 1 when the build failed, 130 when interrupted.
         ),
     )
 
+    privacy.add_argument(
+        "--trim-ends",
+        metavar="METRES",
+        type=_metres,
+        default=0,
+        help=(
+            "leave out the points of every flight within METRES of where it "
+            "starts and ends, so the taxiing and the spot the aircraft is "
+            "parked on are not published (300 covers most; default: 0, keep "
+            "them)"
+        ),
+    )
+
     network = parser.add_argument_group("network and cache")
     network.add_argument(
         "--no-terrain",
@@ -568,6 +636,7 @@ def main() -> None:
         set_log_level(logging.WARNING)
     # The table of --list goes to stdout alone, so it can be piped or saved
     set_info_stream("stderr" if args.list else "stdout")
+    _warn_about_old_names()
     if args.cache_dir:
         # Before anything reads it: flown.cache does at import
         os.environ[CACHE_DIR_ENV] = str(Path(args.cache_dir).expanduser().resolve())
@@ -593,6 +662,7 @@ def main() -> None:
             args.site_url,
             args.private,
             args.quiet and not args.debug,
+            args.trim_ends,
         )
     except KeyboardInterrupt:
         _fatal("Interrupted", EXIT_INTERRUPTED)

@@ -16,6 +16,7 @@ from flown.geometry import (
     longitude_difference,
     planar_km,
     planar_metres,
+    trim_path_ends,
     true_bearing,
     web_mercator,
 )
@@ -153,3 +154,31 @@ class TestWebMercator:
     def test_beyond_the_edge_is_clamped(self):
         assert web_mercator(89.9, 0.0) == web_mercator(MAX_LATITUDE, 0.0)
         assert web_mercator(-89.9, 0.0) == web_mercator(-MAX_LATITUDE, 0.0)
+
+
+def _east(*metres):
+    """Points at 51 north, ``metres`` east of 12 east each."""
+    from flown.types import TrackPoint
+
+    return [
+        TrackPoint(51.0, 12.0 + m / (METRES_PER_DEGREE * 0.6293), 100.0) for m in metres
+    ]
+
+
+class TestTrimPathEnds:
+    def test_drops_the_points_near_both_ends(self):
+        """The taxiing from the parking spot, and back to it."""
+        path = _east(0, 50, 200, 1000, 5000, 9000, 9800, 9950, 10000)
+
+        trimmed = trim_path_ends(path, 300)
+
+        assert trimmed == path[3:6]
+
+    def test_off_keeps_the_path(self):
+        path = _east(0, 50, 1000)
+        assert trim_path_ends(path, 0) == path
+
+    def test_a_path_that_never_leaves_keeps_one_point(self):
+        """Which the export leaves out, rather than publish the spot."""
+        path = _east(0, 50, 100, 20)
+        assert trim_path_ends(path, 300) == path[:1]

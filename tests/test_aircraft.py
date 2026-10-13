@@ -1,6 +1,7 @@
 """Tests for aircraft module."""
 
 import json
+import logging
 
 import pytest
 from hypothesis import given, settings
@@ -379,6 +380,21 @@ class TestLoadAircraftData:
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert load_aircraft_data(tmp_path / "missing.json") == {}
+
+    @pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16"])
+    def test_reads_what_editors_save(self, tmp_path, encoding):
+        """Notepad writes a byte order mark, or UTF-16."""
+        path = tmp_path / "aircraft.json"
+        path.write_text('{"D-EAGJ": "Kaétana"}', encoding=encoding)
+        assert load_aircraft_data(path) == {"D-EAGJ": "Kaétana"}
+
+    def test_another_encoding_returns_empty_with_a_warning(self, tmp_path, caplog):
+        """A crash with a traceback before, in the CLI and in the page."""
+        path = tmp_path / "aircraft.json"
+        path.write_bytes('{"D-EAGJ": "Écureuil"}'.encode("cp1252"))
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            assert load_aircraft_data(path) == {}
+        assert "save it as UTF-8" in caplog.text
 
     def test_keys_are_normalized_like_file_names(self, tmp_path):
         """The key DEAGJ has to match D-EAGJ from 1_DEAGJ_DA20.kml."""

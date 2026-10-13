@@ -38,7 +38,7 @@ self.onmessage = async (event) => {
   const say = (progress) => self.postMessage({ id, progress });
   say("Loading the Python runtime…");
   if (build.files.some((file) => file.name === "broken.kml")) {
-    self.postMessage({ id, error: "1 of 1 file(s) failed to parse (broken.kml, see above); fix or remove them" });
+    self.postMessage({ id, error: "No file holds a flight to export (broken.kml: not a KML file)" });
     return;
   }
   say("Parsing " + build.files.length + " KML file(s)...");
@@ -76,7 +76,9 @@ async function stubWorker(page: Page): Promise<void> {
 }
 
 const panel = (page: Page) => page.locator(PANEL);
-const status = (page: Page) => page.locator(".local-flights-status");
+/** What the panel says: the status, or the alert of an error beside it */
+const status = (page: Page) =>
+  page.locator(".local-flights-status:not(:empty)");
 const shown = (page: Page) => page.locator(".local-flights-shown");
 
 async function openPanel(page: Page): Promise<void> {
@@ -138,7 +140,9 @@ test.describe("Your flights", () => {
     await openPanel(page);
 
     await expect(shown(page)).toHaveText("Showing the site's flights");
-    await expect(status(page)).toContainText("Drop the KML or KMZ files");
+    await expect(panel(page).locator(".local-flights-hint")).toContainText(
+      "1_DEAGJ_DA20.kml",
+    );
     await expect(
       page.getByRole("button", { name: "Show my flights" }),
     ).toBeHidden();
@@ -152,7 +156,8 @@ test.describe("Your flights", () => {
     page,
   }) => {
     // Six loads of the page, each drawing the map anew: 25 to 34 s of the
-    // desktop project's 45 s on green runs
+    // desktop project's 45 s on green runs, longer on a phone's software
+    // WebGL
     test.slow();
     const collector = await attachErrorCollectors(page);
     await gotoApp(page);
@@ -192,11 +197,15 @@ test.describe("Your flights", () => {
       "local",
     );
 
-    // Copy link has nothing to carry them in
+    // Copy link has nothing to carry them in, and says so before a press
     await openPanel(page);
     await page.keyboard.press("Escape");
     if (!(await usesMobileBar(page))) {
-      await page.locator("#share-btn").click();
+      await expect(page.locator("#share-btn")).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+      await page.locator("#share-btn").click({ force: true });
       await expect(
         page.getByText(
           "Links cannot carry flights that are only in this browser",
@@ -248,7 +257,7 @@ test.describe("Your flights", () => {
 
     await dropFiles(page, ["broken.kml"]);
 
-    await expect(status(page)).toHaveText(/failed to parse \(broken\.kml/);
+    await expect(status(page)).toHaveText(/broken\.kml: not a KML file/);
     await expect(status(page)).toHaveAttribute("role", "alert");
     await expect(shown(page)).toHaveText("Showing the site's flights");
     expect(await page.evaluate(() => window.mapApp!.config.dataDir)).toBe(
@@ -294,7 +303,12 @@ test.describe("Your flights", () => {
       return transfer;
     });
 
+    // The sheet comes with the drag going on over the page, which fires
+    // dragover after dragover: one that ended before the bundle came puts
+    // up none (ui/fileDrop.ts)
     await page.dispatchEvent("body", "dragenter", { dataTransfer: transfer });
+    await expect(page.locator("#file-drop-sheet")).toBeAttached();
+    await page.dispatchEvent("body", "dragover", { dataTransfer: transfer });
     await expect(page.locator("#file-drop-sheet")).toBeVisible();
     await expect(page.locator("#file-drop-sheet")).toContainText(
       "Drop the files to see your flights",

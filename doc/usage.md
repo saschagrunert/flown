@@ -317,8 +317,9 @@ and static assets.
 
 ```text
 flown [--version] [--output-dir DIR] [--force] [--site-url URL] [--list]
-            [-q] [--debug] [--obfuscate-inputs] [--private] [--no-terrain]
-            [--cache-dir DIR] [--refresh-airports] [--jobs N] path [path ...]
+            [-q] [--debug] [--obfuscate-inputs] [--private]
+            [--trim-ends METRES] [--no-terrain] [--cache-dir DIR]
+            [--refresh-airports] [--jobs N] path [path ...]
 ```
 
 `flown --help` lists the options in the groups below; `--version` prints the
@@ -385,6 +386,11 @@ Privacy:
   address. The tool writes no `robots.txt`; see
   [Hosting](hosting.md#keeping-it-out-of-search-engines) for keeping crawlers
   out entirely.
+- `--trim-ends METRES` - Leave out the points of every flight within `METRES` of
+  where it starts and ends, so the taxiing and the spot the aircraft is parked
+  on are not published (default: 0, keep them; 300 covers most fields). A
+  recording that never leaves that distance is left out. See
+  [Privacy](privacy.md#what-reaches-the-site).
 
 Network and cache:
 
@@ -451,6 +457,15 @@ led to it, and the exit status says what kind it was:
   airport database or elevation tile that is unavailable, an unwritable output
   directory or a full disk, an input file `--obfuscate-inputs` could not scrub.
 - `130` - The run was interrupted (Ctrl+C); the previous site is left as it was.
+
+### Upgrading from kml-heatmap
+
+The tool was called kml-heatmap before, and its environment variables started
+with `KML_HEATMAP_`: they are not read any more. Rename each to the `FLOWN_`
+name (`KML_HEATMAP_REQUIRE_AIRPORT_DB` to `FLOWN_REQUIRE_AIRPORT_DB`, and so
+on); a run that finds one of the old names says so. The old cache directory,
+`~/.cache/kml-heatmap`, is not read either and holds the parsed flights with
+their real dates: the run names it as well, and it can be removed.
 
 ## Troubleshooting
 

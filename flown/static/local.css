@@ -147,6 +147,37 @@
   color: var(--color-accent-blue);
   text-decoration: underline;
 }
+/* "Drop or choose" where a pointer can drag files, "Choose" on a touch
+   screen, which drops none */
+.local-flights-drop-touch {
+  display: none;
+}
+@media (pointer: coarse) {
+  .local-flights-drop-text {
+    display: none;
+  }
+  .local-flights-drop-touch {
+    display: inline;
+  }
+}
+
+/* How the files are named, and the warnings of the last build */
+.local-flights-hint,
+.local-flights-warnings {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+.local-flights-hint a {
+  color: var(--color-accent-blue);
+}
+.local-flights-warnings {
+  padding-left: var(--space-md);
+  font-size: var(--text-xs);
+}
+.local-flights-warnings[hidden] {
+  display: none;
+}
 
 /* The files kept, each with its size and its Remove */
 .local-flights-files {
@@ -164,10 +195,20 @@
 }
 .local-flights-files li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 0 var(--space-sm);
   min-height: 28px;
   font-size: var(--text-sm);
+}
+/* A file the last build left out, and why, under its name */
+.local-flights-files .is-skipped .local-flights-name {
+  color: var(--color-text-dim);
+}
+.local-flights-reason {
+  flex-basis: 100%;
+  color: var(--color-error);
+  font-size: var(--text-xs);
 }
 .local-flights-name {
   flex: 1;
@@ -189,11 +230,26 @@
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
-.local-flights-status[hidden] {
-  display: none;
+/* Empty, a region takes no room but stays in the accessibility tree, so
+   what it says next is heard: hidden, it often was not */
+.local-flights-status:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .local-flights-status.is-error {
   color: var(--color-error);
+}
+
+.local-flights-terrain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
 }
 
 .local-flights-actions {

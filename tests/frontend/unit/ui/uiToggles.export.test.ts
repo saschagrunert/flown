@@ -837,7 +837,9 @@ describe("UIToggles export and share", () => {
       const share = vi.fn().mockResolvedValue(undefined);
       defineNavigatorProperty("share", share);
       const writeText = vi.fn().mockResolvedValue(undefined);
-      defineNavigatorProperty("clipboard", { writeText });
+      // The link to come, before the code that packs it is there
+      const write = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("clipboard", { writeText, write });
       app.config.localFlights = {
         years: [2025],
         flights: 1,
@@ -859,6 +861,7 @@ describe("UIToggles export and share", () => {
       expect(toast()?.classList.contains("toast-error")).toBe(false);
       expect(share).not.toHaveBeenCalled();
       expect(writeText).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
       expect(app.stateManager.flush).not.toHaveBeenCalled();
     });
 

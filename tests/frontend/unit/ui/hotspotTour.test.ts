@@ -96,6 +96,7 @@ const HELD = [
   "replay-all-btn",
   "wrapped-btn",
   "cross-section-btn",
+  "local-flights-btn",
 ];
 
 describe("hotspot tour", () => {

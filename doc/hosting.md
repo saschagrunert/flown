@@ -124,6 +124,25 @@ host that does can add what a meta tag cannot do:
 
 A second `Content-Security-Policy` header adds to the meta tag rather than
 replacing it: a request has to pass both, so `frame-ancestors` alone is enough.
+A header that names sources as well reaches further than the meta tag: the
+worker of Your flights, started from `localWorker.bundle.js`, follows the policy
+its script is served with, and loads Pyodide from `cdn.jsdelivr.net`, the
+airport database from `davidmegginson.github.io` and the elevation tiles from
+`s3.amazonaws.com`, and runs WebAssembly and two modules from `blob:` URLs (see
+[SECURITY.md](../SECURITY.md#your-flights)). Leave such a header off that one
+file, or allow those, or the panel says the Python runtime could not be loaded.
+
+## Your flights and the origin
+
+What a visitor drops on the page is kept in the browser's storage for the site's
+origin, raw, with the real dates and the field the aircraft is parked at (Your
+flights asks the browser to keep it rather than evict it). Every page of an
+origin shares that storage. On `user.github.io` that is every Pages site of the
+account: a script on any of them, a dependency gone bad included, could read
+what visitors dropped on yours. A site that offers Your flights to others is
+best served from an origin of its own, a custom domain; the key names
+(`flown-local:/directory/`) only keep two maps of one origin apart, not out of
+each other's reach.
 
 ## Link previews need --site-url
 

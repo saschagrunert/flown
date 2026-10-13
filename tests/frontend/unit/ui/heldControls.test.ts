@@ -233,4 +233,9 @@ describe("holdControls", () => {
       "selection-exit-btn",
     ]);
   });
+
+  it("has a replay hold Your flights, whose reload would end it without a word", () => {
+    // The button did nothing while a replay ran, and said nothing either
+    expect(REPLAY_HELD_CONTROL_IDS).toContain("local-flights-btn");
+  });
 });

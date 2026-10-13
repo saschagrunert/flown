@@ -255,6 +255,19 @@ def _broken_future(*_args, **_kwargs):
 
 
 class TestWorkerPool:
+    def test_without_processes_a_pool_works_here_without_trying(self, caplog):
+        """The build in the page, which has none (flown.browser)."""
+        pool_class = MagicMock()
+        workers_module.configure_workers(1, processes=False)
+        with (
+            patch.object(workers_module, "ProcessPoolExecutor", pool_class),
+            workers_module.WorkerPool(2, "testing") as pool,
+        ):
+            assert pool.submit(_double, 2).result() == 4
+            assert list(pool.map(_double, [1, 2])) == [2, 4]
+        pool_class.assert_not_called()
+        assert "failed" not in caplog.text
+
     def test_a_pool_that_cannot_start_works_here(self, caplog):
         with (
             patch.object(

@@ -128,6 +128,66 @@ class TestTerrain:
         assert "--no-terrain" in capsys.readouterr().out
 
 
+class TestOldNames:
+    def test_warns_about_a_variable_of_kml_heatmap(
+        self, workspace, monkeypatch, capsys
+    ):
+        """KML_HEATMAP_REQUIRE_AIRPORT_DB=1 no longer stops a build."""
+        _, kml, out = workspace
+        monkeypatch.setenv("KML_HEATMAP_REQUIRE_AIRPORT_DB", "1")
+
+        _run([str(kml), "--output-dir", str(out)])
+
+        assert (
+            "rename KML_HEATMAP_REQUIRE_AIRPORT_DB to FLOWN_REQUIRE_AIRPORT_DB"
+            in capsys.readouterr().err
+        )
+
+    def test_warns_about_the_cache_of_kml_heatmap(
+        self, workspace, monkeypatch, tmp_path, capsys
+    ):
+        _, kml, out = workspace
+        old_cache = tmp_path / "kml-heatmap"
+        (old_cache / "kml").mkdir(parents=True)
+        monkeypatch.setattr("flown.cli._old_cache_dir", lambda: old_cache)
+
+        _run([str(kml), "--output-dir", str(out)])
+
+        err = capsys.readouterr().err
+        assert f"{old_cache} is the cache of kml-heatmap" in err
+
+    def test_quiet_without_either(self, workspace, capsys):
+        _, kml, out = workspace
+
+        _run([str(kml), "--output-dir", str(out)])
+
+        assert "kml-heatmap" not in capsys.readouterr().err
+
+
+class TestTrimEnds:
+    def test_off_by_default(self, workspace):
+        _, kml, out = workspace
+
+        mock_create = _run([str(kml), "--output-dir", str(out)])
+
+        assert mock_create.call_args.kwargs["trim_ends"] == 0
+
+    def test_the_distance_is_passed_on(self, workspace):
+        _, kml, out = workspace
+
+        mock_create = _run([str(kml), "--output-dir", str(out), "--trim-ends", "300"])
+
+        assert mock_create.call_args.kwargs["trim_ends"] == 300
+
+    @pytest.mark.parametrize("value", ["-1", "far", "nan", "inf"])
+    def test_refuses_what_is_no_distance(self, workspace, value, capsys):
+        _, kml, out = workspace
+        with pytest.raises(SystemExit) as exited:
+            _run([str(kml), "--output-dir", str(out), "--trim-ends", value])
+        assert exited.value.code == 2
+        assert "--trim-ends" in capsys.readouterr().err
+
+
 class TestSiteUrl:
     def test_unset_is_passed_as_none_of_its_own(self, workspace):
         _, kml, out = workspace

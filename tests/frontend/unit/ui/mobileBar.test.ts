@@ -93,6 +93,8 @@ function createMockApp() {
     resetView: vi.fn(() => Promise.resolve()),
     // Something to reset unless a test says otherwise
     isReset: vi.fn(() => false),
+    // The site's flights unless a test says otherwise (ui/localFlights.ts)
+    config: {} as { localFlights?: object },
     // The first load is over unless a test says otherwise; the bar runs the
     // actions that need data through the same check as the desktop controls
     isInitializing: false,
@@ -911,6 +913,26 @@ describe("MobileBar", () => {
         document.querySelector('[data-row="share"] .sheet-row-label')
           ?.textContent,
       ).toBe("Copy link");
+      expect(
+        document
+          .querySelector('[data-row="share"]')!
+          .getAttribute("aria-disabled"),
+      ).toBe("false");
+    });
+
+    it("is dimmed with the reason while the page shows the visitor's flights", () => {
+      app.config.localFlights = {};
+      create();
+      tab("more").click();
+
+      const row = document.querySelector<HTMLElement>('[data-row="share"]')!;
+      expect(row.getAttribute("aria-disabled")).toBe("true");
+      expect(row.querySelector(".sheet-row-hint")!.textContent).toBe(
+        "Links cannot carry flights that are only in this browser",
+      );
+      // Still a live control: the tap says so (ui/uiToggles.ts)
+      row.click();
+      expect(app.uiToggles.shareLink).toHaveBeenCalledTimes(1);
     });
   });
 

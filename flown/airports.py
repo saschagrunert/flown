@@ -264,7 +264,8 @@ def extract_airport_name(full_name: str, is_at_path_end: bool = False) -> str | 
         return None
 
     # Validate: must have ICAO code OR be multi-word name
-    has_icao_code = bool(re.search(r"\b[A-Z]{4}\b", airport_name))
+    # As the lookup takes a code: no VIII, and no I, J, Q or X region
+    has_icao_code = bool(extract_icao_codes_from_name(airport_name))
     is_single_word = len(airport_name.split()) == 1
 
     # Skip if it's "Unknown" or single-word without ICAO code

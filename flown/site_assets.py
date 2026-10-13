@@ -9,13 +9,13 @@ one place, the way ``export_writers`` holds the data files.
 
 import hashlib
 import html
+import io
 import json
 import os
 import re
 import shutil
 import string
 import subprocess
-import tempfile
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote
 
-from .cache import atomic_text_write
+from .cache import atomic_bytes_write, atomic_text_write
 from .exceptions import FlownError
 from .logger import logger
 from .previews import PREVIEW_FILE_PATTERNS, PREVIEW_FILES, page_preview_tags
@@ -683,23 +683,18 @@ def _write_python_sources(output_dir: Path, package: Path | None = None) -> None
     """
     package = package if package is not None else Path(__file__).parent
     target = output_dir / PYTHON_SOURCES_FILE
-    with tempfile.NamedTemporaryFile(
-        dir=output_dir, prefix=f".{PYTHON_SOURCES_FILE}.", suffix=".tmp", delete=False
-    ) as handle:
-        temp = Path(handle.name)
-    try:
-        with zipfile.ZipFile(
-            temp, "w", zipfile.ZIP_DEFLATED, compresslevel=9
-        ) as archive:
-            for source in sorted(package.glob("*.py")):
-                info = zipfile.ZipInfo(f"{package.name}/{source.name}")
-                info.date_time = (1980, 1, 1, 0, 0, 0)
-                info.compress_type = zipfile.ZIP_DEFLATED
-                archive.writestr(info, source.read_bytes())
-        temp.replace(target)
-    except BaseException:
-        temp.unlink(missing_ok=True)
-        raise
+    archive_bytes = io.BytesIO()
+    with zipfile.ZipFile(
+        archive_bytes, "w", zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as archive:
+        for source in sorted(package.glob("*.py")):
+            info = zipfile.ZipInfo(f"{package.name}/{source.name}")
+            info.date_time = (1980, 1, 1, 0, 0, 0)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, source.read_bytes())
+    # With the mode of every other file of the site: a web server of another
+    # user has to read it, or the build in the page fails as if offline
+    atomic_bytes_write(target, archive_bytes.getvalue())
     logger.info(
         "Python sources packed: %s (%.1f KB)",
         PYTHON_SOURCES_FILE,

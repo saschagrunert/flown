@@ -50,10 +50,19 @@ export interface LocalInfo {
   files: string[];
   /** Those files by name, size and time (fileStamp): what a rebuild tells by */
   stamp: string;
-  /** The build of the site that made it; its format is that build's */
+  /**
+   * The build of the site that made it, its frontend and its Python (see
+   * siteBuild in ui/localFlights.ts); its format is that build's
+   */
   build: string | undefined;
   /** When it was built, ms since the epoch */
   builtAt: number;
+  /** The files that made no flight, which the rest were built without */
+  skipped?: { file: string; reason: string }[] | undefined;
+  /** What the build warned of, which the panel shows */
+  warnings?: string[] | undefined;
+  /** Whether the ground under the flights was sampled (absent: it was) */
+  terrain?: boolean | undefined;
 }
 
 /** A data file of the dataset, by its path in the site's data directory */
@@ -144,6 +153,9 @@ async function withStores<T>(
   const db = await open();
   const transaction = db.transaction(stores, mode);
   const finished = done(transaction);
+  // Settled either way: a failure of `use` is what the caller hears, and
+  // the transaction's own failure would go unheard (unhandled) beside it
+  finished.catch(() => undefined);
   const result = await use(transaction);
   await finished;
   return result;
@@ -223,18 +235,42 @@ export function clearAll(): Promise<void> {
 }
 
 /**
+ * How long a deletion of the worker's cache, or the worker's opening of it,
+ * waits on another tab that holds it open (its own worker, building)
+ */
+export const CACHE_WAIT_MS = 10_000;
+/** Said when that tab does not let go in time */
+export const CACHE_BUSY_MESSAGE =
+  "Another tab of this page holds the files open; close it and try again";
+
+/**
  * Delete the worker's cache: the airport database, the elevation tiles
  * and the parsed tracks of the flights (services/localWorker.ts). The
  * worker has to be gone first (LocalBuilder.destroy), or its connection
  * holds the deletion up; a database that was never made deletes fine.
+ *
+ * One that another tab still holds is deleted as soon as that tab lets it
+ * go, which is waited for up to CACHE_WAIT_MS: past that, this rejects
+ * with CACHE_BUSY_MESSAGE, and the files are not said to be gone. The
+ * deletion stays asked for, which holds up the next opening of the cache
+ * until that tab closes (the worker bounds its own wait the same way).
  */
-export function deleteCache(): Promise<void> {
+export function deleteCache(waitMs = CACHE_WAIT_MS): Promise<void> {
   if (typeof indexedDB === "undefined") return Promise.resolve();
   return new Promise((resolve, reject) => {
     const request = indexedDB.deleteDatabase(localCacheDbName());
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB"));
-    request.onblocked = () => reject(new Error("The cache is still in use"));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    request.onsuccess = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    request.onerror = () => {
+      clearTimeout(timer);
+      reject(request.error ?? new Error("IndexedDB"));
+    };
+    request.onblocked = () => {
+      timer = setTimeout(() => reject(new Error(CACHE_BUSY_MESSAGE)), waitMs);
+    };
   });
 }
 

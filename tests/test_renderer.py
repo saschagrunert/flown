@@ -36,6 +36,7 @@ from flown.listing import list_flights
 from flown.parser import parse_and_cache
 from flown.previews import encode_path_id
 from flown.renderer import (
+    UNEXPECTED_PARSE_ERROR,
     FlightDataExport,
     ParsedFile,
     _drop_paths_without_year,
@@ -48,9 +49,11 @@ from flown.renderer import (
     export_flight_data,
     load_cached,
     no_flight_reason,
+    parse_files,
 )
 from flown.site_output import STABLE_MTIMES_ENV, STAGING_PREFIX
 from flown.types import PathMetadata, TrackPoint
+from flown.workers import configure_workers
 from tests.conftest import (
     FIXTURE_AIRPORTS_CSV,
     FIXTURE_RUNWAYS_CSV,
@@ -271,6 +274,23 @@ class TestParseWithoutAPool:
         assert submitted == [fresh]
         assert [m["year"] for m in metadata] == [2025, 2026]
 
+    def test_without_processes_large_files_are_parsed_here(self, tmp_path, monkeypatch):
+        """The databases are not pickled for workers that never come."""
+        files = [
+            _write_kml(tmp_path / "1_DEAGJ_DA20.kml"),
+            _write_kml(tmp_path / "2_DEAGJ_DA20.kml", 2026),
+        ]
+        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        configure_workers(1, processes=False)
+        with (
+            patch("flown.renderer.pickle.dumps") as dumps,
+            patch("flown.renderer.WorkerPool") as pool,
+        ):
+            _, metadata, _ = _parse_kml_files(files)
+        dumps.assert_not_called()
+        pool.assert_not_called()
+        assert [m["year"] for m in metadata] == [2025, 2026]
+
     def test_a_kmz_counts_with_the_kml_inside_for_the_pool(self, tmp_path, monkeypatch):
         """The archive is a fraction of the KML the parse reads."""
         kml = TRACK_KML.format(year=2025).replace(
@@ -437,13 +457,18 @@ class TestNoFlightReason:
 class TestParseWithErrorHandling:
     def test_nonexistent_file_returns_empty_result(self):
         parsed = _parse_with_error_handling("/nonexistent/file.kml")
-        assert parsed == ParsedFile("/nonexistent/file.kml")
+        assert parsed.kml_file == "/nonexistent/file.kml"
         assert parsed.point_count == 0
+        assert parsed.path_groups == []
+        # What a build that skips the file says about it
+        assert "No such file" in (parsed.error or "")
 
     def test_invalid_kml_returns_empty_result(self, tmp_path):
         path = tmp_path / "bad.kml"
         path.write_text("<not-kml>garbage")
-        assert _parse_with_error_handling(str(path)) == ParsedFile(str(path))
+        parsed = _parse_with_error_handling(str(path))
+        assert (parsed.point_count, parsed.path_groups) == (0, [])
+        assert parsed.error
 
     def test_a_bug_of_the_parse_logs_its_traceback(self, tmp_path, capsys):
         """Only a KMLParseError or OSError is what is wrong with the file."""
@@ -452,7 +477,9 @@ class TestParseWithErrorHandling:
             "flown.renderer.parse_and_cache",
             side_effect=ValueError("landing bug"),
         ):
-            assert _parse_with_error_handling(kml_file) == ParsedFile(kml_file)
+            assert _parse_with_error_handling(kml_file) == ParsedFile(
+                kml_file, error=UNEXPECTED_PARSE_ERROR
+            )
         err = capsys.readouterr().err
         assert "Unexpected error processing" in err
         assert "Traceback" in err
@@ -921,6 +948,68 @@ class TestExportSite:
             and "EDDF" not in message
             for message in warnings
         ), warnings
+
+    def test_trimmed_ends_are_not_published(self, tmp_path, parse_data):
+        """--trim-ends: the parking spot widens nothing and is in no file."""
+        start = 1748736000.0
+        # East at 97 kt for an hour, a fix every 10 s; about 500 m a fix
+        path = [
+            TrackPoint(50.0, 8.0 + 0.007 * i, 500.0, start + i * 10) for i in range(361)
+        ]
+        metadata: list[PathMetadata] = [
+            {
+                "year": 2025,
+                "start_point": [50.0, 8.0, 500.0],
+                "airport_name": "EDDF Frankfurt Main - EDDK Cologne Bonn",
+                "aircraft_registration": "D-EAGJ",
+                "filename": "1_DEAGJ_DA20.kml",
+            }
+        ]
+        out = tmp_path / "out"
+
+        _export_site(
+            [path], metadata, out / "index.html", out / "data", trim_metres=600
+        )
+
+        # The first and the last fix within 600 m of either end are gone
+        assert _map_bounds(out) == [[50.0, 8.014], [50.0, 10.506]]
+
+    def test_trimmed_ends_place_no_airport_at_the_parking_spot(
+        self, tmp_path, parse_data
+    ):
+        """A field the database does not know is marked where the path starts:
+        where it starts once trimmed, not where it was parked."""
+        start = 1748736000.0
+        # On the ground for the first and the last few fixes
+        path = [
+            TrackPoint(
+                50.0,
+                8.0 + 0.007 * i,
+                100.0 if i < 5 or i > 355 else 800.0,
+                start + i * 10,
+            )
+            for i in range(361)
+        ]
+        metadata: list[PathMetadata] = [
+            {
+                "year": 2025,
+                "start_point": [50.0, 8.0, 100.0],
+                "airport_name": "Wiese Nord - Wiese Sued",
+                "aircraft_registration": "D-EAGJ",
+                "filename": "1_DEAGJ_DA20.kml",
+            }
+        ]
+        out = tmp_path / "out"
+
+        _export_site(
+            [path], metadata, out / "index.html", out / "data", trim_metres=600
+        )
+
+        airports = parse_data(out / "data" / "airports.json")["airports"]
+        assert airports, "the route places its fields"
+        assert all(airport["lon"] >= 8.014 for airport in airports), airports
+        # The parse's metadata is left as it was: the parse cache keeps it
+        assert metadata[0]["start_point"] == [50.0, 8.0, 100.0]
 
     def test_a_dropped_recording_adds_no_airport_and_no_extent(
         self, tmp_path, parse_data
@@ -1873,6 +1962,19 @@ class TestListFlights:
         rows = list_flights(files).rows
 
         assert rows[1].skipped == "the same flight as another recording"
+
+    def test_files_of_one_name_in_two_folders_are_two_files(self, tmp_path):
+        """As the build tells them apart, by their paths."""
+        files = [
+            _write_kml(tmp_path / "a" / "1_DEAGJ_DA20.kml"),
+            _write_kml(tmp_path / "b" / "1_DEAGJ_DA20.kml"),
+        ]
+
+        parsed = parse_files(files, {})
+
+        assert [
+            [metadata["source"] for metadata in entry.path_metadata] for entry in parsed
+        ] == [[files[0]], [files[1]]]
 
 
 class TestPipelineErrors:

@@ -560,8 +560,12 @@ const BUDGET_EXTRAS = { raw: 21 * 1024, gzip: 8 * 1024 };
 // start by a page that shows those flights. Set with about 10 % of room.
 const BUDGET_LOCAL = { raw: 20 * 1024, gzip: 7 * 1024 };
 // The worker of Your flights, which runs the site's Python in Pyodide;
-// the runtime itself comes from its CDN and is no part of this.
-const BUDGET_LOCAL_WORKER = { raw: 6 * 1024, gzip: 2.5 * 1024 };
+// the runtime itself comes from its CDN and is no part of this. Raised to
+// 7 KB and 3.5 KB gzipped for the check of the runtime's files against
+// their hashes, part by part, and the watch on their downloads and its
+// start (services/localWorker.ts): 6.05 KB and 3.09 KB gzipped in a local
+// build then, which CI's zlib makes a little larger.
+const BUDGET_LOCAL_WORKER = { raw: 7 * 1024, gzip: 3.5 * 1024 };
 // The year worker (services/yearWorker.ts): fetched by every visit, preloaded
 // in the page head beside the app and started with the first year file. It
 // decodes the year files and draws the heat sources off the main thread,

@@ -194,6 +194,11 @@ export interface MapConfig {
   /** The commit's page, "" when the repository it is in is unknown */
   commitUrl?: string | undefined;
   /**
+   * Hash of the generator the site was built with, its Python among it
+   * (site_assets.generator_hash): what a dataset of Your flights is of
+   */
+  generator?: string | undefined;
+  /**
    * Where the data files come from when not from the site: the flights a
    * visitor dropped, kept in the browser (ui/localFlights.ts)
    */

@@ -45,7 +45,7 @@ from .export_writers import (
     exported_country_codes,
     free_text_airport_names,
 )
-from .geometry import CoordinateExtent
+from .geometry import CoordinateExtent, trim_path_ends
 from .landings import path_landings
 from .logger import logger
 from .parser import load_cached_entry, parse_and_cache, parse_size
@@ -65,10 +65,15 @@ from .site_assets import (
 )
 from .site_output import STABLE_MTIMES_ENV, SiteOutput, day_start
 from .validation import foreign_site_files, validate_kml_file, validate_output_dir
-from .workers import WorkerPool, default_worker_count, parse_worker_count
+from .workers import (
+    WorkerPool,
+    default_worker_count,
+    parse_worker_count,
+    processes_allowed,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
 
     from .airport_lookup import AirportRecord
     from .airports import AirportData
@@ -103,6 +108,10 @@ POOLED_CACHE_MIN_BYTES = 128 * 1024 * 1024
 POOLED_CACHE_MIN_WORKERS = 8
 
 
+# Why a file the parse failed on with a bug failed, as a build names it
+UNEXPECTED_PARSE_ERROR = "an unexpected error while reading it"
+
+
 @dataclass
 class ParsedFile:
     """What a parse worker sends back to the main process.
@@ -122,6 +131,8 @@ class ParsedFile:
     # For a file without a path: whether a point of it has no altitude above
     # sea level (see no_flight_reason)
     altitudes_missing: bool = False
+    # Why a file failed to parse, for a build that names it (_usable_results)
+    error: str | None = None
 
 
 def _parse_with_error_handling(
@@ -139,13 +150,13 @@ def _parse_with_error_handling(
         )
     except (OSError, KMLParseError) as e:
         logger.error("Error processing %s: %s", kml_file, e)
-        return ParsedFile(kml_file)
+        return ParsedFile(kml_file, error=str(e))
     except ValueError, TypeError:
         # The parser turns what is wrong with a file into a KMLParseError:
         # anything else is a bug of the parse or the landings, and its
         # traceback says where
         logger.exception("Unexpected error processing %s", kml_file)
-        return ParsedFile(kml_file)
+        return ParsedFile(kml_file, error=UNEXPECTED_PARSE_ERROR)
     return _parsed_file(kml_file, coordinates, path_groups, path_metadata, landings)
 
 
@@ -207,17 +218,25 @@ def _load_or_parse(kml_file: str, _cache_path: Path | None = None) -> ParsedFile
             gc.enable()
 
 
-def parse_inline(kml_file: str, cache_path: Path | None) -> ParsedFile:
-    """Parse a file in this process, with the error handling of a worker."""
+def parse_inline(
+    kml_file: str,
+    cache_path: Path | None,
+    parse: Callable[[str, Path | None], ParsedFile] | None = None,
+) -> ParsedFile:
+    """Parse a file in this process, with the error handling of a worker.
+
+    ``parse`` is what a worker would run for it (see ``_parse_in_pool``),
+    ``_parse_with_error_handling`` by default.
+    """
     try:
-        return _parse_with_error_handling(kml_file, cache_path)
+        return (parse or _parse_with_error_handling)(kml_file, cache_path)
     except FlownError:
         raise
     # A bug in the parser shows on this one file, with its traceback, and
     # the run reports the file as failed instead of dying without a name
     except Exception:  # noqa: BLE001
         logger.exception("Unexpected error processing %s", kml_file)
-        return ParsedFile(kml_file)
+        return ParsedFile(kml_file, error=UNEXPECTED_PARSE_ERROR)
 
 
 def _file_bytes(kml_files: list[str]) -> int:
@@ -263,6 +282,12 @@ def _parse_in_pool(
     airport and runway databases the parent loaded (see
     ``workers.init_worker``).
     """
+    if not processes_allowed():
+        # No worker to hand the databases to, which are not pickled for
+        # nothing then: every file is parsed here (see configure_workers)
+        for kml_file, cache_path in uncached:
+            record(parse_inline(kml_file, cache_path, parse))
+        return
     kml_files = [kml_file for kml_file, _ in uncached]
     cache_paths = dict(uncached)
     level = logger.getEffectiveLevel()
@@ -306,7 +331,7 @@ def _parse_in_pool(
             except Exception:  # noqa: BLE001
                 kml_file = future_to_file[future]
                 logger.exception("Unexpected error processing %s", kml_file)
-                parsed = ParsedFile(kml_file)
+                parsed = ParsedFile(kml_file, error=UNEXPECTED_PARSE_ERROR)
             done.add(parsed.kml_file)
             record(parsed)
 
@@ -379,7 +404,19 @@ def parse_files(
     _load_or_parse_here(valid_files, results.append, airports)
     order = {kml_file: index for index, kml_file in enumerate(valid_files)}
     results.sort(key=lambda parsed: order[parsed.kml_file])
+    for parsed in results:
+        _mark_source(parsed)
     return results
+
+
+def _mark_source(parsed: ParsedFile) -> None:
+    """Name the file of its paths in their metadata (``source``).
+
+    Two folders may hold files of one name: the duplicates tell them apart
+    by it (see ``duplicates._one_file``), as ``--list`` must as the build.
+    """
+    for metadata in parsed.path_metadata:
+        metadata["source"] = parsed.kml_file
 
 
 @contextlib.contextmanager
@@ -407,6 +444,7 @@ def _collector_paused() -> Iterator[None]:
 
 def _parse_kml_files(
     valid_files: list[str],
+    skipped: list[SkippedFile] | None = None,
 ) -> tuple[FlightPathGroup, list[PathMetadata], list[FlightLandings | None]]:
     """Parse KML files and merge the results in input order.
 
@@ -419,7 +457,10 @@ def _parse_kml_files(
     The input order decides the path ids, so the merge must not depend on
     which worker finished first or on the file names: two directories may
     well contain files with the same name. Returns the paths, their
-    metadata and their landings (see ``landings.path_landings``).
+    metadata and their landings (see ``landings.path_landings``). A file
+    that fails to parse or holds no flight fails the run, or with
+    ``skipped`` is left out and named there with the reason (see
+    ``_usable_results``).
     """
     parse_start = time.time()
     # Load (and if needed download) the airport database once in the parent:
@@ -461,15 +502,21 @@ def _parse_kml_files(
 
         input_order = {kml_file: index for index, kml_file in enumerate(valid_files)}
         results.sort(key=lambda parsed: input_order[parsed.kml_file])
+        parse_time = time.time() - parse_start
+        logger.info(
+            "  Parsing took %.1fs (%.2fs per file)",
+            parse_time,
+            parse_time / len(valid_files),
+        )
+        usable = _usable_results(results, valid_files, skipped)
         total_points = 0
         all_path_groups: FlightPathGroup = []
         all_path_metadata: list[PathMetadata] = []
         all_landings: list[FlightLandings | None] = []
-        for parsed in results:
+        for parsed in usable:
             total_points += parsed.point_count
             all_path_groups.extend(parsed.path_groups)
-            for metadata in parsed.path_metadata:
-                metadata["source"] = parsed.kml_file
+            _mark_source(parsed)
             all_path_metadata.extend(parsed.path_metadata)
             all_landings.extend(
                 parsed.landings
@@ -477,41 +524,73 @@ def _parse_kml_files(
                 else path_landings(parsed.path_groups)
             )
 
-    parse_time = time.time() - parse_start
-    logger.info(
-        "  Parsing took %.1fs (%.2fs per file)",
-        parse_time,
-        parse_time / len(valid_files),
-    )
+    logger.info("\nTotal points: %d", total_points)
+    return all_path_groups, all_path_metadata, all_landings
 
+
+@dataclass(frozen=True)
+class SkippedFile:
+    """An input file left out of a build that skips them, and why."""
+
+    kml_file: str
+    reason: str
+
+
+def _usable_results(
+    results: list[ParsedFile],
+    valid_files: list[str],
+    skipped: list[SkippedFile] | None,
+) -> list[ParsedFile]:
+    """The parses that give the export a flight, of ``results`` in order.
+
+    A file that failed to parse, or holds no flight to export (see
+    ``no_flight_reason``), fails the run: a site published without one of
+    the flights would hide it until someone notices. With ``skipped`` it is
+    left out instead and named there with the reason, unless no file is
+    left at all: the build in the page goes on with the rest, and says
+    which files it left out and why (see ``flown.browser``).
+    """
+    by_file = {parsed.kml_file: parsed for parsed in results}
+    failed: list[SkippedFile] = []
+    without_flight: list[SkippedFile] = []
+    for kml_file in valid_files:
+        parsed = by_file.get(kml_file)
+        # A file without a result at all failed as well
+        if parsed is None or not parsed.point_count:
+            error = parsed.error if parsed is not None else None
+            failed.append(SkippedFile(kml_file, error or "could not be read"))
+            continue
+        reason = no_flight_reason(parsed)
+        if reason is not None:
+            logger.error("%s: %s", kml_file, reason)
+            without_flight.append(SkippedFile(kml_file, reason))
+    left_out = {entry.kml_file for entry in failed + without_flight}
+    usable = [parsed for parsed in results if parsed.kml_file not in left_out]
+    if skipped is not None and usable:
+        skipped.extend(failed + without_flight)
+    elif skipped is not None and left_out:
+        # With the files the validation left out already, in one message
+        raise InvalidInputError(_unusable_message(skipped + failed + without_flight))
     # Every file failing is no case of its own: the line says how many, and
     # names them, as for one of many ("No coordinates found in any KML
     # files" read as if the files had parsed)
-    # A file without a result at all failed as well
-    points = {parsed.kml_file: parsed.point_count for parsed in results}
-    failed = [kml_file for kml_file in valid_files if not points.get(kml_file)]
-    if failed:
+    elif failed:
         raise InvalidInputError(
             f"{len(failed)} of {len(valid_files)} file(s) failed to parse "
-            f"({_some_names(failed)}, see above); fix or remove them"
+            f"({_some_names([entry.kml_file for entry in failed])}, see above); "
+            "fix or remove them"
         )
-    without_flight = []
-    for parsed in results:
-        reason = no_flight_reason(parsed)
-        if reason is not None:
-            logger.error("%s: %s", parsed.kml_file, reason)
-            without_flight.append(parsed.kml_file)
-    if without_flight:
+    elif without_flight:
         raise InvalidInputError(
             f"{len(without_flight)} of {len(valid_files)} file(s) hold no flight "
-            f"to export ({_some_names(without_flight)}, see above); fix or "
-            "remove them"
+            f"to export ({_some_names([entry.kml_file for entry in without_flight])}"
+            ", see above); fix or remove them"
         )
     # Their flights build, but count for no aircraft in the filter and the
     # statistics: a name the tool exported (export.kml) says nothing
     unnamed = [
         parsed.kml_file
-        for parsed in results
+        for parsed in usable
         if not any(
             metadata.get("aircraft_registration") or metadata.get("aircraft_type")
             for metadata in parsed.path_metadata
@@ -524,9 +603,16 @@ def _parse_kml_files(
             len(unnamed),
             _some_names(unnamed),
         )
+    return usable
 
-    logger.info("\nTotal points: %d", total_points)
-    return all_path_groups, all_path_metadata, all_landings
+
+def _unusable_message(left_out: Sequence[SkippedFile]) -> str:
+    """Why no file of a build that skips them gave a flight, file by file."""
+    reasons = "; ".join(
+        f"{Path(entry.kml_file).name}: {entry.reason}" for entry in left_out[:3]
+    )
+    more = f"; and {len(left_out) - 3} more" if len(left_out) > 3 else ""
+    return f"No file holds a flight to export ({reasons}{more})"
 
 
 def no_flight_reason(parsed: ParsedFile) -> str | None:
@@ -651,6 +737,8 @@ def _plan(
     all_path_groups: FlightPathGroup,
     all_path_metadata: list[PathMetadata],
     landings: Sequence[FlightLandings | None] | None,
+    flags: Iterable[str] | None = None,
+    trim_metres: float = 0,
 ) -> _ExportPlan:
     """Settle which paths are exported, the extent and the airports.
 
@@ -661,7 +749,26 @@ def _plan(
     the paths the site publishes: a path that gets no id and no segments (a
     single point, a recording that never moved, a dropped copy) would
     otherwise still publish its location and name through the airport list.
+
+    The countries get a flag where ``flags`` has one: the page's, for the
+    build in it, which has none of its own to look at; those of this
+    checkout by default (see ``available_country_flags``). With
+    ``trim_metres``, every path loses its points within that distance of
+    where it starts and ends (see ``trim_path_ends``) before anything else
+    looks at it: the extent and the airports are of what is published.
     """
+    if trim_metres > 0:
+        all_path_groups = [
+            trim_path_ends(path, trim_metres) for path in all_path_groups
+        ]
+        # The start point goes with them: a departure the airport database
+        # does not place is marked at it (airports._add_departures), which
+        # published the parking spot the trim took out. On copies: the
+        # metadata is the parse's, which the parse cache keeps.
+        all_path_metadata = [
+            _started_at(metadata, path)
+            for metadata, path in zip(all_path_metadata, all_path_groups, strict=True)
+        ]
     path_groups, path_metadata, dated_landings = _drop_paths_without_year(
         all_path_groups, all_path_metadata, landings
     )
@@ -690,8 +797,26 @@ def _plan(
         extent=extent,
         unique_airports=unique_airports,
         countries=countries,
-        available_flags=available_country_flags(countries),
+        available_flags=(
+            available_country_flags(countries)
+            if flags is None
+            else sorted({code.lower() for code in countries} & set(flags))
+        ),
     )
+
+
+def _started_at(metadata: PathMetadata, path: FlightPath) -> PathMetadata:
+    """``metadata`` with the first point of ``path`` as its ``start_point``."""
+    if not path:
+        return metadata
+    first = path[0]
+    started = metadata.copy()
+    started["start_point"] = (
+        [first.lat, first.lon]
+        if first.alt is None
+        else [first.lat, first.lon, first.alt]
+    )
+    return started
 
 
 def _export_site(
@@ -704,15 +829,17 @@ def _export_site(
     site_url: str | None = None,
     private: bool = False,
     landings: Sequence[FlightLandings | None] | None = None,
+    trim_metres: float = 0,
 ) -> ExportResult:
     """Export the data, render the page and package its assets.
 
     Everything is staged first and published at the end (see ``SiteOutput``),
     so a failure at any step leaves the previous site in the output as it was.
     ``terrain`` is handed to ``export_all_data``, ``site_url`` (normalized,
-    see ``previews.normalize_site_url``) to the link previews.
+    see ``previews.normalize_site_url``) to the link previews,
+    ``trim_metres`` to ``_plan``.
     """
-    plan = _plan(all_path_groups, all_path_metadata, landings)
+    plan = _plan(all_path_groups, all_path_metadata, landings, trim_metres=trim_metres)
     all_path_groups, all_path_metadata = plan.path_groups, plan.path_metadata
     extent, unique_airports, countries = (
         plan.extent,
@@ -828,28 +955,37 @@ def preflight(
         )
 
 
-def _validated_files(kml_files: list[str]) -> list[str]:
+def _validated_files(
+    kml_files: list[str], skipped: list[SkippedFile] | None = None
+) -> list[str]:
     """The inputs that are valid KML files; raises when any of them is not.
 
     A file that cannot be used fails the run: a site published without one
     of the flights, and exit status 0, would hide it until someone notices
     the flight is missing. So does a file that parses but holds no flight to
-    export (see ``no_flight_reason``).
+    export (see ``no_flight_reason``). With ``skipped``, an invalid file is
+    left out instead and named there, unless none is valid (see
+    ``_usable_results``).
     """
     valid_files = []
+    invalid: list[SkippedFile] = []
     for kml_file in kml_files:
         is_valid, error_msg = validate_kml_file(kml_file)
         if not is_valid:
             logger.error("  %s", error_msg)
+            invalid.append(SkippedFile(kml_file, error_msg or "not a valid KML file"))
         else:
             valid_files.append(kml_file)
 
-    if len(valid_files) < len(kml_files):
-        valid = set(valid_files)
-        invalid = [kml_file for kml_file in kml_files if kml_file not in valid]
+    if skipped is not None and invalid:
+        if not valid_files:
+            raise InvalidInputError(_unusable_message(invalid))
+        skipped.extend(invalid)
+    elif invalid:
         raise InvalidInputError(
             f"{len(invalid)} of {len(kml_files)} input file(s) are not valid "
-            f"KML files ({_some_names(invalid)}, see above); fix or remove them"
+            f"KML files ({_some_names([entry.kml_file for entry in invalid])}, "
+            "see above); fix or remove them"
         )
 
     # No input at all (a caller of the library; the CLI refuses it first)
@@ -866,6 +1002,8 @@ class FlightDataExport:
     extent: CoordinateExtent
     airports: int
     flights: int
+    # The files left out, with the reason, where the export skips them
+    skipped: list[SkippedFile] = field(default_factory=list)
 
 
 def export_flight_data(
@@ -873,6 +1011,8 @@ def export_flight_data(
     data_dir: str | Path,
     aircraft_files: Sequence[Path] = (),
     terrain: TileSource | None = None,
+    skip_unusable: bool = False,
+    flags: Iterable[str] | None = None,
 ) -> FlightDataExport:
     """Write the data files of the flights into ``data_dir``, and nothing else.
 
@@ -882,16 +1022,23 @@ def export_flight_data(
     writes them, plus the extent the map is fitted to, which
     ``map_config.js`` carries for a published site. ``data_dir`` is expected
     to be empty or missing. The inputs are validated and parsed as
-    ``build_site`` does, and raise the same errors.
+    ``build_site`` does, and raise the same errors; with
+    ``skip_unusable``, a file that cannot be used is left out instead and
+    named in the result, as long as another one gives a flight. ``flags``
+    are the country codes the page has a flag for, None for those of this
+    checkout (see ``_plan``).
     """
-    valid_files = _validated_files(kml_files)
+    skipped: list[SkippedFile] | None = [] if skip_unusable else None
+    valid_files = _validated_files(kml_files, skipped)
     logger.info("Parsing %d KML file(s)...", len(valid_files))
     try:
         try:
-            all_path_groups, all_path_metadata, landings = _parse_kml_files(valid_files)
+            all_path_groups, all_path_metadata, landings = _parse_kml_files(
+                valid_files, skipped
+            )
         except (ValueError, OSError) as e:
             raise ExportError(str(e)) from e
-        plan = _plan(all_path_groups, all_path_metadata, landings)
+        plan = _plan(all_path_groups, all_path_metadata, landings, flags)
         aircraft_data = (
             merge_aircraft_data(list(aircraft_files)) if aircraft_files else None
         )
@@ -917,6 +1064,7 @@ def export_flight_data(
             extent=plan.extent,
             airports=len(plan.unique_airports),
             flights=len(plan.selection.exported()),
+            skipped=skipped or [],
         )
     finally:
         gc.unfreeze()
@@ -931,6 +1079,7 @@ def build_site(
     force: bool = False,
     site_url: str | None = None,
     private: bool = False,
+    trim_ends: float = 0,
 ) -> ExportResult:
     """Generate the site: the page, its assets and the data files.
 
@@ -954,8 +1103,13 @@ def build_site(
     images are named by (see ``previews``); None takes it from
     ``FLOWN_SITE_URL``, and without either the pages go without
     images. ``private`` asks search engines not to index the site (a robots
-    meta tag in the page).
+    meta tag in the page). ``trim_ends`` leaves out the points of every
+    flight within that many metres of where it starts and ends (see
+    ``geometry.trim_path_ends``): the taxiing, and the spot the aircraft is
+    parked on.
     """
+    if trim_ends < 0:
+        raise InvalidInputError(f"trim_ends must not be negative, not {trim_ends}")
     aircraft_files = aircraft_files or []
     try:
         site_url = normalize_site_url(
@@ -992,6 +1146,7 @@ def build_site(
                 site_url=site_url,
                 private=private,
                 landings=landings,
+                trim_metres=trim_ends,
             )
         except InvalidInputError, OutputRefusedError:
             raise
