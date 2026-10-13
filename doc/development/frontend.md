@@ -96,30 +96,36 @@ places (`ui/locationSearch.ts`, with the matching of the site's airports in
 `services/photon.ts`); the first visit carries only its button, its row in the
 phone's More sheet and the `/` key (`followSearchKey` in `ui/lazyBundles.ts`),
 and the page imports it the first time the search opens. `extras.bundle.js`
-holds what only a tap on a control needs: the sheet of the phone's bar
-(`ui/mobileSheet.ts`), which a phone fetches as soon as its page has a moment
-after the bar is mounted (a tap on a sheet tab before it has arrived opens the
-sheet once it has), and the export of the map as an image (`ui/mapExport.ts`),
-which the first export fetches; the bar and the Export control's busy state stay
-in the app. `local.bundle.js` holds Your flights (`ui/localFlights.ts`): the
-panel that takes the KML files a visitor drops on the page, the store of those
-files and of what is built from them in the browser (`services/localStore.ts`),
-the page's side of the build (`services/localBuild.ts`), the sheet over the map
-while files are dragged across it (`ui/fileDrop.ts`) and the configuration a
-page that shows those flights starts with; the app carries the button, its row
-in the More sheet, the watch for a drag of files (`ui/fileDropWatch.ts`), the
-start that asks for that configuration (`startApp` in `mapApp.ts`) and the flags
-both share (`state/localFlags.ts`). `shared.bundle.js` is the app itself and
-everything the lazy bundles use of it. `yearWorker.bundle.js` is a build of its
-own, which decodes the year files and writes the heat sources off the main
-thread (see [The year worker](data.md#the-year-worker)). `localWorker.bundle.js`
-is another, the worker that builds the visitor's flights: it imports Pyodide
-from its CDN, loads lxml and the package's own Python from `flown-src.zip` next
-to the page (`site_assets.py` writes it), and runs `flown.browser.build` on the
-files, with the airport database and the elevation tiles it fetches kept in a
-directory mounted on IndexedDB. The page's Content Security Policy does not
-reach a worker started from a file of the site, which gets the policy of that
-file's response; a host that sends one would have to allow the CDN in it.
+holds what no desktop's first visit needs: the phone's bar and its sheet
+(`ui/mobileBar.ts`, `ui/mobileSheet.ts`), which a phone asks for as its page
+starts and mounts once the managers are there (`MapApp.followMobileBar`), the
+columns hidden in the phone layout meanwhile; the packing of the tokens of
+shared links for Copy link (`state/shareTokenPack.ts`), which every page fetches
+once it has a moment and pointing at a share control fetches ahead (a press
+before it hands the clipboard a promise of the link with its token); and the
+export of the map as an image (`ui/mapExport.ts`), which the first export
+fetches; the Export control's busy state stays in the app. The reading of a
+token (`state/shareToken.ts`) is the first visit's: a link with one is read
+before anything else reads it. `local.bundle.js` holds Your flights
+(`ui/localFlights.ts`): the panel that takes the KML files a visitor drops on
+the page, the store of those files and of what is built from them in the browser
+(`services/localStore.ts`), the page's side of the build
+(`services/localBuild.ts`), the sheet over the map while files are dragged
+across it (`ui/fileDrop.ts`) and the configuration a page that shows those
+flights starts with; the app carries the button, its row in the More sheet, the
+watch for a drag of files (`ui/fileDropWatch.ts`), the start that asks for that
+configuration (`startApp` in `mapApp.ts`) and the flags both share
+(`state/localFlags.ts`). `shared.bundle.js` is the app itself and everything the
+lazy bundles use of it. `yearWorker.bundle.js` is a build of its own, which
+decodes the year files and writes the heat sources off the main thread (see
+[The year worker](data.md#the-year-worker)). `localWorker.bundle.js` is another,
+the worker that builds the visitor's flights: it imports Pyodide from its CDN,
+loads lxml and the package's own Python from `flown-src.zip` next to the page
+(`site_assets.py` writes it), and runs `flown.browser.build` on the files, with
+the airport database and the elevation tiles it fetches kept in a directory
+mounted on IndexedDB. The page's Content Security Policy does not reach a worker
+started from a file of the site, which gets the policy of that file's response;
+a host that sends one would have to allow the CDN in it.
 
 ### Shared chunk
 

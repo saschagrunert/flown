@@ -40,8 +40,17 @@ const PATH_ID_RADIX = new Map([
   [4, 36],
 ]);
 
-/** Path ids are 40-bit content hashes (PATH_ID_BITS in data_exporter.py) */
-const PATH_ID_LIMIT = 2 ** 40;
+/** Path ids are 40-bit content hashes (PATH_ID_BITS in path_content.py) */
+export const PATH_ID_BITS = 40;
+const PATH_ID_LIMIT = 2 ** PATH_ID_BITS;
+
+/**
+ * The most flights a link selects: far more than a site has, and few enough
+ * that a crafted link cannot keep the page busy turning a megabyte of ids
+ * into a selection (see also MAX_SHARE_TOKEN_LENGTH). A link or a token
+ * with more selects its first ones, and Copy link packs those.
+ */
+export const MAX_SELECTED_PATH_IDS = 10_000;
 
 /**
  * Whether a saved selection was written by a version this build can read.
@@ -136,7 +145,7 @@ function parsePathIds(urlParams: URLSearchParams): number[] | undefined {
   const pathStr = paramText(urlParams, "p");
   if (radix === undefined || !pathStr) return undefined;
   return pathStr
-    .split(",")
+    .split(",", MAX_SELECTED_PATH_IDS)
     .map((id) => parsePathId(id.trim(), radix))
     .filter((id): id is number => id !== null);
 }
@@ -220,6 +229,9 @@ export function parseUrlParams(
  * (UIToggles.shareLink), and nothing else ever writes it
  */
 export const SHARE_INTRO_PARAM = "i";
+
+/** The parameter of a shared link that holds its token (state/shareToken.ts) */
+export const SHARE_TOKEN_PARAM = "c";
 
 /**
  * Whether the page was opened from a link with the intro of its shared

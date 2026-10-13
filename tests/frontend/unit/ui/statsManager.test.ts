@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { siteData } from "../../../../flown/frontend/state/siteData";
-import { StatsManager } from "../../../../flown/frontend/ui/statsManager";
+import {
+  StatsManager,
+  STATS_FAILED_HTML,
+} from "../../../../flown/frontend/ui/statsManager";
 import * as panelStats from "../../../../flown/frontend/calculations/panelStats";
 import type { FilteredStatistics } from "../../../../flown/frontend/types";
 import {
@@ -185,6 +188,55 @@ describe("StatsManager", () => {
       expect(statsPanel.getAttribute("aria-busy")).toBe("true");
       expect(title.textContent).toBe("Flights");
       spy.mockRestore();
+    });
+
+    it("works the figures out in one go when the slices fail, rather than staying busy", async () => {
+      const spy = vi
+        .spyOn(panelStats, "filterStatisticsInSlices")
+        .mockImplementation(() => Promise.reject(new Error("no slice")));
+      mockApp.selectedYear = "2025";
+
+      statsManager.updateStatsForSelection();
+      expect(statsPanel.getAttribute("aria-busy")).toBe("true");
+
+      await vi.waitFor(() =>
+        expect(statsPanel.getAttribute("aria-busy")).toBeNull(),
+      );
+      expect(leadValue(statsPanel, "Flights")).toBe("1");
+
+      // The same inputs ask no more
+      statsManager.updateStatsForSelection();
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+    });
+
+    it("says so when the figures cannot be worked out at all, and asks again only for new inputs", async () => {
+      const slices = vi
+        .spyOn(panelStats, "filterStatisticsInSlices")
+        .mockImplementation(() => Promise.reject(new Error("no slice")));
+      const once = vi
+        .spyOn(panelStats, "filterStatistics")
+        .mockImplementation(() => {
+          throw new Error("no figures");
+        });
+      mockApp.selectedYear = "2025";
+
+      statsManager.updateStatsForSelection();
+
+      await vi.waitFor(() =>
+        expect(statsPanel.getAttribute("aria-busy")).toBeNull(),
+      );
+      expect(statsPanel.innerHTML).toBe(STATS_FAILED_HTML);
+      statsManager.updateStatsForSelection();
+      expect(once).toHaveBeenCalledTimes(1);
+      expect(slices).toHaveBeenCalledTimes(1);
+
+      // Another year is worked out again
+      mockApp.selectedYear = "all";
+      statsManager.updateStatsForSelection();
+      expect(slices).toHaveBeenCalledTimes(2);
+      slices.mockRestore();
+      once.mockRestore();
     });
 
     it("shows filtered statistics for all paths when nothing is selected", () => {

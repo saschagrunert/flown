@@ -81,7 +81,7 @@ export const CHASE_REDUCED_MOTION_MESSAGE =
  * switch as well: the replay hides the heat, and the 3D view's faint cloud
  * behind it is not the replay's to count again.
  */
-const REPLAY_DISABLED_CONTROL_IDS = [
+const ONE_REPLAY_HELD_CONTROL_IDS = [
   ...REPLAY_HELD_CONTROL_IDS,
   "replay-all-btn",
 ];
@@ -419,7 +419,7 @@ export class ReplayManager {
     document.body.classList.add("replay-active");
     this.release?.();
     this.release = holdControls(
-      REPLAY_DISABLED_CONTROL_IDS,
+      ONE_REPLAY_HELD_CONTROL_IDS,
       "the replay",
       this.app.signal,
     );
@@ -724,15 +724,17 @@ export class ReplayManager {
   /**
    * The segments of the flights `pathIds` one after another, each sorted
    * by its times, into the state; returns the flights kept. A flight whose
-   * times are all 0 would finish the moment it started without drawing
-   * anything (see MapApp.canReplay), and is left out.
+   * times are all the same, all 0 or one time logged for every point,
+   * would finish the moment it started without drawing anything (see
+   * MapApp.canReplay), and is left out.
    */
   private filterAndSortSegments(pathIds: readonly number[]): number[] {
     const all = this.app.fullPathSegments!;
     const kept: number[] = [];
     this.state.segments = pathIds.flatMap((pathId) => {
       const segments = prepareReplaySegments(all, pathId);
-      if (!((segments[segments.length - 1]?.time ?? 0) > 0)) return [];
+      const first = segments[0]?.time ?? 0;
+      if (!((segments[segments.length - 1]?.time ?? 0) > first)) return [];
       kept.push(pathId);
       return segments;
     });
@@ -1141,7 +1143,7 @@ export class ReplayManager {
    * the same place as starting with it on, whatever the map was showing.
    */
   private zoomToAircraft(): void {
-    const position = this.state.airplaneMarker?.getLatLng();
+    const position = this.state.airplaneMarker?.position();
     const map = this.app.map;
     if (!position || !map) return;
     // Without auto-zoom, to the next of several flights (see movesToLeg)

@@ -21,7 +21,7 @@ import {
   MAP_SOURCES,
   NAUTICAL_MILES_TO_KM,
 } from "../utils/constants";
-import { icon } from "../utils/icons";
+import { lazyIcon, registerIcons } from "../utils/icons";
 import {
   closeWhenBehindGlobe,
   createActivationFilter,
@@ -47,6 +47,16 @@ import {
   truncateTrail,
   trailFeatureCollection,
 } from "./replayTrail";
+
+/**
+ * The replay's aircraft, which no icon set has: seen from above, nose up and
+ * solid, so the marker's rotation is the track itself and the silhouette
+ * holds together over live map data. Nothing else draws it.
+ */
+registerIcons({
+  aircraftTop:
+    '<path d="M12 2.6c1.1 0 1.8 1.3 1.8 2.8v3.1l6.7 3.9v2.2l-6.7-2v4.2l2.2 1.6v1.6L12 19.3l-4 .7v-1.6l2.2-1.6v-4.2l-6.7 2v-2.2l6.7-3.9V5.4c0-1.5.7-2.8 1.8-2.8z"/>',
+});
 
 /** Pixels between the airplane's position and the tip of its popup */
 const AIRPLANE_POPUP_OFFSET = 16;
@@ -165,7 +175,7 @@ export class AirplaneMarker implements ReplayAirplane {
     // MapLibre positions the root with transforms, which must not animate
     element.innerHTML =
       '<div class="replay-airplane-icon">' +
-      icon("aircraftTop", 24, undefined, "solid") +
+      lazyIcon("aircraftTop", 24, undefined, "solid") +
       "</div>";
     // MapLibre fires a map click for a click on a marker as well; the
     // app's handler tells it by its target and leaves the popup alone. The
@@ -207,7 +217,7 @@ export class AirplaneMarker implements ReplayAirplane {
       .addTo(map);
   }
 
-  getLatLng(): [lat: number, lon: number] {
+  position(): [lat: number, lon: number] {
     return fromLngLat(this.marker.getLngLat());
   }
 
@@ -422,14 +432,14 @@ export class ReplayRenderer {
     // The marker is where the aircraft is now, part way along the segment;
     // the segment's own end point is where it will be
     const airplane = state.airplaneMarker;
-    const position = airplane.getLatLng();
+    const position = airplane.position();
     const popupContent = generateSegmentPopupHtml({
       segment: currentSegment,
       position,
       altRange: state.colorAltRange,
       speedRange: state.colorSpeedRange,
       title: "Current position",
-      icon: "aircraftTop",
+      icon: lazyIcon("aircraftTop", 20),
     });
 
     // Filled before it opens, so it opens at its final size

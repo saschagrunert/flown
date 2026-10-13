@@ -2,14 +2,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
 import {
   FLAGS,
-  packShareToken,
+  MAX_SHARE_TOKEN_LENGTH,
   resolveShareToken,
-  SHARE_TOKEN_PARAM,
   unpackShareToken,
 } from "../../../../flown/frontend/state/shareToken";
+import { packShareToken } from "../../../../flown/frontend/state/shareTokenPack";
 import {
   encodeStateToUrl,
+  MAX_SELECTED_PATH_IDS,
   parseUrlParams,
+  SHARE_TOKEN_PARAM,
   STATE_SCHEMA_VERSION,
 } from "../../../../flown/frontend/state/urlState";
 import { TOGGLES } from "../../../../flown/frontend/state/toggles";
@@ -146,6 +148,72 @@ describe("the token of a shared link", () => {
     // state/shareToken.ts, or the tokens shared so far would resolve to the
     // wrong flights. One that only writes the ids differently does not.
     expect(STATE_SCHEMA_VERSION).toBe(4);
+  });
+
+  it("resolves the tokens shared so far to the same links", () => {
+    // Packed by FORMAT_VERSION 0 as Copy link hands them out. A change to
+    // the order of FLAGS or FIELDS, or to a precision, breaks every link
+    // shared before it: it takes a new FORMAT_VERSION, and these stay.
+    const shared: [token: string, link: string][] = [
+      ["AgAD9I", "y=2025"],
+      ["A4AIwcggAxMh", "y=all&a=D-EAGJ&v=100100001"],
+      ["AQAISoMOHPsLO0srk", "a=Pa%C3%9Fagier"],
+      [
+        "AHgDWK1wne-ODMkAHUQ",
+        "lat=-33.856784&lng=151.215297&z=12.25&b=-179.9&t=84.9",
+      ],
+      ["AAHg", "g=1&d=1&s=1&l=1"],
+      [
+        "AAQCrVeT8sn0VamwflfAA",
+        "x=-33.85678%2C151.21530%2C-33.86000%2C151.20000",
+      ],
+      [
+        "AgIT9EsAAAACLAAAACTwP___SID9_____",
+        "y=2024&p=1x%2Ca5%2Czik0zj%2Ce13wu1of&sv=4&i=1",
+      ],
+    ];
+    for (const [token, link] of shared) {
+      expect(unpackShareToken(token)?.toString(), token).toBe(link);
+      expect(packShareToken(link), link).toBe(token);
+    }
+  });
+
+  it("is not read past its longest, and selects the first of the most flights", () => {
+    // Flights only, with a Rice parameter of 0, so that every one-bit is a
+    // flight: a crafted link of a hundred kilobytes made 600 000 of them
+    const flights = (count: number): string => {
+      const bits =
+        "000000" + "000000001" + "00000" + "000000" + "1".repeat(count);
+      let token = "";
+      for (let i = 0; i < bits.length; i += 6) {
+        const char = parseInt(bits.slice(i, i + 6).padEnd(6, "0"), 2);
+        token +=
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[
+            char
+          ];
+      }
+      return token;
+    };
+    const selected = (token: string): number[] =>
+      stateOf(unpackShareToken(token)!)!.selectedPathIds!;
+    expect(selected(flights(MAX_SELECTED_PATH_IDS))).toHaveLength(
+      MAX_SELECTED_PATH_IDS,
+    );
+    // One more is left out, as a link with one more leaves it out
+    const most = selected(flights(MAX_SELECTED_PATH_IDS + 1));
+    expect(most).toHaveLength(MAX_SELECTED_PATH_IDS);
+    expect(most.at(-1)).toBe(MAX_SELECTED_PATH_IDS - 1);
+    expect(unpackShareToken("A".repeat(MAX_SHARE_TOKEN_LENGTH + 1))).toBeNull();
+
+    // A link, and the token Copy link packs of it, select the same first ones
+    const ids = Array.from(
+      { length: MAX_SELECTED_PATH_IDS + 1 },
+      (_, i) => i * 1009,
+    );
+    const link = encodeStateToUrl({ selectedPathIds: ids });
+    const first = ids.slice(0, MAX_SELECTED_PATH_IDS);
+    expect(parseUrlParams(link)?.selectedPathIds).toEqual(first);
+    expect(viaToken(link)?.selectedPathIds).toEqual(first);
   });
 
   it("has a flag for every switch a link writes as a parameter", () => {

@@ -4,7 +4,7 @@
 
 import type { LngLat, Marker, Point } from "maplibre-gl";
 import type { Coordinate } from "./utils/geometry";
-import type { IconName } from "./utils/icons";
+import type { IconName, LazyIconName } from "./utils/icons";
 import type { RibbonProperties } from "./calculations/ribbons";
 import type { ToggleFlags } from "./state/toggles";
 import type { Markup } from "./utils/markup";
@@ -401,7 +401,7 @@ export interface FunFact {
    * of them are about distance), so the category alone would draw the same
    * icon three times in one card.
    */
-  icon?: IconName;
+  icon?: IconName | LazyIconName;
   /**
    * The text, as markup whose values were escaped as it was made (markup
    * in utils/markup.ts): a registration or an airport's name is text in it

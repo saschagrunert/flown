@@ -63,7 +63,7 @@ export const REPLAY_ALL_ORBIT_REDUCED_MOTION_MESSAGE =
 
 /**
  * Controls held while every flight replays, as for the replay of one
- * (REPLAY_DISABLED_CONTROL_IDS in ui/replayManager.ts): the filters, the
+ * (ONE_REPLAY_HELD_CONTROL_IDS in ui/replayManager.ts): the filters, the
  * selection and Wrapped would change or take the map under it. The colour
  * layers too, whose colours the trails are drawn in as the replay opens,
  * and the Heatmap switch, which says as the replay opens whether the heat

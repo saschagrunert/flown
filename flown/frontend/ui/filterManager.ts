@@ -23,8 +23,6 @@ export class FilterManager {
   private app: MapApp;
   /** Monotonic id of the latest filter change; stale completions are dropped */
   private requestId = 0;
-  /** Request id of the latest year change */
-  private yearRequestId = 0;
   /**
    * The year switch that is loading, aborted by the next one: this one has
    * been replaced. Null once it is over.
@@ -211,7 +209,6 @@ export class FilterManager {
 
     const requestedYear = yearSelect.value;
     const requestId = ++this.requestId;
-    this.yearRequestId = requestId;
     this.dropYearPick();
 
     this.yearLoad?.abort();
@@ -256,15 +253,8 @@ export class FilterManager {
     );
     if (this.yearLoad === yearLoad) this.yearLoad = null;
     if (requestId !== this.requestId) {
-      // Superseded. A newer year change owns the dropdown; an aircraft
-      // change does not touch it, so it would keep showing a year that is
-      // never applied, and picking that year again would fire no change
-      if (
-        this.yearRequestId === requestId &&
-        yearSelect.value === requestedYear
-      ) {
-        this.showLoadedYear(yearSelect);
-      }
+      // Superseded: by a newer year change, which owns the dropdown, or by
+      // cancelPending, which has shown the year applied in it again
       return false;
     }
     const aircraft = this.pendingAircraft;

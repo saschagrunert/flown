@@ -10,11 +10,8 @@
  * Only Wrapped counts the area, so this module is part of its bundle.
  */
 import type { KMLDataset, PathSegment } from "../types";
-import {
-  DEGREES_TO_RADIANS,
-  METRES_PER_DEGREE,
-  type Coordinate,
-} from "../utils/geometry";
+import type { Coordinate } from "../utils/geometry";
+import { cellKey, columnWidth, rowDegrees } from "./grid";
 import { segmentDistance } from "./statistics";
 
 /** Edge of a cell in metres */
@@ -22,10 +19,7 @@ const CELL_M = 1000;
 /** The area of a cell in square kilometres */
 export const CELL_KM2 = (CELL_M / 1000) ** 2;
 /** A row of cells per `CELL_M` of latitude */
-const ROW_DEGREES = CELL_M / METRES_PER_DEGREE;
-/** Rows are numbered into one key with their column */
-const ROW_STRIDE = 2 ** 22;
-const COLUMN_OFFSET = 2 ** 21;
+const ROW_DEGREES = rowDegrees(CELL_M);
 
 /**
  * The cell of a `[lat, lng]` point, as a number. A column is `CELL_M` wide
@@ -34,9 +28,7 @@ const COLUMN_OFFSET = 2 ** 21;
  */
 export function cellOf([lat, lng]: Readonly<Coordinate>): number {
   const row = Math.floor(lat / ROW_DEGREES);
-  const width =
-    ROW_DEGREES / Math.cos((row + 0.5) * ROW_DEGREES * DEGREES_TO_RADIANS);
-  return row * ROW_STRIDE + Math.floor(lng / width) + COLUMN_OFFSET;
+  return cellKey(row, Math.floor(lng / columnWidth(row, ROW_DEGREES)));
 }
 
 /**

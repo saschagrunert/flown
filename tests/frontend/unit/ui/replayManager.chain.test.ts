@@ -150,14 +150,14 @@ describe("ReplayManager with several flights", () => {
     const [first, second] = legs();
 
     replayManager.seekReplay(String(first!.finish + REPLAY_LEG_PAUSE_S / 2));
-    const [lat, lon] = replayManager.state.airplaneMarker!.getLatLng();
+    const [lat, lon] = replayManager.state.airplaneMarker!.position();
     expect(lat).toBeCloseTo(48.3, 6);
     expect(lon).toBeCloseTo(15.3, 6);
     // Still the flight that landed, all of it flown
     expect(time()).toMatch(/^1 of 3, EDDS → EDTF: \d:\d\d in$/);
 
     replayManager.seekReplay(String(second!.start));
-    const [lat2, lon2] = replayManager.state.airplaneMarker!.getLatLng();
+    const [lat2, lon2] = replayManager.state.airplaneMarker!.position();
     expect(lat2).toBeCloseTo(48.0, 6);
     expect(lon2).toBeCloseTo(16.0, 6);
 

@@ -302,7 +302,7 @@ describe("ReplayManager chase view", () => {
     const map = mockApp.map!;
     replayManager.toggleChase();
     expect(map.setCenterClampedToGround).toHaveBeenLastCalledWith(true);
-    const [lat, lon] = replayManager.state.airplaneMarker!.getLatLng();
+    const [lat, lon] = replayManager.state.airplaneMarker!.position();
     expect(map.easeTo).toHaveBeenLastCalledWith(
       expect.objectContaining({
         center: { lng: lon, lat },

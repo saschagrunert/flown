@@ -7,11 +7,7 @@
 import type { PathInfo, PathSegment } from "../types";
 import { DEGREES_TO_RADIANS, type Coordinate } from "../utils/geometry";
 import type { SmoothedFlights } from "../calculations/smoothing";
-import {
-  DEFAULT_AIRSPEED_RANGE,
-  DEFAULT_ALTITUDE_RANGE,
-  type Range,
-} from "../state/store";
+import { DEFAULT_AIRSPEED_RANGE, type Range } from "../state/store";
 import { FEET_TO_METERS, NAUTICAL_MILES_TO_KM } from "../utils/constants";
 import { formatNumber } from "../utils/formatters";
 import { unwrapLng } from "../utils/mapHelpers";
@@ -26,8 +22,6 @@ export interface SegmentProperties {
   color: string;
   isSelected: boolean;
 }
-
-export { DEFAULT_ALTITUDE_RANGE, DEFAULT_AIRSPEED_RANGE };
 
 /**
  * How many evenly spaced steps of rank a colour range keeps the values of

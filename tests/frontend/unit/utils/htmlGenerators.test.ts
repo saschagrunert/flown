@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { escapeHtml } from "../../../../flown/frontend/utils/escape";
 import {
-  escapeHtml,
   generateAirportPopupHtml,
   applyMetricColors,
   generateSegmentPopupHtml,
@@ -274,11 +274,11 @@ describe("htmlGenerators", () => {
       const html = generateSegmentPopupHtml({
         ...fullParams,
         title: "Current position",
-        icon: "aircraftTop",
+        icon: icon("airport", 20),
       });
 
       expect(html).toContain("Current position");
-      expect(html).toContain(icon("aircraftTop", 20));
+      expect(html).toContain(icon("airport", 20));
       expect(html).not.toContain("On this flight");
       expect(html).not.toContain(icon("aircraft", 20));
     });

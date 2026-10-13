@@ -143,6 +143,35 @@ interface Press {
   dragging: boolean;
 }
 
+/** The arrow keys, as steps on the screen */
+const KEY_STEPS: Partial<Record<string, [number, number]>> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+};
+
+/**
+ * Where the arrow key of `event` moves an end of the line at `at` on the
+ * map `target`, a few pixels on the screen and more with Shift; null for
+ * any other key
+ */
+function nudged(
+  target: MapLibreMap,
+  at: Coordinate,
+  event: KeyboardEvent,
+): Coordinate | null {
+  const step = KEY_STEPS[event.key];
+  if (!step) return null;
+  const pixels = event.shiftKey ? KEY_STEP_FAST_PX : KEY_STEP_PX;
+  const point = target.project(toLngLat(at));
+  const moved = target.unproject([
+    point.x + step[0] * pixels,
+    point.y + step[1] * pixels,
+  ]);
+  return [moved.lat, moved.lng];
+}
+
 function createTool(app: MapApp): CrossSectionTool {
   let phase: Phase = "closed";
   /** The line shown, [lat, lon] at each end */
@@ -551,28 +580,16 @@ function createTool(app: MapApp): CrossSectionTool {
 
   /** Move an end of the line with the arrow keys */
   const onHandleKey = (index: number, event: KeyboardEvent): void => {
-    const steps: Partial<Record<string, [number, number]>> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    };
-    const step = steps[event.key];
     const target = map();
-    if (!step || !target || !line) return;
+    const moved = target && line && nudged(target, line[index]!, event);
+    if (!moved || !line) return;
     // The map would pan by the same keys
     event.preventDefault();
     event.stopPropagation();
-    const pixels = event.shiftKey ? KEY_STEP_FAST_PX : KEY_STEP_PX;
-    const point = target.project(toLngLat(line[index]!));
-    const moved = target.unproject([
-      point.x + step[0] * pixels,
-      point.y + step[1] * pixels,
-    ]);
     // Onto the other end, there would be no line left: the key does nothing
-    if (tooShort([moved.lat, moved.lng], line[1 - index]!)) return;
-    line[index] = [moved.lat, moved.lng];
-    handles[index]!.setLngLat([moved.lng, moved.lat]);
+    if (tooShort(moved, line[1 - index]!)) return;
+    line[index] = moved;
+    handles[index]!.setLngLat(toLngLat(moved));
     schedule();
     announceSoon();
   };

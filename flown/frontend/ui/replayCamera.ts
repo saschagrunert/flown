@@ -6,7 +6,11 @@
  */
 import type { JumpToOptions, Map as MapLibreMap } from "maplibre-gl";
 import type { MapApp } from "../mapApp";
-import type { ReplayAirplane, ReplayState } from "./replayState";
+import {
+  returnToView,
+  type ReplayAirplane,
+  type ReplayState,
+} from "./replayState";
 import { AUTO_ZOOM_MIN, MAX_FRAME_S } from "../utils/constants";
 import {
   hasLostContext,
@@ -600,7 +604,7 @@ export class ReplayCamera {
     const map = this.app.map;
     if (!map || !this.heading) return;
     const { marker, track, state, position } = this.heading;
-    const [lat, lon] = marker.getLatLng();
+    const [lat, lon] = marker.position();
     if (lat !== position[0] || lon !== position[1]) marker.setLatLng(position);
     const chase = this.chase;
     // Chased, the airplane stands up in the screen at a size to read, and
@@ -735,15 +739,15 @@ export class ReplayCamera {
         restore === "view" && position
           ? { ...saved, center: { lng: position[1], lat: position[0] } }
           : saved;
-      map.easeTo({
-        ...camera,
-        duration: CHASE_RESTORE_MS,
-        animate: !prefersReducedMotion(),
-      });
+      const animate = !prefersReducedMotion();
+      map.easeTo({ ...camera, duration: CHASE_RESTORE_MS, animate });
       this.restoring = {
         camera,
         until: performance.now() + CHASE_RESTORE_MS,
       };
+      // Wrapped or the tour opened on the way keep that view, not the
+      // camera half way there; a move without motion is there already
+      if (animate) returnToView(this.app, camera);
     }
     this.turnIcon();
     return saved;

@@ -9,6 +9,7 @@ import {
 } from "../../../../flown/frontend/utils/colors";
 import * as replayFeature from "../../../../flown/frontend/features/replay";
 import { generateSegmentPopupHtml } from "../../../../flown/frontend/utils/htmlGenerators";
+import { lazyIcon } from "../../../../flown/frontend/utils/icons";
 import * as mapHelpers from "../../../../flown/frontend/utils/mapHelpers";
 import type { ReplayAirplane } from "../../../../flown/frontend/ui/replayState";
 import {
@@ -365,7 +366,7 @@ describe("ReplayManager display", () => {
 
       replayManager.updateReplayDisplay();
 
-      expect(airplane().getLatLng()).toEqual([48.0, 16.0]);
+      expect(airplane().position()).toEqual([48.0, 16.0]);
       expect(replayManager.state.currentIndex).toBe(-1);
     });
 
@@ -458,21 +459,21 @@ describe("ReplayManager display", () => {
       // At its time, as the replay has smoothed it (see replayCurve)
       replayManager.state.currentTime = replayManager.state.segments[1]!.time!;
       replayManager.updateReplayDisplay();
-      expect(airplane().getLatLng()).toEqual([48.1, 16.1]);
+      expect(airplane().position()).toEqual([48.1, 16.1]);
 
       // The last segment from its start to the end of the replay
       replayManager.state.currentTime = 120;
       replayManager.updateReplayDisplay();
-      expect(airplane().getLatLng()).toEqual([48.2, 16.2]);
+      expect(airplane().position()).toEqual([48.2, 16.2]);
       replayManager.state.currentTime = 180;
       replayManager.updateReplayDisplay();
-      const [lat, lon] = airplane().getLatLng();
+      const [lat, lon] = airplane().position();
       expect(lat).toBeGreaterThan(48.2);
       expect(lat).toBeLessThan(48.3);
       expect(lon).toBeGreaterThan(16.2);
       replayManager.state.currentTime = replayManager.state.maxTime;
       replayManager.updateReplayDisplay();
-      expect(airplane().getLatLng()).toEqual([48.3, 16.3]);
+      expect(airplane().position()).toEqual([48.3, 16.3]);
     });
 
     it("crosses a gap in the recording over its duration, not at its start", () => {
@@ -497,7 +498,7 @@ describe("ReplayManager display", () => {
       replayManager.state.currentTime = 1;
       replayManager.updateReplayDisplay(true);
 
-      const [lat] = airplane().getLatLng();
+      const [lat] = airplane().position();
       expect(lat).toBeLessThan(48.01);
     });
 
@@ -686,7 +687,7 @@ describe("ReplayManager display", () => {
             min: 100,
             max: 130,
           }) as unknown,
-          icon: "aircraftTop",
+          icon: lazyIcon("aircraftTop", 20),
         }),
       );
       const { popup } = airplane();

@@ -300,6 +300,12 @@ export const modules = {
           showDropSheet,
         } satisfies StandIn<typeof import("../../../../flown/frontend/local")>),
       ),
+      // The phone's bar comes with the extras bundle
+      loadExtras: vi.fn(() =>
+        Promise.resolve({ MobileBar: mobileBar } satisfies StandIn<
+          typeof import("../../../../flown/frontend/extras")
+        >),
+      ),
       wasSiteUpdated: vi.fn(() => false),
       noticeSiteUpdate: vi.fn(() => null),
     }) satisfies StandIn<

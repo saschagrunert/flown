@@ -7,10 +7,8 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "./fixtures";
 import { gotoApp, waitForAppReady } from "./helpers";
-import {
-  SHARE_TOKEN_PARAM,
-  unpackShareToken,
-} from "../../flown/frontend/state/shareToken";
+import { unpackShareToken } from "../../flown/frontend/state/shareToken";
+import { SHARE_TOKEN_PARAM } from "../../flown/frontend/state/urlState";
 
 /** The link a copied link resolves to as the page opens */
 function resolvedLink(copied: string): URLSearchParams {
@@ -21,8 +19,8 @@ function resolvedLink(copied: string): URLSearchParams {
 
 /**
  * Wait for the page opened from a copied link to resolve its token and
- * take the intro's mark off the address bar, which MapApp.initialize does
- * in one go, before it listens for the visitor's input
+ * take the intro's mark off the address bar, which startApp and
+ * MapApp.initialize do before the app listens for the visitor's input
  */
 async function waitForResolvedLink(page: Page): Promise<void> {
   await expect
@@ -150,15 +148,32 @@ async function copyShareLink(page: Page, threeD = false): Promise<string> {
       app.threeDVisible = threeD;
     });
     app.map!.jumpTo({ zoom: 3, pitch: threeD ? 50 : 0 });
-    const w = window as unknown as { copied: string };
+    const w = window as unknown as { copied?: string };
+    delete w.copied;
     Object.defineProperty(navigator.clipboard, "writeText", {
       value: (text: string) => {
         w.copied = text;
         return Promise.resolve();
       },
     });
+    // Handed the link to come, should the code that packs its token not
+    // have come yet (UIToggles.shareLink)
+    Object.defineProperty(navigator.clipboard, "write", {
+      value: async (items: ClipboardItem[]) => {
+        w.copied = await (await items[0]!.getType("text/plain")).text();
+      },
+    });
   }, threeD);
   await page.locator("#selection-link-btn").click();
+  // The clipboard waits for the code that packs the token, which a busy
+  // runner may take seconds to fetch
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => (window as unknown as { copied?: string }).copied),
+      { timeout: 20_000 },
+    )
+    .toBeDefined();
   return page.evaluate(() => (window as unknown as { copied: string }).copied);
 }
 

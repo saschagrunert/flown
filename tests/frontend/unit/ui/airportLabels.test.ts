@@ -139,6 +139,7 @@ describe("airport labels", () => {
       return {
         name,
         element,
+        arm: element.querySelector<HTMLElement>(".airport-code-arm"),
         lng: 8 + east / 1000,
         lat: 51 - south / 1000,
       };
@@ -212,6 +213,33 @@ describe("airport labels", () => {
       expect(placer.placeOf("EDDF Frankfurt")?.angle).toBe(
         ((angle + 540) % 360) - 180,
       );
+    });
+
+    it("tells of a code that went elsewhere once it is there", () => {
+      // An open popup asks where the code is now, to keep clear of it
+      const placer = codes();
+      placer.update();
+      const told: (number | undefined)[] = [];
+      moved.mockImplementation((name) =>
+        told.push(placer.placeOf(name)?.angle),
+      );
+      markers = [marker("EDDK Cologne", 300, 278), markers[0]!];
+
+      placer.update();
+
+      expect(told).toHaveLength(2);
+      expect(told[1]).toBe(placer.placeOf("EDDF Frankfurt")!.angle);
+      expect(told[1]).not.toBe(-90);
+    });
+
+    it("places the code of an airport in the world the map shows", () => {
+      // Ranked with the map a world away: MapLibre draws the marker on the
+      // copy of the world the map is centred on
+      markers[0]!.lng -= 360;
+
+      codes().update();
+
+      expect(arm(markers[0]!).classList.contains("is-hidden")).toBe(false);
     });
 
     it("tells the map of the room the codes take, every dot's and each drawn code's", () => {
@@ -518,6 +546,26 @@ describe("airport labels", () => {
       expect(dotButton(second).hasAttribute("inert")).toBe(true);
       expect(chip(second).getAttribute("role")).toBe("button");
       expect(chip(second).getAttribute("aria-label")).toBe("EDFE Egelsbach");
+    });
+
+    it("gives the dot back its target as soon as the code that was it goes in a move", () => {
+      // A replay that follows the aircraft moves the map in every frame, so
+      // the map never comes to rest
+      markers = [
+        marker("EDDF Frankfurt", 300, 300),
+        marker("EDFE Egelsbach", 314, 300),
+      ];
+      codes().update();
+      const second = markers[1]!;
+      expect(dotButton(second).hasAttribute("inert")).toBe(true);
+
+      // Below the zoom of the codes, the dots still drawn
+      map.jumpTo({ zoom: 3 });
+      map.emit("move");
+      vi.advanceTimersToNextFrame();
+
+      expect(arm(second).classList.contains("is-hidden")).toBe(true);
+      expect(dotButton(second).hasAttribute("inert")).toBe(false);
     });
 
     it("gives an airport with no room for its code the largest square clear of the others", () => {

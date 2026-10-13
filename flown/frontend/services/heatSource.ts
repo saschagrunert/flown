@@ -30,6 +30,7 @@
  * (services/yearDecoder.ts), which also writes the text there when the
  * worker cannot be used.
  */
+import { cellKey } from "../calculations/grid";
 import { exposedHeat } from "../calculations/heatExposure";
 
 /** How the heatmap draws a heat, see drawHeat */
@@ -162,8 +163,9 @@ function mergedPoints(heat: Float64Array, weights: Float64Array): number[] {
     const lng = heat[3 * index + 1]!;
     const weight = weights[index]!;
     const y = Math.atanh(Math.sin((lat * Math.PI) / 180)) * (180 / Math.PI);
-    // A cell holds fewer than 2^21 columns either side of the meridian
-    const key = Math.floor(y / cell) * 2 ** 22 + Math.floor(lng / cell);
+    // A row holds fewer than 2^21 cells either side of the meridian, which
+    // the keys of calculations/grid.ts have room for
+    const key = cellKey(Math.floor(y / cell), Math.floor(lng / cell));
     const at = cells.get(key);
     if (at === undefined) {
       cells.set(key, points.length);

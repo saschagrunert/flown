@@ -119,6 +119,114 @@ function formatX(profile: FlightProfile, value: number): string {
     : formatNumber(value, span < 10 ? 1 : 0) + " km";
 }
 
+/** The parts of the strip its chart and figures are drawn into */
+interface ChartParts {
+  plot: HTMLElement;
+  line: SVGElement;
+  ground: SVGElement;
+  routes: HTMLElement;
+  stats: HTMLElement;
+  axisStart: HTMLElement;
+  axisEnd: HTMLElement;
+}
+
+/** Where a value of x is across a chart from `x0` to `x1`, in its units */
+function scaleX(value: number, x0: number, x1: number): number {
+  return x1 > x0 ? ((value - x0) / (x1 - x0)) * VIEW_W : 0;
+}
+
+/**
+ * Draw the chart and the figures of `profile` into `parts`: each flight
+ * of `legs` on its own, with nothing across the gaps, and its route
+ * (`routeOf` its index) over it. Returns the chart's range: its first and
+ * last x, lowest and highest feet.
+ */
+function drawChart(
+  parts: ChartParts,
+  profile: FlightProfile,
+  legs: readonly ProfileLeg[],
+  routeOf: (k: number) => string,
+): { x0: number; x1: number; y0: number; y1: number } {
+  const { x, altitudeFt, groundFt } = profile;
+  const count = x.length;
+  let low = Infinity;
+  let high = -Infinity;
+  for (let i = 0; i < count; i++) {
+    low = Math.min(low, groundFt[i]!, altitudeFt[i]!);
+    high = Math.max(high, groundFt[i]!, altitudeFt[i]!);
+  }
+  const x0 = x[0]!;
+  const x1 = x[count - 1]!;
+  const y0 = low;
+  const y1 =
+    low +
+    Math.max(high - low, 100) * (1 + (legs.length ? LEGS_HEADROOM : HEADROOM));
+  const chartX = (value: number): number => scaleX(value, x0, x1);
+  const xOf = (i: number): string => chartX(x[i]!).toFixed(1);
+  const yOf = (feet: number): string =>
+    (VIEW_H - ((feet - y0) / (y1 - y0)) * VIEW_H).toFixed(1);
+  // Each flight of several on its own, with nothing across the gaps
+  let path = "";
+  let floor = "";
+  parts.routes.replaceChildren();
+  const names: string[] = [];
+  const runs = legs.length ? legs : [{ first: 0, last: count - 1 }];
+  runs.forEach(({ first, last }, k) => {
+    floor += `M${xOf(first)} ${VIEW_H}`;
+    for (let i = first; i <= last; i++) {
+      path += `${i > first ? "L" : "M"}${xOf(i)} ${yOf(altitudeFt[i]!)}`;
+      floor += `L${xOf(i)} ${yOf(groundFt[i]!)}`;
+    }
+    floor += `L${xOf(last)} ${VIEW_H}Z`;
+    if (!legs.length) return;
+    // Its route over it, from the middle of the gap before it to the
+    // middle of the one after, the gaps marked by its edges
+    const from = k ? (x[runs[k - 1]!.last]! + x[first]!) / 2 : x0;
+    const to = runs[k + 1] ? (x[last]! + x[runs[k + 1]!.first]!) / 2 : x1;
+    const route = element("span", "profile-leg", parts.routes);
+    route.style.left = `${chartX(from) / (VIEW_W / 100)}%`;
+    route.style.width = `${(chartX(to) - chartX(from)) / (VIEW_W / 100)}%`;
+    route.textContent = routeOf(k);
+    names.push(route.textContent);
+  });
+  parts.line.setAttribute("d", path);
+  parts.ground.setAttribute("d", floor);
+
+  const unit = " " + heightUnit(profile);
+  // Above sea level, where the lowest is above the ground: said so
+  const highest = `${formatNumber(profile.maxAltitudeFt)} ft MSL`;
+  const lowest = profile.lowestEnRouteFt;
+  const figures = [
+    ["Highest", highest],
+    ["Lowest en route", lowest === null ? "—" : formatNumber(lowest) + unit],
+  ];
+  if (profile.lowSeconds !== null) {
+    figures.push([
+      `Below ${formatNumber(LOW_HEIGHT_FT)}${unit}`,
+      formatDuration(profile.lowSeconds),
+    ]);
+  }
+  parts.stats.replaceChildren();
+  for (const [label, value] of figures) {
+    const stat = element("span", "profile-stat", parts.stats);
+    element("span", "profile-stat-label", stat).textContent = label!;
+    stat.append(" ", value!);
+  }
+  const start = formatX(profile, x0);
+  // Several flights end with how many, the gaps between them being no
+  // time or distance of theirs
+  const end = legs.length ? pluralFlights(legs.length) : formatX(profile, x1);
+  parts.axisStart.textContent = start;
+  parts.axisEnd.textContent = end;
+  // The routes over the chart are hidden from a screen reader, which
+  // hears them here, in their order
+  parts.plot.setAttribute(
+    "aria-label",
+    `Altitude over ${profile.timed ? "time" : "distance"}, ${legs.length ? `${end}: ${names.join(", ")}` : `${start} to ${end}`}, highest ${highest}`,
+  );
+  return { x0, x1, y0, y1 };
+}
+
 /** A drag on the chart, from the press to the release */
 interface Drag {
   startX: number;
@@ -165,6 +273,7 @@ export function followFlightProfile(app: MapApp): HTMLElement {
   const axisStart = element("span", "", axis);
   const axisEnd = element("span", "", axis);
   document.body.append(root);
+  const chart = { plot, line, ground, routes, stats, axisStart, axisEnd };
 
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -202,8 +311,7 @@ export function followFlightProfile(app: MapApp): HTMLElement {
   /** Whether the replay of one flight runs, whose panel takes the strip */
   const replaying = (): boolean => app.replayActive && !app.replayState.all;
   /** Where a value of x is across the chart, in its own units */
-  const chartX = (value: number): number =>
-    x1 > x0 ? ((value - x0) / (x1 - x0)) * VIEW_W : 0;
+  const chartX = (value: number): number => scaleX(value, x0, x1);
   /** The value of a column of the profile at a point */
   const at = (values: Float64Array, point: ProfilePoint): number =>
     valueAt((i) => values[i]!, values.length, point);
@@ -303,85 +411,9 @@ export function followFlightProfile(app: MapApp): HTMLElement {
     leave();
     setCursor(replayCursor, null);
     if (!profile) return;
-    const { x, altitudeFt, groundFt } = profile;
-    const count = x.length;
-    let low = Infinity;
-    let high = -Infinity;
-    for (let i = 0; i < count; i++) {
-      low = Math.min(low, groundFt[i]!, altitudeFt[i]!);
-      high = Math.max(high, groundFt[i]!, altitudeFt[i]!);
-    }
-    x0 = x[0]!;
-    x1 = x[count - 1]!;
-    y0 = low;
-    y1 =
-      low +
-      Math.max(high - low, 100) *
-        (1 + (legs.length ? LEGS_HEADROOM : HEADROOM));
-    const xOf = (i: number): string => chartX(x[i]!).toFixed(1);
-    const yOf = (feet: number): string =>
-      (VIEW_H - ((feet - y0) / (y1 - y0)) * VIEW_H).toFixed(1);
-    // Each flight of several on its own, with nothing across the gaps
-    let path = "";
-    let floor = "";
-    routes.replaceChildren();
-    const names: string[] = [];
-    const runs = legs.length ? legs : [{ first: 0, last: count - 1 }];
-    runs.forEach(({ first, last }, k) => {
-      floor += `M${xOf(first)} ${VIEW_H}`;
-      for (let i = first; i <= last; i++) {
-        path += `${i > first ? "L" : "M"}${xOf(i)} ${yOf(altitudeFt[i]!)}`;
-        floor += `L${xOf(i)} ${yOf(groundFt[i]!)}`;
-      }
-      floor += `L${xOf(last)} ${VIEW_H}Z`;
-      if (!legs.length) return;
-      // Its route over it, from the middle of the gap before it to the
-      // middle of the one after, the gaps marked by its edges
-      const from = k ? (x[runs[k - 1]!.last]! + x[first]!) / 2 : x0;
-      const to = runs[k + 1] ? (x[last]! + x[runs[k + 1]!.first]!) / 2 : x1;
-      const route = element("span", "profile-leg", routes);
-      route.style.left = `${chartX(from) / (VIEW_W / 100)}%`;
-      route.style.width = `${(chartX(to) - chartX(from)) / (VIEW_W / 100)}%`;
-      route.textContent = flightRoute(
-        datasetIndex(data!).pathInfoById.get(pathIds[k]!)!,
-      );
-      names.push(route.textContent);
-    });
-    line.setAttribute("d", path);
-    ground.setAttribute("d", floor);
-
-    const unit = " " + heightUnit(profile);
-    // Above sea level, where the lowest is above the ground: said so
-    const highest = `${formatNumber(profile.maxAltitudeFt)} ft MSL`;
-    const lowest = profile.lowestEnRouteFt;
-    const figures = [
-      ["Highest", highest],
-      ["Lowest en route", lowest === null ? "—" : formatNumber(lowest) + unit],
-    ];
-    if (profile.lowSeconds !== null) {
-      figures.push([
-        `Below ${formatNumber(LOW_HEIGHT_FT)}${unit}`,
-        formatDuration(profile.lowSeconds),
-      ]);
-    }
-    stats.replaceChildren();
-    for (const [label, value] of figures) {
-      const stat = element("span", "profile-stat", stats);
-      element("span", "profile-stat-label", stat).textContent = label!;
-      stat.append(" ", value!);
-    }
-    const start = formatX(profile, x0);
-    // Several flights end with how many, the gaps between them being no
-    // time or distance of theirs
-    const end = legs.length ? pluralFlights(legs.length) : formatX(profile, x1);
-    axisStart.textContent = start;
-    axisEnd.textContent = end;
-    // The routes over the chart are hidden from a screen reader, which
-    // hears them here, in their order
-    plot.setAttribute(
-      "aria-label",
-      `Altitude over ${profile.timed ? "time" : "distance"}, ${legs.length ? `${end}: ${names.join(", ")}` : `${start} to ${end}`}, highest ${highest}`,
-    );
+    ({ x0, x1, y0, y1 } = drawChart(chart, profile, legs, (k) =>
+      flightRoute(datasetIndex(data!).pathInfoById.get(pathIds[k]!)!),
+    ));
   };
 
   /** Show or hide the strip and its toggle, and put the panel in step */

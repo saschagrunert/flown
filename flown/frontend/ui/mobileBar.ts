@@ -15,17 +15,14 @@
  * When replay activates, or the hotspot tour starts, the bar steps aside
  * entirely: their panel takes the bottom edge, so the two never stack.
  *
- * The sheet itself comes with the extras bundle (extras.ts), which a phone
- * fetches as soon as the page has a moment after the bar is mounted: no
- * part of a first visit, and on a desktop not fetched at all. A tap on a
- * sheet tab before it has arrived opens the sheet once it has.
+ * The bar comes with the extras bundle (extras.ts), its sheet with it,
+ * which the app asks for once the phone layout applies
+ * (MapApp.followMobileBar): no part of a first visit, and on a desktop
+ * not fetched for it at all.
  */
 import type { MapApp } from "../mapApp";
-import type { MobileSheet, SheetRow, SheetSwitchRow } from "./mobileSheet";
-import { loadExtras, loadedExtras } from "../services/featureLoader";
-import { TRY_AGAIN } from "../services/lazyImport";
+import { MobileSheet, type SheetRow, type SheetSwitchRow } from "./mobileSheet";
 import { icon, type IconName } from "../utils/icons";
-import { whenIdle } from "../utils/whenIdle";
 import {
   followPhoneLayout,
   isPhoneLayout,
@@ -45,14 +42,9 @@ import {
   runAction,
 } from "./actions";
 import { focusStatsRail } from "./appChrome";
-import { loadLazyBundle } from "./lazyBundles";
 
 /** The id of the sheet, which the tabs that open it name before it exists */
 const SHEET_ID = "mobile-sheet";
-
-/** Said when the sheet's code cannot be fetched (see loadLazyBundle) */
-export const SHEET_UNAVAILABLE_MESSAGE =
-  "The menu is unavailable: its code could not be loaded" + TRY_AGAIN;
 
 /** Control columns the bar replaces while it is mounted */
 const LEGACY_CONTROL_IDS = ["left-buttons", "right-buttons"];
@@ -117,6 +109,15 @@ interface TabSpec {
   kind: TabKind;
 }
 
+/** The control of the columns each tab stands in for, the first of its sheet */
+const COLUMN_CONTROLS: Record<TabId, string> = {
+  layers: "heatmap-btn",
+  filter: "year-select",
+  stats: "stats-btn",
+  wrapped: "wrapped-btn",
+  more: "search-btn",
+};
+
 const TABS: TabSpec[] = [
   { id: "layers", icon: "layers", label: "Layers", kind: "sheet" },
   { id: "filter", icon: "filter", label: "Filter", kind: "sheet" },
@@ -127,8 +128,8 @@ const TABS: TabSpec[] = [
 
 export class MobileBar {
   readonly root: HTMLElement;
-  /** Made once the extras bundle has arrived (see mountSheet) */
-  private sheet: MobileSheet | null = null;
+  /** In the page while the bar is (see mountSheet) */
+  private readonly sheet = new MobileSheet(SHEET_ID);
 
   private readonly app: MapApp;
   private readonly tabs = new Map<TabId, HTMLButtonElement>();
@@ -253,10 +254,19 @@ export class MobileBar {
     this.mounted = false;
 
     this.closeSheet();
-    this.sheet?.destroy();
+    this.sheet.destroy();
+    // A sheet hands the focus back to its tab as it closes, and a tab that
+    // leaves the page drops it to <body>: it goes to the control of the
+    // columns the tab stands in for instead, once they are back
+    const active = document.activeElement;
+    const focused =
+      active instanceof HTMLElement && this.root.contains(active)
+        ? (active.dataset["tab"] as TabId | undefined)
+        : undefined;
     this.root.remove();
 
     setLegacyControlsHidden(false);
+    if (focused) document.getElementById(COLUMN_CONTROLS[focused])?.focus();
 
     for (const unsubscribe of this.unsubscribes) unsubscribe();
     this.unsubscribes.length = 0;
@@ -286,42 +296,17 @@ export class MobileBar {
    * camera move, which the app passes on (see MapApp.syncResetButton).
    */
   refreshSheet(): void {
-    if (this.sheet?.isOpen()) this.sheet.refresh();
+    if (this.sheet.isOpen()) this.sheet.refresh();
   }
 
   /** Whether a sheet is open */
   sheetOpen(): boolean {
-    return this.sheet?.isOpen() ?? false;
+    return this.sheet.isOpen();
   }
 
-  /**
-   * Put the sheet into the page with the bar: at once if its code is
-   * there, or once the page has a moment to fetch it, ahead of a tap
-   */
+  /** Put the sheet into the page with the bar */
   private mountSheet(): void {
-    const extras = loadedExtras();
-    if (!this.sheet && extras) this.sheet = new extras.MobileSheet(SHEET_ID);
-    if (this.sheet) {
-      this.sheet.mount(document.body);
-      // The tabs name the sheet they open once it is in the page
-      for (const spec of TABS) {
-        if (spec.kind === "sheet") {
-          this.tabs.get(spec.id)?.setAttribute("aria-controls", SHEET_ID);
-        }
-      }
-      return;
-    }
-    // A failure says nothing here: a tap on a sheet tab asks again, and
-    // says so (openSheet)
-    whenIdle(() => {
-      if (this.mounted) void loadExtras().then(() => this.ensureSheet());
-    });
-  }
-
-  /** The sheet, made and mounted if its code has arrived and none is yet */
-  private ensureSheet(): MobileSheet | null {
-    if (!this.sheet && this.mounted && loadedExtras()) this.mountSheet();
-    return this.sheet;
+    this.sheet.mount(document.body);
   }
 
   private createTab(spec: TabSpec): HTMLButtonElement {
@@ -343,9 +328,10 @@ export class MobileBar {
 
     if (spec.kind === "sheet") {
       // No aria-expanded: the sheet is modal and covers the whole bar, so
-      // the tab is not an operable disclosure once it is open. It controls
-      // the sheet once that is in the page (mountSheet).
+      // the tab is not an operable disclosure once it is open. The sheet
+      // is in the page while the bar is (mountSheet).
       tab.setAttribute("aria-haspopup", "dialog");
+      tab.setAttribute("aria-controls", SHEET_ID);
     } else if (spec.kind === "dialog") {
       tab.setAttribute("aria-haspopup", "dialog");
     } else {
@@ -397,27 +383,11 @@ export class MobileBar {
     this.syncTabs();
   }
 
-  /**
-   * Open the sheet of tab `id`. Before its code has arrived the tab is
-   * marked open at once, as a tap on it again closes it, and the sheet
-   * opens once the code is there, unless the tab was closed or another
-   * one tapped meanwhile.
-   */
+  /** Open the sheet of tab `id` */
   private openSheet(id: "layers" | "filter" | "more"): void {
     this.openTab = id;
-    const sheet = this.ensureSheet();
-    if (!sheet) {
-      void loadLazyBundle(loadExtras, SHEET_UNAVAILABLE_MESSAGE).then(
-        (extras) => {
-          if (this.openTab !== id) return;
-          if (extras && this.ensureSheet()) this.openSheet(id);
-          else this.closeSheet();
-        },
-      );
-      return;
-    }
-    // Its rows as they are now: the year may have finished loading while
-    // the code of the sheet was on its way
+    const sheet = this.sheet;
+    // Its rows as they are now, read anew at every opening
     const [title, rows] =
       id === "layers"
         ? ["Layers", this.toggleRows("layers")]
@@ -432,7 +402,7 @@ export class MobileBar {
   }
 
   private closeSheet(): void {
-    this.sheet?.close();
+    this.sheet.close();
     this.openTab = null;
     this.syncTabs();
   }

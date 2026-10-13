@@ -9,7 +9,11 @@ import { pluralize } from "../utils/htmlGenerators";
 import { formatFlightTime } from "../utils/statsFormat";
 import { markup } from "../utils/markup";
 import { countCountries } from "./countries";
-import { calculateDistance, type Coordinate } from "../utils/geometry";
+import {
+  calculateDistance,
+  EARTH_CIRCUMFERENCE_M,
+  type Coordinate,
+} from "../utils/geometry";
 import type {
   AircraftModels,
   FilteredStatistics,
@@ -182,7 +186,8 @@ export function generateFunFacts(
   // Distance facts. The distance itself is a figure on the card above;
   // said again here it only repeated it.
   const distanceNm = yearStats.total_distance_nm;
-  const earthCircumferenceNm = 21639; // Nautical miles
+  const earthCircumferenceNm =
+    (EARTH_CIRCUMFERENCE_M / 1000) * KM_TO_NAUTICAL_MILES;
 
   if (distanceNm > earthCircumferenceNm * 0.5) {
     const ratio = (distanceNm / earthCircumferenceNm).toFixed(1);

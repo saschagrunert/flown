@@ -22,7 +22,7 @@ gzipped sizes CI prints when a budget is close.
 | `BUDGET_FEATURES`      | `features.bundle.js`: replay, the 3D view, the imagery, the profile, the cross-section, the tour |
 | `BUDGET_WRAPPED`       | `wrapped.bundle.js`: Wrapped, the statistics panel and the flight list                           |
 | `BUDGET_SEARCH`        | `search.bundle.js`: the search of airports and places, its panel and the client of Photon        |
-| `BUDGET_EXTRAS`        | `extras.bundle.js`: the sheet of the phone's bar and the export of the map as an image           |
+| `BUDGET_EXTRAS`        | `extras.bundle.js`: the phone's bar and sheet, packing share tokens and the export of the map    |
 | `BUDGET_LOCAL`         | `local.bundle.js`: Your flights, its panel, the store in the browser and the build's page side   |
 | `BUDGET_WORKER`        | `yearWorker.bundle.js`, preloaded in the page head and started with the first year file          |
 | `BUDGET_LOCAL_WORKER`  | `localWorker.bundle.js`: the worker that builds the visitor's flights with Pyodide               |

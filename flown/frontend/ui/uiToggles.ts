@@ -5,13 +5,16 @@ import type { MapApp } from "../mapApp";
 import { setControlLabel } from "../utils/buttonState";
 import { canShareLink } from "../utils/device";
 import { domCache } from "../utils/domCache";
-import { loadExtras } from "../services/featureLoader";
+import { loadedExtras, loadExtras } from "../services/featureLoader";
 import { TRY_AGAIN } from "../services/lazyImport";
 import { logError } from "../utils/logger";
 import { showToast } from "../utils/toast";
 import { SHARE_UNAVAILABLE_MESSAGE } from "../state/localFlags";
-import { packShareToken, SHARE_TOKEN_PARAM } from "../state/shareToken";
-import { encodeStateToUrl, SHARE_INTRO_PARAM } from "../state/urlState";
+import {
+  encodeStateToUrl,
+  SHARE_INTRO_PARAM,
+  SHARE_TOKEN_PARAM,
+} from "../state/urlState";
 import { NO_TIMING_MESSAGE, STILL_LOADING_MESSAGE } from "./actions";
 import { altitudeColours, setColorLayer } from "./layerVisibility";
 import { loadLazyBundle } from "./lazyBundles";
@@ -33,7 +36,8 @@ export const EXPORT_FAILED_MESSAGE = "Could not export the image. Try again.";
 export const EXPORT_UNAVAILABLE_MESSAGE =
   "Export is unavailable: its code could not be loaded" + TRY_AGAIN;
 
-function isAbortError(error: unknown): boolean {
+/** Whether a share sheet, or a download, was cancelled rather than failed */
+export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
@@ -167,6 +171,8 @@ export class UIToggles {
     // has open, which on a phone are a sheet over all of it. Share mode has
     // flights, so the link has a query.
     let url = location.href;
+    /** The link with its token, once the code that packs it has come */
+    let packed: Promise<string> | null = null;
     if (state) {
       const shared = this.app.isolateSelection;
       const query = shared
@@ -176,12 +182,26 @@ export class UIToggles {
             flightListVisible: false,
           })}&${SHARE_INTRO_PARAM}=1`
         : encodeStateToUrl(state);
-      // All of it packed into one token (state/shareToken.ts), which the
-      // page resolves as it opens; the long link where the token has no room
-      const token = packShareToken(query);
+      // All of it packed into one token (state/shareTokenPack.ts), which
+      // the page resolves as it opens; the long link where the token has
+      // no room. The code that packs it comes with the extras bundle, which
+      // the page fetches once it has a moment (initMapApp) and pointing at
+      // a share control fetches ahead (prepareOnIntent). Should a press
+      // still beat it, the clipboard is handed the link to come, as it
+      // takes one only in the moment of the press, which a fetch would
+      // outlast in Safari; the share sheet takes the long link.
       const page = `${location.origin}${location.pathname}`;
-      if (token !== null) url = `${page}?${SHARE_TOKEN_PARAM}=${token}`;
-      else if (shared) url = `${page}?${query}`;
+      const long = shared ? `${page}?${query}` : location.href;
+      const linkOf = (token: string | null | undefined): string =>
+        token ? `${page}?${SHARE_TOKEN_PARAM}=${token}` : long;
+      const extras = loadedExtras();
+      url = linkOf(extras?.packShareToken(query));
+      if (!extras) {
+        packed = loadExtras().then(
+          (loaded) => linkOf(loaded?.packShareToken(query)),
+          () => long,
+        );
+      }
     }
 
     if (canShareLink()) {
@@ -195,7 +215,16 @@ export class UIToggles {
     }
 
     try {
-      await navigator.clipboard.writeText(url);
+      if (packed && typeof ClipboardItem === "function") {
+        const text = packed.then(
+          (link) => new Blob([link], { type: "text/plain" }),
+        );
+        await navigator.clipboard.write([
+          new ClipboardItem({ "text/plain": text }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(url);
+      }
       showToast("Link copied", "info");
     } catch (_error) {
       showToast("Could not copy link", "error");

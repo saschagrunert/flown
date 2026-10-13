@@ -14,14 +14,16 @@ import type { MapApp } from "../mapApp";
 import { isPhoneLayout, isSmallDevice } from "../utils/device";
 import { importWithRetry } from "../services/lazyImport";
 import { logError } from "../utils/logger";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import {
+  holdMapStill,
   MAP_COMPLETE_TIMEOUT_MS,
   whenMapComplete,
-  withMapStill,
 } from "../utils/mapHelpers";
+import { withTimeout } from "../utils/withTimeout";
 import { MAP_SOURCES } from "../utils/constants";
 import { showToast } from "../utils/toast";
-import { EXPORT_UNAVAILABLE_MESSAGE } from "./uiToggles";
+import { EXPORT_UNAVAILABLE_MESSAGE, isAbortError } from "./uiToggles";
 
 /**
  * html-to-image is only needed for export, so it is imported on first use.
@@ -30,6 +32,132 @@ import { EXPORT_UNAVAILABLE_MESSAGE } from "./uiToggles";
  * (see build.js). Same-origin, so the page's CSP covers it as it is.
  */
 export const HTML_TO_IMAGE_URL = "./vendor/html-to-image.mjs";
+
+/**
+ * How long `withMapStill` waits for the frame it asked for (ms). A map draws
+ * within a frame or two; one that has lost its WebGL context never does.
+ */
+export const MAP_STILL_TIMEOUT_MS = 3000;
+
+/**
+ * The frame the map draws next, as a PNG data URL. Rejects when no frame
+ * comes in time or the canvas cannot be read: a promise that never settled
+ * would leave the caller's busy state on for good.
+ */
+function nextFrameAsDataUrl(map: MapLibreMap): Promise<string> {
+  const canvas = map.getCanvas();
+  let onRender!: () => void;
+  const frame = new Promise<string>((resolve, reject) => {
+    onRender = (): void => {
+      try {
+        resolve(canvas.toDataURL("image/png"));
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    map.on("render", onRender);
+    map.triggerRepaint();
+  });
+  return withTimeout(
+    frame,
+    MAP_STILL_TIMEOUT_MS,
+    "the map did not draw in time",
+  ).finally(() => map.off("render", onRender));
+}
+
+/**
+ * Run `fn` while the map shows a still image of itself in place of its
+ * canvas, and put the canvas back afterwards.
+ *
+ * html-to-image copies DOM, and a WebGL canvas copied that way is blank: the
+ * drawing buffer is cleared once a frame has been presented. It can only be
+ * read inside the frame that drew it, so the still is taken in a `render`
+ * handler after asking for a repaint. `preserveDrawingBuffer` would make the
+ * canvas readable at any time, at a cost every frame pays. Markers and popups
+ * are DOM next to the canvas and need no help.
+ *
+ * With `pixelRatio` the still is drawn at that many device pixels per CSS
+ * pixel, so an image exported at 2x from a 1x screen gets a map as sharp as
+ * the page around it instead of an enlarged one. The ratio is only ever
+ * raised: a screen denser than the export already has the better frame, and
+ * a smaller canvas would cost a redraw to make the image softer. MapLibre
+ * keeps the canvas within `maxCanvasSize` and what the GPU allocates by
+ * lowering the ratio itself, and the still keeps the canvas's CSS size, so
+ * a ratio that was not met in full needs no handling here.
+ *
+ * Changing the ratio resizes the canvas, which clears it. Nothing blank is
+ * presented: the frame asked for is drawn before the browser paints again.
+ * No tile is loaded for it (tiles do not depend on the ratio), so that one
+ * frame is complete and there is no `idle` to wait for. A resize is not free
+ * of side effects, though: MapLibre stops the camera, which resets a gesture
+ * that is just beginning, and fires `movestart`, `move` and `moveend`
+ * without a camera change, once on the way up and once on the way back. The
+ * listeners of this app take that in their stride (a saved view is written
+ * again, unchanged). That is the reason not to raise a ratio for nothing.
+ */
+export async function withMapStill<T>(
+  map: MapLibreMap,
+  fn: () => Promise<T> | T,
+  pixelRatio?: number,
+): Promise<T> {
+  const canvas = map.getCanvas();
+  const screenRatio = map.getPixelRatio();
+  // Asked now and not when the ratio goes back: a browser zoom or a move to
+  // another monitor during the capture changes devicePixelRatio, and the
+  // comparison would then pin a map that had been following the screen
+  const followsScreen = screenRatio === window.devicePixelRatio;
+  // What MapLibre asks for and what the canvas has differ once the canvas
+  // hit `maxCanvasSize` or the GPU's limit. A canvas that is already held
+  // below the ratio it has cannot get any larger, and raising it would cost
+  // two resizes to take the same still.
+  const applied =
+    canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : screenRatio;
+  const clamped = applied < screenRatio * 0.99;
+  const raised =
+    pixelRatio !== undefined && pixelRatio > screenRatio && !clamped;
+  let still: HTMLImageElement | null = null;
+  holdMapStill(map, true);
+  try {
+    if (raised) map.setPixelRatio(pixelRatio);
+    const dataUrl = await nextFrameAsDataUrl(map);
+
+    still = document.createElement("img");
+    still.className = canvas.className;
+    still.alt = "";
+    // The canvas is sized in CSS pixels by MapLibre; its width and height
+    // attributes are device pixels and would blow the image up
+    still.width = canvas.clientWidth;
+    still.height = canvas.clientHeight;
+    still.src = dataUrl;
+    // Decoded before the swap, so the capture never sees an empty image. A
+    // failure to decode leaves a blank map in the export, which is what there
+    // was to show anyway; the swap back below must still happen.
+    await still.decode().catch(() => undefined);
+
+    canvas.replaceWith(still);
+    return await fn();
+  } finally {
+    // The ratio goes back while the still is showing, so the canvas returns
+    // at the size it had. A map that followed the screen's ratio follows it
+    // again (null lifts the override, which the typings leave out): a number
+    // would pin it, and the map would stay soft after a browser zoom.
+    try {
+      if (raised) {
+        map.setPixelRatio(
+          followsScreen ? (null as unknown as number) : screenRatio,
+        );
+      }
+    } finally {
+      // Whatever happened above: a map that was removed during the capture
+      // throws on the resize, and the page must not be left showing a still.
+      // Does nothing for a still that never made it into the page.
+      still?.replaceWith(canvas);
+      // A 2x frame of a large monitor is tens of megabytes once decoded
+      still?.removeAttribute("src");
+      holdMapStill(map, false);
+    }
+  }
+}
 
 /** Largest canvas iOS Safari will draw into (16.7 million pixels) */
 export const MAX_CANVAS_PIXELS = 16_777_216;
@@ -116,10 +244,6 @@ export function dataUrlToBlob(dataUrl: string): Blob {
     bytes[i] = binary.charCodeAt(i);
   }
   return new Blob([bytes], { type });
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
 }
 
 function downloadBlob(blob: Blob, fallbackHref: string, filename: string) {

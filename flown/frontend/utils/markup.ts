@@ -7,7 +7,7 @@
  * escaped unless it is markup made the same way. Not called `html`, which
  * Prettier takes for a template of HTML and wraps, spaces and all.
  */
-import { escapeHtml } from "./htmlGenerators";
+import { escapeHtml } from "./escape";
 
 declare const made: unique symbol;
 

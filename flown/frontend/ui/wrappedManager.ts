@@ -48,7 +48,7 @@ import {
   type IntroOverview,
   type WrappedIntro,
 } from "./wrappedIntro";
-import { restingPitch } from "./replayState";
+import { userView } from "./replayState";
 
 /**
  * Elements that stay out of the inert set while the dialog is open: the
@@ -71,7 +71,7 @@ const MAP_RESTORE_DELAY_MS = 100;
  */
 const MAP_REVEAL_TIMEOUT_MS = 1200;
 
-/** Where a session notes the years whose intro has played (see firstIntro) */
+/** Where a session notes the years whose intro has played (see introsSeen) */
 export const INTRO_SEEN_KEY = "flown-wrapped-intro";
 
 /**
@@ -380,14 +380,13 @@ export class WrappedManager {
 
     // The dialog fits the map to all the data; closing it puts the user's
     // own view back. A view still waiting to be put back by a close that is
-    // settling is the user's, the current one is the fitted one.
-    if (!this.savedView) {
-      const center = this.app.map.getCenter();
+    // settling is the user's, the current one is the fitted one; and while
+    // the camera flies back to the user's view from the tour or a chase,
+    // that one is (userView)
+    const view = this.savedView ? null : userView(this.app);
+    if (view) {
       this.savedView = {
-        center: { lat: center.lat, lng: center.lng },
-        zoom: this.app.map.getZoom(),
-        bearing: this.app.map.getBearing(),
-        pitch: restingPitch(this.app),
+        ...view,
         globeVisible: this.app.globeVisible,
         threeDVisible: this.app.threeDVisible,
       };
@@ -404,8 +403,8 @@ export class WrappedManager {
     // The map shows at once in an opening with the intro (wrapped.css)
     domCache.get("wrapped-modal")?.classList.toggle("has-intro", !!home);
     if (home) {
-      // Seen once it plays: a year without a home base yet has not
-      introSeen(year);
+      // Seen once it plays (begin, below): a year without a home base yet
+      // has not, nor has one whose intro gave up waiting for its code
       this.intro = startWrappedIntro(this.app, home, overview, () => {
         this.intro = null;
       });
@@ -484,6 +483,7 @@ export class WrappedManager {
           ) {
             return;
           }
+          if (plays) introSeen(year);
           this.revealMapWhenPainted(
             wrappedMapContainer,
             plays ? () => intro.fly() : undefined,

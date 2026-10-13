@@ -497,7 +497,7 @@ describe("AirplaneMarker", () => {
     expect(
       (airplane.marker as unknown as { options: unknown }).options,
     ).toMatchObject({ anchor: "center" });
-    expect(airplane.getLatLng()).toEqual([48, 16]);
+    expect(airplane.position()).toEqual([48, 16]);
   });
 
   it("lies on the map, tilted with it, and turns on its own", () => {
@@ -678,7 +678,7 @@ describe("AirplaneMarker", () => {
     airplane.openPopup();
     airplane.setLatLng([49, 17]);
 
-    expect(airplane.getLatLng()).toEqual([49, 17]);
+    expect(airplane.position()).toEqual([49, 17]);
     expect(airplane.popup.getLngLat()).toMatchObject({ lng: 17, lat: 49 });
   });
 
@@ -999,7 +999,7 @@ describe("ReplayRenderer", () => {
       runFrame();
       expect(el("replay-time-display").textContent).toBe("0:25 / 0:30");
       expect(trailSource().setData).not.toHaveBeenCalled();
-      expect(state.airplaneMarker.getLatLng()[0]).toBeLessThan(50.02);
+      expect(state.airplaneMarker.position()[0]).toBeLessThan(50.02);
 
       map.getProjection.mockReset();
       map.emit("webglcontextrestored");
@@ -1010,7 +1010,7 @@ describe("ReplayRenderer", () => {
       // The trail up to the airplane where it is now
       expect(trailSource().setData).toHaveBeenCalled();
       expect(state.lastDrawnIndex).toBe(2);
-      expect(state.airplaneMarker.getLatLng()[0]).toBeGreaterThan(50.02);
+      expect(state.airplaneMarker.position()[0]).toBeGreaterThan(50.02);
     });
 
     it("updates time display text", () => {
@@ -1239,7 +1239,7 @@ describe("ReplayRenderer", () => {
 
       callUpdateDisplay();
 
-      expect(airplane.getLatLng()).toEqual([50.01, 8.51]);
+      expect(airplane.position()).toEqual([50.01, 8.51]);
       // Longitude first on its way to the map
       expect(airplane.marker.setLngLat).toHaveBeenLastCalledWith([8.51, 50.01]);
     });
@@ -1255,7 +1255,7 @@ describe("ReplayRenderer", () => {
 
       callUpdateDisplay();
 
-      const [lat, lon] = airplane.getLatLng();
+      const [lat, lon] = airplane.position();
       expect(lat).toBeCloseTo(50.005);
       expect(lon).toBeCloseTo(8.505);
     });
@@ -1313,7 +1313,7 @@ describe("ReplayRenderer", () => {
 
       callUpdateDisplay();
 
-      expect(airplane.getLatLng()).toEqual([51.0, 9.0]);
+      expect(airplane.position()).toEqual([51.0, 9.0]);
     });
 
     it("applies rotation transform to airplane icon", () => {
@@ -1515,7 +1515,7 @@ describe("ReplayRenderer", () => {
 
         /** Where the airplane is drawn on the screen, lifted */
         const drawn = (): { x: number; y: number } => {
-          const [lat, lng] = airplane.getLatLng();
+          const [lat, lng] = airplane.position();
           const ground = map.project([lng, lat]);
           return { x: ground.x, y: ground.y - lift() };
         };
@@ -1531,7 +1531,7 @@ describe("ReplayRenderer", () => {
 
           callUpdateDisplay();
 
-          const [lat, lng] = airplane.getLatLng();
+          const [lat, lng] = airplane.position();
           const jumps = vi.mocked(map.jumpTo).mock.calls;
           expect(jumps[0]).toEqual([
             { center: [lng, lat] },
@@ -1557,7 +1557,7 @@ describe("ReplayRenderer", () => {
           expect(lift()).toBeGreaterThan(room * 1.5);
           // The ground under the airplane is below the middle by the room
           // the tilt has, and the airplane above it by the rest of its lift
-          const [lat, lng] = airplane.getLatLng();
+          const [lat, lng] = airplane.position();
           expect(map.project([lng, lat]).y).toBeCloseTo(300 + room, 6);
           const center = map.getCenter();
 
@@ -1624,7 +1624,7 @@ describe("ReplayRenderer", () => {
         // Halfway through the time of the first segment, where its ribbon
         // is: the curve is off the straight line already, swinging out to
         // come into the turn
-        const [lat, lon] = airplane.getLatLng();
+        const [lat, lon] = airplane.position();
         const onCurve = replayFeature.replayPoint(
           mockReplayManager.state.smoothed!,
           0,
@@ -1636,7 +1636,7 @@ describe("ReplayRenderer", () => {
         // Flat, on the same curve: the lines are drawn along it too
         mockReplayManager.state.lifted = false;
         callUpdateDisplay();
-        expect(airplane.getLatLng()[1]).toBeCloseTo(lon, 9);
+        expect(airplane.position()[1]).toBeCloseTo(lon, 9);
       });
 
       it("hands the trail to its line and the airplane to the ground zoomed in close", () => {
@@ -1816,7 +1816,7 @@ describe("ReplayRenderer", () => {
           features: { geometry: { coordinates: [number, number][] } }[];
         };
         const line = features[features.length - 1]!.geometry.coordinates;
-        const [lat, lng] = state.airplaneMarker.getLatLng();
+        const [lat, lng] = state.airplaneMarker.position();
         expect(line[line.length - 1]).toEqual([lng, lat]);
       }
     });
@@ -1951,7 +1951,7 @@ describe("ReplayRenderer", () => {
         for (let frame = 0; frame < frames; frame++) {
           state.currentTime += 0.016 * speed;
           callUpdateDisplay();
-          const [lat, lng] = state.airplaneMarker!.getLatLng();
+          const [lat, lng] = state.airplaneMarker!.position();
           seen.push({
             x: map.project([lng, lat]).x,
             camera: map.getCenter().lng,

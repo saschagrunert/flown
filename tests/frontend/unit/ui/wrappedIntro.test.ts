@@ -482,6 +482,8 @@ describe("Wrapped's intro", () => {
       mockApp.selectedYear = year;
       wrappedManager.showWrapped(true);
       const intro = modal().classList.contains("has-intro");
+      // Seen once it begins, with the map in the dialog
+      await vi.advanceTimersByTimeAsync(MAP_IN_DIALOG_MS);
       wrappedManager.closeWrapped();
       await vi.runAllTimersAsync();
       return intro;
@@ -497,6 +499,19 @@ describe("Wrapped's intro", () => {
     });
     expect(await opens("2024")).toBe(true);
     expect(await opens("2024")).toBe(true);
+  });
+
+  it("is not seen while it never played, its code too late", async () => {
+    // A slow phone: the feature bundle misses the intro's wait
+    loader.loadFeatures.mockImplementation(() => new Promise(() => {}));
+    mockApp.selectedYear = "2023";
+
+    await openWithIntro();
+    await vi.runAllTimersAsync();
+    wrappedManager.closeWrapped();
+    await vi.runAllTimersAsync();
+
+    expect(sessionStorage.getItem(INTRO_SEEN_KEY) ?? "").not.toContain("2023");
   });
 
   describe("settling beside the cards", () => {

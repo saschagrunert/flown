@@ -14,7 +14,7 @@ function plot(page: Page) {
 /** Where the airplane of the replay is, [lat, lon] */
 function airplanePosition(page: Page): Promise<[number, number]> {
   return page.evaluate(() =>
-    window.mapApp!.replayState.airplaneMarker!.getLatLng(),
+    window.mapApp!.replayState.airplaneMarker!.position(),
   );
 }
 

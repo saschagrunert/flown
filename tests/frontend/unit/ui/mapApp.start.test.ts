@@ -158,6 +158,27 @@ describe("startApp", () => {
     }
   });
 
+  it("turns a shared link's token into the link before the app reads it", async () => {
+    // y=2025&p=a5&sv=4&i=1, packed by Copy link (state/shareToken.ts)
+    history.replaceState(null, "", "/?c=AgIT9I52g");
+    let read = "";
+    vi.mocked(MapApp.prototype.initialize).mockImplementation(function (
+      this: MapApp,
+    ) {
+      read = location.search;
+      this.isInitializing = false;
+      apps.push(this);
+      return Promise.resolve();
+    });
+    try {
+      await startApp(config);
+
+      expect(read).toBe("?y=2025&p=a5&sv=4&i=1");
+    } finally {
+      history.replaceState(null, "", "/");
+    }
+  });
+
   it("stays on the visitor's flights for the state the page keeps in its URL", async () => {
     localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
     bundle.localStartConfig.mockResolvedValue(localConfig);
