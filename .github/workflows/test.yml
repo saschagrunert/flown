@@ -306,14 +306,14 @@ jobs:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
           CARTO_API_KEY: ""
       - name: Upload the site with a dummy tile API key
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-site-dummy
           path: e2e-sites/dummy
           if-no-files-found: error
           retention-days: 1
       - name: Upload the site without a tile API key
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-site-none
           path: e2e-sites/none
@@ -328,7 +328,7 @@ jobs:
       - name: Build the fixture site of the visual snapshots
         run: python scripts/build_visual_site.py
       - name: Upload the fixture site
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-site
           path: visual-site
@@ -503,7 +503,7 @@ jobs:
       # this checkout. The site with the dummy key into docs/, where the
       # test server looks.
       - name: Download the site
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: e2e-site-dummy
           path: docs
@@ -539,7 +539,7 @@ jobs:
       # it again, without the pull step's time limit.
       - name: Download the site without a tile API key
         if: ${{ !cancelled() && matrix.no-key && steps.pull.outcome == 'success' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: e2e-site-none
           path: e2e-site-none
@@ -558,7 +558,7 @@ jobs:
       # that failed until then are what shows why
       - name: Upload Playwright results
         if: ${{ !success() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-results-${{ matrix.name }}
           path: |
@@ -572,7 +572,7 @@ jobs:
       # `node scripts/e2e_durations.js <file>`.
       - name: Upload the test durations
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-timings-${{ matrix.name }}
           path: test-results/e2e-timings.json
@@ -580,7 +580,7 @@ jobs:
           retention-days: 3
       - name: Upload the test durations without a tile API key
         if: ${{ always() && matrix.no-key }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-timings-no-key
           path: test-results-no-key/e2e-timings.json
@@ -629,7 +629,7 @@ jobs:
       # The bundles come with it, so tests/e2e/site-check.ts can check them
       # against the sources in this checkout
       - name: Download the fixture site
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: visual-site
           path: visual-site
@@ -640,7 +640,7 @@ jobs:
       # The report carries the expected, actual and diff images side by side
       - name: Upload the visual diff
         if: ${{ !success() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-diff
           path: |
@@ -776,7 +776,7 @@ jobs:
             "$PLAYWRIGHT_IMAGE" npx playwright test --project=desktop local-flights-pyodide
       - name: Upload Playwright results
         if: ${{ !success() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-results-pyodide
           path: |
