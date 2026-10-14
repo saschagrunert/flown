@@ -47,7 +47,7 @@ dev = [
     "packaging>=26.3",
     # The spell check (make lint, the pre-commit hook and the CI lint job),
     # a prebuilt binary of crate-ci/typos
-    "typos>=1.50.3",
+    "typos>=1.51.1",
 ]
 
 [project.urls]
