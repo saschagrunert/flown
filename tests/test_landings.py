@@ -38,8 +38,10 @@ from flown.types import PathMetadata, TrackPoint
 from tests.conftest import parse_data, parse_kml_coordinates
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-# Takeoffs, full stops, touch-and-goes and go-arounds of all the sample
-# flights, with the fixture airport and runway databases
+# Takeoffs, full stops, touch-and-goes and go-arounds of the first sample
+# flights, with the fixture airport and runway databases; flights added to
+# data/ after them are read but left out of the totals
+COUNTED_FLIGHTS = 103
 TOTALS = [109, 87, 174, 6]
 
 # A field with one runway, 09/27, and the altitude its logger reads there
@@ -465,9 +467,9 @@ class TestSampleFlights:
 
     def test_every_sample_flight_is_read(self):
         paths = {}
-        for index, kml in enumerate(sorted(DATA_DIR.glob("*.kml"))):
+        for kml in DATA_DIR.glob("*.kml"):
             _, groups, _ = parse_kml_coordinates(str(kml))
-            paths[index] = groups[0]
+            paths[int(kml.name.split("_")[0])] = groups[0]
 
         found = detect_landings(paths)
 
@@ -478,9 +480,10 @@ class TestSampleFlights:
             for airport, runway in landings.touchdowns:
                 assert runway in {end.designator for end in runways[airport]}
         # What the fixture databases let it find; with the full ones the
-        # sample flights land 110 times and touch and go 188 times
+        # counted flights land 110 times and touch and go 188 times
+        counted = [found[number] for number in range(1, COUNTED_FLIGHTS + 1)]
         totals = [
-            sum(getattr(landings, key) for landings in found.values())
+            sum(getattr(landings, key) for landings in counted)
             for key in ("takeoffs", "landings", "touch_and_goes", "go_arounds")
         ]
         assert totals == TOTALS
