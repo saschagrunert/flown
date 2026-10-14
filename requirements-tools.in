@@ -1,4 +1,4 @@
 # What `make lock` runs pip-compile with, pinned with its dependencies in
 # requirements-tools.lock. Kept out of pyproject.toml so that it cannot drift
 # into what the other lock files pin.
-pip-tools==7.6.1
+pip-tools==7.6.2
