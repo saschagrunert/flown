@@ -46,7 +46,6 @@ output-dir/
 ├── apple-touch-icon.png
 ├── vendor/                # MapLibre GL JS, html-to-image
 │   ├── maplibre-gl.mjs
-│   ├── maplibre-gl-shared.mjs   # Imported by the two around it
 │   ├── maplibre-gl-worker.mjs   # Started by maplibre-gl.mjs as a module worker
 │   ├── maplibre-gl.css
 │   └── html-to-image.mjs        # Imported on the first image export

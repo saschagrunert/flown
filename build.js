@@ -584,8 +584,11 @@ const BUDGET_WORKER = { raw: 16 * 1024, gzip: 7 * 1024 };
 // MapLibre, which every visit loads before the map can draw, leaves a minor
 // release about 1 % of room each way: maplibre-gl 6.12.0 came to 1,144,034
 // B raw and 308,413 B gzipped with the fixes and the strip, as CI measures it
-// (an older Node's zlib packs it about 1.3 KB smaller).
-const BUDGET_MAPLIBRE = { raw: 1130 * 1024, gzip: 305 * 1024 };
+// (an older Node's zlib packs it about 1.3 KB smaller). 6.13.0 gave the
+// worker its own copy of the code the two modules shared (about 140 KB
+// gzipped of it), and came to 1,598,347 B raw and 431,124 B gzipped under
+// Node 24.
+const BUDGET_MAPLIBRE = { raw: 1580 * 1024, gzip: 428 * 1024 };
 // html-to-image 1.11.13, bundled into one module and loaded on the first
 // export only: 13,667 B raw and 5.3 KB gzipped.
 const BUDGET_HTML_TO_IMAGE = { raw: 14 * 1024, gzip: 5.5 * 1024 };

@@ -311,7 +311,6 @@ class TestRenderHtml:
         ] == [
             "./shared.bundle.js",
             "./vendor/maplibre-gl.mjs",
-            "./vendor/maplibre-gl-shared.mjs",
             "./yearWorker.bundle.js",
             "./vendor/maplibre-gl-worker.mjs",
         ]

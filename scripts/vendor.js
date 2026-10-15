@@ -48,9 +48,10 @@ const FLAG_SOURCE = join(NODE_MODULES, "flag-icons/flags/4x3");
 /**
  * Published path inside vendor/ -> path inside node_modules.
  *
- * MapLibre is three modules that have to sit next to each other under these
- * names: maplibre-gl.mjs imports the shared one by its relative path, and
- * starts its worker from `./maplibre-gl-worker.mjs` relative to its own URL.
+ * MapLibre is two modules that have to sit next to each other under these
+ * names: maplibre-gl.mjs starts its worker from `./maplibre-gl-worker.mjs`
+ * relative to its own URL. Since 6.13.0 the worker carries its own copy of
+ * the code the two share, rather than importing it from a third module.
  * That worker is a module of the site's own origin, which is why the page's
  * CSP gets by with `worker-src 'self'` and no `blob:`. The app bundle imports
  * maplibre-gl.mjs from here instead of carrying a copy (see build.js).
@@ -61,7 +62,6 @@ const FLAG_SOURCE = join(NODE_MODULES, "flag-icons/flags/4x3");
  */
 export const VENDOR_FILES = {
   "maplibre-gl.mjs": "maplibre-gl/dist/maplibre-gl.mjs",
-  "maplibre-gl-shared.mjs": "maplibre-gl/dist/maplibre-gl-shared.mjs",
   "maplibre-gl-worker.mjs": "maplibre-gl/dist/maplibre-gl-worker.mjs",
   "maplibre-gl.css": "maplibre-gl/dist/maplibre-gl.css",
 };
@@ -167,7 +167,8 @@ export const LINUX_WEBKIT =
  * Kept to bugs of MapLibre, or of a browser that MapLibre meets, that the
  * app cannot work around from the outside (a cost MapLibre puts on the main
  * thread among them), each a few characters, with its upstream issue text
- * in the owner's hands.
+ * in the owner's hands, and to the worker's URL, which has to be the one the
+ * page preloads.
  * A fix whose code is no longer found exactly once fails the build: after a
  * bump, see whether the new version fixed the bug (drop the patch) or only
  * renamed the code around it (match it again). A patch in place of a copy
@@ -215,8 +216,22 @@ export const VENDOR_PATCHES = {
       find: /(\w+)=(\w+)\((\w+)\)&&(\w+)\(\)\?\3:await this\.readImageNow\(\3\)/,
       replace: `$1=$2($3)&&$4()&&!(${LINUX_WEBKIT})?$3:await this.readImageNow($3)`,
     },
+    {
+      // getDefaultWorkerUrl: the worker is started from
+      // `./maplibre-gl-worker.mjs?v=<version>`, which MapLibre added (6.13.0)
+      // so that a browser cannot pair a new maplibre-gl.mjs with a worker of
+      // the version before from its cache. The page preloads the worker by
+      // the name it is published under (map_template.html), and a URL with
+      // a query is another URL to the browser: the preload went unused and
+      // the worker, 140 KB gzipped, was downloaded twice. The site publishes
+      // both files together, like its own bundles, whose names carry no
+      // version either.
+      name: "the worker started by a URL the page does not preload",
+      find: /(\w+)\.searchParams\.set\(`v`,\w+\),(\1\.href)/,
+      replace: "$2",
+    },
   ],
-  "maplibre-gl-shared.mjs": [
+  "maplibre-gl-worker.mjs": [
     {
       // makeRequest: a URL of a scheme other than http(s) or file is fetched
       // by the main thread for a worker (the "GR" message), so that a
@@ -227,13 +242,12 @@ export const VENDOR_PATCHES = {
       // (services/heatSource.ts, services/flightLines.ts) to keep their
       // 135,000 features for all years off the main thread; fetched there,
       // the 16 MB of text would be parsed on it and the objects sent on to
-      // the worker after all.
+      // the worker after all. The copy in maplibre-gl.mjs is left alone: on
+      // the main thread a blob: URL is fetched either way.
       name: "blob: URLs fetched by the main thread for a worker",
       find: /(\w+)\.url\.includes\(`:\/\/`\)&&!\/\^https\?:\|\^file:\/\.test\(\1\.url\)/,
       replace: "$1.url.includes(`://`)&&!/^https?:|^file:|^blob:/.test($1.url)",
     },
-  ],
-  "maplibre-gl-worker.mjs": [
     {
       // GeoJSONWorkerSource.loadData: GeoJSON loaded from a URL is sent
       // back to the main thread whole, so that getData() can answer with

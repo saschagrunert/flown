@@ -245,7 +245,7 @@ compares both with the checkout.
 
 ## vendor.js
 
-Copies the third-party files the published page loads (the three modules of
+Copies the third-party files the published page loads (the two modules of
 MapLibre GL JS with its stylesheet) out of `node_modules` into
 `flown/static/vendor/`, bundles the module of html-to-image into one file next
 to them (the package ships it as a dozen, and the page imports it with
@@ -255,7 +255,7 @@ each build replaces them, so a file dropped from the list does not linger. A
 copy differs from its original in the closing `sourceMappingURL` comment, left
 off because the maps (five megabytes for MapLibre) are not shipped and every
 DevTools session would ask for them and get a 404, and the MapLibre modules in
-five fixes of a few characters each for what the app cannot do from the outside
+six fixes of a few characters each for what the app cannot do from the outside
 (`VENDOR_PATCHES` in `vendor.js`). Three are in `maplibre-gl.mjs`, for bugs:
 tiles of the chase view's trail culled below the camera on the relief, the raw
 data of before kept by a GeoJSON tile that loads empty, and, in WebKit on Linux
@@ -263,8 +263,9 @@ alone (WebKitGTK as in Epiphany, and WPE, Playwright's WebKit), elevation tiles
 read into pixels on the main thread rather than sent to MapLibre's worker as
 bitmaps, which crashed or hung the page's process there (`LINUX_WEBKIT` in
 `vendor.js` tells that browser by `navigator.platform` and the user agent). The
-texts of their upstream issues are with the owner and not filed yet. The other
-two, one in `maplibre-gl-shared.mjs` and one in `maplibre-gl-worker.mjs`, let
+texts of their upstream issues are with the owner and not filed yet. A fourth
+there starts the worker from the URL the page preloads, without the `?v=`
+version MapLibre adds. The other two, in `maplibre-gl-worker.mjs`, let
 MapLibre's worker read a GeoJSON source from a `blob:` URL without the main
 thread, as the heat sources are given (see
 [The heat sources and the year worker](../doc/development/heat.md#the-heat-sources-and-the-year-worker)).
