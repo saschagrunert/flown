@@ -82,17 +82,16 @@ test("CARTO's style and tile index are preloaded as the page asks for them @keys
 test("the modules the app imports are preloaded", async ({ page }) => {
   await page.goto("/index.html");
 
-  // The chunk the bundle shares with the lazy ones, and the map library with
-  // the module it imports in turn: all three are needed before anything
-  // draws, and none is discovered until the one before it has been parsed.
-  // The two workers are started only once those have run.
+  // The chunk the bundle shares with the lazy ones, and the map library:
+  // both are needed before anything draws, and neither is discovered until
+  // the bundle has been parsed. The two workers are started only once those
+  // have run.
   const preloaded = await page
     .locator('link[rel="modulepreload"]')
     .evaluateAll((links) => links.map((link) => link.getAttribute("href")));
   expect(preloaded).toEqual([
     "./shared.bundle.js",
     "./vendor/maplibre-gl.mjs",
-    "./vendor/maplibre-gl-shared.mjs",
     "./yearWorker.bundle.js",
     "./vendor/maplibre-gl-worker.mjs",
   ]);

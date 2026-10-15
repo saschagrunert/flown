@@ -19,6 +19,7 @@ import {
   attachErrorCollectors,
   gotoApp,
   relevantConsoleErrors,
+  toastMessage,
   usesMobileBar,
   waitForAppReady,
 } from "./helpers";
@@ -207,7 +208,8 @@ test.describe("Your flights", () => {
       );
       await page.locator("#share-btn").click({ force: true });
       await expect(
-        page.getByText(
+        toastMessage(
+          page,
           "Links cannot carry flights that are only in this browser",
         ),
       ).toBeVisible();

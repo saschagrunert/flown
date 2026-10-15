@@ -151,7 +151,7 @@ into `flown/static/vendor/`, which is what the published page loads them from
 (html-to-image with `import()`, on the first export, as one module that
 `scripts/vendor.js` bundles from the package's own), and the country flags of
 `flag-icons` into `flown/static/flags/` (`scripts/vendor.js`). All of it is
-gitignored, and `make clean` removes it. MapLibre is copied with five fixes made
+gitignored, and `make clean` removes it. MapLibre is copied with six fixes made
 to its minified code (`VENDOR_PATCHES`): two for bugs of 6.10, where tiles under
 a camera that looks at a point above the relief (the chase view) were culled and
 a GeoJSON tile that loads empty kept the raw data of before, one for WebKit on
@@ -159,8 +159,9 @@ Linux (WebKitGTK and WPE, the WebKit of the e2e tests), whose page process
 crashed or hung as MapLibre's worker took apart an elevation tile it was sent as
 an ImageBitmap: there the tile is read into plain pixels on the main thread
 first, as MapLibre does where OffscreenCanvas is missing (every other browser
-keeps the bitmap), and two that let MapLibre's worker read a GeoJSON source from
-a `blob:` URL without the main thread (see
+keeps the bitmap), one that starts the worker from the URL the page preloads,
+without the `?v=` version MapLibre adds since 6.13, and two that let MapLibre's
+worker read a GeoJSON source from a `blob:` URL without the main thread (see
 [The heat sources and the year worker](heat.md#the-heat-sources-and-the-year-worker)).
 Each fix has to find its code exactly once, or the build fails: after a bump of
 MapLibre, drop the fix it has made unnecessary, or match its code again. Its

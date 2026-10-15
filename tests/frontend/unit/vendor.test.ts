@@ -107,7 +107,7 @@ describe("vendored third-party files", () => {
     );
 
     it("let a worker fetch a Blob URL itself, as the main thread does", () => {
-      const patched = patchedText("maplibre-gl-shared.mjs");
+      const patched = patchedText("maplibre-gl-worker.mjs");
       // makeRequest: what is not http(s), file or blob goes to a protocol,
       // or through the main thread for a worker
       const [, , request] =
@@ -505,14 +505,13 @@ describe("vendored third-party files", () => {
       join(REPO_ROOT, "node_modules/maplibre-gl/dist/maplibre-gl.mjs"),
       "utf8",
     );
-    // The entry imports the shared module and starts the worker from a URL
-    // relative to its own, so both have to be published under these names
+    // The entry starts the worker from a URL relative to its own, so both
+    // have to be published under these names
     const siblings = new Set(
       [...entry.matchAll(/maplibre-gl[\w-]*\.mjs/g)].map((match) => match[0]),
     );
     // The -dev worker is only named for the -dev build, which is not shipped
     siblings.delete("maplibre-gl-worker-dev.mjs");
-    expect(siblings).toContain("maplibre-gl-shared.mjs");
     expect(siblings).toContain("maplibre-gl-worker.mjs");
     for (const name of siblings) {
       expect(Object.keys(VENDOR_FILES)).toContain(name);

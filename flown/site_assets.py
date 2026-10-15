@@ -143,7 +143,6 @@ FAVICON_FILES = (
 # missing file is caught before a run does any work.
 VENDOR_FILES = (
     "maplibre-gl.mjs",
-    "maplibre-gl-shared.mjs",
     "maplibre-gl-worker.mjs",
     "maplibre-gl.css",
     # Bundled there from the package's module (VENDOR_MODULES), and imported
