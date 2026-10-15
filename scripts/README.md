@@ -86,14 +86,15 @@ optimized to handle 100k+ flights.
 Checks the versions that are written down in more than one place, which nothing
 else reads together:
 
-- `requirements.lock` and `requirements-test.lock` still satisfy the ranges in
-  `pyproject.toml`, and the two agree on every package both pin (CI installs
-  `requirements-test.lock` alone where it needs both). `requirements-build.lock`
-  satisfies `build-system.requires` (the setuptools CI builds the wheel with),
-  and `requirements-tools.lock` the pip-tools pin in `requirements-tools.in`
-  (what `make lock` runs). Dependabot bumps `pyproject.toml` and
-  `requirements-tools.in` without recompiling the locks, so this fails such a
-  pull request with a hint to run `make lock`.
+- `uv.lock` pins a release of every package `build-system.requires` asks for
+  that the range there admits, through the `build` dependency group (the
+  setuptools CI builds the wheel with). Whether `uv.lock` matches the rest of
+  `pyproject.toml` is uv's to check (`uv lock --check`, `uv sync --locked`).
+  Dependabot raises both ranges and the pin together; this catches a range
+  raised by hand in `build-system.requires` alone.
+- The setup-uv step of the setup-toolchain action and the uv image of the
+  `Dockerfile` name the same uv release, and the image is pinned by its
+  `@sha256` digest. Dependabot moves neither to another release.
 - The Playwright image of the `e2e` and `visual` jobs in
   `.github/workflows/test.yml` is the same in both, pinned by its `@sha256`
   digest, its tag matches the `@playwright/test` version in `package-lock.json`,
@@ -180,7 +181,7 @@ builds run it with the runner's Python.
 ```bash
 python scripts/smoke_site.py prepare /tmp/smoke
 FLOWN_CACHE_DIR=/tmp/smoke/cache \
-  flown --no-terrain /tmp/smoke/input --output-dir /tmp/smoke/site
+  python -m flown --no-terrain /tmp/smoke/input --output-dir /tmp/smoke/site
 python scripts/smoke_site.py check /tmp/smoke
 ```
 

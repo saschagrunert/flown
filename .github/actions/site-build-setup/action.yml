@@ -1,26 +1,34 @@
 ---
-# What the jobs that build a site from data/ do before they build it: Python
-# and Node.js with their caches, the dependencies, the JavaScript bundles,
+# What the jobs that build a site from data/ do before they build it: Python,
+# uv and Node.js with their caches, the dependencies, the JavaScript bundles,
 # and the caches of the OurAirports database and the elevation tiles. The
-# unit, e2e-sites and site jobs of test.yml use it, after their checkout.
+# unit, e2e-sites, pyodide and site jobs of test.yml use it, after their
+# checkout.
 name: Set up a site build
 description: Install the dependencies, build the bundles and restore the caches a site build reads
 inputs:
-  python-lock:
-    description: The lock file to install with pip, which also keys the pip cache
-    required: true
+  extras:
+    description: >-
+      The extras of pyproject.toml to install along with the runtime
+      dependencies, separated by spaces; empty for the runtime dependencies
+      alone
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
-    - name: Set up Python and Node.js
+    - name: Set up Python, uv and Node.js
       uses: ./.github/actions/setup-toolchain
       with:
-        python-lock: ${{ inputs.python-lock }}
+        python: "true"
     - name: Install Python dependencies
       shell: bash
       env:
-        PYTHON_LOCK: ${{ inputs.python-lock }}
-      run: pip install --require-hashes -r "$PYTHON_LOCK"
+        EXTRAS: ${{ inputs.extras }}
+      run: |
+        args=()
+        for extra in $EXTRAS; do args+=(--extra "$extra"); done
+        uv sync --locked "${args[@]}"
     - name: Install npm dependencies
       shell: bash
       run: npm ci

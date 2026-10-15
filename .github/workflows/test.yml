@@ -9,30 +9,24 @@
 # The checks job at the end is the one status a ruleset on main requires
 # (see there).
 #
-# A pull request Dependabot opens for a Python dependency changes only the
-# range in pyproject.toml, and every job installs the lock files, which it
-# cannot recompile (see dependabot.yml). Until `make lock` is pushed on top
-# every job tests the versions of the old lock files. The lint job fails
-# only when they no longer satisfy the new range (a lock that pins a
-# release in it already passes, as the setuptools bump of ab4db1f did),
-# and the unit job would fail with it, on the lock check of
-# test_check_locks.py. The jobs that build and drive the site (unit,
-# packaging, e2e-sites and the e2e and visual jobs after it) therefore
-# skip Dependabot's own pushes to its pull requests
-# from a dependabot/pip/ branch. `github.actor` is whoever pushed (a re-run
-# keeps it), so the push of the lock files runs all of them. zizmor calls
-# the actor spoofable: here it can only skip jobs, and only in a pull
-# request Dependabot opened (its author cannot be spoofed), whose lint job
-# still checks the lock files against the range. In the merge queue there is
-# no pull request in the event (github.event.pull_request is empty, and so is
-# github.head_ref), so none of these conditions holds and every job runs.
+# Every job that runs Python installs from uv.lock with `uv sync --locked`,
+# which fails when the lock no longer matches pyproject.toml instead of
+# resolving again; the lint job installs it as it is and checks it in a
+# step of its own. Dependabot updates the two together (see dependabot.yml).
 #
 # A bump of @playwright/test (the `playwright` group, branches starting with
-# dependabot/npm_and_yarn/playwright) is the same case for the jobs that run
-# in the Playwright image, e2e and visual: its tag and digest are bumped by
-# hand on the branch (see the visual job), and until then every one of them
-# failed at once against the old image. They skip Dependabot's own pushes
-# there, and the lint job fails until the image reference is pushed.
+# dependabot/npm_and_yarn/playwright) needs a commit of its own for the jobs
+# that run in the Playwright image, e2e and visual: its tag and digest are
+# bumped by hand on the branch (see the visual job), and until then every
+# one of them failed at once against the old image. They skip Dependabot's
+# own pushes there, and the lint job fails until the image reference is
+# pushed. `github.actor` is whoever pushed (a re-run keeps it), so the push
+# of the image reference runs all of them. zizmor calls the actor
+# spoofable: here it can only skip jobs, and only in a pull request
+# Dependabot opened (its author cannot be spoofed), whose lint job still
+# checks the image against the library. In the merge queue there is no pull
+# request in the event (github.event.pull_request is empty, and so is
+# github.head_ref), so none of these conditions holds and every job runs.
 name: test
 on:
   push:
@@ -69,25 +63,30 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set up Python and Node.js
+      - name: Set up Python, uv and Node.js
         uses: ./.github/actions/setup-toolchain
         with:
-          python-lock: requirements-test.lock
-      # requirements-test.lock pins the runtime dependencies as well, to the
-      # same versions (scripts/check_locks.py checks that)
+          python: "true"
+      # The runtime dependencies and the test and dev extras, as uv.lock
+      # pins them. --frozen installs the lock as it is, so a lock that no
+      # longer matches pyproject.toml fails the check below rather than this
+      # step, which every check waits for.
       - name: Install dependencies
         id: deps
         run: |
-          pip install --require-hashes -r requirements-test.lock
+          uv sync --frozen --extra test --extra dev
           npm ci
       # Every check below runs even when an earlier one failed, so a single
       # run reports all of them
-      # typos comes with the dev extra in requirements-test.lock, the same
-      # release `make lint` and the pre-commit hook run
+      - name: Check that uv.lock matches pyproject.toml
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: uv lock --check
+      # typos comes with the dev extra in uv.lock, the same release
+      # `make lint` and the pre-commit hook run
       - name: Check the spelling
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: typos
-      - name: Check that the lock files match pyproject.toml
+      - name: Check the pins and versions that have to agree
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: python scripts/check_locks.py
       - name: Check Python formatting
@@ -120,7 +119,7 @@ jobs:
         run: npm run lint:unused
       # The workflows, the composite actions and dependabot.yml: template
       # injection, credentials left in the checkout, unpinned actions and
-      # the like. zizmor comes with the dev extra in requirements-test.lock.
+      # the like. zizmor comes with the dev extra in uv.lock.
       # With the job's token it also runs its online audits (impostor
       # commits, actions with known advisories, a pin whose comment names
       # another version); `make lint` runs them when GH_TOKEN is set.
@@ -139,13 +138,7 @@ jobs:
         run: python -m flown.obfuscate tests/fixtures/visual/ --check
 
   unit:
-    # Not for Dependabot's Python bumps, see the top (also for the zizmor
-    # finding this ignores)
-    if: &skip-pip-bumps >- # zizmor: ignore[bot-conditions]
-      github.event_name != 'schedule' &&
-      !(github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.actor == 'dependabot[bot]' &&
-      startsWith(github.head_ref, 'dependabot/pip/'))
+    if: &not-weekly github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -155,7 +148,7 @@ jobs:
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
         with:
-          python-lock: requirements-test.lock
+          extras: test dev
       # The export contract test reads the data files of a real build
       - name: Build the site from the current sources
         run: python -m flown data --output-dir docs
@@ -189,36 +182,37 @@ jobs:
   # would. One job: either took about 35 s, most of it to set up a runner,
   # and a job of its own waited for a runner of its own.
   packaging:
-    # Not for Dependabot's Python bumps, see the top (also for the zizmor
-    # finding this ignores)
-    if: *skip-pip-bumps # zizmor: ignore[bot-conditions]
+    if: *not-weekly
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - *checkout
-      - name: Set up Python and Node.js
+      - name: Set up Python, uv and Node.js
         uses: ./.github/actions/setup-toolchain
         with:
-          python-lock: |
-            requirements-build.lock
-            requirements.lock
+          python: "true"
       # Fails when the minified bundle exceeds the size budget in build.js
       - name: Build the JavaScript bundle
         run: npm ci && npm run build
-      # Without build isolation pip would fetch whatever setuptools satisfies
-      # build-system.requires at the time; requirements-build.lock pins it
-      # with its hashes like every other Python dependency
+      # With build isolation uv would fetch whatever setuptools satisfies
+      # build-system.requires at the time, without a hash; the build group
+      # has uv.lock pin it with its hashes like every other Python
+      # dependency, and the wheel is built in the environment that holds it
       - name: Build the wheel
         run: |
-          pip install --require-hashes -r requirements-build.lock
-          pip wheel . --no-deps --no-build-isolation -w dist
-      # The runtime dependencies from the lock file with their hashes, then
-      # the wheel on top without resolving anything again
+          uv sync --locked --only-group build
+          uv build --wheel --no-build-isolation --out-dir dist
+      # The runtime dependencies uv.lock pins, with their hashes, then the
+      # wheel on top without resolving anything again. uv installs them, so
+      # the downloads come from its cache. uv export prints what it writes
+      # to the file as well, unless --quiet.
       - name: Install the wheel into a fresh virtual environment
         run: |
-          python -m venv "$RUNNER_TEMP/wheel-venv"
-          "$RUNNER_TEMP/wheel-venv/bin/pip" install --disable-pip-version-check --require-hashes -r requirements.lock
-          "$RUNNER_TEMP/wheel-venv/bin/pip" install --disable-pip-version-check --no-deps dist/*.whl
+          uv export --locked --no-emit-project --format requirements-txt \
+            --quiet --output-file "$RUNNER_TEMP/requirements.txt"
+          uv venv "$RUNNER_TEMP/wheel-venv"
+          uv pip install --python "$RUNNER_TEMP/wheel-venv" --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+          uv pip install --python "$RUNNER_TEMP/wheel-venv" --no-deps dist/*.whl
       # Every asset the page loads, and none of the source maps. Run outside
       # the checkout so the installed package is imported, not the source
       # tree (see scripts/check_site_files.py).
@@ -276,9 +270,7 @@ jobs:
   # one with a dummy key and one without (see the e2e job). The fixture site
   # of the visual job is built here as well, with the same bundles.
   e2e-sites:
-    # Not for Dependabot's Python bumps, see the top (also for the zizmor
-    # finding this ignores)
-    if: *skip-pip-bumps # zizmor: ignore[bot-conditions]
+    if: *not-weekly
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -286,8 +278,6 @@ jobs:
       # As in the unit job, with the runtime dependencies only
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
-        with:
-          python-lock: requirements.lock
       # tests/e2e/fixtures.ts answers the tile servers locally, so the dummy
       # key never leaves the runner. Without the ground of a flight the
       # deploy fails (the site job), so a pull request that adds one over a
@@ -662,10 +652,10 @@ jobs:
       # npm audit reads package-lock.json and installs nothing, so without
       # the npm cache: restoring it cost 51 MB a run, and saving it raced the
       # jobs that do install
-      - name: Set up Python and Node.js
+      - name: Set up Python, uv and Node.js
         uses: ./.github/actions/setup-toolchain
         with:
-          python-lock: requirements-test.lock
+          python: "true"
           npm-cache: "false"
       # A pull request or an entry of the merge queue audits the
       # dependencies only when it changes them: an advisory for a version the
@@ -679,7 +669,7 @@ jobs:
         run: |
           if [ -n "$BASE_SHA" ] &&
             changed="$(git diff --name-only "$BASE_SHA" HEAD -- \
-              'requirements*.lock' package-lock.json package.json)" &&
+              uv.lock package-lock.json package.json)" &&
             [ -z "$changed" ]; then
             echo "audit=false" >> "$GITHUB_OUTPUT"
             echo "::notice::no lock file changed; skipping the dependency audits"
@@ -688,21 +678,19 @@ jobs:
           fi
       - name: Install Python dependencies
         if: steps.deps.outputs.audit == 'true'
-        run: pip install --require-hashes -r requirements-test.lock
-      # pip-audit is pinned in requirements-test.lock like every other tool.
-      # Every lock file, also the ones only the packaging job and `make lock`
-      # install. pip-audit resolves the files of one call together, and only
-      # the runtime and test locks are compiled to agree, so the build and
-      # tools locks get calls of their own. Every lock pins every package
-      # with its hashes, so the audit reads the pins as they are, without pip
-      # resolving anything: --no-deps warned on every call, and left out a
-      # package (packaging) the locks pin.
-      - name: Audit the Python lock files
+        run: uv sync --locked --extra dev
+      # pip-audit is pinned in uv.lock like every other tool. It audits every
+      # package uv.lock pins, every extra and the build group among them,
+      # exported with their hashes, so it reads the pins as they are, without
+      # pip resolving anything: --no-deps warned on every call, and left out
+      # a package (packaging) the old lock files pinned. --quiet keeps the
+      # export out of the log, as in the packaging job.
+      - name: Audit the Python lock file
         if: steps.deps.outputs.audit == 'true'
         run: |
-          pip-audit --disable-pip --require-hashes -r requirements.lock -r requirements-test.lock
-          pip-audit --disable-pip --require-hashes -r requirements-build.lock
-          pip-audit --disable-pip --require-hashes -r requirements-tools.lock
+          uv export --locked --all-extras --all-groups --no-emit-project \
+            --format requirements-txt --quiet --output-file "$RUNNER_TEMP/requirements.txt"
+          pip-audit --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
       - name: Audit npm dependencies
         if: steps.deps.outputs.audit == 'true'
         run: npm audit --audit-level=high
@@ -759,8 +747,6 @@ jobs:
       - *checkout
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
-        with:
-          python-lock: requirements.lock
       - name: Build the site with a dummy tile API key
         run: python -m flown data --output-dir docs
         env:
@@ -791,8 +777,8 @@ jobs:
   # repository settings. Not the security job, for the reason publishing
   # does not wait for it (below): a new advisory would hold back every pull
   # request, the flights among them. A job may be skipped only where its own
-  # condition skips it on purpose, Dependabot's own pushes to a pip or a
-  # Playwright branch (see the top), and the e2e jobs in a copy of the
+  # condition skips it on purpose, Dependabot's own pushes to a Playwright
+  # branch (see the top), and the e2e jobs in a copy of the
   # repository with flights of its own (FLOWN_OWN_FLIGHTS); anywhere
   # else a skip, a failure or a cancellation fails this job. The weekly run
   # has none of these jobs.
@@ -815,8 +801,7 @@ jobs:
           SKIPS_ALLOWED: >-
             ${{ github.event.pull_request.user.login == 'dependabot[bot]' &&
             github.actor == 'dependabot[bot]' &&
-            (startsWith(github.head_ref, 'dependabot/pip/') ||
-            startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright')) }}
+            startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright') }}
           OWN_FLIGHTS: ${{ vars.FLOWN_OWN_FLIGHTS }}
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
@@ -878,8 +863,6 @@ jobs:
       # As in the unit job, with the runtime dependencies only
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
-        with:
-          python-lock: requirements.lock
       # The link preview images, cached under a hash of what each one draws
       # and of the module that draws them (flown/previews.py), so the
       # latest cache has every image that did not change

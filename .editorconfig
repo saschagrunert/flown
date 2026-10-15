@@ -13,8 +13,8 @@ indent_size = 2
 [*.{py,pyi}]
 indent_size = 4
 
-# The tables of pyproject.toml, and what pip-compile writes
-[{pyproject.toml,*.lock}]
+# The tables of pyproject.toml and uv.lock
+[{pyproject.toml,uv.lock}]
 indent_size = 4
 
 [Makefile]

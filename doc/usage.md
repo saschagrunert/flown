@@ -215,10 +215,8 @@ Targets (`make help` prints this list with the current variable values):
 - `lint` - Run the linters, formatters (check only), type checkers and typos of
   the CI lint job
 - `format` - Run formatters
-- `lock` - Regenerate the lock files (`requirements.lock`,
-  `requirements-test.lock`, `requirements-build.lock` and
-  `requirements-tools.lock`) from `pyproject.toml` and `requirements-tools.in`
-  with pip-compile
+- `lock` - Regenerate `uv.lock` from `pyproject.toml`, moving every package to
+  its newest release
 - `obfuscate` - Rewrite the KML files in `INPUT_DIR` in place so they carry no
   real dates (irreversible); with the host's `python` when it is Python 3.14,
   else in the container image

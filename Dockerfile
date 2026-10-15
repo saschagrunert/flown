@@ -4,6 +4,11 @@
 # Dependabot bumps the two together and the version stays readable in the FROM
 # line itself. Do not restate the tag in a comment: it drifts silently.
 
+# uv, which installs the Python dependencies from uv.lock below. Only its
+# binary is used, mounted into the step that runs it, so it never becomes a
+# layer of the image. The same release as CI (scripts/check_locks.py).
+FROM ghcr.io/astral-sh/uv:0.12.24@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a AS uv
+
 # Stage 1: build the JavaScript bundles
 FROM docker.io/library/node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS js-builder
 
@@ -49,25 +54,38 @@ FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25
 COPY flown/ /package/flown/
 RUN rm -rf /package/flown/frontend
 
-# Stage 3: Python runtime
+# Stage 3: the runtime dependencies uv.lock pins, with their hashes, as a
+# requirements file. A stage of its own so that the install below only runs
+# again when the pins change: it copies this file alone, and an edit to
+# pyproject.toml that leaves them as they were (a ruff or mypy setting)
+# writes the same file. --locked fails the build when uv.lock no longer
+# matches pyproject.toml instead of resolving again.
+FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS requirements
+WORKDIR /build
+COPY pyproject.toml uv.lock ./
+RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
+    UV_PYTHON_DOWNLOADS=never \
+    uv export --locked --no-emit-project --no-header --format requirements-txt \
+      --quiet --output-file requirements.txt
+
+# Stage 4: Python runtime
 FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install the pinned Python dependencies into a virtual environment
-COPY requirements.lock ./
-# pip (and setuptools, where the venv has it) only install: the tool runs
-# from this venv and never installs anything once built, so the installer is
-# removed from the venv. The base image keeps its own pip in /usr/local,
-# which nothing here runs. setuptools is not in a 3.14 venv, which pip
-# reports and skips.
-RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir --require-hashes -r requirements.lock \
-    && /opt/venv/bin/pip uninstall --yes pip setuptools
+# Install those pins into a virtual environment, on the Python of the base
+# image, checking every hash. A venv uv creates has no pip, so nothing in it
+# can install anything once built. The bytecode is compiled here for the
+# reason given for the package below.
+COPY --from=requirements /build/requirements.txt ./
+RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
+    UV_PYTHON_DOWNLOADS=never uv venv --quiet /opt/venv \
+    && uv pip install --python /opt/venv --require-hashes --no-cache \
+      --compile-bytecode -r requirements.txt \
+    && rm requirements.txt
 ENV PATH="/opt/venv/bin:$PATH"
 
 # The Python package with its templates and static assets, then the built

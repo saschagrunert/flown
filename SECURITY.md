@@ -30,14 +30,14 @@ need no key.
 
 ## Automated checks
 
-Every push to main runs `pip-audit` against the hashed lock files, `npm audit`,
+Every push to main runs `pip-audit` against what `uv.lock` pins, `npm audit`,
 and a gitleaks scan of the whole commit history. A pull request or an entry of
 the merge queue scans the commits it adds, and runs the two audits when it
 changes a lock file or `package.json`. The same job runs weekly, with the whole
 history, so new advisories show up without a push. Every GitHub Action is pinned
 by commit SHA and every container image by digest, and every job that checks out
 the repository leaves no credentials in the checkout. Dependabot keeps the
-dependencies current, and `make lock` recompiles the Python lock files with the
+dependencies current, and `make lock` regenerates the Python lock file with the
 newest releases the ranges allow.
 
 ## Content Security Policy

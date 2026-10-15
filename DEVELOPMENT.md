@@ -18,8 +18,8 @@ conventions.
 Set up the virtual environment, `node_modules` and the hooks as
 [CONTRIBUTING.md](CONTRIBUTING.md#setup) describes. `make help` lists all
 targets. `make test`, `make lint`, `make format` and `make lock` run locally
-(Python and Node required); `make lock` regenerates the hashed Python lock files
-from `pyproject.toml`.
+(Python, uv and Node required); `make lock` regenerates the hashed Python lock
+file `uv.lock` from `pyproject.toml`.
 
 ## Commands
 

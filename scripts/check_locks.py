@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Check that the hashed lock files still satisfy pyproject.toml (and the
-pip-tools lock its requirements-tools.in), that the Playwright image is
-pinned by digest and matches the pinned library (in every job of the
-workflow and in the commands the documentation quotes), that the package
-version is the same on both sides of the project, and that every file that
-names the Python or Node.js version names the same one.
+"""Check what has to agree across files and that no one tool checks: that
+uv.lock pins what build-system.requires asks for, that CI and the container
+image run the same uv, that the Playwright image is pinned by digest and
+matches the pinned library (in every job of the workflow and in the commands
+the documentation quotes), that the package version is the same on both
+sides of the project, and that every file that names the Python or Node.js
+version names the same one.
 
-Dependabot raises the ranges in pyproject.toml but cannot recompile the
-lock files, and CI installs the lock files. Without this check such a pull
-request passes CI while testing the old versions. The version in
-flown/__init__.py is what `--version` and the wheel report, and
+Whether uv.lock matches pyproject.toml is uv's to tell: `uv lock --check`
+runs in the CI lint job and `make lint`, and `uv sync --locked` fails the
+other jobs that install from it. build-system.requires is not part of that:
+the build dependency group has uv.lock pin it, and nothing but this script
+compares the two. The
+version in flown/__init__.py is what `--version` and the wheel report, and
 package.json and package-lock.json carry it again for the npm side; nothing
 reads all of them, so they drift apart unnoticed until the two sides name
 two different versions. The pre-commit hooks are not checked here: the
@@ -29,7 +32,24 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
 ROOT = Path(__file__).resolve().parent.parent
-PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s\\;]+)", re.MULTILINE)
+# The dependency group of pyproject.toml that has uv.lock pin
+# build-system.requires
+BUILD_GROUP = "build"
+# The composite action that installs uv in CI, and the release it installs:
+# the version input of its setup-uv step, up to the next step, quoted or not
+# (YAML reads a bare 0.12.24 as a string too)
+UV_ACTION = ".github/actions/setup-toolchain/action.yml"
+UV_ACTION_VERSION = re.compile(
+    r"uses: astral-sh/setup-uv@.*\n(?:(?![ \t]*- ).*\n)*?"
+    r"[ \t]+version:[ \t]*([\"']?)([^\"'\s#]+)\1[ \t]*(?:#.*)?$",
+    re.MULTILINE,
+)
+# The uv image of the Dockerfile, with its tag and its digest; the digest is
+# optional here so that a missing one is reported as such
+DOCKER_UV_IMAGE = re.compile(
+    r"^FROM\s+(?:--\S+\s+)*ghcr\.io/astral-sh/uv:([^\s@]+)(@sha256:[0-9a-f]{64})?",
+    re.MULTILINE,
+)
 # The __version__ assignment at the top of flown/__init__.py
 PACKAGE_VERSION = re.compile(r'^__version__\s*=\s*"([^"]+)"', re.MULTILINE)
 # Any reference to the Playwright image, in a job of the test workflow or in
@@ -231,38 +251,101 @@ def toolchain_mismatches(pyproject: dict[str, Any]) -> list[str]:
     return problems
 
 
-def read_pins(lock: str) -> dict[str, str]:
-    """Map each package pinned in a pip-compile output to its version."""
-    text = (ROOT / lock).read_text(encoding="utf-8")
-    return {canonicalize_name(name): version for name, version in PIN.findall(text)}
+def read_pins() -> dict[str, list[str]]:
+    """Map each package uv.lock pins to its versions.
+
+    uv.lock may pin two versions of one package where they resolve apart by
+    a marker; the project itself, which it lists without a version, is left
+    out.
+    """
+    with open(ROOT / "uv.lock", "rb") as f:
+        lock = tomllib.load(f)
+    pins: dict[str, list[str]] = {}
+    for package in lock.get("package", []):
+        if "version" in package:
+            name = canonicalize_name(package["name"])
+            pins.setdefault(name, []).append(package["version"])
+    return pins
 
 
-def read_requirements(path: str) -> list[str]:
-    """The requirements of a pip-compile input, without comments and options."""
-    text = (ROOT / path).read_text(encoding="utf-8")
-    lines = (line.split("#", 1)[0].strip() for line in text.splitlines())
-    return [line for line in lines if line and not line.startswith("-")]
+def build_mismatches(pyproject: dict[str, Any]) -> list[str]:
+    """Check uv.lock against build-system.requires.
 
-
-def unsatisfied(
-    requirements: list[str],
-    pins: dict[str, str],
-    lock: str,
-    source: str = "pyproject.toml",
-) -> list[str]:
-    """Describe every requirement the pins of a lock file do not meet."""
+    CI builds the wheel without build isolation, from the build group that
+    uv.lock pins. Dependabot raises the range of the group and
+    build-system.requires in the same pull request, but a range raised by
+    hand in build-system.requires alone that the pin no longer meets would
+    build with a setuptools it claims not to work with. A requirement left
+    out of the group is not pinned at all. A requirement whose marker does
+    not hold here (another platform, an older Python) is skipped, as the
+    build here never installs it.
+    """
+    requires: list[str] = pyproject.get("build-system", {}).get("requires", [])
+    if not requires:
+        return []
+    if not (ROOT / "uv.lock").is_file():
+        return ["uv.lock is missing"]
+    # An entry may also be a table ({include-group = ...}), which names no
+    # package of its own
+    group = pyproject.get("dependency-groups", {}).get(BUILD_GROUP, [])
+    in_group = {
+        canonicalize_name(Requirement(line).name)
+        for line in group
+        if isinstance(line, str)
+    }
+    pins = read_pins()
     problems = []
-    for line in requirements:
+    for line in requires:
         requirement = Requirement(line)
         if requirement.marker is not None and not requirement.marker.evaluate():
             continue
-        pinned = pins.get(canonicalize_name(requirement.name))
-        if pinned is None:
-            problems.append(f"{lock} does not pin {requirement.name}")
-        elif not requirement.specifier.contains(pinned, prereleases=True):
+        name = canonicalize_name(requirement.name)
+        if name not in in_group:
             problems.append(
-                f'{lock} pins {requirement.name}=={pinned}, {source} asks for "{line}"'
+                f"the {BUILD_GROUP} dependency group of pyproject.toml does not "
+                f"ask for {requirement.name}, which build-system.requires does"
             )
+        pinned = pins.get(name, [])
+        if not pinned:
+            problems.append(f"uv.lock does not pin {requirement.name}")
+        problems.extend(
+            f"uv.lock pins {requirement.name}=={version}, "
+            f'build-system.requires asks for "{line}"'
+            for version in pinned
+            if not requirement.specifier.contains(version, prereleases=True)
+        )
+    return problems
+
+
+def uv_mismatches() -> list[str]:
+    """Check that CI and the container image run the same uv.
+
+    Both install from uv.lock, and a uv a release apart may read or resolve
+    it differently: the image would then fail to build, or install other
+    versions, on a lock CI passed. Dependabot moves neither of the two to
+    another release (see dependabot.yml), so they are moved by hand, together.
+    """
+    problems = []
+    try:
+        action = (ROOT / UV_ACTION).read_text(encoding="utf-8")
+    except OSError as e:
+        action = ""
+        problems.append(f"{UV_ACTION} cannot be read ({e.strerror or e})")
+    match = UV_ACTION_VERSION.search(action)
+    ci = match.group(2) if match else None
+    if ci is None and action:
+        problems.append(f"{UV_ACTION} installs no uv release by version")
+    images = DOCKER_UV_IMAGE.findall((ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    if not images:
+        problems.append("the Dockerfile takes uv from no ghcr.io/astral-sh/uv image")
+    for tag, digest in images:
+        # A tag alone can be moved to another build; the digest cannot
+        if not digest:
+            problems.append(
+                f"the Dockerfile does not pin the uv image {tag} by its @sha256 digest"
+            )
+        if ci is not None and tag != ci:
+            problems.append(f"the Dockerfile takes uv {tag}, {UV_ACTION} installs {ci}")
     return problems
 
 
@@ -270,66 +353,39 @@ def main() -> int:
     """Print the mismatches and return the exit status."""
     with open(ROOT / "pyproject.toml", "rb") as f:
         pyproject = tomllib.load(f)
-    project = pyproject["project"]
-    # What building the wheel needs; CI installs it from its own lock file to
-    # build without isolation (see `make lock`)
-    build: list[str] = pyproject.get("build-system", {}).get("requires", [])
-    runtime: list[str] = project["dependencies"]
-    extras: dict[str, list[str]] = project["optional-dependencies"]
-    tooling = extras["test"] + extras["dev"]
-
-    runtime_pins = read_pins("requirements.lock")
-    test_pins = read_pins("requirements-test.lock")
-
-    problems = unsatisfied(runtime, runtime_pins, "requirements.lock")
-    problems += unsatisfied(runtime + tooling, test_pins, "requirements-test.lock")
-    if build and not (ROOT / "requirements-build.lock").is_file():
-        problems.append("requirements-build.lock is missing")
-    elif build:
-        problems += unsatisfied(
-            build, read_pins("requirements-build.lock"), "requirements-build.lock"
-        )
-    # What `make lock` itself runs, installed with --require-hashes
-    missing = [
-        name
-        for name in ("requirements-tools.in", "requirements-tools.lock")
-        if not (ROOT / name).is_file()
-    ]
-    problems += [f"{name} is missing" for name in missing]
-    if not missing:
-        problems += unsatisfied(
-            read_requirements("requirements-tools.in"),
-            read_pins("requirements-tools.lock"),
-            "requirements-tools.lock",
-            "requirements-tools.in",
-        )
-    # CI installs requirements-test.lock alone where it needs both, which is
-    # only the same as installing both while the shared pins agree
-    problems += [
-        f"requirements.lock pins {name}=={version}, "
-        f"requirements-test.lock {name}=={test_pins.get(name)}"
-        for name, version in runtime_pins.items()
-        if test_pins.get(name) != version
-    ]
-
+    build_problems = build_mismatches(pyproject)
+    uv_problems = uv_mismatches()
     image_problems = playwright_image_mismatches()
     version_problems = version_mismatches()
     toolchain_problems = toolchain_mismatches(pyproject)
 
-    if not (problems or image_problems or version_problems or toolchain_problems):
+    everything = (
+        build_problems
+        + uv_problems
+        + image_problems
+        + version_problems
+        + toolchain_problems
+    )
+    if not everything:
         print(
-            "The lock files satisfy pyproject.toml and requirements-tools.in, "
-            "the Playwright image matches, the package version agrees and "
-            "the Python and Node.js versions agree."
+            "uv.lock satisfies build-system.requires, CI and the image run "
+            "the same uv, the Playwright image matches, the package version "
+            "agrees and the Python and Node.js versions agree."
         )
         return 0
-    for problem in problems + image_problems + version_problems + toolchain_problems:
+    for problem in everything:
         print(f"error: {problem}", file=sys.stderr)
-    if problems:
+    if build_problems:
         print(
-            "The lock files are out of date; run `make lock` and commit "
-            "requirements.lock, requirements-test.lock, "
-            "requirements-build.lock and requirements-tools.lock.",
+            f"Ask for every package of build-system.requires in the "
+            f"{BUILD_GROUP} dependency group, with a range the pin meets, then run "
+            "`uv lock` and commit uv.lock.",
+            file=sys.stderr,
+        )
+    if uv_problems:
+        print(
+            f"Set the same uv release in {UV_ACTION} and the uv image of the "
+            "Dockerfile, with the digest of its multi-arch index.",
             file=sys.stderr,
         )
     if image_problems:

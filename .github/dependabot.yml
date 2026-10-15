@@ -6,24 +6,16 @@
 version: 2
 updates:
   # Python dependencies: the ranges in pyproject.toml, the single source of
-  # the Python dependencies, and the pip-tools pin in requirements-tools.in.
-  # Dependabot does not read the *.lock files and cannot recompile them, so
-  # the lint job fails a bump the locks no longer satisfy; run `make lock` on
-  # the branch.
-  #
-  # Until then such a pull request tests nothing new: every job installs the
-  # old lock files. The test workflow therefore runs only its cheap jobs
-  # for Dependabot's own pushes to a dependabot/pip/ branch, and everything
-  # once `make lock` is pushed on top.
-  - package-ecosystem: "pip"
+  # the Python dependencies, and their pins in uv.lock, which Dependabot
+  # updates in the same pull request, so it tests the new release as it
+  # comes. uv itself (the setup-toolchain action and the Dockerfile) is
+  # bumped by hand, see there.
+  - package-ecosystem: "uv"
     directory: "/"
-    # Such a pull request gets a commit of its own (`make lock`) to test
-    # the new versions, which the lint job also needs where the lock files
-    # no longer satisfy the range; Dependabot stops rebasing it after that
-    # anyway. Before that a rebase for every push to main only starts
-    # another run of the cheap jobs against the old versions; comment
-    # `@dependabot rebase` when one is wanted.
-    rebase-strategy: disabled
+    # The default rebase strategy: every pull request raises a range in the
+    # flown entry of uv.lock, next to the ranges of the others, so the
+    # second of two pull requests conflicts once the first is merged, and
+    # Dependabot rebases it then rather than leaving it stuck
     # Raise the lower bound of a range to the new release. pyproject.toml
     # names a package, so the default ("auto") widens ranges instead, and a
     # ">=" range already admits every new release: from April to September
@@ -32,10 +24,15 @@ updates:
     # A release has to be out this long before Dependabot proposes it, so a
     # compromised or broken one is usually yanked before it reaches a pull
     # request. Security updates are not held back. Every ecosystem below
-    # waits the same week: that is what zizmor's dependabot-cooldown audit
-    # asks for at least, and nothing here needs a release sooner.
+    # waits a week: that is what zizmor's dependabot-cooldown audit asks for
+    # at least, and nothing here needs a release sooner. A day more here:
+    # uv.lock only takes releases a week old ([tool.uv] exclude-newer in
+    # pyproject.toml), counted to the hour, and a release Dependabot counts
+    # a week old by the day may not be yet. That holds back a security
+    # update of this ecosystem as well: one to a release younger than a week
+    # fails to lock until its package gets an exclude-newer-package entry.
     cooldown:
-      default-days: 7
+      default-days: 8
     schedule:
       interval: "daily"
       time: "07:00"
@@ -44,7 +41,7 @@ updates:
       - "dependencies"
       - "python"
     commit-message:
-      prefix: "pip"
+      prefix: "uv"
       include: "scope"
     groups:
       testing:
@@ -62,12 +59,10 @@ updates:
         patterns:
           - "lxml"
           - "lxml-stubs"
-      # The tools that build and audit the packages, each of which came as a
-      # pull request of its own that needed `make lock`
+      # The tools that build and audit the packages
       packaging:
         patterns:
           - "pip-audit"
-          - "pip-tools"
           - "packaging"
           - "setuptools"
       minifiers:
@@ -78,7 +73,7 @@ updates:
   # JavaScript/TypeScript dependencies
   - package-ecosystem: "npm"
     directory: "/"
-    # See the cooldown of the pip entry
+    # See the cooldown of the uv entry
     cooldown:
       default-days: 7
     # Weekly: a release waits a week for the cooldown anyway, and a daily
@@ -183,7 +178,7 @@ updates:
     directories:
       - "/"
       - "/.github/actions/*"
-    # See the cooldown of the pip entry
+    # See the cooldown of the uv entry
     cooldown:
       default-days: 7
     schedule:
@@ -207,7 +202,7 @@ updates:
   # it turns red.
   - package-ecosystem: "docker"
     directory: "/"
-    # See the cooldown of the pip entry
+    # See the cooldown of the uv entry
     cooldown:
       default-days: 7
     schedule:
@@ -234,6 +229,15 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
+      # uv is the release the setup-toolchain action installs in CI as well,
+      # which Dependabot does not bump; move both by hand
+      # (scripts/check_locks.py fails the lint job until they agree).
+      # Digest updates of the current tag still come through.
+      - dependency-name: "astral-sh/uv"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
 
   # pre-commit hook revisions. Only the two pinned repos are left in
   # .pre-commit-config.yaml; the linters and formatters run from the project
@@ -244,7 +248,7 @@ updates:
   # comment of that step says how to look it up).
   - package-ecosystem: "pre-commit"
     directory: "/"
-    # See the cooldown of the pip entry
+    # See the cooldown of the uv entry
     cooldown:
       default-days: 7
     schedule:

@@ -1,17 +1,18 @@
 ---
-# Python and Node.js at the versions of .python-version and .nvmrc, with
-# their caches, for the jobs of test.yml after their checkout, so each action
-# is pinned in one place. Installing is left to the jobs: each installs
-# something else.
+# Python, uv and Node.js at the versions of .python-version, the uv release
+# below and .nvmrc, with their caches, for the jobs of test.yml after their
+# checkout, so each action is pinned in one place. Installing is left to the
+# jobs: each installs something else, with `uv sync --locked` into the
+# virtual environment set up here.
 name: Set up the toolchain
-description: Set up Python and Node.js with their caches
+description: Set up Python, uv and Node.js with their caches
 inputs:
-  python-lock:
+  python:
     description: >-
-      The lock files the job installs with pip, one per line, which key the
-      pip cache; empty for a job without Python
+      Whether the job runs Python: "true" sets up Python, uv and an
+      activated virtual environment (.venv) for `uv sync`
     required: false
-    default: ""
+    default: "false"
   npm-cache:
     description: Whether to restore and save the npm cache, for a job that runs `npm ci`
     required: false
@@ -19,15 +20,28 @@ inputs:
 runs:
   using: composite
   steps:
-    # The pip cache is keyed by the lock files the job installs: a key shared
-    # by every job held only what the first job to save it had downloaded
+    # The interpreter uv creates the environment with; uv finds it on PATH
+    # and downloads none of its own
     - name: Set up Python
-      if: inputs.python-lock != ''
+      if: inputs.python == 'true'
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version-file: .python-version
-        cache: pip
-        cache-dependency-path: ${{ inputs.python-lock }}
+    # The release here and the uv image of the Dockerfile are the same
+    # (scripts/check_locks.py). Dependabot moves neither to another release:
+    # move both by hand.
+    # The environment it activates is on PATH for every later step, so the
+    # tools `uv sync` installs run by name. The cache is keyed by uv.lock and
+    # the job: a key shared by every job held only what the first job to save
+    # it had downloaded.
+    - name: Set up uv
+      if: inputs.python == 'true'
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        version: "0.12.24"
+        activate-environment: true
+        cache-dependency-glob: uv.lock
+        cache-suffix: ${{ github.job }}
     - name: Set up Node.js
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
