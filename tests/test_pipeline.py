@@ -1,4 +1,4 @@
-"""Tests for the generation pipeline in the renderer module."""
+"""Tests for the generation pipeline (flown/pipeline.py)."""
 
 import errno
 import json
@@ -21,7 +21,7 @@ from lxml import html as lxml_html
 import flown.airport_lookup as lookup_module
 import flown.cache as cache_module
 import flown.data_exporter as exporter_module
-import flown.renderer as renderer_module
+import flown.pipeline as pipeline_module
 from flown import path_content
 from flown.data_exporter import export_all_data
 from flown.exceptions import (
@@ -34,8 +34,7 @@ from flown.geometry import CoordinateExtent
 from flown.landings import FlightLandings
 from flown.listing import list_flights
 from flown.parser import parse_and_cache
-from flown.previews import encode_path_id
-from flown.renderer import (
+from flown.pipeline import (
     UNEXPECTED_PARSE_ERROR,
     FlightDataExport,
     ParsedFile,
@@ -51,6 +50,7 @@ from flown.renderer import (
     no_flight_reason,
     parse_files,
 )
+from flown.previews import encode_path_id
 from flown.site_output import STABLE_MTIMES_ENV, STAGING_PREFIX
 from flown.types import PathMetadata, TrackPoint
 from flown.workers import configure_workers
@@ -257,7 +257,7 @@ class TestParseWithoutAPool:
         cached = _write_kml(tmp_path / "1_DEAGJ_DA20.kml", 2025)
         _parse_kml_files([cached])
         fresh = _write_kml(tmp_path / "2_DEAGJ_DA20.kml", 2026)
-        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.pipeline.INLINE_PARSE_MAX_BYTES", -1)
         pool = _InlineExecutor()
         submitted = []
         real_submit = pool.submit
@@ -280,11 +280,11 @@ class TestParseWithoutAPool:
             _write_kml(tmp_path / "1_DEAGJ_DA20.kml"),
             _write_kml(tmp_path / "2_DEAGJ_DA20.kml", 2026),
         ]
-        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.pipeline.INLINE_PARSE_MAX_BYTES", -1)
         configure_workers(1, processes=False)
         with (
-            patch("flown.renderer.pickle.dumps") as dumps,
-            patch("flown.renderer.WorkerPool") as pool,
+            patch("flown.pipeline.pickle.dumps") as dumps,
+            patch("flown.pipeline.WorkerPool") as pool,
         ):
             _, metadata, _ = _parse_kml_files(files)
         dumps.assert_not_called()
@@ -300,11 +300,11 @@ class TestParseWithoutAPool:
         with zipfile.ZipFile(kmz, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("doc.kml", kml)
         assert kmz.stat().st_size < 100_000
-        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_BYTES", 100_000)
-        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_WORKERS", 1)
+        monkeypatch.setattr("flown.pipeline.POOLED_CACHE_MIN_BYTES", 100_000)
+        monkeypatch.setattr("flown.pipeline.POOLED_CACHE_MIN_WORKERS", 1)
         # The stand-in parses nothing, so no coordinates come back
         with (
-            patch("flown.renderer._parse_in_pool") as parse_in_pool,
+            patch("flown.pipeline._parse_in_pool") as parse_in_pool,
             pytest.raises(InvalidInputError),
         ):
             _parse_kml_files([str(kmz)])
@@ -325,8 +325,8 @@ class TestParseWithoutAPool:
         _parse_kml_files([str(cached)])
         capsys.readouterr()
         fresh = _write_kml(tmp_path / "2_DEAGJ_DA20.kml", 2026)
-        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_BYTES", -1)
-        monkeypatch.setattr("flown.renderer.POOLED_CACHE_MIN_WORKERS", 1)
+        monkeypatch.setattr("flown.pipeline.POOLED_CACHE_MIN_BYTES", -1)
+        monkeypatch.setattr("flown.pipeline.POOLED_CACHE_MIN_WORKERS", 1)
         pool = _InlineExecutor()
         submitted = []
         real_submit = pool.submit
@@ -344,13 +344,13 @@ class TestParseWithoutAPool:
         with (
             patch.object(pool, "submit", submit),
             patch("flown.workers.ProcessPoolExecutor", pool),
-            patch("flown.renderer.parse_and_cache", parse),
+            patch("flown.pipeline.parse_and_cache", parse),
         ):
             _, metadata, _ = _parse_kml_files([str(cached), fresh])
 
         assert submitted == [
-            (renderer_module._load_or_parse, (str(cached), None)),
-            (renderer_module._load_or_parse, (fresh, None)),
+            (pipeline_module._load_or_parse, (str(cached), None)),
+            (pipeline_module._load_or_parse, (fresh, None)),
         ]
         # Only the miss is parsed, the hit's warning is logged again
         assert parsed == [fresh]
@@ -372,7 +372,7 @@ class TestParseWithoutAPool:
     def test_warm_cache_needs_no_pool(self, tmp_path, monkeypatch):
         files = [_write_kml(tmp_path / f"{i}_DEAGJ_DA20.kml", 2025) for i in (1, 2)]
         first = _parse_kml_files(files)
-        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.pipeline.INLINE_PARSE_MAX_BYTES", -1)
         with patch("flown.workers.ProcessPoolExecutor", _NoPool):
             assert _parse_kml_files(files) == first
 
@@ -395,14 +395,14 @@ class TestParseWithoutAPool:
             # And the entry was written, with the landings: the next run
             # reads it, and finds no landing either
             with (
-                patch("flown.renderer.parse_and_cache", side_effect=AssertionError),
-                patch("flown.renderer.path_landings", side_effect=AssertionError),
+                patch("flown.pipeline.parse_and_cache", side_effect=AssertionError),
+                patch("flown.pipeline.path_landings", side_effect=AssertionError),
             ):
                 _parse_kml_files(files)
 
     def test_unreadable_cache_is_a_miss(self, tmp_path):
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
-        with patch("flown.renderer.load_cached_entry", side_effect=OSError):
+        with patch("flown.pipeline.load_cached_entry", side_effect=OSError):
             _, metadata, _ = _parse_kml_files([kml_file])
         assert len(metadata) == 1
 
@@ -410,7 +410,7 @@ class TestParseWithoutAPool:
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with (
             patch(
-                "flown.renderer._parse_with_error_handling",
+                "flown.pipeline._parse_with_error_handling",
                 side_effect=FlownError("Airport database unavailable"),
             ),
             pytest.raises(FlownError, match="Airport database unavailable"),
@@ -421,7 +421,7 @@ class TestParseWithoutAPool:
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with (
             patch(
-                "flown.renderer._parse_with_error_handling",
+                "flown.pipeline._parse_with_error_handling",
                 side_effect=RuntimeError("unexpected"),
             ),
             pytest.raises(FlownError, match=r"1 of 1 file\(s\) failed to parse"),
@@ -474,7 +474,7 @@ class TestParseWithErrorHandling:
         """Only a KMLParseError or OSError is what is wrong with the file."""
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         with patch(
-            "flown.renderer.parse_and_cache",
+            "flown.pipeline.parse_and_cache",
             side_effect=ValueError("landing bug"),
         ):
             assert _parse_with_error_handling(kml_file) == ParsedFile(
@@ -535,7 +535,7 @@ class TestParseKmlFiles:
     @pytest.fixture(autouse=True)
     def _in_a_pool(self, monkeypatch):
         """These files are small enough to be parsed inline; use the pool."""
-        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.pipeline.INLINE_PARSE_MAX_BYTES", -1)
 
     def test_merges_results_in_input_order(self, tmp_path):
         files = [
@@ -736,7 +736,7 @@ class TestParseKmlFiles:
         shutil.copyfile(FIXTURE_RUNWAYS_CSV, cache_dir / "runways.csv")
         # Nor does it see the stand-in bundle, which it gets as an argument
         run_cli = (
-            "import sys; from pathlib import Path; import flown.renderer as r; "
+            "import sys; from pathlib import Path; import flown.pipeline as r; "
             "r.BUNDLE_FILE = Path(sys.argv.pop(1)); "
             "from flown.cli import main; main()"
         )
@@ -1109,7 +1109,7 @@ class TestExportSite:
 
         out = tmp_path / "out"
         with (
-            patch("flown.renderer.is_exportable_path", check),
+            patch("flown.pipeline.is_exportable_path", check),
             patch.object(exporter_module, "is_exportable_path", check),
         ):
             _export_site(paths, metadata, out / "index.html", out / "data")
@@ -1333,7 +1333,7 @@ class TestCreateProgressiveHeatmap:
     def test_no_input_at_all(self, tmp_path, monkeypatch):
         """A caller of the library with no files: refused before any parse."""
         monkeypatch.setattr(
-            renderer_module,
+            pipeline_module,
             "_parse_kml_files",
             lambda *args, **kwargs: pytest.fail("parsed nothing"),
         )
@@ -1428,7 +1428,7 @@ class TestCreateProgressiveHeatmap:
         out = tmp_path / "out"
         with (
             patch(
-                "flown.renderer.export_all_data",
+                "flown.pipeline.export_all_data",
                 side_effect=RuntimeError("Failed to process year 2025"),
             ),
             pytest.raises(FlownError) as failure,
@@ -1475,7 +1475,7 @@ class TestCreateProgressiveHeatmap:
         other = _write_kml(tmp_path / "input" / "2_DEAGJ_DA20.kml", 2026)
         with (
             patch(
-                "flown.renderer.package_assets",
+                "flown.pipeline.package_assets",
                 side_effect=PermissionError(errno.EACCES, "Permission denied"),
             ),
             pytest.raises(ExportError),
@@ -1917,12 +1917,12 @@ class TestListFlights:
         assert list_flights([coded, *files]).free_text_airports == []
 
     def test_parses_many_files_in_the_pool(self, tmp_path, monkeypatch):
-        """As a build does, see renderer._load_or_parse_here."""
+        """As a build does, see pipeline._load_or_parse_here."""
         files = [
             _write_kml(tmp_path / "1_DEAGJ_DA20.kml"),
             _write_kml(tmp_path / "2_DEAGJ_DA20.kml", year=2026),
         ]
-        monkeypatch.setattr("flown.renderer.INLINE_PARSE_MAX_BYTES", -1)
+        monkeypatch.setattr("flown.pipeline.INLINE_PARSE_MAX_BYTES", -1)
         pool = _InlineExecutor()
         submitted = []
         real_submit = pool.submit
@@ -1984,7 +1984,7 @@ class TestPipelineErrors:
         out = tmp_path / "out"
         with (
             patch(
-                "flown.renderer._parse_kml_files",
+                "flown.pipeline._parse_kml_files",
                 side_effect=OSError("disk gone"),
             ),
             pytest.raises(ExportError, match="disk gone"),
@@ -1997,7 +1997,7 @@ class TestPipelineErrors:
         out = tmp_path / "out"
         with (
             patch(
-                "flown.renderer._export_site",
+                "flown.pipeline._export_site",
                 side_effect=InvalidInputError("No flight paths"),
             ),
             pytest.raises(InvalidInputError, match=r"^No flight paths$"),

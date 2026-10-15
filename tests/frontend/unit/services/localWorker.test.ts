@@ -34,6 +34,7 @@ import {
   type PyodideLike,
   type PyodideLoader,
   RUNTIME_FAILED_MESSAGE,
+  RUNTIME_LOST_MESSAGE,
 } from "../../../../flown/frontend/services/localWorker";
 import {
   CACHE_BUSY_MESSAGE,
@@ -51,6 +52,9 @@ const OUTCOME = {
   ],
 };
 
+/** What Pyodide throws for an exception of the Python run */
+class PythonError extends Error {}
+
 /** A Pyodide whose file system is a map of paths, directories ending in / */
 class FakePyodide implements PyodideLike {
   readonly files = new Map<string, Uint8Array>();
@@ -67,6 +71,7 @@ class FakePyodide implements PyodideLike {
   syncError: unknown = null;
   /** Whether a sync never comes back: another tab holds the cache */
   syncHangs = false;
+  readonly ffi = { PythonError };
   readonly globals = {
     set: (name: string, value: unknown): void => {
       if (name === "report") {
@@ -168,6 +173,9 @@ function runtimeOf(
 const bytes = (...values: number[]): ArrayBuffer =>
   new Uint8Array(values).buffer;
 
+/** An exception of the Python run, as Pyodide throws it */
+const pythonError = (message: string): Error => new PythonError(message);
+
 describe("pythonErrorMessage", () => {
   it("takes the message off the last line of a traceback", () => {
     const error = new Error(
@@ -262,6 +270,44 @@ describe("Runtime", () => {
 
     pyodide.syncError = "odd";
     await expect(runtime.ready(vi.fn())).rejects.toThrow("syncfs failed");
+    // Mounted once: a second mount on the same directory is refused
+    expect(pyodide.mounted).toEqual(["idbfs:/flown-cache"]);
+  });
+
+  it("keeps the runtime after a start that failed past it, and tries only the rest", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime, loader, sources } = runtimeOf(pyodide);
+    // The package's archive of a deploy that is on its way
+    sources.mockRejectedValueOnce(new Error("HTTP 404"));
+    const report = vi.fn<(message: string) => void>();
+
+    await expect(runtime.ready(report)).rejects.toThrow("HTTP 404");
+    report.mockClear();
+    await expect(runtime.ready(report)).resolves.toBe(pyodide);
+
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(sources).toHaveBeenCalledTimes(2);
+    expect(report.mock.calls.map(([m]) => m)).toEqual([
+      LOADING_PARSER_MESSAGE,
+      LOADING_PACKAGE_MESSAGE,
+    ]);
+    expect(pyodide.mounted).toEqual(["idbfs:/flown-cache"]);
+  });
+
+  it("lets go of a runtime that failed for good in a start, and loads anew", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime, loader } = runtimeOf(pyodide);
+    vi.spyOn(pyodide, "loadPackage").mockRejectedValueOnce(
+      new Error("Pyodide already fatally failed and can no longer be used."),
+    );
+    const report = vi.fn<(message: string) => void>();
+
+    // As lost, which the page lets the worker go with
+    await expect(runtime.build([], true, report)).rejects.toThrow(
+      RUNTIME_LOST_MESSAGE,
+    );
+    await expect(runtime.ready(report)).resolves.toBe(pyodide);
+    expect(loader).toHaveBeenCalledTimes(2);
   });
 
   it("builds: the inputs in, the Python run, the files out", async () => {
@@ -339,7 +385,7 @@ describe("Runtime", () => {
 
   it("answers a Python failure with its message and syncs the cache still", async () => {
     const pyodide = new FakePyodide();
-    pyodide.answer = new Error(
+    pyodide.answer = pythonError(
       "Traceback\nflown.exceptions.ExportError: Export failed: no room",
     );
     const { runtime } = runtimeOf(pyodide);
@@ -400,7 +446,7 @@ describe("serveBuilds", () => {
 
   it("answers a failure with its message", async () => {
     const pyodide = new FakePyodide();
-    pyodide.answer = new Error("KMLParseError: not a KML file");
+    pyodide.answer = pythonError("KMLParseError: not a KML file");
     const { runtime } = runtimeOf(pyodide);
     const { posted, send } = scopeOf(runtime);
 
@@ -411,6 +457,24 @@ describe("serveBuilds", () => {
 
     expect(posted.at(-1)).toEqual([
       { id: 5, error: "not a KML file" },
+      undefined,
+    ]);
+  });
+
+  it("answers a failure of the runtime itself as lost, for the page to let the worker go", async () => {
+    const pyodide = new FakePyodide();
+    // A WebAssembly trap, after which Pyodide refuses every call
+    pyodide.answer = new Error("RuntimeError: unreachable");
+    const { runtime } = runtimeOf(pyodide);
+    const { posted, send } = scopeOf(runtime);
+
+    send({ id: 6, build: { files: [], terrain: true } });
+    await vi.waitFor(() =>
+      expect(posted.some(([m]) => "error" in m)).toBe(true),
+    );
+
+    expect(posted.at(-1)).toEqual([
+      { id: 6, error: RUNTIME_LOST_MESSAGE, lost: true },
       undefined,
     ]);
   });
@@ -509,6 +573,47 @@ describe("the files of Pyodide", () => {
       }),
     ).rejects.toThrow(TypeError);
     expect(watch.calls.filter((call) => call === "fail")).toHaveLength(2);
+  });
+
+  it("refuses an answer that is no success, whatever its body", async () => {
+    // A lock file of its own under a 500 or a 404: Pyodide reads the lock
+    // file without looking at the status, and would take its hashes
+    const lock = '{"packages": {"lxml": {"sha256": "00"}}}';
+    const watch = counting();
+    for (const status of [500, 404]) {
+      const fetch = vi.fn<Fetch>(() =>
+        Promise.resolve(new Response(lock, { status })),
+      );
+      await expect(
+        verifiedFetch(fetch, () => watch)(`${PYODIDE_URL}pyodide-lock.json`),
+      ).rejects.toThrow(`HTTP ${status}`);
+    }
+    // A package, with the hash the lock file gives it, the same way
+    const fetch = vi.fn<Fetch>(() =>
+      Promise.resolve(new Response("abc", { status: 500 })),
+    );
+    await expect(
+      verifiedFetch(fetch, () => watch)(`${PYODIDE_URL}lxml-1.whl`, {
+        integrity: await sri("abc", 256),
+      }),
+    ).rejects.toThrow(TypeError);
+    expect(watch.calls.filter((call) => call === "fail")).toHaveLength(3);
+  });
+
+  it("refuses a file of the release that has no hash, pinned or asked for", async () => {
+    const fetch = vi.fn<Fetch>(() => Promise.resolve(ok("export {}")));
+    const checked = verifiedFetch(fetch);
+
+    for (const url of [
+      `${PYODIDE_URL}other.mjs`,
+      `${PYODIDE_URL}pyodide.mjs?v=2`,
+      // Spellings of the release's URL that are the same once resolved
+      `${PYODIDE_URL}./x/../other.mjs`,
+      PYODIDE_URL.replace("cdn.jsdelivr.net", "CDN.jsdelivr.net") + "a.js",
+    ]) {
+      await expect(checked(url)).rejects.toThrow("has no hash pinned");
+    }
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("tells the watch of a download that failed", async () => {

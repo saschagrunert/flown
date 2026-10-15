@@ -8,6 +8,7 @@
 import type { MapApp } from "../mapApp";
 import { icon } from "../utils/icons";
 import { carriesFiles } from "./fileDropWatch";
+import { trustedHtml } from "../utils/trustedHtml";
 
 export const DROP_SHEET_ID = "file-drop-sheet";
 export const DROP_MESSAGE = "Drop the files to see your flights";
@@ -31,10 +32,11 @@ export function showDropSheet(
     made.className = "file-drop-sheet";
     made.setAttribute("aria-hidden", "true");
     made.hidden = true;
-    made.innerHTML =
+    made.innerHTML = trustedHtml(
       '<div class="file-drop-sheet-box">' +
-      icon("upload", 24) +
-      `<span>${DROP_MESSAGE}</span></div>`;
+        icon("upload", 24) +
+        `<span>${DROP_MESSAGE}</span></div>`,
+    );
     document.body.append(made);
     sheet = made;
     const signal = app.signal;

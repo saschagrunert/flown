@@ -11,7 +11,10 @@ import {
 } from "../../../../flown/frontend/state/store";
 import { MobileBar } from "../../../../flown/frontend/ui/mobileBar";
 import { REPLAY_PRECONDITION_MESSAGE } from "../../../../flown/frontend/ui/replayButton";
-import { NO_DATA_MESSAGE } from "../../../../flown/frontend/ui/actions";
+import {
+  EXPORT_BUSY_MESSAGE,
+  NO_DATA_MESSAGE,
+} from "../../../../flown/frontend/ui/actions";
 import { MOBILE_BREAKPOINT_PX } from "../../../../flown/frontend/utils/constants";
 import { PHONE_LAYOUT_QUERY } from "../../../../flown/frontend/utils/device";
 
@@ -884,6 +887,35 @@ describe("MobileBar", () => {
 
       expect(app.uiToggles.exportMap).toHaveBeenCalledTimes(1);
       expect(app.uiToggles.shareLink).toHaveBeenCalledTimes(1);
+    });
+
+    it("dims Export image while an export runs, and a tap still reaches it", () => {
+      // The column's button, hidden on a phone, is marked while it runs
+      const button = document.createElement("button");
+      button.id = "export-btn";
+      button.setAttribute("data-busy", "");
+      document.body.append(button);
+      try {
+        bar!.refreshSheet();
+        const row = document.querySelector<HTMLElement>('[data-row="export"]')!;
+        expect(row.getAttribute("aria-disabled")).toBe("true");
+        expect(row.querySelector(".sheet-row-hint")!.textContent).toBe(
+          EXPORT_BUSY_MESSAGE,
+        );
+
+        row.click();
+        expect(app.uiToggles.exportMap).toHaveBeenCalledTimes(1);
+
+        button.removeAttribute("data-busy");
+        tab("more").click();
+        expect(
+          document
+            .querySelector('[data-row="export"]')!
+            .getAttribute("aria-disabled"),
+        ).toBe("false");
+      } finally {
+        button.remove();
+      }
     });
   });
 

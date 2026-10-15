@@ -22,8 +22,10 @@ from flown.date_tokens import (
     find_time_tokens,
     find_weekday_tokens,
 )
+from flown.helpers import DATE_PATTERN
 from flown.obfuscate import (
     GENERIC_CREATOR,
+    NAME_YEAR_DATE_PATTERN,
     _extract_frac,
     _find_stray_dates,
     check_directory_obfuscated,
@@ -1655,6 +1657,16 @@ class TestProperties:
             assert (b - a) == timedelta(seconds=original_gap)
         assert obfuscate_kml_content(once) is None
 
+    @given(st.text(alphabet="0123456789 -\tAugMai.", max_size=40))
+    @example("EDDS 16 Aug 2026")
+    @example("116 Aug 2026")
+    @example("6 Aug 2026-08-16")
+    @example("12026-08-16")
+    def test_the_rewrite_knows_every_date_shape_the_parser_reads(self, text):
+        """A date DATE_PATTERN finds is one NAME_YEAR_DATE_PATTERN moves."""
+        for match in DATE_PATTERN.finditer(text):
+            assert NAME_YEAR_DATE_PATTERN.fullmatch(match.group(0)), match.group(0)
+
 
 class TestCLI:
     def test_check_mode_exits_1_on_violations(self, tmp_path, capsys):
@@ -2307,6 +2319,9 @@ class TestNamesAndDescriptions:
                     "CW33",
                     "Summer",
                     "T10Z",
+                    "250816",
+                    "16082026",
+                    "1430",
                 ]
             ),
             max_size=8,
@@ -2333,6 +2348,145 @@ class TestNamesAndDescriptions:
     def test_an_obfuscated_name_stays_as_it_is(self):
         assert obfuscate_kml_content(_kml("<name>Log Start: 2026-01-01</name>")) is None
         assert obfuscate_kml_content(_kml("<name>EDDS 01 Jan 2026</name>")) is None
+
+
+class TestPartsOfDatesInEveryElement:
+    """The repository publishes all of a file, not only its names."""
+
+    @pytest.mark.parametrize(
+        ("body", "violation", "fixed"),
+        [
+            (
+                "<Snippet>Flown 16 August</Snippet>",
+                "Element Snippet contains part of a date: 16 August",
+                "<Snippet>Flown</Snippet>",
+            ),
+            (
+                '<Snippet maxLines="2">Sat 16 Aug</Snippet>',
+                "Element Snippet contains part of a date: Sat 16 Aug",
+                '<Snippet maxLines="2"></Snippet>',
+            ),
+            (
+                "<address>Trip KW33</address>",
+                "Element address contains part of a date: KW33",
+                "<address>Trip</address>",
+            ),
+            (
+                '<Data name="d"><value>On 16 Aug</value></Data>',
+                "Element value contains part of a date: 16 Aug",
+                '<Data name="d"><value>On</value></Data>',
+            ),
+            (
+                '<SimpleData name="d">Flug 16.08.</SimpleData>',
+                "Element SimpleData contains part of a date: 16.08.",
+                '<SimpleData name="d">Flug</SimpleData>',
+            ),
+            (
+                "<kml:value>log_250816</kml:value>",
+                "Element kml:value contains part of a date: 250816",
+                "<kml:value>log</kml:value>",
+            ),
+            # The weekdays and times of day there, which the check reports
+            # anywhere, go with them
+            (
+                "<Snippet>Sunday 16 Aug</Snippet>",
+                "Weekday gives the day of the flight away, remove it: Sunday",
+                "<Snippet></Snippet>",
+            ),
+            (
+                "<Snippet>Back 14:30</Snippet>",
+                "Time of day gives the flight away, remove it: 14:30",
+                "<Snippet>Back</Snippet>",
+            ),
+        ],
+    )
+    def test_the_rewrite_fixes_the_free_text(self, tmp_path, body, violation, fixed):
+        kml_file = tmp_path / "flight.kml"
+        kml_file.write_text(_kml(body), encoding="utf-8")
+        assert violation in check_kml_obfuscated(kml_file)
+
+        assert obfuscate_kml_content(_kml(body)) == _kml(fixed)
+        kml_file.write_text(_kml(fixed), encoding="utf-8")
+        assert check_kml_obfuscated(kml_file) == []
+
+    @pytest.mark.parametrize(
+        ("body", "violation"),
+        [
+            (
+                "<sd:notes>16 Aug</sd:notes>",
+                "Element sd:notes contains part of a date, remove it: 16 Aug",
+            ),
+            (
+                "<styleUrl>notes_16Aug.kml#a</styleUrl>",
+                "Element styleUrl contains part of a date, remove it: 16Aug",
+            ),
+            (
+                "<Placemark>Flown 16 Aug<name>EDDS</name></Placemark>",
+                "Text contains part of a date, remove it: 16 Aug",
+            ),
+            # The value of a point of a track is no free text: the rewrite
+            # leaves it alone, but text in it is reported all the same
+            (
+                "<gx:SimpleArrayData><gx:value>On 16.8</gx:value></gx:SimpleArrayData>",
+                "Element gx:value contains part of a date, remove it: 16.8",
+            ),
+        ],
+    )
+    def test_anywhere_else_it_goes_by_hand(self, tmp_path, body, violation):
+        kml_file = tmp_path / "flight.kml"
+        kml_file.write_text(_kml(body), encoding="utf-8")
+        assert violation in check_kml_obfuscated(kml_file)
+        assert obfuscate_kml_content(_kml(body)) is None
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # A number alone outside a name or a description is a number:
+            # the speed of a point, the heading of a view
+            '<Data name="speed"><value>16.8</value></Data>',
+            "<gx:SimpleArrayData><gx:value>16.8</gx:value></gx:SimpleArrayData>",
+            "<gx:SimpleArrayData><gx:value>26.08</gx:value></gx:SimpleArrayData>",
+            "<SimpleData name='n'>260816</SimpleData>",
+            "<LookAt><heading>12.10</heading><tilt>16.08</tilt></LookAt>",
+            "<LookAt><longitude>11.16082025</longitude></LookAt>",
+            # The id after the "#" of a reference, which an attribute declares
+            "<styleUrl>#style_16Aug</styleUrl>",
+            # What a SkyDemon log holds
+            "<Style id='a'/><styleUrl>#downArrowIcon</styleUrl>",
+            "<altitudeMode>relativeToGround</altitudeMode><extrude>1</extrude>",
+            "<color>7f00ffff</color><width>4</width>",
+            "<href>http://maps.google.com/mapfiles/kml/pal4/icon28.png</href>",
+            # January 1st
+            "<Snippet>Flown 01 Jan</Snippet><address>KW1</address>",
+        ],
+    )
+    def test_what_passes(self, tmp_path, body):
+        kml_file = tmp_path / "flight.kml"
+        kml_file.write_text(_kml(body), encoding="utf-8")
+        assert check_kml_obfuscated(kml_file) == []
+        assert obfuscate_kml_content(_kml(body)) is None
+
+    def test_a_number_alone_in_a_name_is_still_scrubbed(self):
+        assert obfuscate_kml_content(_kml("<name>16.8</name>")) == _kml("<name></name>")
+
+    def test_the_text_of_a_balloon_style_is_scrubbed(self):
+        body = "<text><![CDATA[<b>$[name]</b> 16 Aug]]></text>"
+        assert obfuscate_kml_content(_kml(body)) == _kml(
+            "<text><![CDATA[<b>$[name]</b>]]></text>"
+        )
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda size: "<a " * size,
+            lambda size: "> " * size + "x",
+            lambda size: "<a>" + " " * size + "x",
+            lambda size: '<a b="' + "c" * size,
+        ],
+    )
+    def test_the_scan_takes_linear_time(self, make):
+        ratio = growth(obfuscate_module._partial_date_violations, make, 5_000)
+        assert ratio < LINEAR_GROWTH
 
 
 class TestCreators:
@@ -2512,6 +2666,9 @@ class TestRenamedNamesAreClean:
                     "Sunday",
                     "Christmas",
                     "1755350000",
+                    "250816",
+                    "16082026",
+                    "16-08",
                 ]
             ),
             min_size=1,

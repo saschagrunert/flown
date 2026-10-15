@@ -1,28 +1,17 @@
 ---
 # Install with: uv tool install pre-commit && pre-commit install
 # Input data (data/) is excluded from the fixers; the generated site (docs/)
-# is not tracked at all. Dependabot bumps the two revs below. They are
-# commits, with the release in a comment (`pre-commit autoupdate --freeze`
-# writes them so): a tag can be moved to other code, which would then run
+# is not tracked at all. Dependabot bumps the rev of gitleaks below. It is a
+# commit, with the release in a comment (`pre-commit autoupdate --freeze`
+# writes it so): a tag can be moved to other code, which would then run
 # here on the next commit, before the flights in data/ are checked.
 #
-# The linters and formatters are local hooks (`repo: local`, `language: system`)
-# rather than pinned mirrors, so no hook revision of their own can drift. They
-# resolve from $PATH and node_modules instead, which is what CI installs only
-# with the virtual environment active and `npm ci` run; see CONTRIBUTING.md.
+# The linters, the formatters and the file checks are local hooks
+# (`repo: local`, `language: system`) rather than pinned mirrors, so no hook
+# revision of their own can drift. They resolve from $PATH and node_modules
+# instead, which is what CI installs only with the virtual environment
+# active and `npm ci` run; see CONTRIBUTING.md.
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
-    hooks:
-      - id: end-of-file-fixer
-        exclude: ^data/
-      - id: trailing-whitespace
-        exclude: ^data/
-        args: [--markdown-linebreak-ext=md]
-      - id: check-merge-conflict
-      - id: check-toml
-      - id: check-yaml
-
   - repo: https://github.com/gitleaks/gitleaks
     rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e # frozen: v8.30.1
     hooks:
@@ -30,6 +19,37 @@ repos:
 
   - repo: local
     hooks:
+      # The hooks of pre-commit/pre-commit-hooks, which comes with the dev
+      # extra in uv.lock, so they are the release the CI lint job runs over
+      # every tracked file. Their own definitions, with the same file types.
+      - id: end-of-file-fixer
+        name: fix end of files
+        entry: end-of-file-fixer
+        language: system
+        types: [text]
+        exclude: ^data/
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+        entry: trailing-whitespace-fixer --markdown-linebreak-ext=md
+        language: system
+        types: [text]
+        exclude: ^data/
+      - id: check-merge-conflict
+        name: check for merge conflicts
+        entry: check-merge-conflict
+        language: system
+        types: [text]
+      - id: check-toml
+        name: check toml
+        entry: check-toml
+        language: system
+        types: [toml]
+      - id: check-yaml
+        name: check yaml
+        entry: check-yaml
+        language: system
+        types: [yaml]
+
       # ruff is resolved off $PATH, so it is the uv.lock version CI
       # installs as long as the virtual environment is active.
       # --force-exclude makes it honour its default excludes (and any

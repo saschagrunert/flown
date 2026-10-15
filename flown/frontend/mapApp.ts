@@ -178,6 +178,7 @@ import type {
   PathSegment,
   AppState,
 } from "./types";
+import { trustedHtml } from "./utils/trustedHtml";
 
 /**
  * Map configuration passed to constructor
@@ -1578,7 +1579,7 @@ export function reportInitFailure(error: unknown): void {
   failStart(message);
   const mapEl = document.getElementById("map");
   if (mapEl) {
-    mapEl.innerHTML = INIT_ERROR_HTML;
+    mapEl.innerHTML = trustedHtml(INIT_ERROR_HTML);
     // Set as text
     mapEl.firstElementChild!.textContent = message;
   }

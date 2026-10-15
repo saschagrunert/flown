@@ -68,6 +68,11 @@ class TestExtractYearFromTimestamp:
             ("0998-05-01", None),
             ("2150-05-01", None),
             ("03 Mar 1998", 1998),
+            # Nor does a timestamp: a clock never set names no year of a
+            # flight, and a year directory data/1/ was never removed
+            ("0001-03-03T10:00:00Z", None),
+            ("1899-12-31T23:59:59Z", None),
+            ("2100-01-01T00:00:00Z", None),
         ],
     )
     def test_extract(self, value, expected):
@@ -302,6 +307,43 @@ class TestExtractCharterwareTimestamp:
 
 
 class TestExtractPlacemarkMetadata:
+    @pytest.mark.parametrize(
+        "span",
+        [
+            "<end>2024-07-01T11:00:00Z</end>",
+            "<begin>yesterday</begin><end>2024-07-01T11:00:00Z</end>",
+        ],
+    )
+    def test_a_time_span_with_only_an_end(self, span):
+        """Its end tells the year; it was lost before."""
+        placemark = etree.fromstring(
+            f"<Placemark><name>EDDS</name><TimeSpan>{span}</TimeSpan></Placemark>"
+        )
+        result = extract_placemark_metadata(placemark, NS)
+        assert result["timestamp"] == "2024-07-01T11:00:00Z"
+        assert result["end_timestamp"] is None
+        assert result["year"] == 2024
+
+    def test_an_end_before_the_begin_comes_first(self):
+        placemark = etree.fromstring(
+            "<Placemark><name>EDDS</name><TimeSpan>"
+            "<begin>2024-07-01T11:00:00Z</begin><end>2024-07-01T10:00:00Z</end>"
+            "</TimeSpan></Placemark>"
+        )
+        result = extract_placemark_metadata(placemark, NS)
+        assert result["timestamp"] == "2024-07-01T10:00:00Z"
+        assert result["end_timestamp"] == "2024-07-01T11:00:00Z"
+
+    def test_a_timestamp_of_no_plausible_year_is_skipped(self):
+        """A clock never set: the date of the name takes its place."""
+        placemark = etree.fromstring(
+            "<Placemark><name>EDDS to EDDP - 16 Aug 2025</name>"
+            "<TimeStamp><when>0001-01-01T00:00:00Z</when></TimeStamp></Placemark>"
+        )
+        result = extract_placemark_metadata(placemark, NS)
+        assert result["timestamp"] == "16 Aug 2025"
+        assert result["year"] == 2025
+
     def test_name_and_timestamps(self):
         placemark = etree.fromstring(
             '<Placemark xmlns:kml="http://www.opengis.net/kml/2.2">'

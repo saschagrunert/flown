@@ -145,19 +145,20 @@ moves each of them to midnight on January 1st of its own year. A date in a name
 that the parser reads a year from (`EDDS to EDDP - 16 Aug 2026`,
 `EDDS 2026-08-16`) moves to January 1st of its year, and every other date, part
 of a date, time of day, weekday, holiday and Unix time the check would report in
-a name or a description goes (`EDDS-EDDP 16 Aug` becomes `EDDS-EDDP`), as often
-as it takes until none is left (`Sat Sat 16 Aug` loses both); a Charterware
-description keeps its date, moved to January 1st with `12:00AM` as its time.
-Descriptions follow the same rule as names, so where a number could be a date it
-goes with the dates: `Fuel 26.08 gal` loses `26.08` and `LOWI 08-26` loses
-`08-26`. Only what stands right next to a removed date changes, so the rest of a
-description (its links, line breaks and HTML) stays as written. Charterware file
-names move to January 1st, other file names lose their dates, times, weekdays
-and holidays the same way (`1_DEHYL_DA40_16Aug.kml` becomes `1_DEHYL_DA40.kml`
-and `EDDS Sat 14:30 16 Aug 2026.kml` becomes `EDDS.kml`, unless that name is
-taken or nothing is left), and every creator field is replaced. Read-only files
-and symlinks are reported instead of rewritten. Obfuscated KML files still
-contain:
+a name, a description or another element of free text (a `<Snippet>`, an
+`<address>`, the `<value>` of a Data, a `<SimpleData>`) goes (`EDDS-EDDP 16 Aug`
+becomes `EDDS-EDDP`), as often as it takes until none is left (`Sat Sat 16 Aug`
+loses both); a Charterware description keeps its date, moved to January 1st with
+`12:00AM` as its time. Descriptions follow the same rule as names, so where a
+number could be a date it goes with the dates: `Fuel 26.08 gal` loses `26.08`
+and `LOWI 08-26` loses `08-26`. Only what stands right next to a removed date
+changes, so the rest of a description (its links, line breaks and HTML) stays as
+written. Charterware file names move to January 1st, other file names lose their
+dates, times, weekdays and holidays the same way (`1_DEHYL_DA40_16Aug.kml`
+becomes `1_DEHYL_DA40.kml` and `EDDS Sat 14:30 16 Aug 2026.kml` becomes
+`EDDS.kml`, unless that name is taken or nothing is left), and every creator
+field is replaced. Read-only files and symlinks are reported instead of
+rewritten. Obfuscated KML files still contain:
 
 - The year of each flight
 - The durations between points, counted from midnight
@@ -171,23 +172,26 @@ second may follow), and no other date may appear anywhere in a file or its name
 dashes, with an English or German month name such as `16 Aug 2026` or
 `16. Mai 2026`, or with the month in Roman numerals such as `16.VII.2026` or
 `2026. VII. 16.`), except the two days after January 1st that a flight past
-midnight runs into. A name, a description or the name of the file holds no part
+midnight runs into. The text of an element and the name of the file hold no part
 of a date either, which the year of the flight completes (`16 Aug`, `16.08.`,
-`16/08`, `16.VII.`, `KW33`, `CW33`, `260816`, `03/2026`, `08-2026`, `2026.08`,
-`VII/2026`, `Summer 2026`, `Q3 2026`, and `Sat` next to a date). Nor may a
-weekday named in full (`Saturday`, `Samstag`, `sonntags`): the timestamps no
-longer fall on it. Nor may a holiday, in English or German (`Christmas Eve`,
-`Easter Monday`, `Thanksgiving`, `Columbus Day`, `May Day`, `Heiligabend`,
-`Ostermontag`, `Pfingsten`, `Nikolaustag`, `Tag der Deutschen Einheit`), which
-names the day as well; the places named after one keep it (`Christmas Island`,
-`Easter Island`, `Pentecost Airport`, `Whitsunday Coast`). The name of a file
-carries no time of day either (`1513h`, `1513H`, `15h13`, `0930Z`, `0930z`,
-`0930UTC`, `15:13`, `3pm`, `10 AM`, `1430 GMT`, `1430 Zulu`, `14:30 EST`,
-`1430 local`, `0930 hours`, `14.30Z`, `0930Z-1045Z`, `14.30-15.45 Uhr`,
-`14.30 bis 15.45 Uhr`, `14:30 +02:00`, `1430+0200`), except for the sequence
-number in the time slot of an obfuscated Charterware name, and neither do its
-names and descriptions, nor a Unix time of a past day in the text of an element
-(see
+`16/08`, `16.VII.`, `KW33`, `CW33`, `260816`, `log_260816`, `03/2026`,
+`08-2026`, `2026.08`, `VII/2026`, `Summer 2026`, `Q3 2026`, and `Sat` next to a
+date); a number alone outside a name or a description is a number
+(`<value>16.8</value>`, the `<heading>` of a view), and the rewrite only takes a
+part of a date out of the elements of free text, so one anywhere else has to go
+by hand. Nor may a weekday named in full (`Saturday`, `Samstag`, `sonntags`):
+the timestamps no longer fall on it. Nor may a holiday, in English or German
+(`Christmas Eve`, `Easter Monday`, `Thanksgiving`, `Columbus Day`, `May Day`,
+`Heiligabend`, `Ostermontag`, `Pfingsten`, `Nikolaustag`,
+`Tag der Deutschen Einheit`), which names the day as well; the places named
+after one keep it (`Christmas Island`, `Easter Island`, `Pentecost Airport`,
+`Whitsunday Coast`). The name of a file carries no time of day either (`1513h`,
+`1513H`, `15h13`, `0930Z`, `0930z`, `0930UTC`, `15:13`, `3pm`, `10 AM`,
+`1430 GMT`, `1430 Zulu`, `14:30 EST`, `1430 local`, `0930 hours`, `14.30Z`,
+`0930Z-1045Z`, `14.30-15.45 Uhr`, `14.30 bis 15.45 Uhr`, `14:30 +02:00`,
+`1430+0200`), except for the sequence number in the time slot of an obfuscated
+Charterware name, and neither do its names and descriptions, nor a Unix time of
+a past day in the text of an element (see
 [Troubleshooting](usage.md#make-check-obfuscation-or-the-commit-hook-fails)). An
 `AM` in capitals after a number is a time, even where it is German written in
 capitals (`2 AM RHEIN`), which cannot be told from one; `3 am` stays. A comment,
@@ -226,7 +230,13 @@ Kept in the site:
   parking spot with them (300 covers the apron and the taxiway of most fields; a
   recording that never leaves that distance is left out). The extent of the map
   and the airports are worked out from what is left, and the landings counted
-  before, so they stay as they were
+  before, so they stay as they were. That hides the ends only while the KML
+  files stay private: the files in `data/` of a repository on GitHub are as
+  public as the site (see [Hosting](hosting.md#your-own-site-on-github-pages)),
+  and an obfuscated file keeps every point of the taxiing at full precision, so
+  the parking spot can be read off the repository whatever the site leaves out.
+  The deploy job of the `test` workflow builds without it as well. To keep the
+  ends private, build the site with it from files that are not committed
 - Airport visit counts
 - Per flight, the number of full-stop landings, touch-and-goes and go-arounds,
   and the field and runway of each touchdown, without a time
@@ -266,16 +276,17 @@ Removed from the site:
   airport marker at all
 - Dates and times of day in placemark and file names (`16 Aug 2026`,
   `the 16th of August 2026`, `16/Aug/2026`, `16/08`, `16-08`, `16_08`, `26.08`,
-  `16.8`, `16 08 2026`, `16AUG26`, `16-AUG-26`, `260816`, `03/2026`,
-  `2026/8/16`, `KW33 2026`, `KW33`, `CW33`, `Week 33`, `Wk 33`, `2026W33`,
-  `2026/W33`, `08-2026`, `2026_08`, `2026.08`, `Aug '26`, `Jul/Aug 2026`,
-  `16-18 Aug 2026`, `16.-18.08.2026`, `Summer 2026`, `Sommer 2026`, `Q3 2026`,
-  `H2 2026`, `2026-08-16T14Z`, `14:30`, `1430Z`, `0930z`, `1430 UTC`, `1430L`,
-  `1513h`, `1513H`, `1430hrs`, `14h30`, `15.13h`, `14.30 Uhr`, `3pm`, `10 AM`,
-  `0930Z-1045Z`, `2026-08-16_1430`, `2026-08-16-14-30`, `2026-08-16 14-30`,
-  `2026-08-16 14-30h`, `2026-08-16 14-30 h`, `2026-08-16T14-30-00Z`,
-  `14.30-15.45 Uhr`, `14.30 to 15.45Z`, `202608161430`; a range with a unit or a
-  runway after the date stays, `2026-08-16 14-30 min`, `2026-08-16 18-75 m`,
+  `16.8`, `16 08 2026`, `16082026`, `16AUG26`, `16-AUG-26`, `260816`,
+  `log_260816`, `260816-1430`, `03/2026`, `2026/8/16`, `KW33 2026`, `KW33`,
+  `CW33`, `Week 33`, `Wk 33`, `2026W33`, `2026/W33`, `08-2026`, `2026_08`,
+  `2026.08`, `Aug '26`, `Jul/Aug 2026`, `16-18 Aug 2026`, `16.-18.08.2026`,
+  `Summer 2026`, `Sommer 2026`, `Q3 2026`, `H2 2026`, `2026-08-16T14Z`, `14:30`,
+  `1430Z`, `0930z`, `1430 UTC`, `1430L`, `1513h`, `1513H`, `1430hrs`, `14h30`,
+  `15.13h`, `14.30 Uhr`, `3pm`, `10 AM`, `0930Z-1045Z`, `2026-08-16_1430`,
+  `2026-08-16-14-30`, `2026-08-16 14-30`, `2026-08-16 14-30h`,
+  `2026-08-16 14-30 h`, `2026-08-16T14-30-00Z`, `14.30-15.45 Uhr`,
+  `14.30 to 15.45Z`, `202608161430`; a range with a unit or a runway after the
+  date stays, `2026-08-16 14-30 min`, `2026-08-16 18-75 m`,
   `2026-08-16 07-25 RWY`, while hours and minutes of the clock with a bare `h`,
   `m` or `s` are a time), with the zone, the fraction of a second or the offset
   that follows a time (`1430 GMT`, `1430 Zulu`, `09:30 EDT`, `14:30 AEST`,

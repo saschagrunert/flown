@@ -76,11 +76,14 @@ export class FakeYearWorker {
 
 /**
  * Column scales of the wire format, mirroring flown/segment_codec.py
- * (the altitude column counts steps of 20 ft). The helpers below take rows
+ * (the altitude column counts steps of 20 ft). The two coordinate columns
+ * are second differences. The helpers below take rows
  * in the units a reader thinks in and encode them, so a test says what it
  * means and the decoder is still checked against an independent encoder.
  */
 const SCALES = [1e5, 1e5, 1 / 20, 1, 10];
+/** The columns written as second differences */
+const SECOND_ORDER = 2;
 
 /**
  * One path's exported segments, given as plain `[lat, lon, ft, kt, s?]` rows,
@@ -96,6 +99,8 @@ export function path(
     Math.round(start[1] * SCALES[1]!),
   ];
   const running = [scaledStart[0]!, scaledStart[1]!, 0, 0, 0];
+  // The last step of each coordinate column
+  const steps = [0, 0];
   // The time column is only written when some row has a time
   const columns: (number | null)[][] = [[], [], [], []];
   if (rows.some((row) => row.length > 4)) columns.push([]);
@@ -107,7 +112,13 @@ export function path(
         return;
       }
       const scaled = Math.round(value * SCALES[index]!);
-      column.push(scaled - running[index]!);
+      const step = scaled - running[index]!;
+      if (index < SECOND_ORDER) {
+        column.push(step - steps[index]!);
+        steps[index] = step;
+      } else {
+        column.push(step);
+      }
       running[index] = scaled;
     });
   }

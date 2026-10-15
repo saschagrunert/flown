@@ -36,9 +36,10 @@ Rename a SkyDemon export to `N_REGISTRATION_TYPE.kml` and copy it into `data/`:
   there is dropped with a warning (see
   [the rule](usage.md#kml-file-naming-convention)).
 
-For example, the flight after `103_DESST_C172.kml` in D-EHYL is
-`104_DEHYL_DA40.kml`. A Charterware file keeps its own name. The full rules are
-in [KML file naming convention](usage.md#kml-file-naming-convention).
+For example, when the highest number is 103 (`103_DESST_C172.kml`), the next
+flight, in D-EHYL, is `104_DEHYL_DA40.kml`. A Charterware file keeps its own
+name. The full rules are in
+[KML file naming convention](usage.md#kml-file-naming-convention).
 
 ## 3. Add the aircraft if it is new
 
@@ -70,17 +71,17 @@ so they must not carry real dates or times either. `make obfuscate` rewrites
 them in place, irreversibly: every flight moves to start at midnight (UTC) on
 January 1st of its year (the intervals between its points stay, its time of day
 does not), a date in a placemark name that gives the flight its year moves to
-January 1st, every other date, time of day and weekday in names and descriptions
-goes, the creator field is replaced, a Charterware file is renamed to
-`YYYY-01-01_NNNNh_...` with a sequence number in place of the time, and any
-other file name loses its dates (`1_DEHYL_DA40_16Aug.kml` becomes
-`1_DEHYL_DA40.kml`). Files that are already obfuscated are left as they are;
-files obfuscated by an earlier version, which kept the time of day, fail the
-check until `make obfuscate` has moved them to midnight. Keep a copy of the
-original export if you want the real dates. It runs locally, on the host rather
-than in the container, and needs Python 3.14 but nothing beyond its standard
-library; `--obfuscate-inputs` does the same as part of a build. See
-[Privacy](privacy.md) for what is kept.
+January 1st, every other date, time of day and weekday in names, descriptions
+and other free text such as a `<Snippet>` goes, the creator field is replaced, a
+Charterware file is renamed to `YYYY-01-01_NNNNh_...` with a sequence number in
+place of the time, and any other file name loses its dates
+(`1_DEHYL_DA40_16Aug.kml` becomes `1_DEHYL_DA40.kml`). Files that are already
+obfuscated are left as they are; files obfuscated by an earlier version, which
+kept the time of day, fail the check until `make obfuscate` has moved them to
+midnight. Keep a copy of the original export if you want the real dates. It runs
+locally, on the host rather than in the container, and needs Python 3.14 but
+nothing beyond its standard library; `--obfuscate-inputs` does the same as part
+of a build. See [Privacy](privacy.md) for what is kept.
 
 ## 5. Build and preview the site
 
@@ -89,13 +90,20 @@ make build        # builds the container image and generates docs/ from data/
 make serve        # http://127.0.0.1:8000/
 ```
 
-Without podman or docker, build from the checkout instead:
+Without podman or docker, build from the checkout instead, with Python 3.14 and
+[uv](https://docs.astral.sh/uv/) as [Setup](../CONTRIBUTING.md#setup) describes:
 
 ```bash
+uv sync --locked && source .venv/bin/activate   # the Python dependencies, once
 npm ci && npm run build
 python -m flown data --output-dir docs
 python -m http.server 8000 --bind 127.0.0.1 -d docs
 ```
+
+`uv sync --locked` installs the runtime dependencies `uv.lock` pins into `.venv`
+(the setup there adds the test and development tools). Without uv,
+`pip install .` in a virtual environment of your own installs them from the
+ranges of `pyproject.toml` (see [Python usage](usage.md#python-usage)).
 
 A local build has no tile API key unless you pass one (see
 [With an API key](usage.md#with-an-api-key-optional)). The base map loads
@@ -131,7 +139,7 @@ On the map:
 
 ```bash
 git add data/
-git commit -s -m "chore: add flight 104"
+git commit -s -m "chore: add a flight"
 ```
 
 `git add data/` picks up renamed files and `aircraft.json` as well, and the
@@ -142,8 +150,11 @@ to that branch add flights), and warns when a push adds the flights of one trip,
 which it dates (see [Privacy](privacy.md#what-the-site-carries)). Install the
 hooks once: with the pre-commit hooks (see
 [CONTRIBUTING.md](../CONTRIBUTING.md)) the commit fails while a file in `data/`
-is not obfuscated, and the pre-push hook (`make hooks`, which needs only Python)
-refuses to push a commit that carries one. The CI lint job catches the same
+is not obfuscated, and the pre-push hook (`make hooks`) refuses to push a commit
+that carries one. The hook needs nothing but Python 3.14 or newer: it runs with
+the first of the worktree's `.venv`, `python3.14`, `python3` and `python` that
+is new enough, so it works from a Git GUI as well, and refuses the push where
+there is none (macOS ships an older `python3`). The CI lint job catches the same
 mistake only after the push, when the real dates are already public.
 
 Open a pull request or push to `main`. On `main`, the `test` workflow runs every

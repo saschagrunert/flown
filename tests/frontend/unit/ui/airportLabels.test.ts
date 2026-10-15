@@ -433,6 +433,35 @@ describe("airport labels", () => {
       styled.mockRestore();
     });
 
+    it("styles the page once for all the codes shown again in a pass", () => {
+      markers = [
+        marker("EDDF Frankfurt", 300, 300),
+        marker("EDDM Munich", 100, 100),
+      ];
+      const placer = codes();
+      map.jumpTo({ zoom: 3 });
+      placer.update();
+      expect(
+        markers.every((at) => arm(at).classList.contains("is-hidden")),
+      ).toBe(true);
+
+      const styled = vi.spyOn(window, "getComputedStyle");
+      map.jumpTo({ zoom: 6 });
+      placer.update();
+
+      const arms = markers.map(arm);
+      expect(arms.every((at) => at.classList.contains("is-jump"))).toBe(true);
+      // Read of the arms once, not once per arm
+      expect(
+        styled.mock.calls.filter(([element]) =>
+          arms.includes(element as never),
+        ),
+      ).toHaveLength(1);
+      vi.advanceTimersToNextFrame();
+      expect(arms.some((at) => at.classList.contains("is-jump"))).toBe(false);
+      styled.mockRestore();
+    });
+
     it("places them again when a panel over the map comes, goes or changes its size", async () => {
       const panel = document.createElement("div");
       panel.id = "flight-profile";

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   BUILDING_MESSAGE,
   BUILT_MESSAGE,
+  FRAMED_MESSAGE,
   LOCAL_BUTTON_ID,
   LOCAL_DATA_DIR,
   LOCAL_PANEL_ID,
@@ -16,7 +17,6 @@ import {
   TOO_LARGE_MESSAGE,
   LINK_OPENED_SITE_MESSAGE,
   LocalFlights,
-  LOCAL_STATE_KEY,
   NO_TERRAIN_KEY,
   OWN_TAB_KEY,
   READY_MESSAGE,
@@ -27,6 +27,7 @@ import {
   UNSUPPORTED_FILES_MESSAGE,
   localStartConfig,
   reopenAfterSwitch,
+  replacedMessage,
   shownMessage,
   siteBuild,
   toggleLocalFlights,
@@ -35,6 +36,7 @@ import {
 } from "../../../../flown/frontend/ui/localFlights";
 import {
   LOCAL_FLIGHTS_KEY,
+  LOCAL_STATE_KEY,
   REOPEN_KEY,
 } from "../../../../flown/frontend/state/localFlags";
 import type {
@@ -173,7 +175,7 @@ const closeButton = (): HTMLElement =>
 
 /** Let the promise chains of the panel settle */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 8; i++) await Promise.resolve();
+  for (let i = 0; i < 16; i++) await Promise.resolve();
 }
 
 function makePanel(
@@ -540,9 +542,10 @@ describe("adding files", () => {
   });
 
   it("keeps the accepted files, asks for persistence and builds them", async () => {
+    // As kept, of the sizes dropped: none replaced another
     store.listFiles.mockResolvedValue([
-      stored("1.KMZ"),
-      stored("aircraft.json"),
+      stored("1.KMZ", 6),
+      stored("aircraft.json", 2),
     ]);
     const local = await openPanel();
     localStorage.setItem(LOCAL_STATE_KEY, "{}");
@@ -600,7 +603,7 @@ describe("adding files", () => {
         center: OUTCOME.center,
         bounds: OUTCOME.bounds,
         files: ["1.KMZ", "aircraft.json"],
-        stamp: fileStamp([stored("1.KMZ"), stored("aircraft.json")]),
+        stamp: fileStamp([stored("1.KMZ", 6), stored("aircraft.json", 2)]),
         build: undefined,
         skipped: [],
         warnings: [],
@@ -809,9 +812,104 @@ describe("adding files", () => {
     expect(store.putDataset).not.toHaveBeenCalled();
     expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBeNull();
     expect(reload).not.toHaveBeenCalled();
-    // And the panel is as it was without files
-    expect(status().textContent).toBe("");
+    // And the panel is as the Remove all left it
+    expect(status().textContent).toBe(REMOVED_MESSAGE);
     expect(action("show").hidden).toBe(true);
+  });
+
+  it("says nothing of the build a Remove all let go of", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    store.listFiles.mockResolvedValue([]);
+    action("clear").click();
+    // The worker went with it, and its build with the worker's failure
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await adding;
+    await settle();
+
+    expect(alert().textContent).toBe("");
+    expect(status().textContent).toBe(REMOVED_MESSAGE);
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it("starts no build of the files a Remove all took while they were read", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
+    let read!: (bytes: ArrayBuffer) => void;
+    store.readFileBytes.mockReturnValue(
+      new Promise<ArrayBuffer>((resolve) => {
+        read = resolve;
+      }),
+    );
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    store.listFiles.mockResolvedValue([]);
+    action("clear").click();
+    await settle();
+    read(new ArrayBuffer(1));
+    await adding;
+    await settle();
+
+    // A build would start a worker, with a cache of the files removed
+    expect(fake.build).not.toHaveBeenCalled();
+    expect(status().textContent).toBe(REMOVED_MESSAGE);
+    expect(alert().textContent).toBe("");
+  });
+
+  it("keeps files dropped during a Remove all once it is done, not before", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
+    let deleted!: () => void;
+    // Another tab holds the cache a while
+    store.deleteCache.mockReturnValue(
+      new Promise<void>((resolve) => {
+        deleted = resolve;
+      }),
+    );
+    const local = await openPanel();
+
+    action("clear").click();
+    await settle();
+    const adding = local.add([file("b.kml")]);
+    await settle();
+    expect(store.putFiles).not.toHaveBeenCalled();
+
+    store.listFiles.mockResolvedValue([stored("b.kml", 6)]);
+    deleted();
+    await settle();
+    await settle();
+
+    expect(store.clearAll).toHaveBeenCalledTimes(1);
+    expect(store.putFiles).toHaveBeenCalledTimes(1);
+    expect(store.clearAll.mock.invocationCallOrder[0]).toBeLessThan(
+      store.putFiles.mock.invocationCallOrder[0]!,
+    );
+    expect(fake.build).toHaveBeenCalledTimes(1);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
+  it("says a file dropped again with other contents replaced the one kept", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml", 3), stored("b.kml", 6)]);
+    const local = await openPanel();
+
+    // b.kml again as it was, a.kml of another flight under the same name
+    const adding = local.add([file("a.kml"), file("b.kml")]);
+    await settle();
+
+    expect(alert().textContent).toBe(replacedMessage(["a.kml"]));
+    expect(replacedMessage(["a.kml"])).toBe(
+      "a.kml replaced a file of the same name",
+    );
+    expect(replacedMessage(["a.kml", "b.kml"])).toBe(
+      "a.kml, b.kml replaced files of the same name",
+    );
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
   });
 
   it("refuses a drop of more than the limit at once", async () => {
@@ -846,6 +944,7 @@ describe("adding files", () => {
   });
 
   it("says which files it could not read, and keeps the rest", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
     const local = makePanel();
     const gone = {
       name: "cloud.kml",
@@ -1314,6 +1413,57 @@ describe("toggleLocalFlights", () => {
     // Open already: the files are added, the panel stays open
     toggleLocalFlights(asMapApp(held), dropped);
     expect(panel().hidden).toBe(false);
+  });
+});
+
+describe("in a page another frames", () => {
+  // A page of another site that lures the visitor's clicks onto the frame
+  beforeEach(() => {
+    vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("does not open, with dropped files or without, and says why", async () => {
+    toggleLocalFlights(asMapApp(createMockApp()));
+    toggleLocalFlights(asMapApp(createMockApp()), [file("a.kml")]);
+    await settle();
+
+    expect(document.getElementById(LOCAL_PANEL_ID)).toBeNull();
+    expect(store.putFiles).not.toHaveBeenCalled();
+    expect(
+      document.querySelector(
+        `.toast-notification[data-message="${FRAMED_MESSAGE}"]`,
+      ),
+    ).not.toBeNull();
+  });
+
+  it("starts on the site's flights, and keeps the flag for the site itself", async () => {
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    sessionStorage.setItem(REOPEN_KEY, "1");
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue(INFO);
+    try {
+      await expect(
+        localStartConfig({
+          center: [1, 2],
+          bounds: [
+            [0, 0],
+            [3, 3],
+          ],
+          dataDir: "data",
+        }),
+      ).resolves.toBeNull();
+      reopenAfterSwitch(asMapApp(createMockApp()));
+
+      expect(store.readInfo).not.toHaveBeenCalled();
+      expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
+      expect(document.getElementById(LOCAL_PANEL_ID)).toBeNull();
+    } finally {
+      localStorage.removeItem(LOCAL_FLIGHTS_KEY);
+      sessionStorage.removeItem(REOPEN_KEY);
+    }
   });
 });
 

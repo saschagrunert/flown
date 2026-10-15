@@ -71,7 +71,11 @@ class TestEncoding:
         assert encoded == [[1], [2], [25], [2], [20]]
 
     def test_rows_are_written_column_by_column(self):
-        """A column of repeating differences is what gzip compresses best."""
+        """A column of repeating differences is what gzip compresses best.
+
+        The coordinates are second differences, so a steady course is a
+        column of zeros after its first step.
+        """
         path_rows = [
             [50.00001, 8.0, 500.0, 90.0, 1.0],
             [50.00002, 8.0, 520.0, 90.0, 2.0],
@@ -80,7 +84,7 @@ class TestEncoding:
 
         encoded = encode_rows([50.0, 8.0], path_rows)
 
-        assert encoded == [[1, 1, 1], [0, 0, 0], [25, 1, 1], [90, 0, 0], [10] * 3]
+        assert encoded == [[1, 0, 0], [0, 0, 0], [25, 1, 1], [90, 0, 0], [10] * 3]
 
     def test_a_still_aircraft_encodes_to_zeros(self):
         """Repetition is what makes the format small."""
@@ -127,6 +131,34 @@ class TestEncoding:
         with pytest.raises(ValueError, match="whole number of knots"):
             encode_rows([50.0, 8.0], [[50.1, 8.1, 500.0, 92.5]])
 
+    def test_the_coordinates_are_second_differences(self):
+        """What is written is the change of the step, not the step."""
+        path_rows = [
+            [50.00002, 8.0, 500.0, 90.0],
+            [50.00005, 8.0, 500.0, 90.0],
+            [50.00007, 8.0, 500.0, 90.0],
+            [50.00007, 8.0, 500.0, 90.0],
+        ]
+
+        encoded = encode_rows([50.0, 8.0], path_rows)
+
+        # Steps of 2, 3, 2 and 0
+        assert encoded[0] == [2, 1, -1, -2]
+        assert decode_rows(encode_start([50.0, 8.0]), encoded) == path_rows
+
+    def test_a_row_without_a_time_keeps_the_coordinates_in_step(self):
+        """The second differences run on over a row that has no time."""
+        path_rows = [
+            [50.00001, 8.0, 500.0, 90.0, 1.0],
+            [50.00002, 8.0, 500.0, 90.0],
+            [50.00003, 8.0, 500.0, 90.0, 3.0],
+        ]
+
+        encoded = encode_rows([50.0, 8.0], path_rows)
+
+        assert encoded[0] == [1, 0, 0]
+        assert decode_rows(encode_start([50.0, 8.0]), encoded) == path_rows
+
     def test_whole_knots_are_written_as_they_are(self):
         """No scale: a difference of 3 kt is a 3, not a 30."""
         columns = encode_rows(
@@ -146,7 +178,7 @@ class TestEncoding:
 
 def test_the_format_version_is_pinned():
     """Bumping it is a deliberate act; the frontend checks the same number."""
-    assert FORMAT_VERSION == 6
+    assert FORMAT_VERSION == 7
 
 
 grounds = st.lists(

@@ -37,6 +37,7 @@ import {
 } from "../../../../flown/frontend/state/urlState";
 import { unpackShareToken } from "../../../../flown/frontend/state/shareToken";
 import { SHARE_UNAVAILABLE_MESSAGE } from "../../../../flown/frontend/state/localFlags";
+import { EXPORT_BUSY_MESSAGE } from "../../../../flown/frontend/ui/actions";
 import type { SavedState } from "../../../../flown/frontend/types";
 import { MAP_COMPLETE_TIMEOUT_MS } from "../../../../flown/frontend/utils/mapHelpers";
 import { MAP_SOURCES } from "../../../../flown/frontend/utils/constants";
@@ -62,8 +63,19 @@ const DOM: Record<string, string> = {
 /** What the map's canvas reads as while it is captured */
 const STILL_URL = "data:image/png;base64,c3RpbGw=";
 
+/** The toast on screen, other than the one of an export on its way */
 function toast(): HTMLElement | null {
-  return document.querySelector<HTMLElement>(".toast-notification");
+  const shown = document.querySelectorAll<HTMLElement>(".toast-notification");
+  return (
+    [...shown].find((t) => t.dataset["message"] !== EXPORT_BUSY_MESSAGE) ?? null
+  );
+}
+
+/** The toast an export shows while it runs, if it is on screen */
+function busyToast(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    `.toast-notification[data-message="${EXPORT_BUSY_MESSAGE}"]`,
+  );
 }
 
 /** Let the export's promise chain settle without running the toast timer */
@@ -621,14 +633,39 @@ describe("UIToggles export and share", () => {
       expect(btn.querySelector("svg.icon")).not.toBeNull();
     });
 
-    it("ignores a second click while an export is running", async () => {
+    it("ignores a second click while an export is running, and says why", async () => {
       const toJpeg = installHtmlToImage();
 
       uiToggles.exportMap();
+      busyToast()!.remove();
       uiToggles.exportMap();
+      expect(busyToast()).not.toBeNull();
       await finishExport();
 
       expect(toJpeg).toHaveBeenCalledTimes(1);
+    });
+
+    it("says it is on its way, by its toast and the button's name, until it is over", async () => {
+      installHtmlToImage();
+      const btn = el("export-btn") as HTMLButtonElement;
+      btn.setAttribute("aria-label", "Export image of the map");
+      const refreshSheet = vi.fn();
+      app.mobileBar = { refreshSheet } as unknown as MockApp["mobileBar"];
+
+      uiToggles.exportMap();
+
+      // On a phone the More sheet closed on the tap, and the button is hidden
+      expect(busyToast()).not.toBeNull();
+      expect(btn.getAttribute("aria-label")).toBe(EXPORT_BUSY_MESSAGE);
+      expect(refreshSheet).toHaveBeenCalledTimes(1);
+
+      await finishExport();
+
+      expect(toast()?.textContent).toBe("Map exported");
+      expect(btn.getAttribute("aria-label")).toBe("Export image of the map");
+      expect(refreshSheet).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(busyToast()).toBeNull();
     });
 
     it("exports at 2x on desktop, downloads a blob and shows a success toast", async () => {

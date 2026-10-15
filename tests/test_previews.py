@@ -1,7 +1,6 @@
 """Tests for the link previews: the images and the pages that carry them."""
 
 import os
-import re
 import struct
 import time
 import zlib
@@ -765,30 +764,8 @@ class TestPagePreviewTags:
         assert _meta(f"<head>{tags}</head>", "twitter:card") == ["summary"]
 
 
-FRONTEND = Path(__file__).parents[1] / "flown" / "frontend"
-
-
-def _ts_source(relative):
-    return (FRONTEND / relative).read_text(encoding="utf-8")
-
-
 class TestParityWithThePage:
-    def test_the_selection_of_a_flight_page_is_one_the_page_reads(self):
-        match = re.search(
-            r"\bconst STATE_SCHEMA_VERSION = (\d+);",
-            _ts_source("state/urlState.ts"),
-        )
-        assert match
-        assert int(match.group(1)) == previews.STATE_SCHEMA_VERSION
-
-    def test_the_colours_are_the_heat_cloud_s(self):
-        match = re.search(
-            r"\bconst CLOUD_COLOUR = \[([^\]]+)\] as const;",
-            _ts_source("ui/heatCloudShaders.ts"),
-        )
-        assert match
-        rates = tuple(float(rate) for rate in match.group(1).split(","))
-        assert rates == previews.CLOUD_COLOUR
+    """With the page's styles; its constants are in test_frontend_parity.py."""
 
     def test_the_background_is_the_page_s(self):
         styles = (

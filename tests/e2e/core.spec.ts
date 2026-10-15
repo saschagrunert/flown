@@ -119,6 +119,10 @@ test.describe("Core", () => {
     expect(csp).not.toContain("unpkg.com");
     expect(csp).not.toContain("jsdelivr");
     expect(csp).toContain("base-uri 'none'");
+    // Every sink takes only what a policy made (utils/trustedHtml.ts), so
+    // the specs fail on a sink the policies do not cover
+    expect(csp).toContain("require-trusted-types-for 'script'");
+    expect(csp).toContain("trusted-types flown default");
   });
 
   test("the map library takes over the map container", async ({ page }) => {

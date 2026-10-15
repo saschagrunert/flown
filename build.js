@@ -491,8 +491,10 @@ function compareBundles(before, after, names) {
 // (MapApp.followMobileBar) and every page once it has a moment, the still
 // of an export with them, and the icons only a lazy bundle draws to that
 // bundle (lazyIcon in utils/icons.ts). The reading of a token stays: a
-// link with one is read before anything else reads it.
-const BUDGET_APP = { raw: 166.5 * 1024, gzip: 58.75 * 1024 };
+// link with one is read before anything else reads it. Lowered by 1 KB
+// raw as the airport popup's list of flights moved to the extras bundle
+// (164.07 KB and 57.74 KB gzipped in a local build after).
+const BUDGET_APP = { raw: 165.5 * 1024, gzip: 58.75 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section and the
 // hotspot tour. Fetched only when one of them is first used, so no part of
@@ -531,15 +533,23 @@ const BUDGET_APP = { raw: 166.5 * 1024, gzip: 58.75 * 1024 };
 // visit (ui/frameFlights.ts, which the intro and the replay of all flights
 // frame with too), and for a few shared flights smoothed alone rather
 // than every flight of the dataset (keptGrounded): 155.69 KB and 58.99 KB
-// gzipped in a local build.
-const BUDGET_FEATURES = { raw: 156 * 1024, gzip: 59.75 * 1024 };
+// gzipped in a local build. Raised by 0.25 KB raw, the gzipped budget
+// kept, for the hotspots kept by filter view and isolated selection, which
+// a tour started again found by walking every segment once more (some
+// 45 ms on a desktop; ui/hotspotTour.ts): 156.07 KB and 59.32 KB gzipped
+// in a local build.
+const BUDGET_FEATURES = { raw: 156.25 * 1024, gzip: 59.75 * 1024 };
 // The Wrapped bundle: the Wrapped dialog with its intro, and the statistics
 // rail, fetched the first time either opens. It shares nothing with the
 // feature bundle that the app does not have as well. Raised by 0.5 KB raw
 // for the rail's note of the year and aircraft it counts, the distance in
 // the names of the flight list's rows and the intro played once a year per
-// session: 43.28 KB and 14.87 KB gzipped in a local build after.
-const BUDGET_WRAPPED = { raw: 43.5 * 1024, gzip: 15 * 1024 };
+// session: 43.28 KB and 14.87 KB gzipped in a local build after. Raised
+// by 0.25 KB gzipped for the dialog's name with its year, the focus on
+// Skip intro while the intro plays, an intro seen apart for the visitor's
+// own flights and the statistics of a selection worked out in slices:
+// 43.33 KB and 14.97 KB gzipped in a local build.
+const BUDGET_WRAPPED = { raw: 43.5 * 1024, gzip: 15.25 * 1024 };
 // The search bundle: the panel of the search of airports and places, the
 // matching of the site's airports and the client of Photon, fetched the
 // first time the search opens. About 5.3 KB gzipped (13.25 KB raw) in a
@@ -552,8 +562,11 @@ const BUDGET_SEARCH = { raw: 14 * 1024, gzip: 5.75 * 1024 };
 // sheet and the export alone. Raised by 10 KB raw and 3.5 KB gzipped for
 // the phone's bar itself, the packing of the tokens, which Copy link waits
 // for should it come first, and the still of the map an export takes:
-// 18.96 KB and 6.95 KB gzipped in a local build.
-const BUDGET_EXTRAS = { raw: 21 * 1024, gzip: 8 * 1024 };
+// 18.96 KB and 6.95 KB gzipped in a local build. Raised by 1 KB raw, the
+// room the first visit gave up, for the airport popup's list of flights
+// (ui/airportFlights.ts), loaded when a popup first opens, and the busy
+// state of an export: 21.03 KB and 7.71 KB gzipped in a local build.
+const BUDGET_EXTRAS = { raw: 22 * 1024, gzip: 8 * 1024 };
 // Your flights: the panel that takes the KML files a visitor drops, the
 // store in the browser and the page's side of the build worker, fetched
 // the first time the panel opens or a file is dragged over the page, and at

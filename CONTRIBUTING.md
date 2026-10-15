@@ -44,12 +44,13 @@ ranges in `pyproject.toml` anew and can pick newer releases than CI tests with.
 The pre-commit hooks run ruff (check and format), prettier, typos, gitleaks, the
 whitespace fixers and the checks for merge conflict markers and for valid TOML
 and YAML on every commit. When a commit touches `data/`, they also check that
-the KML files are obfuscated. Apart from gitleaks and the hooks of
-`pre-commit-hooks`, the hooks run the tools from your own environment rather
-than from a pinned mirror, so no hook revision can drift on its own. ruff, typos
-and the obfuscation check are resolved off `$PATH` and prettier out of
-`node_modules`, so commit with the virtual environment active and after `npm ci`
-to get the versions CI installs.
+the KML files are obfuscated. Apart from gitleaks, the hooks run the tools from
+your own environment rather than from a pinned mirror, so no hook revision can
+drift on its own. ruff, typos, the file checks of `pre-commit-hooks` (from the
+dev extra) and the obfuscation check are resolved off `$PATH` and prettier out
+of `node_modules`, so commit with the virtual environment active and after
+`npm ci` to get the versions CI installs. The CI lint job runs the same file
+checks over every tracked file.
 
 npm 11 skips the install scripts of dependencies that `allowScripts` in
 `package.json` does not list. esbuild's is listed, so `npm ci` runs it. The only
@@ -124,13 +125,14 @@ here, not an oversight: adding the parentheses back is undone on the next
 - **The other settings made by hand.** A ruleset on `main` (Settings > Rules)
   requires the `checks` status, the last job of the `test` workflow, which
   passes only when every test job a pull request runs did; it blocks force
-  pushes, and it sends pull requests through the merge queue (the workflow runs
-  on `merge_group` for it) or, where the merge queue is not available, requires
-  a branch to be up to date with `main` before it merges. Settings > Actions >
-  General requires every action to be pinned to a full commit SHA and allows
-  only the actions of GitHub, of verified creators, `codecov/*` and
-  `crate-ci/*`; a workflow that uses any other action fails until it is allowed
-  there.
+  pushes, and it requires a branch to be up to date with `main` before it merges
+  (strict status checks; the merge queue is not available to a repository a user
+  owns), so `checks` passed on what `main` becomes. "Update branch" on the pull
+  request merges `main` into it, and the run of that push is the one that
+  counts. Settings > Actions > General requires every action to be pinned to a
+  full commit SHA and allows only the actions of GitHub, of verified creators,
+  `codecov/*` and `crate-ci/*`; a workflow that uses any other action fails
+  until it is allowed there.
 - **Never commit un-obfuscated KML files.** Generating a site no longer rewrites
   them: run `make obfuscate` after adding flights to `data/` (or pass
   `--obfuscate-inputs`). The pre-commit hook, `make check-obfuscation` and the
@@ -233,7 +235,7 @@ every snapshot that is not identical. The diff of a failing CI run is in the
 The image is pinned by tag and digest, in the `visual` and `e2e` jobs of
 `.github/workflows/test.yml` and in the command above alike. The tag has to
 match the `@playwright/test` version in `package-lock.json`, and
-`scripts/check_locks.py` fails the lint job when the workflow, this file,
+`scripts/check_pins.py` fails the lint job when the workflow, this file,
 [`doc/development/testing.md`](doc/development/testing.md#running-them-locally)
 and the lock file disagree. Dependabot opens the `@playwright/test` bump as a
 pull request of its own and does not touch the image: on that branch, set the
@@ -257,4 +259,4 @@ the visual job says so.
 There are no releases: the site is deployed from `main` (see the `site` and
 `deploy` jobs of `.github/workflows/test.yml`). The version is declared once, in
 `flown/__init__.py`; `package.json` and `package-lock.json` repeat it and
-`scripts/check_locks.py` fails the lint job when the three disagree.
+`scripts/check_pins.py` fails the lint job when the three disagree.

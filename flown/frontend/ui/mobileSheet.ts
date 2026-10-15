@@ -12,6 +12,7 @@
  * source of truth, and actions get nothing unless they navigate away.
  */
 import { icon, type IconName } from "../utils/icons";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** Elements that can hold focus inside the sheet */
 const FOCUSABLE_SELECTOR = [
@@ -148,7 +149,7 @@ export class MobileSheet {
     closeBtn.type = "button";
     closeBtn.className = "sheet-close";
     closeBtn.setAttribute("aria-label", "Close");
-    closeBtn.innerHTML = icon("close", 20);
+    closeBtn.innerHTML = trustedHtml(icon("close", 20));
     closeBtn.addEventListener("click", () => this.close());
 
     titleRow.append(this.titleEl, closeBtn);
@@ -307,7 +308,7 @@ export class MobileSheet {
     if (element instanceof HTMLButtonElement) element.type = "button";
 
     // `.sheet-row .icon` sizes and colours the svg directly
-    element.innerHTML = icon(spec.icon, 24);
+    element.innerHTML = trustedHtml(icon(spec.icon, 24));
 
     const textHost = document.createElement("span");
     textHost.className = "sheet-row-text";
@@ -573,6 +574,6 @@ function createSwitch(): HTMLElement {
 function createChevron(name: IconName): HTMLElement {
   const chevron = document.createElement("span");
   chevron.className = "sheet-row-chevron";
-  chevron.innerHTML = icon(name, 20);
+  chevron.innerHTML = trustedHtml(icon(name, 20));
   return chevron;
 }

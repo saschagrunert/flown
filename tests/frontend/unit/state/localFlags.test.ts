@@ -8,14 +8,17 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   askReopen,
+  flightsKey,
   keyedToPage,
   LOCAL_DB_NAME,
   localCacheDbName,
   LOCAL_FLIGHTS_KEY,
+  LOCAL_STATE_KEY,
   REOPEN_KEY,
   takeReopen,
   wantsReopen,
 } from "../../../../flown/frontend/state/localFlags";
+import { storageKey } from "../../../../flown/frontend/ui/stateManager";
 
 describe("keyedToPage", () => {
   it("is the bare name for a map at the root of its origin", () => {
@@ -29,6 +32,13 @@ describe("keyedToPage", () => {
     expect(keyedToPage("flown-x", "/b/")).not.toBe(
       keyedToPage("flown-x", "/a/"),
     );
+  });
+
+  it("keeps the visitor's flights apart, under :local", () => {
+    expect(flightsKey("flown-x", false, "/a/")).toBe("flown-x:/a/");
+    expect(flightsKey("flown-x", true, "/a/")).toBe("flown-x:local:/a/");
+    // The key Remove all lets go of is the one the state is saved under
+    expect(LOCAL_STATE_KEY).toBe(storageKey(location.pathname, true));
   });
 
   it("names the flags and the database for this page, at the root here", () => {

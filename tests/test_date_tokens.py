@@ -1,5 +1,7 @@
 """Tests for date_tokens module."""
 
+from datetime import date
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -1465,6 +1467,154 @@ class TestMoreDateShapes:
         assert strip_dates(text) == text
 
 
+class TestCompactDatesAndSeparators:
+    """Eight digits with the year last, six after a separator, refs."""
+
+    @pytest.mark.parametrize(
+        ("text", "found"),
+        [
+            # The day first and the month first, with the year last
+            ("Home strip 16082025 - Aunt farm", ["16082025"]),
+            ("Home strip 08162025 - Aunt farm", ["08162025"]),
+            ("log_16082025", ["16082025"]),
+            ("log.16082025.kml", ["16082025"]),
+            # With the time of day right after it
+            ("flight_160820251430", ["16082025"]),
+            # Only January 1st passes, as with the other shapes that are no
+            # ISO: 02012025 is February 1st in the US
+            ("Flight 02012025", ["02012025"]),
+            ("Flight 01022025", ["01022025"]),
+        ],
+    )
+    def test_the_year_last_is_found(self, text, found):
+        assert find_date_tokens(text, skip_near_jan_first=True) == found
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Flight 01012025",
+            # The fraction of a longitude in a LookAt, a serial number, a
+            # day or a month that does not exist, too many digits
+            "11.16082025",
+            "Serial 12345678",
+            "Code 32082025",
+            "Code 16132025",
+            "Code 160820251",
+            "1_DEHYL_DA40",
+            "100_DEAGJ_DA20",
+        ],
+    )
+    def test_what_passes_the_check(self, text):
+        assert find_date_tokens(text, skip_near_jan_first=True) == []
+
+    def test_the_year_first_stays_one_date(self):
+        assert find_date_tokens("20240314") == ["20240314"]
+
+    @pytest.mark.parametrize(
+        ("text", "found"),
+        [
+            # Six digits after an underscore, a hyphen or a slash, as file
+            # names, branches and refs write them
+            ("log_250816", ["250816"]),
+            ("1_DEAGJ_DA20_250816", ["250816"]),
+            ("flights-250816", ["250816"]),
+            ("refs/heads/250816", ["250816"]),
+            ("250816_EDDS", ["250816"]),
+            # With the time of day after it
+            ("250816-1430", ["250816"]),
+            ("250816_1430", ["250816"]),
+            ("Log 2508161430", ["250816"]),
+            # And a zone after it, or the time with a colon
+            ("Add flight 250816-1430Z", ["250816"]),
+            ("flights-250816-1430z", ["250816"]),
+            ("log_250816_1430L.kml", ["250816"]),
+            ("2508161430Z", ["250816"]),
+            ("250816-14:30", ["250816"]),
+            # A day and a month with a hyphen after a word
+            ("refs/heads/flight-16-08", ["16-08"]),
+            ("flights/16-08", ["16-08"]),
+        ],
+    )
+    def test_parts_after_a_separator_are_found(self, text, found):
+        assert find_partial_date_tokens(text) == found
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # A phone number, a decimal, a version and a range
+            "Call 0345-120816",
+            "Fuel 1.250816",
+            "v.250816",
+            "250816-12",
+            "250816-14301",
+            # Registrations, types, headings and the numbering of SkyDemon
+            "1_DEHYL_DA40",
+            "100_DEAGJ_DA20",
+            "1_D-EHYL_DA40",
+            "PA-28-181 EDDS",
+            "Heading 270-15",
+            "Wind 270/15 EDDS",
+            "RWY 08/26",
+            # January 1st, and the ten digits of a Unix time of the past
+            # (January 3rd, 2024, at midnight), which read as 170424 and 0000
+            "refs/heads/250101",
+            "x_010125",
+            "Log 1704240000",
+        ],
+    )
+    def test_what_stays_no_part_of_a_date(self, text):
+        assert find_partial_date_tokens(text) == []
+
+    @pytest.mark.parametrize(
+        ("text", "stripped"),
+        [
+            ("Home strip 16082025 - Aunt farm", "Home strip - Aunt farm"),
+            ("1_DEAGJ_DA20_250816", "1_DEAGJ_DA20"),
+            ("flight 250816-1430", "flight"),
+            ("Log 2508161430 EDDS", "Log EDDS"),
+            ("flights-16-08", "flights"),
+        ],
+    )
+    def test_strip_dates_takes_them_out(self, text, stripped):
+        assert strip_dates(text) == stripped
+
+    @given(
+        st.dates(min_value=date(1900, 1, 1), max_value=date(2099, 12, 31)).filter(
+            lambda day: day.month > 1
+        ),
+        st.sampled_from(["%d%m%Y", "%m%d%Y"]),
+        st.sampled_from(["Flight ", "log_", "x-", ""]),
+    )
+    def test_every_date_with_the_year_last_is_found(self, day, shape, before):
+        text = day.strftime(shape)
+        assert text in find_date_tokens(before + text, skip_near_jan_first=True)
+
+    @given(
+        st.dates(min_value=date(2000, 1, 1), max_value=date(2099, 12, 31)).filter(
+            lambda day: day.month > 1
+        ),
+        st.sampled_from(["%y%m%d", "%d%m%y"]),
+        st.sampled_from(["_", "-", "/", " "]),
+        st.sampled_from(["", "_EDDS", "-1430", "_1430"]),
+    )
+    def test_every_six_digit_date_after_a_separator_is_found(
+        self, day, shape, separator, after
+    ):
+        text = day.strftime(shape)
+        assert text in find_partial_date_tokens(f"log{separator}{text}{after}")
+
+    @given(
+        st.integers(min_value=1, max_value=99999),
+        st.sampled_from(["DEHYL", "D-EHYL", "DEAGJ", "OE-AKI", "N12345", "HB-1234"]),
+        st.sampled_from(["DA40", "DA20", "C172", "C182", "PA-28-181", "GLID"]),
+    )
+    def test_numbered_file_names_hold_no_date(self, number, registration, kind):
+        stem = f"{number}_{registration}_{kind}"
+        assert find_date_tokens(stem, skip_near_jan_first=True) == []
+        assert find_partial_date_tokens(stem) == []
+        assert strip_dates(stem) == stem
+
+
 @given(
     st.lists(
         st.sampled_from(
@@ -1496,6 +1646,9 @@ class TestMoreDateShapes:
                 "Q3",
                 "T10Z",
                 "16-18",
+                "250816",
+                "16082026",
+                "1430",
             ]
         ),
         max_size=8,

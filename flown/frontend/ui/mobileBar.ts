@@ -35,6 +35,8 @@ import {
   type ToggleSheetRow,
 } from "../state/toggles";
 import {
+  EXPORT_BUSY_MESSAGE,
+  exportRunning,
   flightsFailed,
   NO_DATA_MESSAGE,
   NO_SELECTION_MESSAGE,
@@ -43,6 +45,7 @@ import {
 } from "./actions";
 import { focusStatsRail } from "./appChrome";
 import { SHARE_UNAVAILABLE_MESSAGE } from "../state/localFlags";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** The id of the sheet, which the tabs that open it name before it exists */
 const SHEET_ID = "mobile-sheet";
@@ -319,7 +322,7 @@ export class MobileBar {
 
     // The stylesheet sizes the icon through `.mobile-tab .icon`, so the
     // svg is a direct child rather than being wrapped
-    tab.innerHTML = icon(spec.icon, 24);
+    tab.innerHTML = trustedHtml(icon(spec.icon, 24));
 
     const label = document.createElement("span");
     label.className = "mobile-tab-label";
@@ -562,7 +565,15 @@ export class MobileBar {
         id: "export",
         icon: "export",
         label: "Export image",
-        ...needsFlights,
+        // Dimmed while one runs, as the button in the columns says; a tap
+        // still says so
+        isDisabled: () => flightsFailed() || exportRunning(),
+        hint: () =>
+          flightsFailed()
+            ? NO_DATA_MESSAGE
+            : exportRunning()
+              ? EXPORT_BUSY_MESSAGE
+              : null,
         onSelect: () => runAction(app, "exportMap"),
       },
       // Share mode next to the link it is for, as in the Share group

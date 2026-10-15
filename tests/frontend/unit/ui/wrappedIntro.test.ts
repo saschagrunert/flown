@@ -315,6 +315,18 @@ describe("Wrapped's intro", () => {
     expect(map().fitBounds).not.toHaveBeenCalled();
   });
 
+  it("has the focus on Skip while it plays, and on Close once it is over", async () => {
+    el("wrapped-btn").focus();
+    await openWithIntro();
+    // Skip comes before Close, and the cards are inert under the map
+    expect(document.activeElement).toBe(skipButton());
+
+    await vi.runAllTimersAsync();
+
+    expect(skipButton().hidden).toBe(true);
+    expect(document.activeElement).toBe(modal().querySelector(".close-btn"));
+  });
+
   describe("skipped", () => {
     it("by new data, and comes to rest on the overview of that", async () => {
       await openWithIntro();
@@ -499,6 +511,31 @@ describe("Wrapped's intro", () => {
     });
     expect(await opens("2024")).toBe(true);
     expect(await opens("2024")).toBe(true);
+  });
+
+  it("plays apart for the visitor's own flights, whose year is not the site's", async () => {
+    sessionStorage.removeItem(INTRO_SEEN_KEY);
+    mockApp.selectedYear = "2024";
+    await openWithIntro();
+    wrappedManager.closeWrapped();
+    await vi.runAllTimersAsync();
+    expect(sessionStorage.getItem(INTRO_SEEN_KEY)).toContain("2024");
+
+    // The page started on the flights a visitor dropped (ui/localFlights.ts)
+    mockApp.config.localFlights = {} as NonNullable<
+      typeof mockApp.config.localFlights
+    >;
+    try {
+      wrappedManager.showWrapped(true);
+      expect(modal().classList.contains("has-intro")).toBe(true);
+      await vi.advanceTimersByTimeAsync(MAP_IN_DIALOG_MS);
+      expect(sessionStorage.getItem(`${INTRO_SEEN_KEY}:local`)).toContain(
+        "2024",
+      );
+    } finally {
+      delete mockApp.config.localFlights;
+      sessionStorage.removeItem(`${INTRO_SEEN_KEY}:local`);
+    }
   });
 
   it("is not seen while it never played, its code too late", async () => {

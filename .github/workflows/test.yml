@@ -1,13 +1,13 @@
 ---
-# Tests every pull request, every entry of the merge queue and every push
-# to main. A push to main (or a manual run on main) also builds the site,
-# alongside the tests, and publishes it to GitHub Pages, but only once every
-# test job has passed. The
+# Tests every pull request and every push to main. A push to main (or a
+# manual run on main) also builds the site, alongside the tests, and
+# publishes it to GitHub Pages, but only once every test job has passed. The
 # weekly run only repeats the security job, so a new advisory for a pinned
-# dependency or a leaked secret shows up without a push, and runs the real
-# build of Your flights, which needs Pyodide from its CDN (the pyodide job).
-# The checks job at the end is the one status a ruleset on main requires
-# (see there).
+# dependency or a leaked secret shows up without a push, runs the real build
+# of Your flights, which needs Pyodide from its CDN (the pyodide job), and
+# draws new examples for the property tests (the properties job); a manual
+# run does the last two as well. The checks job at the end is the one status
+# a ruleset on main requires (see there).
 #
 # Every job that runs Python installs from uv.lock with `uv sync --locked`,
 # which fails when the lock no longer matches pyproject.toml instead of
@@ -24,18 +24,13 @@
 # of the image reference runs all of them. zizmor calls the actor
 # spoofable: here it can only skip jobs, and only in a pull request
 # Dependabot opened (its author cannot be spoofed), whose lint job still
-# checks the image against the library. In the merge queue there is no pull
-# request in the event (github.event.pull_request is empty, and so is
-# github.head_ref), so none of these conditions holds and every job runs.
+# checks the image against the library.
 name: test
 on:
   push:
     branches:
       - main
   pull_request:
-  # The merge queue tests each pull request on top of the ones queued before
-  # it, on a branch of its own (refs/heads/gh-readonly-queue/main/...)
-  merge_group:
   schedule:
     - cron: "0 5 * * 1"
   workflow_dispatch:
@@ -45,15 +40,20 @@ concurrency:
   # Runs on main are not cancelled once they started. Of the pushes waiting
   # behind a running one only the newest is kept, so the newest commit is
   # always tested and deployed. The weekly run gets its own group so it can
-  # never replace a push that is waiting to deploy. Every entry of the merge
-  # queue has a ref of its own, so its runs never cancel each other; a run
-  # of an entry the queue drops may still run to its end.
+  # never replace a push that is waiting to deploy.
   group: ${{ github.workflow }}-${{ github.event_name == 'schedule' && 'schedule' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  # The directory of the flights the site is built from, data/ unless the
+  # repository variable FLOWN_INPUT_DIR names another: a copy of the
+  # repository keeps its own flights there, apart from the ones of data/,
+  # which an update from this repository brings along (see doc/hosting.md)
+  FLOWN_INPUT_DIR: ${{ vars.FLOWN_INPUT_DIR || 'data' }}
 jobs:
   # Everything that checks the sources without building a site, the spelling
-  # and the obfuscation of the flights among it: a job of their own each
-  # waited for a runner as long as this one and ran for seconds
+  # and the obfuscation of the flights (in every commit pushed) among it: a
+  # job of their own each waited for a runner as long as this one and ran
+  # for seconds
   lint:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
@@ -88,7 +88,7 @@ jobs:
         run: typos
       - name: Check the pins and versions that have to agree
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: python scripts/check_locks.py
+        run: python scripts/check_pins.py
       - name: Check Python formatting
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: ruff format --check .
@@ -128,14 +128,69 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: zizmor --min-severity medium .github
-      # The check imports nothing but the standard library
+      # The file checks of the pre-commit hooks, which ran nowhere else here:
+      # pre-commit-hooks comes with the dev extra in uv.lock, so they are the
+      # release the hooks run. Over every tracked text file (git grep -I
+      # leaves out the binary ones), the flights of data/ left out of the
+      # fixers as in .pre-commit-config.yaml, and those of FLOWN_INPUT_DIR
+      # (see the top) with them. A fixer that changes a file fails, and
+      # names it. Outside a merge check-merge-conflict checks nothing unless
+      # told to assume one.
+      - name: Check the ends of files, trailing whitespace, conflict markers, TOML and YAML
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: |
+          status=0
+          git grep -Izl -e '' -- ':(exclude)data/' ":(exclude)$FLOWN_INPUT_DIR/" > "$RUNNER_TEMP/text-files"
+          xargs -0 end-of-file-fixer < "$RUNNER_TEMP/text-files" || status=1
+          xargs -0 trailing-whitespace-fixer --markdown-linebreak-ext=md < "$RUNNER_TEMP/text-files" || status=1
+          git grep -Izl -e '' | xargs -0 check-merge-conflict --assume-in-merge || status=1
+          git ls-files -z -- '*.toml' | xargs -0 check-toml || status=1
+          git ls-files -z -- '*.yml' '*.yaml' | xargs -0 check-yaml || status=1
+          exit "$status"
+      # The check imports nothing but the standard library. The flights of
+      # the site, and data/ where they are elsewhere (FLOWN_INPUT_DIR, see
+      # the top): it is just as public.
       - name: Check that the KML files are obfuscated
         if: ${{ !cancelled() }}
-        run: python -m flown.obfuscate data/ --check
+        run: |
+          python -m flown.obfuscate data/ --check
+          if [ "$FLOWN_INPUT_DIR" != data ]; then
+            python -m flown.obfuscate "$FLOWN_INPUT_DIR" --check
+          fi
       # Copies of flights from data/, and as public as they are
       - name: Check that the fixture flights of the visual snapshots are obfuscated
         if: ${{ !cancelled() }}
         run: python -m flown.obfuscate tests/fixtures/visual/ --check
+      # The checks above read the last commit alone, but a push publishes
+      # every commit it adds: one made with `git push --no-verify`, or a file
+      # uploaded on GitHub, keeps the real dates of a commit a later one
+      # fixes. So each commit a pull request adds to its base, or a push to
+      # what main had before, is checked on its own with its message, as the
+      # pre-push hook does (scripts/pre_push.py --range). The checkout holds
+      # the last commit alone and keeps no credentials, so the history of
+      # both ends is fetched here, with the job's token for a private copy
+      # of the repository. The first push of main (no commit before it) is
+      # not checked commit by commit: the history a copy brings along holds
+      # commits from before the checks of today, which they refuse, and the
+      # checks above read its tree. A manual run adds no commits.
+      - name: Check that no commit pushed carries real dates
+        if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'pull_request') }}
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$BASE_SHA" = 0000000000000000000000000000000000000000 ]; then
+            echo "::notice::The first push of the branch: its history is not checked commit by commit"
+            exit 0
+          fi
+          shas=("$HEAD_SHA" "$BASE_SHA")
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.$GITHUB_SERVER_URL/.extraheader" \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+            git fetch --quiet --no-tags --unshallow origin "${shas[@]}"
+          python scripts/pre_push.py --range "$BASE_SHA" "$HEAD_SHA"
 
   unit:
     if: &not-weekly github.event_name != 'schedule'
@@ -149,9 +204,10 @@ jobs:
         uses: ./.github/actions/site-build-setup
         with:
           extras: test dev
+          flights: ${{ env.FLOWN_INPUT_DIR }}
       # The export contract test reads the data files of a real build
       - name: Build the site from the current sources
-        run: python -m flown data --output-dir docs
+        run: python -m flown "$FLOWN_INPUT_DIR" --output-dir docs
         env:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
       # In an order of its own every run, so a test that only passes after
@@ -162,9 +218,11 @@ jobs:
         run: npm run test:coverage -- --sequence.shuffle
       # Also enforces fail_under from pyproject.toml. A bare --cov measures
       # the sources [tool.coverage.run] names, the scripts among them. The
-      # slowest tests are listed, so one that grows shows in the log.
-      # A copy of the repository with flights of its own skips the tests
-      # written against these (see doc/hosting.md)
+      # slowest tests are listed, so one that grows shows in the log. The
+      # property tests replay the same examples on every run, and the
+      # properties job draws new ones (see tests/conftest.py). A copy of the
+      # repository with flights of its own skips the tests written against
+      # these (see doc/hosting.md)
       - name: Run Python tests with coverage
         run: pytest -n auto --durations=15 --cov --cov-report=xml:coverage/coverage.xml --cov-report=term
         env:
@@ -219,7 +277,7 @@ jobs:
       - name: Check the shipped assets
         working-directory: ${{ runner.temp }}
         run: '"$RUNNER_TEMP/wheel-venv/bin/python" "$GITHUB_WORKSPACE/scripts/check_site_files.py" --package'
-      # Loads the parser, the minifiers, the renderer and the templates, which
+      # Loads the parser, the minifiers, the pipeline and the templates, which
       # `--version` alone never imports. scripts/smoke_site.py puts the
       # airport and runway fixtures in place of the OurAirports downloads
       # and checks afterwards that they were not replaced; `--no-terrain`
@@ -278,6 +336,8 @@ jobs:
       # As in the unit job, with the runtime dependencies only
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
+        with:
+          flights: ${{ env.FLOWN_INPUT_DIR }}
       # tests/e2e/fixtures.ts answers the tile servers locally, so the dummy
       # key never leaves the runner. Without the ground of a flight the
       # deploy fails (the site job), so a pull request that adds one over a
@@ -285,13 +345,13 @@ jobs:
       # test a site with all of its ground. The build without a key reads
       # the same tiles from the cache this one filled.
       - name: Build the site with a dummy tile API key
-        run: python -m flown data --output-dir e2e-sites/dummy
+        run: python -m flown "$FLOWN_INPUT_DIR" --output-dir e2e-sites/dummy
         env:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
           FLOWN_REQUIRE_TERRAIN: "1"
           CARTO_API_KEY: e2e-carto
       - name: Build the site without a tile API key
-        run: python -m flown data --output-dir e2e-sites/none
+        run: python -m flown "$FLOWN_INPUT_DIR" --output-dir e2e-sites/none
         env:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
           CARTO_API_KEY: ""
@@ -588,14 +648,14 @@ jobs:
   # is pulled and run as in the e2e job (see there).
   #
   # The image tag has to match the
-  # @playwright/test version package-lock.json pins; scripts/check_locks.py
+  # @playwright/test version package-lock.json pins; scripts/check_pins.py
   # fails the lint job when the two drift apart. Dependabot does not bump
   # the image: with every @playwright/test bump set the new tag here and in
   # the e2e job, with the digest of its multi-arch index (the
   # Docker-Content-Digest header of
   # https://mcr.microsoft.com/v2/playwright/manifests/<tag>), and the same
   # reference in CONTRIBUTING.md and doc/development/testing.md
-  # (check_locks.py checks all of them). The e2e job holds the reference,
+  # (check_pins.py checks all of them). The e2e job holds the reference,
   # which this job and the pyodide job take with it. A digest left behind
   # keeps pulling the old image, whatever the tag next to it says.
   visual:
@@ -657,15 +717,15 @@ jobs:
         with:
           python: "true"
           npm-cache: "false"
-      # A pull request or an entry of the merge queue audits the
-      # dependencies only when it changes them: an advisory for a version the
-      # base already pins turned pull requests red that were fine, and the
-      # next push to main or the weekly run reports it anyway. A base the
-      # clone cannot compare with audits as well: the step fails closed
+      # A pull request audits the dependencies only when it changes them: an
+      # advisory for a version the base already pins turned pull requests
+      # red that were fine, and the next push to main or the weekly run
+      # reports it anyway. A base the clone cannot compare with audits as
+      # well: the step fails closed
       - name: Check whether the dependencies changed
         id: deps
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ -n "$BASE_SHA" ] &&
             changed="$(git diff --name-only "$BASE_SHA" HEAD -- \
@@ -683,8 +743,9 @@ jobs:
       # package uv.lock pins, every extra and the build group among them,
       # exported with their hashes, so it reads the pins as they are, without
       # pip resolving anything: --no-deps warned on every call, and left out
-      # a package (packaging) the old lock files pinned. --quiet keeps the
-      # export out of the log, as in the packaging job.
+      # a package (packaging) that the requirements files of pip-compile
+      # pinned. --quiet keeps the export out of the log, as in the packaging
+      # job.
       - name: Audit the Python lock file
         if: steps.deps.outputs.audit == 'true'
         run: |
@@ -696,22 +757,26 @@ jobs:
         run: npm audit --audit-level=high
       # The same gitleaks release as the pre-commit hook, whose rev Dependabot
       # bumps (a commit, with the release in its "# frozen:" comment), pulled
-      # by digest like every other image and action here. The
-      # digest is the multi-arch index of the tag; a bump of the hook rev has
-      # to update it by hand (`docker manifest inspect -v` or the registry's
-      # Docker-Content-Digest header), and the step fails until it does. The
-      # config's [[allowlists]] needs gitleaks 8.25 or newer. A pull request
-      # and an entry of the merge queue scan only the commits they add on top
-      # of their base, and a push to main the commits it pushed (the whole
-      # history took 80 to 106 s a run); the weekly run and a manual one scan
-      # the whole history. A push whose earlier head the clone does not have
-      # (a branch's first push, a force push) scans the whole history as
-      # well. The pull and the scan have time limits: a weekly scan once sat
-      # silent until the job timed out, and that week's audit never ran.
+      # by digest like every other image and action here, with its release
+      # in the comment after it. The digest is the multi-arch index of the
+      # tag; a bump of the hook rev has to update both by hand
+      # (`docker manifest inspect -v` or the registry's
+      # Docker-Content-Digest header). Until it does, scripts/check_pins.py
+      # fails the lint job, which compares the comment with the hook's rev,
+      # and this step, which compares the release the image reports: this
+      # job gates nothing, so a bump would merge on its own without the
+      # first. The config's [[allowlists]] needs gitleaks 8.25 or newer. A
+      # pull request scans only the commits it adds on top of its base, and
+      # a push to main the commits it pushed (the whole history took 80 to
+      # 106 s a run); the weekly run and a manual one scan the whole history.
+      # A push whose earlier head the clone does not have (a branch's first
+      # push, a force push) scans the whole history as well. The pull and the
+      # scan have time limits: a weekly scan once sat silent until the job
+      # timed out, and that week's audit never ran.
       - name: Scan the commit history for secrets
         env:
           GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f # v8.30.1
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
           version=$(awk '$3 == "https://github.com/gitleaks/gitleaks" { found = 1; next } found && $1 == "rev:" { print ($4 == "frozen:" ? $5 : $2); exit }' .pre-commit-config.yaml)
@@ -730,16 +795,17 @@ jobs:
           timeout 600 docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" \
             git --redact --verbose --config /repo/.gitleaks.toml "${range[@]}" /repo
 
-  # The real build of Your flights, weekly: Pyodide, lxml and the site's
-  # Python from flown-src.zip, fetched by the page's worker from their
-  # hosts (tests/e2e/local-flights-pyodide.spec.ts). The e2e jobs leave it
-  # out, since the hermetic suite blocks every host but the site's and a
-  # build takes a minute or two; so a Pyodide release the pinned version
-  # stops resolving to, or Python of the site that does not run there,
-  # shows within a week. The site is built as in the e2e-sites job, with
-  # the dummy key, and the test runs in the Playwright image as there.
+  # The real build of Your flights, weekly and in a manual run: Pyodide,
+  # lxml and the site's Python from flown-src.zip, fetched by the page's
+  # worker from their hosts (tests/e2e/local-flights-pyodide.spec.ts). The
+  # e2e jobs leave it out, since the hermetic suite blocks every host but
+  # the site's and a build takes a minute or two; so a Pyodide release the
+  # pinned version stops resolving to, or Python of the site that does not
+  # run there, shows within a week. The site is built as in the e2e-sites
+  # job, with the dummy key, and the test runs in the Playwright image as
+  # there.
   pyodide:
-    if: github.event_name == 'schedule'
+    if: &weekly-or-manual github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env: *playwright-image
@@ -747,8 +813,10 @@ jobs:
       - *checkout
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
+        with:
+          flights: ${{ env.FLOWN_INPUT_DIR }}
       - name: Build the site with a dummy tile API key
-        run: python -m flown data --output-dir docs
+        run: python -m flown "$FLOWN_INPUT_DIR" --output-dir docs
         env:
           CARTO_API_KEY: e2e-carto
       - *pull-playwright-image
@@ -760,6 +828,17 @@ jobs:
           docker run --rm --ipc=host -v "$PWD:$PWD" -w "$PWD" \
             -e CI -e E2E_API_KEYS -e FLOWN_E2E_PYODIDE \
             "$PLAYWRIGHT_IMAGE" npx playwright test --project=desktop local-flights-pyodide
+      # The spec skips its test without FLOWN_E2E_PYODIDE, and a run whose
+      # one test was skipped passes: the report of the JSON reporter
+      # (playwright.config.ts) has to count the one test as passed
+      - name: Check that the build ran and passed
+        run: |
+          report=test-results/e2e-timings.json
+          jq .stats "$report"
+          jq -e '.stats | .expected == 1 and .skipped == 0 and .unexpected == 0 and .flaky == 0' "$report" >/dev/null || {
+            echo "::error::the Pyodide build did not run as the one test that passed"
+            exit 1
+          }
       - name: Upload Playwright results
         if: ${{ !success() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -771,12 +850,41 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # The one status a ruleset on main requires of a pull request and of each
-  # entry of the merge queue: every test job a pull request runs, whatever
-  # the matrix, so a job or a shard added later needs no change of the
-  # repository settings. Not the security job, for the reason publishing
-  # does not wait for it (below): a new advisory would hold back every pull
-  # request, the flights among them. A job may be skipped only where its own
+  # New examples for the property tests, weekly and in a manual run, ten
+  # times as many for a test that sets no number of its own. The unit job
+  # replays the same ones on every run (see tests/conftest.py), so an
+  # example drawn there by chance cannot fail a pull request it has nothing
+  # to do with. A failure prints the blob that reproduces it, and the
+  # example goes into its test with @example. The tests need neither the
+  # bundles nor a site.
+  properties:
+    if: *weekly-or-manual
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - name: Set up Python and uv
+        uses: ./.github/actions/setup-toolchain
+        with:
+          python: "true"
+          npm-cache: "false"
+      - name: Install Python dependencies
+        run: uv sync --locked --extra test
+      - name: Run the property tests with new examples
+        run: pytest -n auto -m hypothesis
+        env:
+          FLOWN_HYPOTHESIS_EXPLORE: "1"
+
+  # The one status a ruleset on main requires of a pull request: every test
+  # job a pull request runs, whatever the matrix, so a job or a shard added
+  # later needs no change of the repository settings. The ruleset requires
+  # the branch to be up to date with main as well (strict status checks; the
+  # merge queue is not available to a repository a user owns), so what
+  # merges is what this job passed on: "Update branch" on the pull request
+  # merges main into it, and the run of that push is the one that counts.
+  # Not the security job, for the reason publishing does not wait for it
+  # (below): a new advisory would hold back every pull request, the flights
+  # among them. A job may be skipped only where its own
   # condition skips it on purpose, Dependabot's own pushes to a Playwright
   # branch (see the top), and the e2e jobs in a copy of the
   # repository with flights of its own (FLOWN_OWN_FLIGHTS); anywhere
@@ -844,12 +952,13 @@ jobs:
             echo "::notice::main moved on to $head; not publishing $GITHUB_SHA"
           fi
 
-  # Builds the published site from the sources and the KML files in data/.
-  # Nothing generated is committed, so every deployment is exactly what the
-  # tested commit produces. Only this job sees the real tile API key. It runs
-  # alongside the tests rather than after them, under the condition of
-  # publishable: the build only uploads an artifact, and the deploy job
-  # publishes it once publishable says the tests passed on the head of main.
+  # Builds the published site from the sources and the KML files in data/
+  # (or the directory FLOWN_INPUT_DIR names, see the top). Nothing generated
+  # is committed, so every deployment is exactly what the tested commit
+  # produces. Only this job sees the real tile API key. It runs alongside
+  # the tests rather than after them, under the condition of publishable:
+  # the build only uploads an artifact, and the deploy job publishes it once
+  # publishable says the tests passed on the head of main.
   site:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
@@ -863,6 +972,8 @@ jobs:
       # As in the unit job, with the runtime dependencies only
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
+        with:
+          flights: ${{ env.FLOWN_INPUT_DIR }}
       # The link preview images, cached under a hash of what each one draws
       # and of the module that draws them (flown/previews.py), so the
       # latest cache has every image that did not change
@@ -870,7 +981,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/flown/previews
-          key: previews-${{ hashFiles('data/**/*.kml', 'data/**/*.kmz', 'flown/*.py') }}
+          key: previews-${{ hashFiles(format('{0}/**/*.kml', env.FLOWN_INPUT_DIR), format('{0}/**/*.kmz', env.FLOWN_INPUT_DIR), 'flown/*.py') }}
           restore-keys: previews-
       # Where the site is published: the link previews name their images by
       # absolute URLs, which the build cannot know by itself. Only reads the
@@ -884,7 +995,7 @@ jobs:
       # upload-pages-artifact keeps in its tar; taken from the content, they
       # keep the browser caches of the files a deploy did not change.
       - name: Build the site
-        run: python -m flown data --output-dir site
+        run: python -m flown "$FLOWN_INPUT_DIR" --output-dir site
         env:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
           FLOWN_REQUIRE_TERRAIN: "1"

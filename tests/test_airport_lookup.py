@@ -19,6 +19,7 @@ from flown.airport_lookup import (
     REQUIRED_COLUMNS,
     AirportNames,
     AirportRecord,
+    RunwayEnd,
     _airport_rows,
     _download_airport_database,
     _is_cache_valid,
@@ -35,8 +36,9 @@ from flown.airport_lookup import (
     split_route_name,
     standardize_airport_names,
 )
-from flown.cache import REGULAR_FILE_MODE
+from flown.cache import REGULAR_FILE_MODE, encode_entry
 from flown.exceptions import AirportDatabaseError
+from tests.conftest import WITHOUT_EFFECT_MODULES, package_imports
 
 VALID_CSV = (
     b'"id","ident","type","name","latitude_deg","longitude_deg","iso_country"\n'
@@ -589,6 +591,92 @@ class TestFingerprintOfTheLoadedDatabases:
         lookup_module.load_airport_database()
         lookup_module.load_runway_database()
         assert database_fingerprint() == "nodb"
+
+
+class TestKeptDatabases:
+    """What was read of a database file is kept by its digest, and read
+    from there by the next run (see airport_lookup.PARSED_DATABASE_DIR)."""
+
+    @pytest.fixture
+    def cached(self, tmp_path, monkeypatch):
+        database = tmp_path / "airports.csv"
+        database.write_bytes(VALID_CSV)
+        runways = tmp_path / "runways.csv"
+        runways.write_text("airport_ident,le_ident,he_ident,closed\nTEST,09,27,0\n")
+        monkeypatch.setattr(lookup_module, "CACHE_FILE", database)
+        monkeypatch.setattr(lookup_module, "RUNWAYS_CACHE_FILE", runways)
+        monkeypatch.setattr(lookup_module, "_ensure_cache_file", lambda *_: None)
+        lookup_module.databases.reset()
+        yield database, runways
+        lookup_module.databases.reset()
+
+    @staticmethod
+    def _load_again():
+        lookup_module.databases.reset()
+        return (
+            lookup_module.load_airport_database(),
+            lookup_module.load_runway_database(),
+        )
+
+    def test_the_next_run_reads_what_the_first_read(self, cached, monkeypatch):
+        first = self._load_again()
+        fingerprint = database_fingerprint()
+
+        def parse(text):
+            raise AssertionError("read the CSV again")
+
+        monkeypatch.setattr(lookup_module, "_airport_rows", parse)
+        monkeypatch.setattr(lookup_module, "_runway_rows", parse)
+        second = self._load_again()
+
+        assert second == first
+        assert second[0]["TEST"] == AirportRecord(50.0, 8.5, "Test Airport", "DE")
+        assert second[1]["TEST"] == (RunwayEnd("09", 90.0), RunwayEnd("27", 270.0))
+        # Of the files, whichever way they were read
+        assert database_fingerprint() == fingerprint
+
+    def test_a_changed_file_is_read_again(self, cached):
+        database, _ = cached
+        self._load_again()
+        database.write_bytes(VALID_CSV.replace(b"Test Airport", b"Other Field"))
+        airports, _ = self._load_again()
+        assert airports["TEST"].name == "Other Field"
+
+    def test_other_code_reads_the_file_again(self, cached, monkeypatch):
+        self._load_again()
+        monkeypatch.setattr(lookup_module, "source_fingerprint", lambda *_: "0badc0de")
+        calls = []
+        real = lookup_module._airport_rows
+
+        def parse(text):
+            calls.append(text)
+            return real(text)
+
+        monkeypatch.setattr(lookup_module, "_airport_rows", parse)
+        self._load_again()
+        assert len(calls) == 1
+
+    def test_an_unreadable_entry_is_read_again(self, cached):
+        self._load_again()
+        for entry in lookup_module.PARSED_DATABASE_DIR.iterdir():
+            entry.write_bytes(encode_entry({"TEST": [["not", "a"], 1, "x", "DE", 0]}))
+        airports, runways = self._load_again()
+        assert airports["TEST"].lat == 50.0
+        assert runways["TEST"][0].designator == "09"
+
+    def test_the_entries_are_this_users_alone(self, cached):
+        self._load_again()
+        directory = lookup_module.PARSED_DATABASE_DIR
+        assert directory.stat().st_mode & 0o777 == 0o700
+        entries = sorted(entry.name for entry in directory.iterdir())
+        assert [name.split("_")[0] for name in entries] == ["airports", "runways"]
+        assert all(
+            (directory / name).stat().st_mode & 0o777 == 0o600 for name in entries
+        )
+
+    def test_the_fingerprint_covers_every_module_that_reads_them(self):
+        imported = package_imports("airport_lookup") - WITHOUT_EFFECT_MODULES
+        assert imported == set(lookup_module._READER_MODULES)
 
 
 class TestReadAirportCsv:

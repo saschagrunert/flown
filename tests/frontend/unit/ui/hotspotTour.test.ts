@@ -28,6 +28,7 @@ import { LIVE_REGION_DELAY_MS } from "../../../../flown/frontend/utils/toast";
 import * as crossSection from "../../../../flown/frontend/ui/crossSection";
 import * as motion from "../../../../flown/frontend/utils/motion";
 import * as toast from "../../../../flown/frontend/utils/toast";
+import * as hotspots from "../../../../flown/frontend/calculations/hotspots";
 import {
   asMapApp,
   createDataset,
@@ -578,6 +579,34 @@ describe("hotspot tour", () => {
     tour.start();
     expect(tour.length).toBe(1);
     expect(text("hotspot-tour-name")).toBe("Home field EDAQ Halle-Oppin");
+  });
+
+  it("finds the places once for a filter, and again for another", () => {
+    const find = vi.spyOn(hotspots, "findHotspots");
+
+    tour.start();
+    tour.stop();
+    tour.start();
+    tour.stop();
+    expect(find).toHaveBeenCalledOnce();
+
+    // An isolated selection, then another one, each of its own
+    app.store.set("selectedPathIds", new Set([2]));
+    app.store.set("isolateSelection", true);
+    tour.start();
+    tour.stop();
+    expect(find).toHaveBeenCalledTimes(2);
+    expect(text("hotspot-tour-name")).toBe("EDXX Away");
+    app.store.set("selectedPathIds", new Set([1, 2]));
+    tour.start();
+    tour.stop();
+    expect(find).toHaveBeenCalledTimes(3);
+
+    // The filter's own again
+    app.store.set("isolateSelection", false);
+    tour.start();
+    expect(find).toHaveBeenCalledTimes(3);
+    find.mockRestore();
   });
 
   it("closes the cross-section, whose line is on the map it flies over", () => {

@@ -24,10 +24,18 @@ Features:
 
 import argparse
 import datetime
-import math
 import random
+import sys
 from itertools import pairwise
 from pathlib import Path
+
+# The package is not installed (see [tool.uv] in pyproject.toml), so the
+# script takes the distances and the units from the checkout, as pre_push.py
+# does
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from flown.constants import KM_TO_NAUTICAL_MILES
+from flown.geometry import haversine_distance
 
 Coordinate = tuple[float, float]
 
@@ -53,9 +61,6 @@ GROUNDSPEED_KNOTS = (90, 150)
 FORMATS = ("gx-track", "linestring")
 # What --seed is without one: the same files on every run
 DEFAULT_SEED = 42
-
-EARTH_RADIUS_KM = 6371.0
-KM_PER_NAUTICAL_MILE = 1.852
 
 AIRCRAFT = [
     ("D-ABCD", "DA40"),
@@ -113,17 +118,10 @@ def generate_flight_path(
 
 def path_length_km(coords: list[tuple[float, float, float]]) -> float:
     """The length of a path along the great circles between its points."""
-    total = 0.0
-    for (lat1, lon1, _), (lat2, lon2, _) in pairwise(coords):
-        phi1, phi2 = math.radians(lat1), math.radians(lat2)
-        a = (
-            math.sin((phi2 - phi1) / 2) ** 2
-            + math.cos(phi1)
-            * math.cos(phi2)
-            * math.sin(math.radians(lon2 - lon1) / 2) ** 2
-        )
-        total += 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
-    return total
+    return sum(
+        haversine_distance(lat1, lon1, lat2, lon2)
+        for (lat1, lon1, _), (lat2, lon2, _) in pairwise(coords)
+    )
 
 
 def _point_times(
@@ -137,7 +135,7 @@ def _point_times(
     points are tens of seconds apart, as a logger that records by distance
     writes them.
     """
-    km_per_second = groundspeed_knots * KM_PER_NAUTICAL_MILE / 3600
+    km_per_second = groundspeed_knots / KM_TO_NAUTICAL_MILES / 3600
     times = [start_time]
     for a, b in pairwise(coords):
         seconds = path_length_km([a, b]) / km_per_second
@@ -228,7 +226,7 @@ def generate_kml_file(
             name, coords, _point_times(coords, start_time, groundspeed_knots)
         )
     elif kml_format == "linestring":
-        hours = path_length_km(coords) / KM_PER_NAUTICAL_MILE / groundspeed_knots
+        hours = path_length_km(coords) * KM_TO_NAUTICAL_MILES / groundspeed_knots
         # Whole seconds, as the file keeps them
         end_time = start_time + datetime.timedelta(seconds=round(hours * 3600))
         placemark = _linestring_placemark(name, coords, start_time, end_time)

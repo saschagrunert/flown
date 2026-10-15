@@ -4,8 +4,9 @@ uv.lock pins what build-system.requires asks for, that CI and the container
 image run the same uv, that the Playwright image is pinned by digest and
 matches the pinned library (in every job of the workflow and in the commands
 the documentation quotes), that the package version is the same on both
-sides of the project, and that every file that names the Python or Node.js
-version names the same one.
+sides of the project, that every file that names the Python or Node.js
+version names the same one, and that the gitleaks image of CI is the
+release of the pre-commit hook.
 
 Whether uv.lock matches pyproject.toml is uv's to tell: `uv lock --check`
 runs in the CI lint job and `make lint`, and `uv sync --locked` fails the
@@ -15,9 +16,14 @@ compares the two. The
 version in flown/__init__.py is what `--version` and the wheel report, and
 package.json and package-lock.json carry it again for the npm side; nothing
 reads all of them, so they drift apart unnoticed until the two sides name
-two different versions. The pre-commit hooks are not checked here: the
-linters and formatters run from the project environment, so they have no
-revision of their own to drift. Run by `make lint` and the CI lint job.
+two different versions. Of the pre-commit hooks only gitleaks has a
+revision of its own (the linters, formatters and file checks run from the
+project environment): the security job runs the gitleaks image test.yml
+pins, and checks the release it reports against the hook's, but that job
+gates nothing, so a Dependabot bump of the hook alone would go green, merge
+on its own and turn main red. Here the release in the comment of the image
+is compared with the hook's, in the lint job, which gates the merge. Run by
+`make lint` and the CI lint job.
 """
 
 import functools
@@ -63,6 +69,24 @@ PLAYWRIGHT_IMAGE = re.compile(
 )
 # The documents that quote the image for running the visual tests locally
 PLAYWRIGHT_IMAGE_DOCS = ("CONTRIBUTING.md", "doc/development/testing.md")
+# The workflow whose jobs run the images checked here
+WORKFLOW = ".github/workflows/test.yml"
+# The gitleaks image of the security job, pinned by digest, with its release
+# in the comment after it (`# v8.30.1`)
+GITLEAKS_IMAGE = re.compile(
+    r"^[ \t]*GITLEAKS_IMAGE:[ \t]*ghcr\.io/gitleaks/gitleaks@sha256:[0-9a-f]{64}"
+    r"(?:[ \t]*#[ \t]*(\S+))?",
+    re.MULTILINE,
+)
+# The rev of the gitleaks hook of .pre-commit-config.yaml, a commit with its
+# release in a "# frozen:" comment (`pre-commit autoupdate --freeze`), or a
+# tag; the release is the comment's, or the rev itself without one
+PRE_COMMIT_CONFIG = ".pre-commit-config.yaml"
+GITLEAKS_HOOK = re.compile(
+    r"^[ \t]*-[ \t]*repo:[ \t]*https://github\.com/gitleaks/gitleaks[ \t]*\n"
+    r"[ \t]*rev:[ \t]*(\S+)(?:[ \t]*#[ \t]*frozen:[ \t]*(\S+))?",
+    re.MULTILINE,
+)
 # A base image of the Dockerfile and the version of its tag, the part before
 # the first hyphen: python of "FROM docker.io/library/python:3.14-slim@...",
 # also after options such as "FROM --platform=$BUILDPLATFORM"
@@ -141,7 +165,7 @@ def playwright_image_mismatches() -> list[str]:
     regression rather than as the version drift it is, and two jobs on two
     images would no longer test the same browsers.
     """
-    text = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    text = (ROOT / WORKFLOW).read_text(encoding="utf-8")
     images = list(dict.fromkeys(PLAYWRIGHT_IMAGE_REFERENCE.findall(text)))
     if not images:
         return [".github/workflows/test.yml runs no Playwright image"]
@@ -186,6 +210,41 @@ def playwright_image_mismatches() -> list[str]:
             f".github/workflows/test.yml runs {images[0]}"
             for quoted in quoted_images
             if quoted != images[0]
+        )
+    return problems
+
+
+def gitleaks_mismatches() -> list[str]:
+    """Check the gitleaks image of the security job against the hook's rev.
+
+    Dependabot bumps the rev of the pre-commit hook and leaves the image
+    alone, whose digest only a person can look up. The security job finds
+    the two apart only once it has pulled the image, and it gates nothing:
+    such a bump would merge on green and turn main red. The comment that names
+    the image's release is what is compared here, in the lint job; that the
+    digest is that release is still the security job's to tell.
+    """
+    problems = []
+    image = GITLEAKS_IMAGE.search((ROOT / WORKFLOW).read_text(encoding="utf-8"))
+    pinned = image.group(1) if image else None
+    if image is None:
+        problems.append(f"{WORKFLOW} runs no gitleaks image pinned by its digest")
+    elif pinned is None:
+        problems.append(
+            f"{WORKFLOW} names no release in the comment of its gitleaks image"
+        )
+    try:
+        config = (ROOT / PRE_COMMIT_CONFIG).read_text(encoding="utf-8")
+    except OSError as e:
+        return [*problems, f"{PRE_COMMIT_CONFIG} cannot be read ({e.strerror or e})"]
+    hook = GITLEAKS_HOOK.search(config)
+    if hook is None:
+        problems.append(f"{PRE_COMMIT_CONFIG} has no gitleaks hook")
+        return problems
+    release = hook.group(2) or hook.group(1)
+    if pinned is not None and pinned.removeprefix("v") != release.removeprefix("v"):
+        problems.append(
+            f"{WORKFLOW} runs gitleaks {pinned}, the pre-commit hook pins {release}"
         )
     return problems
 
@@ -358,6 +417,7 @@ def main() -> int:
     image_problems = playwright_image_mismatches()
     version_problems = version_mismatches()
     toolchain_problems = toolchain_mismatches(pyproject)
+    gitleaks_problems = gitleaks_mismatches()
 
     everything = (
         build_problems
@@ -365,12 +425,14 @@ def main() -> int:
         + image_problems
         + version_problems
         + toolchain_problems
+        + gitleaks_problems
     )
     if not everything:
         print(
             "uv.lock satisfies build-system.requires, CI and the image run "
             "the same uv, the Playwright image matches, the package version "
-            "agrees and the Python and Node.js versions agree."
+            "agrees, the Python and Node.js versions agree and CI runs the "
+            "gitleaks of the pre-commit hook."
         )
         return 0
     for problem in everything:
@@ -407,6 +469,13 @@ def main() -> int:
             "Move .python-version, .nvmrc, the FROM lines of the Dockerfile, "
             "requires-python, the mypy and ruff target versions and the "
             "engines of package.json together.",
+            file=sys.stderr,
+        )
+    if gitleaks_problems:
+        print(
+            f"Set GITLEAKS_IMAGE in {WORKFLOW} to the release the pre-commit "
+            "hook pins: the digest of its multi-arch index, with the release "
+            "in the comment after it (see the comment of that step).",
             file=sys.stderr,
         )
     return 1

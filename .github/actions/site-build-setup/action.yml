@@ -1,9 +1,9 @@
 ---
-# What the jobs that build a site from data/ do before they build it: Python,
-# uv and Node.js with their caches, the dependencies, the JavaScript bundles,
-# and the caches of the OurAirports database and the elevation tiles. The
-# unit, e2e-sites, pyodide and site jobs of test.yml use it, after their
-# checkout.
+# What the jobs that build a site from the flights do before they build it:
+# Python, uv and Node.js with the npm cache, the dependencies, the JavaScript
+# bundles, and the caches of the OurAirports database and the elevation
+# tiles. The unit, e2e-sites, pyodide and site jobs of test.yml use it, after
+# their checkout.
 name: Set up a site build
 description: Install the dependencies, build the bundles and restore the caches a site build reads
 inputs:
@@ -14,6 +14,12 @@ inputs:
       alone
     required: false
     default: ""
+  flights:
+    description: >-
+      The directory of the flights the site is built from, whose files key
+      the cache of the elevation tiles (FLOWN_INPUT_DIR of test.yml)
+    required: false
+    default: data
 runs:
   using: composite
   steps:
@@ -53,8 +59,9 @@ runs:
         restore-keys: ourairports-
     # The elevation tiles (flown/terrain_fetch.py) the ground under the
     # flights is sampled from, with the decoded pixels of each beside it
-    # (.pixels): about 90 MB for data/, half of it each. A tile never
-    # changes upstream, so the cache of the last set of flights is restored
+    # (.pixels): about 90 MB for data/, half of it each. The flights are
+    # those of the `flights` input. A tile never changes upstream, so the
+    # cache of the last set of flights is restored
     # for the next and only the tiles of new flights are downloaded; it is
     # saved again under the new set. A tile that failed to download is
     # simply not in it, so no failure is carried over. The pixels carry the
@@ -69,5 +76,5 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/flown/terrain
-        key: terrain-${{ hashFiles('data/**/*.kml', 'data/**/*.kmz', 'flown/terrain*.py', 'flown/png.py') }}
+        key: terrain-${{ hashFiles(format('{0}/**/*.kml', inputs.flights), format('{0}/**/*.kmz', inputs.flights), 'flown/terrain*.py', 'flown/png.py') }}
         restore-keys: terrain-

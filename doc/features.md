@@ -173,27 +173,27 @@ sending them anywhere: **Your flights** under Search in the View group, or the
 row of the More sheet on a phone, opens a panel that takes the KML or KMZ files
 of your flights (SkyDemon, Charterware and the other formats the site build
 takes, named as [the naming convention](usage.md#kml-file-naming-convention)
-says, since the aircraft and the year come from the names, and an
-`aircraft.json` next to them), dropped on it, on the map anywhere, or chosen
-with the file picker, up to 200 MB at a time. The browser keeps the files, runs
-the same build the site was made with on them, in a worker with
-[Pyodide](https://pyodide.org) (the Python runtime is fetched from its CDN the
-first time, some 10 MB, and the site's own code next to the page), and then
-reloads the page on your flights: the heatmap, the flights, the airports, the
-statistics, the replays, the profiles and Wrapped all work on them as they do on
-the site's. The ground under the flights and the airport names come from the
-same hosts the build asks (see [Privacy](privacy.md#requests-to-other-servers));
-a build that cannot reach them goes on without the ground, or with the airport
-names as the files spell them. **Without the ground under the flights** builds
-them without the elevation tiles, so AWS is not asked for the tiles along them,
-and the panel keeps the choice. A file that makes no flight (a route plan
-without altitudes, a track without a date) is left out rather than failing the
-build: the others are shown, and the list marks that file with the reason. The
-panel says the steps of the build as it goes, and lists the warnings of the
-build once it is done (a file that names no aircraft, say). A build that is done
-while the panel is closed, or while a replay, the tour or Wrapped has the map,
-does not reload the page under you: a toast says your flights are ready, with a
-Show to switch to them.
+says, since the aircraft comes from the name and the year from the times in the
+file, and an `aircraft.json` next to them for the model names), dropped on it,
+on the map anywhere, or chosen with the file picker, up to 200 MB at a time. The
+browser keeps the files, runs the same build the site was made with on them, in
+a worker with [Pyodide](https://pyodide.org) (the Python runtime is fetched from
+its CDN the first time, some 10 MB, and the site's own code next to the page),
+and then reloads the page on your flights: the heatmap, the flights, the
+airports, the statistics, the replays, the profiles and Wrapped all work on them
+as they do on the site's. The ground under the flights and the airport names
+come from the same hosts the build asks (see
+[Privacy](privacy.md#requests-to-other-servers)); a build that cannot reach them
+goes on without the ground, or with the airport names as the files spell them.
+**Without the ground under the flights** builds them without the elevation
+tiles, so AWS is not asked for the tiles along them, and the panel keeps the
+choice. A file that makes no flight (a route plan without altitudes, a track
+without a date) is left out rather than failing the build: the others are shown,
+and the list marks that file with the reason. The panel says the steps of the
+build as it goes, and lists the warnings of the build once it is done (a file
+that names no aircraft, say). A build that is done while the panel is closed, or
+while a replay, the tour or Wrapped has the map, does not reload the page under
+you: a toast says your flights are ready, with a Show to switch to them.
 
 The panel says which flights the page shows and lists the files kept, each with
 its size and a Remove; a file added or removed builds the set again, and so does
@@ -216,10 +216,12 @@ on the home screen. Copy link is dimmed while they are shown, its title saying
 that a link cannot carry flights that are only in this browser, which a press
 says as well. A link opened on a page that shows your flights, someone else's
 long link or one from before the short links, opens on the site's flights, which
-it is of, and a toast says so, with a **Show my flights** that switches back;
-the address the page keeps in its own tab as the map moves opens on yours.
-Replay, Replay all and the hotspot tour hold Your flights while they run, as
-they hold the search. Escape closes the panel, wherever the focus is.
+it is of, and a toast says so, with a **Show my flights** that switches back.
+While your flights are shown the page keeps no state in its address (their
+registrations and flight ids would stay in the history and a browser's sync); a
+reload opens on them with the view saved in the browser. Replay, Replay all and
+the hotspot tour hold Your flights while they run, as they hold the search.
+Escape closes the panel, wherever the focus is.
 
 ### Statistics
 
@@ -792,9 +794,10 @@ the map closes it.
 
 ## Shareable URLs
 
-Map state is encoded in the URL for easy sharing. Copy the URL from your
-browser's address bar, or use the copy-link button for a short link to the same
-view (see [Shared links](#shared-links)):
+Map state is encoded in the URL for easy sharing (not while
+[Your flights](#your-flights) are shown). Copy the URL from your browser's
+address bar, or use the copy-link button for a short link to the same view (see
+[Shared links](#shared-links)):
 
 - Specific year or all years (`?y=2025` or `?y=all`)
 - Aircraft filter (`?a=D-EAGJ`)

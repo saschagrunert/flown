@@ -23,6 +23,24 @@ export function keyedToPage(
   return directory === "/" ? base : `${base}:${directory}`;
 }
 
+/**
+ * The same, apart for the visitor's flights (`local`): what is kept of one
+ * set of flights names none of the other's, under `base:local`. The saved
+ * state (storageKey in ui/stateManager.ts) and the intros Wrapped played.
+ */
+export function flightsKey(
+  base: string,
+  local: boolean,
+  pathname?: string,
+): string {
+  return keyedToPage(local ? `${base}:local` : base, pathname);
+}
+
+/** Where the page saves its state (ui/stateManager.ts) */
+export const STATE_KEY = "flown-state";
+/** The state saved for the visitor's flights, which Remove all lets go */
+export const LOCAL_STATE_KEY = flightsKey(STATE_KEY, true);
+
 /** Set while the page shows the visitor's flights rather than the site's */
 export const LOCAL_FLIGHTS_KEY = keyedToPage("flown-local-flights");
 /** Set across the reload that switches the flights, so the panel reopens */

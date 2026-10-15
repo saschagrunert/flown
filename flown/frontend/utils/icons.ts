@@ -55,6 +55,7 @@ import {
 } from "lucide";
 import { escapeHtml } from "./escape";
 import { logError } from "./logger";
+import { trustedHtml } from "./trustedHtml";
 
 export type IconName =
   | "stats"
@@ -336,7 +337,7 @@ export function setControlIcon(
   button.dataset["icon"] = name;
   button.dataset["iconSize"] = String(drawn);
   button.querySelector(":scope > svg.icon")?.remove();
-  button.insertAdjacentHTML("afterbegin", icon(name, drawn));
+  button.insertAdjacentHTML("afterbegin", trustedHtml(icon(name, drawn)));
 }
 
 /**

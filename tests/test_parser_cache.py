@@ -14,14 +14,13 @@ import pytest
 import flown.airport_lookup as lookup_module
 import flown.parser_cache as parser_cache_module
 from flown.airport_lookup import database_fingerprint
+from flown.cache import decode_entry, encode_entry
 from flown.landings import FlightLandings
 from flown.parser_cache import (
     CACHE_FORMAT_VERSION,
     CACHE_MAX_AGE_DAYS,
     CACHE_SUFFIX,
     KML_CACHE_DIR,
-    decode_entry,
-    encode_entry,
     get_cache_key,
     load_cached_parse,
     parser_fingerprint,

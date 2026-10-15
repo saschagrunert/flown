@@ -9,10 +9,11 @@ the day of the flight.
 Numeric dates: 2024-03-14, 2024.03.14, 14.03.2024, 14/03/2024, 14-03-2024,
 14_03_2024, 14 03 2024, 14 - 03 - 2024, 3/14/2024, 14.03.24, 2024/3/14,
 2024-3-4, the compact 20240314 (with the time right after it as well,
-202403141430), the year and month 2024-03, the ISO week 2024-W11 and 2024W11
-and 2024/W11, a calendar week with its year (KW11 2024, CW11 2024, Week 11
-2024, Wk 11 2024, W11 2024), the ordinal date 2024-074 and the year first
-with spaces (2024 03 14). An en dash or a Unicode hyphen may stand for the
+202403141430) and 14032024 or 03142024 with the year last, the year and
+month 2024-03, the ISO week 2024-W11 and 2024W11 and 2024/W11, a calendar
+week with its year (KW11 2024, CW11 2024, Week 11 2024, Wk 11 2024, W11
+2024), the ordinal date 2024-074 and the year first with spaces (2024 03
+14). An en dash or a Unicode hyphen may stand for the
 hyphen. With a month name: "14 Mar 2024", "14th March 2024", "the 14th of
 March 2024", "14-MAR-2024", "14/Mar/2024", "March 14, 2024", "Mar/14/2024",
 "Mar14_2024", "2024/Mar/14" and "March 2024", a range of days or months
@@ -30,27 +31,27 @@ Names lose more than that (``strip_dates``): a day and month without the
 year ("16 Aug", "16. Mai", "16.08.", "26.08", "16.8", "16/08", "16-08",
 "16_08", "16.III.", "16 III") and a calendar week without it ("KW33",
 "CW33", "Week 33", "Wk 33"), which the year of the flight completes, six
-digits that are a date ("260816"), a month and year ("03/2026", "03.2026",
-"2026/03", "08-2026", "2026_08", "2026.08", "VII/2026"), a season, quarter
-or half of a year with it ("Summer 2026", "Sommer 2026", "Q3 2026", "H2
-2026"), a weekday abbreviated next to a date or a time ("Sat 16 Aug", "Sa.,
-16.08.2026", "Sat 14:30") and a time of day ("14:30", "1430Z", "0930z",
-"1430L", "1513h" as in a Charterware file name, "14h30", "14.30 Uhr", "3pm",
-"0930Z-1045Z", the time after a date as in 20260816T1430, 20260816T14Z,
-2026-08-16_1430, 2026-08-16-14-30, 2026-08-16T14-30-00Z or "2026-08-16
-14-30" but not "2026-08-16 07-25 RWY" or "2026-08-16 14-30 min", and a range
+digits that are a date ("260816", "log_260816", "260816-1430"), a month
+and year ("03/2026", "03.2026", "2026/03", "08-2026", "2026_08",
+"2026.08", "VII/2026"), a season, quarter or half of a year with it
+("Summer 2026", "Sommer 2026", "Q3 2026", "H2 2026"), a weekday abbreviated
+next to a date or a time ("Sat 16 Aug", "Sa., 16.08.2026", "Sat 14:30") and
+a time of day ("14:30", "1430Z", "0930z", "1430L", "1513h" as in a
+Charterware file name, "14h30", "14.30 Uhr", "3pm", "0930Z-1045Z", the time
+after a date as in 20260816T1430, 20260816T14Z, 2026-08-16_1430,
+2026-08-16-14-30, 2026-08-16T14-30-00Z or "2026-08-16 14-30" but not
+"2026-08-16 07-25 RWY" or "2026-08-16 14-30 min", and a range
 such as "14.30-15.45 Uhr" or "14.30 bis 15.45 Uhr" whole), with the zone,
 the fraction or the offset after it ("1430 GMT", "1430 Zulu", "09:30 EDT",
 "1430 local", "0930 hours", "14:30:00.5Z", "14:30 +02:00", "1430+0200"). The
 common zones count, not every one there is. "14.30" alone stays: it is a
 decimal as often ("fuel 14.30"), and only goes with a zone, the local time
 or the hours ("14.30Z", "14.30L", "14.30 hrs"). The obfuscator's check
-reports the times of day in names, the descriptions and the file names
-(``find_time_tokens``), the weekdays and holidays anywhere, and in names,
-descriptions and file names the parts of a date as well
-(``find_partial_date_tokens``): the year of the flight completes them. The
-obfuscator takes all of it out of names and descriptions
-(``stray_date_spans``).
+reports the times of day, the weekdays and the holidays anywhere
+(``find_time_tokens``), and in the text of every element and in the file
+names the parts of a date as well (``find_partial_date_tokens``): the year
+of the flight completes them. The obfuscator takes all of it out of names,
+descriptions and the other elements of free text (``stray_date_spans``).
 
 Where a name could hold a date or something else, it loses the date: a
 decimal such as "fuel 16.8" goes with the dates it looks like. Two numbers
@@ -164,6 +165,9 @@ _WEEK_WORD = r"(?:(?i:[KC]W)\s?|(?i:week|wk\.?)\s*)"
 _DAY = r"(?:0?[1-9]|[12]\d|3[01])"
 _MONTH = r"(?:0?[1-9]|1[0-2])"
 _WEEK = r"(?:0?[1-9]|[1-4]\d|5[0-3])"
+# A day and a month of two digits each, as a compact date writes them
+_DAY_2 = r"(?:0[1-9]|[12]\d|3[01])"
+_MONTH_2 = r"(?:0[1-9]|1[0-2])"
 # A time of day of four digits, or six with the seconds: 1430, 143015
 _HHMM = r"(?:[01]\d|2[0-3])[0-5]\d(?:[0-5]\d)?"
 # What stands between the day and the month of a date written with spaces
@@ -280,6 +284,17 @@ def _numeric_patterns(skip_near_jan_first: bool) -> tuple[re.Pattern[str], ...]:
             r"(?<!\d)(?:19|20)\d{2}"
             + unless(rf"01(?:{days})(?:{_HHMM})?(?!\d)")
             + r"(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])"
+            + rf"(?=(?:{_HHMM})?(?!\d))"
+        ),
+        # The same with the year last, the day first or the month first
+        # (14032024, 03142024), with the time after it as well. Not after the
+        # dot of a decimal: the eight digits of the fraction of a longitude
+        # in a LookAt are any number. Only January 1st passes, as with the
+        # other shapes that are no ISO.
+        re.compile(
+            r"(?<!\d)(?<!\d\.)"
+            + unless(rf"0101(?:19|20)\d{{2}}(?:{_HHMM})?(?!\d)")
+            + rf"(?:{_DAY_2}{_MONTH_2}|{_MONTH_2}{_DAY_2})(?:19|20)\d{{2}}"
             + rf"(?=(?:{_HHMM})?(?!\d))"
         ),
     )
@@ -479,17 +494,32 @@ _VERSION_WORD = re.compile(
 # A day and month with a slash, "16/08" or "08/16", or with a hyphen or an
 # underscore and two digits each, "16-08" and the "16_08" of a file name (a
 # range such as 5-10 has a single digit more often), with the year left
-# out; which of them is a date is up to _is_day_month
+# out; which of them is a date is up to _is_day_month. A slash or a hyphen
+# before them only after a letter, as in the name of a branch
+# ("refs/heads/flight-16-08", "flights/16-08"): after a digit they are the
+# rest of a range, a heading or a type ("270-15", "PA-28-181").
 _DAY_MONTH_SLASHED = re.compile(
-    r"(?<![^\W_]|[./-])(?:(?P<first>\d{1,2})/(?P<second>\d{1,2})|"
+    r"(?:(?<![^\W_]|[./-])|(?<=[^\W\d_][/-]))(?:(?P<first>\d{1,2})/(?P<second>\d{1,2})|"
     r"(?P<first_h>\d{2})[-_](?P<second_h>\d{2}))(?![^\W_]|[/-]|\.\d)"
 )
 # Six digits that are a date with a two-digit year, the year first as in the
 # DOF/260816 of an ICAO flight plan or last as in 160826. Only taken out of
-# names: a number of six digits is rarely anything else there.
+# names: a number of six digits is rarely anything else there. An underscore,
+# a hyphen or a slash may stand around them, as in a file name or the name of
+# a branch ("log_260816", "1_DEHYL_DA40_260816", "flights-260816",
+# "refs/heads/260816"), but no digit before the hyphen or the slash (the
+# "0345-120816" of a phone number) and no dot (a decimal, a version). The
+# time of day may follow, with a hyphen or an underscore ("260816-1430",
+# "260816_14:30") or right after the year first ("2608161430"; see
+# _six_digit_spans), and a zone after it ("260816-1430Z"): only a digit
+# more ends it being one.
+_YYMMDD = rf"\d{{2}}{_MONTH_2}{_DAY_2}"
+_SIX_DIGIT_TIME = r"(?:[01]\d|2[0-3]):?[0-5]\d(?::?[0-5]\d)?(?!\d)"
 _SIX_DIGIT_DATE = re.compile(
-    r"(?<![\w./-])(?:\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])|"
-    r"(?:0[1-9]|[12]\d|3[01])(?:0[1-9]|1[0-2])\d{2})(?![\w/-]|\.\d)"
+    r"(?<![^\W_]|\.)(?<!\d[/-])"
+    rf"(?:(?P<with_time>{_YYMMDD})(?=(?:[01]\d|2[0-3])[0-5]\d(?!\d))|"
+    rf"(?:{_YYMMDD}|{_DAY_2}{_MONTH_2}\d{{2}})"
+    rf"(?:(?=[-_]{_SIX_DIGIT_TIME})|(?![^\W_]|/|[-_]\d|\.\d)))"
 )
 # The date of flight of an ICAO flight plan, which the obfuscator's check
 # reports in any document: "DOF/260816", YYMMDD
@@ -655,6 +685,21 @@ _AIRPORT_KW = re.compile(r"KW\d{2}")
 _ROUTE_SEPARATOR = re.compile(r"\s+(?:-|to)\s+")
 _SIDE_START = re.compile(r"\s(?:-|to)\s+\Z")
 _AIRPORT_WORD = re.compile(r"\b(?:Airport|Airfield|Airpark|Field|Strip|Heliport)\b")
+
+
+def _six_digit_spans(text: str) -> list[tuple[int, int]]:
+    """The six digits that are a date (``_SIX_DIGIT_DATE``).
+
+    The year first with the time right after it is ten digits, which are a
+    Unix time as well. One of a past flight is no date of this kind: either
+    it is the midnight of January 1st that the check lets pass, or
+    ``epoch_spans`` reports it; "2608161430" is no time of the past.
+    """
+    return [
+        match.span()
+        for match in _SIX_DIGIT_DATE.finditer(text)
+        if not (match["with_time"] and _is_past_epoch(text[match.start() :][:10]))
+    ]
 
 
 def _week_only_spans(text: str) -> list[tuple[int, int]]:
@@ -999,17 +1044,22 @@ _EPOCH_START = datetime(2000, 1, 1, tzinfo=UTC).timestamp()
 _EPOCH_SLACK = timedelta(days=1)
 
 
+def _is_past_epoch(value: str) -> bool:
+    """Whether ten or thirteen digits are the Unix time of a past flight."""
+    seconds = int(value) / (1000 if len(value) == 13 else 1)
+    return _EPOCH_START <= seconds < (datetime.now(UTC) + _EPOCH_SLACK).timestamp()
+
+
 def epoch_is_obfuscated(value: str) -> bool:
     """Whether a Unix time gives neither a date nor a time of day away.
 
     The rewrite leaves data values alone, so only midnight passes, on
     January 1st or the days a flight runs into after it.
     """
-    seconds = int(value) / (1000 if len(value) == 13 else 1)
-    latest = (datetime.now(UTC) + _EPOCH_SLACK).timestamp()
-    if not _EPOCH_START <= seconds < latest:
+    if not _is_past_epoch(value):
         # Not the time of a past flight: a phone number, a serial number
         return True
+    seconds = int(value) / (1000 if len(value) == 13 else 1)
     dt = datetime.fromtimestamp(seconds, tz=UTC)
     return near_jan_first(dt.month, dt.day) and dt.time() == time()
 
@@ -1018,7 +1068,7 @@ def epoch_spans(text: str) -> list[tuple[int, int]]:
     """The Unix times of past flights in a text that give the flight away.
 
     Those ``epoch_is_obfuscated`` does not let pass: the obfuscator's check
-    reports them, the rewrite takes them out of names and descriptions and
+    reports them, the rewrite takes them out of the elements of free text and
     ``strip_dates`` out of what the site publishes.
     """
     return [
@@ -1316,7 +1366,7 @@ def _partial_date_spans(text: str, skip_near_jan_first: bool) -> list[tuple[int,
         ("dotted", _day_month_dotted_spans(rest)),
         ("slashed", _day_month_slashed_spans(rest)),
         ("week", _week_only_spans(rest)),
-        ("six", [match.span() for match in _SIX_DIGIT_DATE.finditer(rest)]),
+        ("six", _six_digit_spans(rest)),
         ("month", _month_year_spans(rest)),
         ("season", _season_spans(rest)),
     ):
@@ -1497,7 +1547,7 @@ def _stripped_once(text: str | None) -> str | None:
         and not _day_month_dotted_spans(plain)
         and not _day_month_slashed_spans(plain)
         and not _week_only_spans(plain)
-        and not _SIX_DIGIT_DATE.search(plain)
+        and not _six_digit_spans(plain)
         and not _month_year_spans(plain)
         and not _season_spans(plain)
         and not _TIME_OF_DAY.search(plain)
@@ -1538,7 +1588,7 @@ def _stripped_once(text: str | None) -> str | None:
                 + _text_month_spans(
                     _ROMAN_MONTH_YEAR, stripped, False, _roman_month_number
                 )
-                + [match.span() for match in _SIX_DIGIT_DATE.finditer(stripped)]
+                + _six_digit_spans(stripped)
                 + _month_year_spans(stripped)
                 + _season_spans(stripped),
             )

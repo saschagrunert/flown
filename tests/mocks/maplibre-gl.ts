@@ -143,10 +143,6 @@ export class LngLatBounds {
     return this;
   }
 
-  isEmpty(): boolean {
-    return !this.sw || !this.ne;
-  }
-
   getSouthWest(): LngLat {
     return this.sw ?? new LngLat(0, 0);
   }
@@ -251,7 +247,6 @@ export interface MockSource {
   /** What the last `setData` passed, or the data of the specification */
   data: unknown;
   setData: Mock;
-  setTiles: Mock;
   /** The specification with the data it holds now, as the map reports it */
   serialize: Mock;
 }
@@ -326,7 +321,6 @@ export class Map
       | "setPaintProperty"
       | "getPaintProperty"
       | "setFilter"
-      | "getFilter"
       | "getStyle"
       | "setStyle"
       | "isStyleLoaded"
@@ -343,7 +337,6 @@ export class Map
       | "getPitch"
       | "getVerticalFieldOfView"
       | "getCenterElevation"
-      | "getCenterClampedToGround"
       | "setCenterClampedToGround"
       | "queryTerrainElevation"
       | "calculateCameraOptionsFromTo"
@@ -373,7 +366,6 @@ export class Map
       | "getGlobalState"
       | "setGlobalStateProperty"
       | "addControl"
-      | "removeControl"
       | "remove"
     >
 {
@@ -406,7 +398,6 @@ export class Map
   readonly dragPan = mockHandler();
   readonly dragRotate = mockHandler();
   readonly scrollZoom = mockHandler();
-  readonly boxZoom = mockHandler();
   readonly doubleClickZoom = mockHandler();
 
   constructor(options: Record<string, unknown>) {
@@ -493,7 +484,6 @@ export class Map
         source.data = data;
         return Promise.resolve();
       }),
-      setTiles: vi.fn(() => source),
       serialize: vi.fn(() =>
         source.data === undefined ? spec : { ...spec, data: source.data },
       ),
@@ -642,8 +632,6 @@ export class Map
     }
   }
 
-  getFilter = vi.fn((id: string) => this.layer(id).filter);
-
   getStyle = vi.fn(() => ({
     version: 8,
     sources: Object.fromEntries(
@@ -759,7 +747,6 @@ export class Map
   private elevation = 0;
   private clampedToGround = true;
   getCenterElevation = vi.fn(() => this.elevation);
-  getCenterClampedToGround = vi.fn(() => this.clampedToGround);
   setCenterClampedToGround = vi.fn((clamped: boolean) => {
     this.clampedToGround = clamped;
     if (clamped) this.elevation = 0;
@@ -978,12 +965,6 @@ export class Map
     return this;
   });
 
-  removeControl = vi.fn((control: unknown) => {
-    const index = this.controls.findIndex((c) => c.control === control);
-    if (index >= 0) this.controls.splice(index, 1);
-    return this;
-  });
-
   remove = vi.fn(() => {
     this.removed = true;
     this.handlers.clear();
@@ -1010,13 +991,8 @@ export class Popup
       | "setLngLat"
       | "getLngLat"
       | "setHTML"
-      | "setText"
-      | "setDOMContent"
-      | "setMaxWidth"
       | "setOffset"
       | "trackPointer"
-      | "addClassName"
-      | "removeClassName"
     >
 {
   /** The map the popup is open on */
@@ -1071,31 +1047,10 @@ export class Popup
     return this;
   });
 
-  setText = vi.fn((text: string) => {
-    this.content.textContent = text;
-    return this;
-  });
-
-  setDOMContent = vi.fn((node: Node) => {
-    this.content.replaceChildren(node);
-    return this;
-  });
-
-  setMaxWidth = vi.fn(() => this);
   setOffset = vi.fn(() => this);
 
   trackPointer = vi.fn(() => {
     this.tracksPointer = true;
-    return this;
-  });
-
-  addClassName = vi.fn((name: string) => {
-    this.element.classList.add(name);
-    return this;
-  });
-
-  removeClassName = vi.fn((name: string) => {
-    this.element.classList.remove(name);
     return this;
   });
 }
@@ -1115,20 +1070,15 @@ export class Marker
       | "getLngLat"
       | "setPopup"
       | "getPopup"
-      | "togglePopup"
       | "setRotation"
-      | "getRotation"
       | "setOffset"
       | "setPitchAlignment"
       | "getPitchAlignment"
-      | "addClassName"
-      | "removeClassName"
     >
 {
   /** The map the marker is on */
   map: Map | null = null;
   private lngLat: LngLat | null = null;
-  private rotation = 0;
   private popup: Popup | null = null;
   private readonly element: HTMLElement;
 
@@ -1138,9 +1088,6 @@ export class Marker
     this.element =
       element instanceof HTMLElement ? element : document.createElement("div");
     this.element.classList.add("maplibregl-marker");
-    if (typeof options["rotation"] === "number") {
-      this.rotation = options["rotation"];
-    }
     if (typeof options["pitchAlignment"] === "string") {
       this.pitchAlignment = options["pitchAlignment"];
     }
@@ -1174,19 +1121,7 @@ export class Marker
 
   getPopup = vi.fn(() => this.popup);
 
-  togglePopup = vi.fn(() => {
-    if (!this.popup || !this.map) return this;
-    if (this.popup.isOpen()) this.popup.remove();
-    else this.popup.addTo(this.map);
-    return this;
-  });
-
-  setRotation = vi.fn((rotation: number) => {
-    this.rotation = rotation;
-    return this;
-  });
-
-  getRotation = vi.fn(() => this.rotation);
+  setRotation = vi.fn(() => this);
   setOffset = vi.fn(() => this);
 
   /** Laid on the map or standing in the screen */
@@ -1196,16 +1131,6 @@ export class Marker
     return this;
   });
   getPitchAlignment = vi.fn(() => this.pitchAlignment);
-
-  addClassName = vi.fn((name: string) => {
-    this.element.classList.add(name);
-    return this;
-  });
-
-  removeClassName = vi.fn((name: string) => {
-    this.element.classList.remove(name);
-    return this;
-  });
 }
 
 export default {

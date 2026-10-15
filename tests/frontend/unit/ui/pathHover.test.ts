@@ -380,6 +380,39 @@ describe("PathHover through the LayerManager", () => {
       expect(tooltips()[0]!.isOpen()).toBe(false);
     });
 
+    it("does not look while the map moves, and looks again at rest", () => {
+      moveTo(pointAt(48.19, 16.19));
+      const tooltip = tooltips()[0]!;
+      const map = mockApp.map!;
+      map.queryRenderedFeatures.mockClear();
+      map.isMoving.mockReturnValue(true);
+
+      moveTo(pointAt(48.01, 16.01));
+      moveTo(pointAt(48.02, 16.02));
+
+      expect(tooltip.isOpen()).toBe(false);
+      expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
+
+      map.isMoving.mockReturnValue(false);
+      map.emit("moveend");
+
+      expect(map.queryRenderedFeatures).toHaveBeenCalledOnce();
+      expect(tooltip.isOpen()).toBe(true);
+      expect(content(tooltip)).toContain("90 kt");
+    });
+
+    it("does not look while a button is held down", () => {
+      const map = mockApp.map!;
+      map.emit("mousemove", {
+        point: pointAt(48.19, 16.19),
+        originalEvent: new MouseEvent("mousemove", { buttons: 1 }),
+      });
+      runFrames();
+
+      expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
+      expect(tooltips()).toHaveLength(0);
+    });
+
     it("tells the flight profile the segment it comes to describe", () => {
       const told: (PathSegment | null)[] = [];
       layerManager.pathHover.onHover = (segment) => told.push(segment);

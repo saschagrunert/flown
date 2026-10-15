@@ -58,7 +58,7 @@ def _run(argv, create_return=True):
     mock_create = MagicMock(return_value=create_return)
     with (
         patch("sys.argv", ["flown", *argv]),
-        patch("flown.renderer.build_site", mock_create),
+        patch("flown.pipeline.build_site", mock_create),
     ):
         main()
     return mock_create
@@ -285,7 +285,7 @@ class TestFileCollection:
                 "sys.argv",
                 ["flown", str(kml), str(missing), "--output-dir", str(out)],
             ),
-            patch("flown.renderer.build_site", mock_create),
+            patch("flown.pipeline.build_site", mock_create),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -346,7 +346,7 @@ class TestOutputHandling:
         with (
             patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
             patch(
-                "flown.renderer.build_site",
+                "flown.pipeline.build_site",
                 side_effect=ExportError("Export failed: disk full"),
             ),
             pytest.raises(SystemExit) as exc_info,
@@ -371,7 +371,7 @@ class TestOutputHandling:
         _, kml, out = workspace
         with (
             patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
-            patch("flown.renderer.build_site", side_effect=error),
+            patch("flown.pipeline.build_site", side_effect=error),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -472,7 +472,7 @@ class TestOutputHandling:
         _, kml, out = workspace
         with (
             patch("sys.argv", ["flown", str(kml), "--output-dir", str(out)]),
-            patch("flown.renderer.build_site", side_effect=error),
+            patch("flown.pipeline.build_site", side_effect=error),
             pytest.raises(SystemExit) as exc_info,
         ):
             main()
@@ -609,7 +609,7 @@ class TestObfuscateFlag:
                     str(out),
                 ],
             ),
-            patch("flown.renderer.build_site", mock_create),
+            patch("flown.pipeline.build_site", mock_create),
             patch("flown.obfuscate.obfuscate_kml_files", side_effect=obfuscate),
         ):
             main()
@@ -898,6 +898,41 @@ class TestList:
         # A run without --list in the same process logs to stdout again
         _run([str(flights), "--output-dir", str(tmp_path / "out")])
         assert "INFO: Found 5 KML file(s)" in capsys.readouterr().out
+
+    def test_trimmed_ends_are_listed_as_the_site_publishes_them(self, tmp_path, capsys):
+        """--trim-ends was ignored: the list showed points the site leaves out."""
+        flights = tmp_path / "flights"
+        shutil.copytree(FIXTURE_FLIGHTS, flights)
+
+        def points(*options):
+            with (
+                patch("sys.argv", ["flown", "--list", "-q", *options, str(flights)]),
+                patch("flown.terrain.TerrariumTiles"),
+            ):
+                main()
+            rows = capsys.readouterr().out.splitlines()[1:6]
+            return {row.split()[1]: int(row.split()[-3]) for row in rows}
+
+        whole = points()
+        trimmed = points("--trim-ends", "300")
+        assert whole["1_DEAGJ_DA20.kml"] == 612
+        assert all(trimmed[name] < whole[name] for name in whole)
+
+    def test_inputs_cannot_be_obfuscated_by_a_listing(self, tmp_path, capsys):
+        """It writes nothing: the files kept their dates without a word."""
+        flights = tmp_path / "flights"
+        shutil.copytree(FIXTURE_FLIGHTS, flights)
+        before = {path.name: path.read_bytes() for path in flights.iterdir()}
+
+        with (
+            patch("sys.argv", ["flown", "--list", "--obfuscate-inputs", str(flights)]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main()
+
+        assert exc_info.value.code == 2
+        assert "--list writes nothing" in capsys.readouterr().err
+        assert {path.name: path.read_bytes() for path in flights.iterdir()} == before
 
     def test_nothing_to_list_is_a_usage_error(self, tmp_path, capsys):
         with (

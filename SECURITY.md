@@ -31,12 +31,12 @@ need no key.
 ## Automated checks
 
 Every push to main runs `pip-audit` against what `uv.lock` pins, `npm audit`,
-and a gitleaks scan of the whole commit history. A pull request or an entry of
-the merge queue scans the commits it adds, and runs the two audits when it
-changes a lock file or `package.json`. The same job runs weekly, with the whole
-history, so new advisories show up without a push. Every GitHub Action is pinned
-by commit SHA and every container image by digest, and every job that checks out
-the repository leaves no credentials in the checkout. Dependabot keeps the
+and a gitleaks scan of the whole commit history. A pull request scans the
+commits it adds, and runs the two audits when it changes a lock file or
+`package.json`. The same job runs weekly, with the whole history, so new
+advisories show up without a push. Every GitHub Action is pinned by commit SHA
+and every container image by digest, and every job that checks out the
+repository leaves no credentials in the checkout. Dependabot keeps the
 dependencies current, and `make lock` regenerates the Python lock file with the
 newest releases the ranges allow.
 
@@ -64,11 +64,28 @@ fetches every tile, so `img-src` allows only the site itself, `data:` and
 `blob:`. MapLibre GL JS is published with the site as ES modules and starts its
 worker from one of them, so `worker-src 'self'` is enough and no `blob:` worker
 is allowed. Colours computed at runtime are applied through the CSSOM, and a
-test fails on any CSP violation the page reports. A unit test
+test fails on any CSP violation the page reports.
+
+The page enforces Trusted Types (`require-trusted-types-for 'script'`): a string
+reaches no sink that parses HTML or starts a script unless a policy made it, and
+the CSP allows two (`flown/frontend/utils/trustedHtml.ts`). The app's markup
+goes through `trustedHtml`, whose markup builders escape every name they put in
+(a name in a dropped KML file or in `aircraft.json` is anyone's text), and a
+lint rule fails a sink of the frontend that does not use it. The default policy
+is for the code that is not the app's: it starts a script of the page's own
+directory only (MapLibre's worker and the app's two), and of any other HTML
+keeps the links whose attributes can run nothing (an `href` of the web or of
+mail, no event handler) and turns every other `<` into text, which is all
+MapLibre needs for the close button of a popup and the credits it parses with
+`DOMParser` and then cleans itself. A unit test
 (`tests/frontend/unit/csp.test.ts`) checks every URL the frontend fetches
 against `connect-src`, and every foreign source there against those URLs. A meta
 CSP cannot set `frame-ancestors`, and GitHub Pages sends no such header, so the
-site can be framed; it holds no state an embedding page could change.
+site can be framed. The one state of the site an embedding page could act on,
+with clicks it lures onto the frame, is Your flights: the files a visitor keeps
+in the browser, which Remove all deletes and a drop builds. So a framed page
+starts on the site's flights whatever the visitor last chose, and Your flights
+does not open in it; it says to open the site itself.
 
 ### Your flights
 
@@ -89,12 +106,16 @@ SHA-384 of each file of it (`PYODIDE_INTEGRITY` in
 fetches against its hash before Pyodide gets a byte of it, the two modules are
 imported from the bytes it checked rather than from their URL, and the lock
 file, checked like them, carries the hash each package is checked against the
-same way. A CDN that served other files stops the build (it says the runtime
-could not be loaded), and so does a download that stalls for a minute or a
-runtime that does not start within two minutes of its last file; it cannot run
-code with the site's origin. The package's own Python comes from `flown-src.zip`
-next to the page. The airport database and the tiles are data the build parses,
-never code.
+same way. The check fails closed: an answer that is no success is refused
+whatever its body (Pyodide reads the lock file without looking at the status, so
+a 404 or a 500 carrying a lock file of its own would otherwise hand it other
+hashes for the packages), and so is any file under the release's URL with no
+hash, pinned or given by the lock file. A CDN that served other files stops the
+build (it says the runtime could not be loaded), and so does a download that
+stalls for a minute or a runtime that does not start within two minutes of its
+last file; it cannot run code with the site's origin. The package's own Python
+comes from `flown-src.zip` next to the page. The airport database and the tiles
+are data the build parses, never code.
 
 A host that sends a CSP header of its own for every file holds the worker to it
 as well (see [Hosting](doc/hosting.md#headers-and-compression)): it has to allow

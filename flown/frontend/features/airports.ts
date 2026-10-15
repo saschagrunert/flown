@@ -5,6 +5,7 @@
 
 import type { Airport, PathInfo } from "../types";
 import { siteData } from "../state/siteData";
+import { KM_TO_NAUTICAL_MILES } from "../utils/constants";
 
 /** Class of the element MapLibre positions */
 export const AIRPORT_MARKER_CLASS = "airport-marker-root";
@@ -276,6 +277,66 @@ export function getAirportsByName(): Map<string, Airport> {
  */
 export function airportCode(name: string): string | undefined {
   return getAirportsByName().get(name)?.code;
+}
+
+/*
+ * How the lists name a flight, by the codes of its airports: the flight
+ * list of the statistics rail (ui/flightList.ts), the list of an airport's
+ * popup (ui/airportFlights.ts), the replay and the flight profile. Here, in
+ * the app, as the bundles of those share no module of their own: one that
+ * only lazy bundles shared would get a chunk of its own, which the site
+ * does not publish.
+ */
+
+/** An airport as a list names it: its code where it has one */
+function routeEnd(label = "?"): string {
+  return airportCode(label) ?? label;
+}
+
+/**
+ * A flight's route by the codes of its airports ("EDAQ → EDDP"), the way
+ * the airport popup's list and the flight list of the statistics rail name
+ * it
+ */
+export function flightRoute(path: PathInfo): string {
+  return routeEnd(path.start_airport) + " → " + routeEnd(path.end_airport);
+}
+
+/**
+ * How a list names a flight: its route, aircraft, year and the `km` it
+ * covered, in nautical miles. The airport popup's rows and the checkboxes
+ * of both lists say it, so a row is not one of several "EDXX → EDXX"
+ * circuits of one aircraft alike.
+ */
+export function flightLabel(path: PathInfo, km = 0): string {
+  // Under half a mile says nothing a row could tell apart: none rather
+  // than "0 nm"
+  const nm = Math.round(km * KM_TO_NAUTICAL_MILES);
+  return [
+    flightRoute(path),
+    path.aircraft_registration,
+    path.year,
+    nm && nm + " nm",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * The checkbox of a listed flight, which adds it to the selection or takes
+ * it out, while the rest of its row picks it alone (see
+ * PathSelection.pickFromList). Named after the flight by `label`, which is
+ * escaped already. The airport popup's list and the flight list of the
+ * statistics rail have one per row.
+ */
+export function pickBox(id: number, label: string): string {
+  return (
+    '<input type="checkbox" class="pick-box" data-path-id="' +
+    id +
+    '" aria-label="Select ' +
+    label +
+    '">'
+  );
 }
 
 /**

@@ -49,12 +49,27 @@ OUTPUT_MOUNT := /data/$(notdir $(abspath $(OUTPUT_DIR)))
 # host user into the container with keep-id, but keeps the image's USER unless
 # --user is given; docker needs --user so that files written to bind mounts are
 # not owned by root. HOME is set because the mapped uid has no passwd entry.
+# Every container runs without capabilities and cannot gain privileges (a
+# setuid binary in the image gets none), and under SELinux confinement where
+# the host has it: the bind mounts are relabeled for it (see MOUNT_RW) rather
+# than the confinement turned off.
 IS_PODMAN := $(shell $(CONTAINER_RUNTIME) --version 2>/dev/null | grep -qi podman && echo yes)
 ifeq ($(IS_PODMAN),yes)
-RUN_AS_USER = --userns=keep-id --user "$(shell id -u):$(shell id -g)" --security-opt label=disable
+RUN_AS_USER = --userns=keep-id --user "$(shell id -u):$(shell id -g)"
 else
 RUN_AS_USER = --user "$(shell id -u):$(shell id -g)"
 endif
+CONFINED = $(RUN_AS_USER) --cap-drop=ALL --security-opt=no-new-privileges
+# The options of a bind mount. z relabels it for SELinux with a label the
+# containers that mount it at the same time share (`make serve` reads
+# OUTPUT_DIR while `make build` writes it), Z with one private to its
+# container, for the cache only the build mounts; podman and docker skip
+# both on a host without SELinux, and neither relabels the home directory
+# itself. Variables, as the comma of "ro,z" would split the arguments of
+# $(call in_image) otherwise.
+MOUNT_RW := z
+MOUNT_RO := ro,z
+MOUNT_CACHE := Z
 TTY_FLAG = $(if $(shell test -t 0 && echo y),-it,-i)
 
 all: build
@@ -94,24 +109,24 @@ build: require-runtime ## Build the image and generate OUTPUT_DIR from INPUT_DIR
 	  exit 1; }
 	$(CONTAINER_RUNTIME) build -t $(IMAGE_NAME) .
 	mkdir -p "$(CACHE_MOUNT)" "$(OUTPUT_DIR)"
-	$(CONTAINER_RUNTIME) run --rm $(RUN_AS_USER) -e HOME=/tmp \
+	$(CONTAINER_RUNTIME) run --rm $(CONFINED) -e HOME=/tmp \
 	  -e CARTO_API_KEY -e FLOWN_SITE_URL \
 	  -e FLOWN_COMMIT -e FLOWN_REPOSITORY -e SOURCE_DATE_EPOCH \
 	  -e FLOWN_STABLE_MTIMES -e FLOWN_REQUIRE_AIRPORT_DB \
 	  -e FLOWN_REQUIRE_TERRAIN \
-	  -v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):ro" \
-	  -v "$(abspath $(OUTPUT_DIR)):$(OUTPUT_MOUNT)" \
-	  -v "$(CACHE_MOUNT):/cache" \
+	  -v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):$(MOUNT_RO)" \
+	  -v "$(abspath $(OUTPUT_DIR)):$(OUTPUT_MOUNT):$(MOUNT_RW)" \
+	  -v "$(CACHE_MOUNT):/cache:$(MOUNT_CACHE)" \
 	  $(IMAGE_NAME) "$(INPUT_MOUNT)" --output-dir "$(OUTPUT_MOUNT)"
 
 serve: require-runtime ## Serve OUTPUT_DIR on http://HOST_BIND:PORT (run 'make build' first)
 	@test -f "$(OUTPUT_DIR)/index.html" || { \
 	  echo "error: '$(OUTPUT_DIR)/index.html' not found; run 'make build' first"; \
 	  exit 1; }
-	$(CONTAINER_RUNTIME) run --rm $(TTY_FLAG) $(RUN_AS_USER) -e HOME=/tmp \
+	$(CONTAINER_RUNTIME) run --rm $(TTY_FLAG) $(CONFINED) --read-only -e HOME=/tmp \
 	  -p "$(HOST_BIND):$(PORT):8000" -e BIND_HOST=0.0.0.0 \
 	  -e OPEN_URL="http://$(if $(filter 0.0.0.0,$(HOST_BIND)),localhost,$(HOST_BIND)):$(PORT)/" \
-	  -v "$(abspath $(OUTPUT_DIR)):/data:ro" \
+	  -v "$(abspath $(OUTPUT_DIR)):/data:$(MOUNT_RO)" \
 	  --entrypoint python $(IMAGE_NAME) /app/serve.py
 
 serve-build: build ## Run build, then serve
@@ -130,7 +145,7 @@ define in_image
     exit 1; }; \
   echo "No Python 3.14 as 'python': running it in the container image"; \
   $(CONTAINER_RUNTIME) build -q -t $(IMAGE_NAME) . >/dev/null && set -x && \
-  $(CONTAINER_RUNTIME) run --rm $(RUN_AS_USER) -e HOME=/tmp $(2) \
+  $(CONTAINER_RUNTIME) run --rm $(CONFINED) -e HOME=/tmp $(2) \
     --entrypoint sh $(IMAGE_NAME) -c '$(1)' )
 endef
 
@@ -146,7 +161,7 @@ obfuscate: ## Rewrite the KML files in INPUT_DIR in place so they carry no real 
 	@if $(HOST_PYTHON_OK); then \
 	  set -x; python -m flown.obfuscate "$(INPUT_DIR)"; \
 	else \
-	  $(call in_image,python -m flown.obfuscate "$(INPUT_MOUNT)",-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT)"); \
+	  $(call in_image,python -m flown.obfuscate "$(INPUT_MOUNT)",-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):$(MOUNT_RW)"); \
 	fi
 
 # The flights of the visual snapshots are committed copies of real ones, so
@@ -162,8 +177,8 @@ check-obfuscation: ## Check that the KML files in INPUT_DIR and the fixture flig
 	  python -m flown.obfuscate tests/fixtures/visual --check; \
 	else \
 	  $(call in_image,python -m flown.obfuscate "$(INPUT_MOUNT)" --check && \
-	    python -m flown.obfuscate "$(VISUAL_MOUNT)" --check,-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):ro" \
-	    -v "$(CURDIR)/tests/fixtures/visual:$(VISUAL_MOUNT):ro"); \
+	    python -m flown.obfuscate "$(VISUAL_MOUNT)" --check,-v "$(abspath $(INPUT_DIR)):$(INPUT_MOUNT):$(MOUNT_RO)" \
+	    -v "$(CURDIR)/tests/fixtures/visual:$(VISUAL_MOUNT):$(MOUNT_RO)"); \
 	fi
 
 # The obfuscation check of CI only sees a real date once it is public; the hook
@@ -188,7 +203,7 @@ hooks: ## Install the pre-push hook that refuses to push KML files with real dat
 
 lint: ## Run the linters, formatters (check only), type checkers and typos of the CI lint job
 	$(UV) lock --check
-	python scripts/check_locks.py
+	python scripts/check_pins.py
 	ruff check .
 	ruff format --check .
 	mypy .
@@ -220,7 +235,7 @@ test: ## Build the frontend bundles and the site in docs/, then run the JavaScri
 # all of them, the extras among them, with their hashes. --upgrade moves every
 # package to its newest release past the cooldown of [tool.uv] exclude-newer;
 # Dependabot moves one package at a time between runs of it. uv is the
-# release CI and the container image run (scripts/check_locks.py checks that
+# release CI and the container image run (scripts/check_pins.py checks that
 # the two agree), installed on its own: see CONTRIBUTING.md.
 UV ?= uv
 

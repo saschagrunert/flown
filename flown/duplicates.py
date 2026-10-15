@@ -31,13 +31,19 @@ of one field is the same for every flight from it), and the two have to be
 closer to each other (``_LINED_UP_DISTANCE_KM``).
 """
 
+import hashlib
+import json
+from array import array
 from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from heapq import merge
-from math import ceil, cos, floor, radians, sqrt
-from typing import TYPE_CHECKING, NamedTuple
+from math import ceil, cos, floor, nan, radians, sqrt
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, NamedTuple
 
+from .cache import CACHE_DIR, load_entry, source_fingerprint, store_entry
+from .constants import KM_TO_NAUTICAL_MILES, MAX_GROUNDSPEED_KNOTS, SECONDS_PER_HOUR
 from .date_tokens import near_jan_first
 from .geometry import KM_PER_DEGREE, haversine_distance
 from .logger import logger
@@ -75,6 +81,12 @@ _SAMPLE_DEGREES = _CELL_DEGREES / 2
 # apart its fixes are (a logger that writes a fix a minute): the lines
 # ``time_near`` finds
 _NEAR_DEGREES = _CELL_DEGREES - _SAMPLE_DEGREES / 2
+# MAX_GROUNDSPEED_KNOTS in degrees of latitude a second: a line between two
+# fixes that is faster is a position glitch the parser left (see
+# parser_gx_track._position_spikes) and is not indexed
+_MAX_DEGREES_PER_SECOND = (
+    MAX_GROUNDSPEED_KNOTS / KM_TO_NAUTICAL_MILES / SECONDS_PER_HOUR / KM_PER_DEGREE
+)
 # A shift of the clock is taken for one that at least this many of the
 # moments of ``_clock_shifts`` agree on, to within this many seconds: a
 # fix every few seconds, and a few tens of metres between two receivers
@@ -112,6 +124,29 @@ _MAX_CLOCK_OFFSET_S = 15 * 3600.0
 # before the landing, misses a part of the flight but rarely that much.
 _ENDS_SLACK_S = 30.0
 _ENDS_SHARE = 0.15
+
+# The recordings drop_overlapping_paths found to be of one flight, kept by a
+# digest of everything it reads of its inputs (see _overlaps_key): comparing
+# the 105 flights of data/ took 470 ms, a fifth of a build that found every
+# file in the parse cache, and a build of the same flights finds the same
+# (in 30 ms, mostly for the digest). In a directory of this user's alone,
+# as the parse cache (see cache.store_entry); an entry holds the indices of
+# the paths and nothing of them.
+OVERLAPS_CACHE_DIR = CACHE_DIR / "overlaps"
+# Bump whenever what an entry holds changes
+_OVERLAPS_FORMAT = 1
+# The modules whose code decides which recordings are of one flight
+_OVERLAPS_MODULES = (
+    "constants",
+    "date_tokens",
+    "duplicates",
+    "geometry",
+    "path_content",
+    "types",
+)
+# The metadata of a path the comparison reads (see _one_file, _two_aircraft
+# and path_content.aircraft_known)
+_COMPARED_METADATA = ("aircraft_registration", "aircraft_type", "filename", "source")
 
 
 class _Line(NamedTuple):
@@ -322,7 +357,12 @@ def _index_lines(
     """The lines between the fixes of a recording, by the cells they touch.
 
     A line that stays where it is after the first one is left out: the end
-    of the line before it is as close to any place, and earlier.
+    of the line before it is as close to any place, and earlier. So is one
+    longer than half a cell that no aircraft flies as fast: a fix that
+    jumped thousands of kilometres made a line through tens of thousands of
+    cells, and a place of any other recording on its way was taken for one
+    the flight passed. The fixes at its ends stay on the lines before and
+    after it.
     """
     cells: dict[tuple[int, int], list[_Line]] = {}
     for start in range(len(times) - 1):
@@ -332,6 +372,11 @@ def _index_lines(
         to_east = lons[end] * lon_scale - east
         length = to_north * to_north + to_east * to_east
         if length == 0 and start > 0:
+            continue
+        if (
+            length > _SAMPLE_DEGREES**2
+            and length > (_MAX_DEGREES_PER_SECOND * (times[end] - times[start])) ** 2
+        ):
             continue
         line = _Line(
             start,
@@ -657,7 +702,92 @@ def drop_overlapping_paths(
     are gone through in the order they started, and one that ended long
     before a recording on a real clock started did so before every later
     one. A year left without an exported path is left out.
+
+    What is found is kept for the next build of the same paths (see
+    ``OVERLAPS_CACHE_DIR``), which then only logs it again.
     """
+    key = _overlaps_key(paths_by_year, all_path_groups, all_path_metadata, exported)
+    entry = OVERLAPS_CACHE_DIR / f"{key}.json.zst"
+    pairs = _kept_pairs(load_entry(entry))
+    if pairs is None:
+        pairs = _overlapping_pairs(
+            paths_by_year, all_path_groups, all_path_metadata, exported
+        )
+        store_entry(entry, {"pairs": pairs})
+    for drop, keep in pairs:
+        logger.warning(
+            "Skipping a flight in %s: the same flight as in %s, recorded twice",
+            *_names(all_path_metadata, drop, keep),
+        )
+    return without_paths(paths_by_year, {drop for drop, _ in pairs}, exported)
+
+
+def _overlaps_key(
+    paths_by_year: Mapping[int, list[int]],
+    all_path_groups: FlightPathGroup,
+    all_path_metadata: Sequence[PathMetadata],
+    exported: Mapping[int, object],
+) -> str:
+    """A digest of everything ``_overlapping_pairs`` reads of its inputs.
+
+    The code that compares, the exported paths of every year with the
+    metadata it looks at, and their points with their times to the last
+    bit: two builds that compare the same have the same digest.
+    """
+    fingerprint = source_fingerprint(Path(__file__).parent, _OVERLAPS_MODULES)
+    digest = hashlib.blake2b(
+        f"{_OVERLAPS_FORMAT}:{fingerprint}".encode(), digest_size=16
+    )
+    for year, indices in paths_by_year.items():
+        compared = [index for index in indices if index in exported]
+        described = [
+            {
+                name: all_path_metadata[index].get(name)
+                for name in _COMPARED_METADATA
+                if name in all_path_metadata[index]
+            }
+            for index in compared
+        ]
+        digest.update(
+            json.dumps([year, compared, described], default=str).encode() + b"\0"
+        )
+        for index in compared:
+            values = array("d")
+            for point in all_path_groups[index]:
+                values.extend(
+                    (point.lat, point.lon, nan if point.ts is None else point.ts)
+                )
+            digest.update(len(values).to_bytes(8, "little"))
+            digest.update(values.tobytes())
+    return digest.hexdigest()
+
+
+def _kept_pairs(entry: Any) -> list[tuple[int, int]] | None:
+    """The pairs a kept entry holds (see ``drop_overlapping_paths``), if any."""
+    if not isinstance(entry, dict) or not isinstance(entry.get("pairs"), list):
+        return None
+    pairs = entry["pairs"]
+    if not all(
+        isinstance(pair, list)
+        and len(pair) == 2
+        and all(isinstance(index, int) for index in pair)
+        for pair in pairs
+    ):
+        return None
+    return [(drop, keep) for drop, keep in pairs]
+
+
+def _overlapping_pairs(
+    paths_by_year: Mapping[int, list[int]],
+    all_path_groups: FlightPathGroup,
+    all_path_metadata: Sequence[PathMetadata],
+    exported: Mapping[int, object],
+) -> list[tuple[int, int]]:
+    """The (dropped, kept) recordings of one flight, as they were found.
+
+    See ``drop_overlapping_paths``.
+    """
+    pairs: list[tuple[int, int]] = []
     dropped: set[int] = set()
     for indices in paths_by_year.values():
         timed = {
@@ -708,12 +838,9 @@ def drop_overlapping_paths(
                     ),
                 )
                 dropped.add(drop)
-                logger.warning(
-                    "Skipping a flight in %s: the same flight as in %s, recorded twice",
-                    *_names(all_path_metadata, drop, keep),
-                )
+                pairs.append((drop, keep))
                 if drop == index:
                     break
             if index not in dropped:
                 (real if recording.clock_known else other_clocks).append(index)
-    return without_paths(paths_by_year, dropped, exported)
+    return pairs

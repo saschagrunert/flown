@@ -66,6 +66,7 @@ import { isPageEscape } from "../utils/mapHelpers";
 import { prefersReducedMotion } from "../utils/motion";
 import { announceStatus } from "../utils/toast";
 import { mapChromePadding } from "./pathSelection";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** The control that opens and closes the search in the left column */
 export const SEARCH_BUTTON_ID = "search-btn";
@@ -218,7 +219,7 @@ class LocationSearch {
     panel.className = "location-search";
     panel.setAttribute("role", "search");
     panel.hidden = true;
-    panel.innerHTML = PANEL_HTML;
+    panel.innerHTML = trustedHtml(PANEL_HTML);
     this.panel = panel;
     this.input = panel.querySelector("input")!;
     this.list = panel.querySelector('[role="listbox"]')!;
@@ -560,17 +561,18 @@ class LocationSearch {
           `<div class="location-search-heading" aria-hidden="true">${label}</div>` +
           options.join("") +
           "</div>";
-    this.list.innerHTML =
+    this.list.innerHTML = trustedHtml(
       group(
         "Airports",
         this.airports.map((airport) =>
           option(airport.name, airportDetail(airport)),
         ),
       ) +
-      group(
-        "Places",
-        this.places.map((place) => option(place.name, place.detail)),
-      );
+        group(
+          "Places",
+          this.places.map((place) => option(place.name, place.detail)),
+        ),
+    );
     const listed = this.options.length > 0;
     this.list.hidden = !listed;
     this.input.setAttribute("aria-expanded", String(listed));

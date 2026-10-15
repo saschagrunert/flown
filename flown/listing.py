@@ -1,8 +1,9 @@
 """What ``--list`` shows: every flight of the inputs and what the site makes of it.
 
-The files are parsed as a build parses them (see ``renderer``), without
-writing anything but the parse cache, and a file the build would refuse is
-marked as one.
+The files are parsed as a build parses them (see ``pipeline``), without
+writing anything but the caches a build fills (the parse cache, the parsed
+airport databases and the overlaps found), and a file the build would
+refuse is marked as one.
 """
 
 from dataclasses import dataclass, field
@@ -14,7 +15,7 @@ from .data_exporter import ExportSelection, select_exported_paths
 from .date_tokens import strip_dates
 from .export_writers import free_text_airport_names
 from .path_content import is_exportable_path
-from .renderer import ParsedFile, no_flight_reason, parse_files
+from .pipeline import ParsedFile, no_flight_reason, parse_files, trim_paths
 from .validation import validate_kml_file
 
 if TYPE_CHECKING:
@@ -110,7 +111,7 @@ def _skip_reason(
     return "the same flight as another recording"
 
 
-def list_flights(kml_files: Sequence[str]) -> Listing:
+def list_flights(kml_files: Sequence[str], trim_ends: float = 0) -> Listing:
     """What the site would hold of every file, without writing anything.
 
     Every path gets a row with its year, aircraft, airports (as the site
@@ -122,8 +123,10 @@ def list_flights(kml_files: Sequence[str]) -> Listing:
     process pool when there are many), and the copies and second recordings
     are found the same way (``select_exported_paths``), as are the
     airports, of which the ones not from the airport database are listed
-    too. No elevation tile is fetched and nothing is written but the parse
-    cache.
+    too. No elevation tile is fetched and nothing is written but the
+    caches (see ``flown.cache``). ``trim_ends`` trims the paths first as
+    the build does (see ``pipeline.trim_paths``): the points, the paths
+    left on one spot and the airports are those it publishes.
     """
     rows: list[FlightListing] = []
     parsed: list[ParsedFile] = []
@@ -142,7 +145,7 @@ def list_flights(kml_files: Sequence[str]) -> Listing:
                     kml_file, skipped=error_msg or "not valid", fails_build=True
                 )
             )
-    # The files without a flight fail the build, see renderer._parse_kml_files
+    # The files without a flight fail the build, see pipeline._parse_kml_files
     failing: set[str] = set()
     for entry in parse_files(valid_files, airports_database):
         reason = (
@@ -158,6 +161,7 @@ def list_flights(kml_files: Sequence[str]) -> Listing:
         parsed.append(entry)
 
     paths, metadata, files = _listed_paths(parsed)
+    paths, metadata = trim_paths(paths, metadata, trim_ends)
     exportable = [is_exportable_path(path) for path in paths]
     selection = select_exported_paths(paths, metadata, exportable)
     exported = set(selection.exported())

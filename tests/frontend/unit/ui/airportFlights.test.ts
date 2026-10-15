@@ -6,8 +6,9 @@ import type { Popup } from "maplibre-gl";
 import {
   listFlights,
   runwayUse,
-  flightLabel,
 } from "../../../../flown/frontend/ui/airportFlights";
+import { flightLabel } from "../../../../flown/frontend/features/airports";
+import { flightTotals } from "../../../../flown/frontend/calculations/flightTotals";
 import type { PathInfo } from "../../../../flown/frontend/types";
 import type { PickList } from "../../../../flown/frontend/ui/pathSelection";
 import {
@@ -96,7 +97,7 @@ describe("listFlights", () => {
   it("names each flight by route, aircraft and year, and no distance it has not", () => {
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     expect(buttons(container).map((b) => b.textContent)).toEqual([
       "EDAQ → EDDP · D-EAGJ · 2025",
@@ -151,7 +152,7 @@ describe("listFlights", () => {
     ]);
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     expect(buttons(container).map((b) => b.textContent)).toEqual([
       "EDAQ → EDDP · D-EAGJ · 2025 · 60 nm",
@@ -185,7 +186,7 @@ describe("listFlights", () => {
     mockApp.selectedYear = "2024";
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     expect(buttons(container)).toHaveLength(1);
   });
@@ -194,7 +195,7 @@ describe("listFlights", () => {
     const { popup, mock } = openPopup();
     mock.setLngLat.mockClear();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     expect(mock.setLngLat).not.toHaveBeenCalled();
     expect(mockApp.map!.panBy).not.toHaveBeenCalled();
@@ -207,7 +208,7 @@ describe("listFlights", () => {
     mock.getElement.mockReturnValue(undefined as unknown as HTMLDivElement);
 
     expect(() =>
-      listFlights(asMapApp(mockApp), popup, "EDDP Leipzig"),
+      listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals),
     ).not.toThrow();
 
     expect(buttons(container)).toHaveLength(0);
@@ -216,8 +217,8 @@ describe("listFlights", () => {
   it("does not list twice for the same content", () => {
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     expect(buttons(container)).toHaveLength(3);
   });
@@ -225,14 +226,14 @@ describe("listFlights", () => {
   it("adds no list to an airport without flights", () => {
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "LOWW Vienna");
+    listFlights(asMapApp(mockApp), popup, "LOWW Vienna", flightTotals);
 
     expect(container.querySelector(".popup-flights")).toBeNull();
   });
 
   it("hands a click on a row or its checkbox to the selection, with the list's order", () => {
     const { popup, container } = openPopup();
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
     const pick = mockApp.pathSelection.pickFromList;
 
     buttons(container)[1]!.click();
@@ -254,7 +255,7 @@ describe("listFlights", () => {
     mockApp.selectedPathIds = new Set([11, 12]);
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     const pressed = (): (string | null)[] =>
       buttons(container).map((b) => b.getAttribute("aria-pressed"));
@@ -276,7 +277,7 @@ describe("listFlights", () => {
     // as a choice already made
     mockApp.selectedPathIds = new Set([11, 12, 13]);
     const { popup, container } = openPopup();
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
     const list = container.querySelector(".popup-flights")!;
 
     // Still pressed for a screen reader
@@ -294,7 +295,7 @@ describe("listFlights", () => {
     // Drawn unpressed both ways, a press on it showed nothing
     mockApp.selectedPathIds = new Set([13]);
     const { popup, container } = openPopup();
-    listFlights(asMapApp(mockApp), popup, "Somewhere <b>odd</b>");
+    listFlights(asMapApp(mockApp), popup, "Somewhere <b>odd</b>", flightTotals);
 
     expect(buttons(container)).toHaveLength(1);
     expect(container.querySelector(".popup-flights")!.classList).not.toContain(
@@ -317,7 +318,7 @@ describe("listFlights", () => {
     ]);
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     const labels = [...container.querySelectorAll(".popup-section-label")];
     expect(labels.map((label) => label.textContent)).toEqual([
@@ -332,14 +333,14 @@ describe("listFlights", () => {
   it("shows no runways where no flight has them", () => {
     const { popup, container } = openPopup();
 
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
 
     expect(container.textContent).not.toContain("Runways");
   });
 
   it("closes on Escape from anywhere inside the popup", () => {
     const { popup, mock, container } = openPopup();
-    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig");
+    listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
     const flight = buttons(container)[0]!;
 
     flight.dispatchEvent(

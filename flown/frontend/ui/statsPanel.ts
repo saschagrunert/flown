@@ -17,6 +17,7 @@ import { loadWrapped } from "../services/featureLoader";
 import { domCache } from "../utils/domCache";
 import { logError } from "../utils/logger";
 import { isPageEscape } from "../utils/mapHelpers";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** Panel element the statistics are rendered into */
 export const STATS_PANEL_ID = "stats-panel";
@@ -57,7 +58,7 @@ export function followStatsPanel(app: MapApp): void {
     // as long as the bundle takes
     setStatsTitle(app.selectedPathIds.size > 0);
     if (panel) {
-      panel.innerHTML = LOADING_HTML;
+      panel.innerHTML = trustedHtml(LOADING_HTML);
       panel.setAttribute("aria-busy", "true");
     }
     void app

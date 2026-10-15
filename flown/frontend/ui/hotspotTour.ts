@@ -172,6 +172,13 @@ export function tourZoom(
 }
 
 /**
+ * The hotspots of a filter view, or of a selection isolated in one (`of`):
+ * finding them walks every segment of the dataset, some 45 ms of all the
+ * years of the sample flights on a desktop for every start of the tour
+ */
+const hotspotsOf = new WeakMap<object, { of: object; hotspots: Hotspot[] }>();
+
+/**
  * The places of the tour of what the heatmap of `app` shows on `map`,
  * busiest first, the camera over the first facing as the map does and
  * turned on by TOUR_TURN_DEG over each one after it, where the turn over
@@ -194,7 +201,15 @@ function tourStops(app: MapApp, map: MapLibreMap): TourStop[] {
   const airports = siteData.airports ?? [];
   const { width, height } = mapSize(map);
   const bearing = map.getBearing();
-  return findHotspots(data.path_segments, keep).map((hotspot, index) => ({
+  // Kept by the view, or by the selection a view isolates (a new selection
+  // is a new set, see PathSelection)
+  const key = app.isolateSelection ? selected : view;
+  let found = hotspotsOf.get(key);
+  if (found?.of !== view) {
+    found = { of: view, hotspots: findHotspots(data.path_segments, keep) };
+    hotspotsOf.set(key, found);
+  }
+  return found.hotspots.map((hotspot, index) => ({
     name: hotspotName(hotspot.center, airports, home),
     detail: hotspotDetail(hotspot),
     camera: {

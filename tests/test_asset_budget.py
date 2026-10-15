@@ -6,9 +6,9 @@ build enforces. The stylesheets are minified by the Python side instead (see
 over a project policy would be the wrong place for it, so their budgets are a
 test: it fails in CI on a regression and leaves ``flown`` itself alone.
 
-The measurement goes through the renderer rather than minifying the sources
+The measurement goes through site_assets rather than minifying the sources
 here, so that the budgets keep covering the files the site actually serves
-however the renderer produces them.
+however the generator produces them.
 
 Raise a budget on purpose when a change needs the room, not to make the suite
 pass. They are separate on purpose: only styles.css is on the critical path,
@@ -22,7 +22,7 @@ import pytest
 
 from flown.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
 
-# Bytes of each minified stylesheet as the renderer writes it into a site.
+# Bytes of each minified stylesheet as the generator writes it into a site.
 #
 # styles.css is what every visit loads before the map can be drawn. It was one
 # 68 KB sheet until replay and Wrapped moved into features.css, which cut it to

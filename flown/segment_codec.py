@@ -31,6 +31,15 @@ Format 6 writes the groundspeeds in whole knots instead of tenths. The
 exporter already rounded them to whole knots, so every speed difference
 carried a trailing zero that only cost bytes.
 
+Format 7 writes the coordinates as second differences, the change of the
+difference to the row before. An aircraft keeps its course and speed for
+many rows, so the step it makes changes far less than it is long. The
+other columns gain nothing from it (an altitude or a speed holds still,
+and its first difference is already zero; their second differences came
+out larger), so they stay first differences. The relative times stay in
+tenths: in whole seconds, a segment shorter than the rounding would take
+no time, and the heat it carries would change.
+
 ``flown/frontend/services/yearDecode.ts`` mirrors ``decode_rows`` and
 ``decode_ground``; the year file carries ``FORMAT_VERSION`` so the two cannot
 be mismatched silently.
@@ -62,7 +71,7 @@ __all__ = [
 
 # Bumped whenever the layout below changes, so a page never reads a year
 # file written by another release's exporter as if it were its own
-FORMAT_VERSION = 6
+FORMAT_VERSION = 7
 
 # How each column becomes an integer: the step the exporter rounds it to.
 # process_path_segments rounds coordinates to COORDINATE_DECIMALS ...
@@ -81,6 +90,8 @@ GROUND_STEP = 10
 LAT, LON, ALTITUDE, SPEED, TIME = range(5)
 # The divisor of each column but the altitude, which is multiplied instead
 _SCALES = (COORDINATE_SCALE, COORDINATE_SCALE, 1, SPEED_SCALE, TIME_SCALE)
+# The columns written as second differences (see format 7 above)
+_SECOND_ORDER = (LAT, LON)
 
 # The encoded columns of a path: lat, lon, altitude and speed, then the
 # relative time when any row has one. A row without a time has None there.
@@ -116,18 +127,29 @@ def encode_rows(start: Sequence[float], rows: Sequence[SegmentRow]) -> EncodedCo
     ``start`` seeds the coordinate columns, so the first row is a difference
     like every other one. The remaining columns start from zero.
 
+    The coordinates are second differences: what is written is how much the
+    difference to the row before changed, and the difference before the
+    first row counts as zero.
+
     The time column is left out when no row has a relative time. A row
     without one holds None in it, and the next time is a difference to the
     last row that had one, so a gap does not shift the rows after it.
     """
     previous = [*encode_start(start), 0, 0, 0] if start else [0] * 5
+    # The last difference of each coordinate column
+    step = [0, 0]
     columns: EncodedColumns = [[] for _ in range(5)]
     for row in rows:
         for column, value in enumerate(_scale(row)):
             if value is None:
                 columns[column].append(None)
                 continue
-            columns[column].append(value - previous[column])
+            difference = value - previous[column]
+            if column in _SECOND_ORDER:
+                columns[column].append(difference - step[column])
+                step[column] = difference
+            else:
+                columns[column].append(difference)
             previous[column] = value
     if all(value is None for value in columns[TIME]):
         del columns[TIME]
@@ -147,13 +169,18 @@ def decode_rows(
 ) -> list[SegmentRow]:
     """Undo :func:`encode_rows`. The mirror of the frontend's decoder."""
     previous = [start[LAT] if start else 0, start[LON] if start else 0, 0, 0, 0]
+    step = [0, 0]
     rows: list[SegmentRow] = []
     for deltas in zip(*columns, strict=True):
         row: SegmentRow = []
         for column, difference in enumerate(deltas):
             if difference is None:
                 continue
-            previous[column] += difference
+            if column in _SECOND_ORDER:
+                step[column] += difference
+                previous[column] += step[column]
+            else:
+                previous[column] += difference
             row.append(_unscale(column, previous[column]))
         rows.append(row)
     return rows

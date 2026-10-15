@@ -8,7 +8,10 @@
  * the tokens of shared links (state/shareTokenPack.ts) for Copy link,
  * which every page fetches once it has a moment (initMapApp) and pointing
  * at a share control fetches ahead of the press (prepareOnIntent); the
- * reading of a token is the first visit's. None has a stylesheet of its
+ * reading of a token is the first visit's; and the flight list of an
+ * airport's popup (ui/airportFlights.ts), which a popup opened before the
+ * bundle came waits for (AirportManager.listPopupFlights). None has a
+ * stylesheet of its
  * own: the bar and its sheet are drawn by styles.css, and the rest draws
  * nothing.
  * Whatever it uses has to be the app's or its own, as for the search (see
@@ -22,6 +25,7 @@ export { MobileBar } from "./ui/mobileBar";
 export { MobileSheet } from "./ui/mobileSheet";
 export { exportImage } from "./ui/mapExport";
 export { packShareToken } from "./state/shareTokenPack";
+export { listFlights } from "./ui/airportFlights";
 
 /**
  * The build this bundle belongs to, which the app compares with its own

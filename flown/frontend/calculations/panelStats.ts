@@ -276,7 +276,7 @@ function emptyStatistics(): FilteredStatistics {
 }
 
 /** What the statistics are worked out from */
-interface StatisticsOptions {
+export interface StatisticsOptions {
   pathInfo: PathInfo[];
   segments: PathSegment[];
   year?: string;
@@ -478,8 +478,11 @@ function* statisticsSteps(
   };
 }
 
-/** Statistics by filter view, dropped with the view (and so the dataset) */
-const viewStatistics = new WeakMap<FilterView, FilteredStatistics>();
+/**
+ * Statistics by filter view, dropped with the view (and so the dataset),
+ * and by the options of a selection (see statisticsInSlices)
+ */
+const viewStatistics = new WeakMap<object, FilteredStatistics>();
 /**
  * Statistics of a view being worked out in slices, with how many callers
  * still wait for them: the run stops once none does
@@ -489,7 +492,7 @@ interface PendingStatistics {
   waiters: number;
   stop: AbortController;
 }
-const pendingStatistics = new WeakMap<FilterView, PendingStatistics>();
+const pendingStatistics = new WeakMap<object, PendingStatistics>();
 
 /**
  * How long a slice of the statistics runs before the page gets a turn. A
@@ -508,8 +511,12 @@ function viewOptions(view: FilterView): StatisticsOptions {
   };
 }
 
+/** The options a selection's statistics are kept by, as they are */
+const asGiven = (options: object): StatisticsOptions =>
+  options as StatisticsOptions;
+
 /** Keep the first statistics of a view; a later run found the same */
-function keep(view: FilterView, stats: FilteredStatistics): FilteredStatistics {
+function keep(view: object, stats: FilteredStatistics): FilteredStatistics {
   const kept = viewStatistics.get(view);
   if (kept) return kept;
   viewStatistics.set(view, stats);
@@ -544,11 +551,35 @@ export function filterStatisticsInSlices(
   view: FilterView,
   signal?: AbortSignal,
 ): FilteredStatistics | Promise<FilteredStatistics> {
+  return statisticsInSlices(view, signal, viewOptions);
+}
+
+/**
+ * filterStatisticsInSlices for any `key` the statistics are kept by: a
+ * view, or by default the options of a selection, which the statistics
+ * rail makes anew for each. A large selection, such as every flight of
+ * the home base, took the page as long as a filter's statistics in one
+ * task.
+ */
+export function statisticsInSlices(
+  options: StatisticsOptions,
+  signal?: AbortSignal,
+): FilteredStatistics | Promise<FilteredStatistics>;
+export function statisticsInSlices<K extends object>(
+  key: K,
+  signal: AbortSignal | undefined,
+  optionsOf: (key: K) => StatisticsOptions,
+): FilteredStatistics | Promise<FilteredStatistics>;
+export function statisticsInSlices(
+  view: object,
+  signal?: AbortSignal,
+  optionsOf: (key: object) => StatisticsOptions = asGiven,
+): FilteredStatistics | Promise<FilteredStatistics> {
   const kept = viewStatistics.get(view);
   if (kept) return kept;
   const running = pendingStatistics.get(view);
   if (running) return follow(running, signal);
-  const steps = statisticsSteps(viewOptions(view));
+  const steps = statisticsSteps(optionsOf(view));
   const slice = (): FilteredStatistics | null => {
     const end = performance.now() + SLICE_MS;
     for (;;) {

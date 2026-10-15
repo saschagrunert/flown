@@ -717,6 +717,25 @@ describe("StateManager", () => {
       expect(Object.keys(mockLocalStorage)).toEqual(["flown-state:/b/"]);
     });
 
+    it("keeps the visitor's own flights out of the address", () => {
+      mockApp.selectedAircraft = "D-EAGJ";
+      mockApp.selectedPathIds = new Set([7]);
+      try {
+        setLocalStateMode(true);
+        stateManager.saveMapState();
+      } finally {
+        setLocalStateMode(false);
+      }
+
+      // Saved for the next start on them, under their own key
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        "flown-state:local",
+        expect.stringContaining("D-EAGJ"),
+      );
+      // No registration, flight id or view in the history
+      expect(history.replaceState).toHaveBeenCalledWith(null, "", "/");
+    });
+
     it("does nothing if map is not initialized", () => {
       mockApp.map = null;
 

@@ -39,6 +39,7 @@ import {
 } from "../utils/mapHelpers";
 import { flightCurves } from "../calculations/curves";
 import { findNearestOnCurve, findNearestSegment } from "../features/layers";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** The look the hover tooltip and the tapped popup share (styles.css) */
 const SEGMENT_DETAILS_CLASS = "segment-details";
@@ -202,10 +203,38 @@ export class PathHover {
       return;
     }
     this.lastMove = e;
+    // While a button drags the map, or it moves by itself, the flights pass
+    // under a pointer that rests on them: every frame would walk the tiles
+    // for a tooltip that is gone in the next. It closes until the map has
+    // come to rest, and the look then is under the pointer of the last move.
+    // (A synthetic event of the tests may come without its DOM event.)
+    const map = this.app.map;
+    if (map && (e.originalEvent?.buttons || map.isMoving())) {
+      this.hoverFrame.cancel();
+      this.hideTooltip();
+      this.rehoverAtRest(map);
+      return;
+    }
     // A pointer moves many times per frame, and a query walks the tiles.
     // What the pointer is on is asked in the frame as well, once.
     this.hoverFrame.schedule();
   };
+
+  /** Set while a look waits for the map to come to rest */
+  private restPending = false;
+
+  /** Look under the pointer of the last move once `map` comes to rest */
+  private rehoverAtRest(map: MapLibreMap): void {
+    if (this.restPending) return;
+    this.restPending = true;
+    map.once("moveend", () => {
+      this.restPending = false;
+      // A drag ends its move as the button is let go (or its glide after
+      // that), so the pointer of the last move is where it rests now
+      if (this.destroyed || !this.lastMove) return;
+      this.hover(true);
+    });
+  }
 
   private readonly handleMouseOut = (): void => {
     this.lastMove = null;
@@ -277,7 +306,7 @@ export class PathHover {
     closeWhenBehindGlobe(map, popup);
     popup
       .setLngLat(lngLat)
-      .setHTML(this.paths.describe(hit.segment))
+      .setHTML(trustedHtml(this.paths.describe(hit.segment)))
       .addTo(map);
     this.tappedPathId = hit.pathId;
     // Closed by its own button as well, which MapLibre does by itself
@@ -530,7 +559,7 @@ export class PathHover {
     }));
     if (segment !== this.hovered) {
       this.hovered = segment;
-      tooltip.setHTML(this.paths.describe(segment));
+      tooltip.setHTML(trustedHtml(this.paths.describe(segment)));
       this.onHover?.(segment);
     }
     if (!tooltip.isOpen()) {

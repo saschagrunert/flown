@@ -17,7 +17,7 @@ import type { KMLDataset, RawYearData } from "../types";
  * Wire format of the year files this build reads (flown/segment_codec.py).
  * A file written by another release is refused rather than misread.
  */
-export const DATA_FORMAT_VERSION = 6;
+export const DATA_FORMAT_VERSION = 7;
 
 /**
  * How the encoded columns become values again, the mirror of
@@ -40,7 +40,9 @@ const GROUND_STEP = 10;
  *
  * Every column holds integers scaled to the step the exporter rounded to,
  * stored as differences to the row before (the start point seeds the two
- * coordinate columns). A path without a time column carries no relative
+ * coordinate columns). The coordinates are second differences: each value
+ * is how much the step from the row before changed, the step before the
+ * first row being zero. A path without a time column carries no relative
  * times, and a null in it marks a row without one; the running time then
  * stays where the last row that had one left it. The ground under every
  * row is a column of its own, `ground`, which a path may leave out; one that
@@ -122,6 +124,9 @@ export function decodeYear(raw: RawYearData): DecodedYear {
     // path's start point, the rest at zero
     let latScaled = entry.start?.[0] ?? NaN;
     let lonScaled = entry.start?.[1] ?? NaN;
+    // The last step of each coordinate, which its column changes
+    let latStep = 0;
+    let lonStep = 0;
     let altitudeScaled = 0;
     let speedScaled = 0;
     let timeScaled = 0;
@@ -137,8 +142,10 @@ export function decodeYear(raw: RawYearData): DecodedYear {
     const startLon = lonScaled / COORDINATE_SCALE;
     let row = 0;
     for (; row < latDeltas.length; row++) {
-      latScaled += latDeltas[row]!;
-      lonScaled += lonDeltas?.[row] ?? NaN;
+      latStep += latDeltas[row]!;
+      lonStep += lonDeltas?.[row] ?? NaN;
+      latScaled += latStep;
+      lonScaled += lonStep;
       altitudeScaled += altitudeDeltas?.[row] ?? NaN;
       speedScaled += speedDeltas?.[row] ?? NaN;
       const timeDelta = timeDeltas?.[row] ?? null;
