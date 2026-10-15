@@ -29,12 +29,7 @@ function gitignorePatterns() {
 
 export default defineConfig(
   {
-    ignores: [
-      ...gitignorePatterns(),
-      // Tracked, but generated or vendored
-      "flown/static/**",
-      "flown/templates/**",
-    ],
+    ignores: gitignorePatterns(),
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked.map((config) => ({
@@ -79,6 +74,39 @@ export default defineConfig(
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
           caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+  {
+    // The page enforces Trusted Types (utils/trustedHtml.ts): markup of the
+    // app reaches a sink through trustedHtml, or the default policy turns
+    // it into text. Writing nothing is replaceChildren(), and += would
+    // hand the sink a string again.
+    files: ["flown/frontend/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "AssignmentExpression[left.property.name=/^(inner|outer)HTML$/]:not([operator='='][right.callee.name='trustedHtml'])",
+          message: "Assign trustedHtml(markup) (utils/trustedHtml.ts).",
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name='insertAdjacentHTML']:not([arguments.1.callee.name='trustedHtml'])",
+          message: "Pass trustedHtml(markup) (utils/trustedHtml.ts).",
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name='setHTML']:not([arguments.0.callee.name='trustedHtml'])",
+          message: "Pass trustedHtml(markup) (utils/trustedHtml.ts).",
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(parseFromString|createContextualFragment|setHTMLUnsafe)$/], CallExpression[callee.object.name='document'][callee.property.name=/^write(ln)?$/]",
+          message:
+            "The default policy would escape it (utils/trustedHtml.ts); build the markup for trustedHtml.",
         },
       ],
     },

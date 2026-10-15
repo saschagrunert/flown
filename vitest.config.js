@@ -35,19 +35,19 @@ export default defineConfig({
       "tests/frontend/unit/**/*.test.ts",
       "tests/frontend/contract/**/*.test.ts",
     ],
-    exclude: ["**/node_modules/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
       // The build scripts as well, as pytest measures scripts/*.py: a script
       // only CI runs still shows when its tests stop reaching it. build.js
       // itself builds as it is imported, so its helpers live in scripts/.
-      include: ["flown/frontend/**/*.{js,ts}", "scripts/*.js"],
-      exclude: ["**/node_modules/**"],
+      include: ["flown/frontend/**/*.ts", "scripts/*.js"],
       clean: true,
       // One to three points below what the suite reaches, so a real
       // regression fails the build while a new defensive branch does not.
-      // Codecov enforces patch coverage on top.
+      // Codecov reports the coverage of the changed lines as well, as a
+      // status no pull request has to pass (and none for Dependabot's,
+      // whose runs upload nothing).
       thresholds: {
         lines: 98,
         branches: 91,

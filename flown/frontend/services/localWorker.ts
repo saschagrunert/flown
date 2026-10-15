@@ -95,7 +95,10 @@ export interface BuildOutcome {
 }
 
 export type BuildResponse = { id: number } & (
-  { progress: string } | { done: BuildOutcome } | { error: string }
+  | { progress: string }
+  | { done: BuildOutcome }
+  // `lost`: the runtime failed with it, and the worker goes (RuntimeLost)
+  | { error: string; lost?: true }
 );
 
 /** What the worker uses of Pyodide */
@@ -109,6 +112,8 @@ export interface PyodideLike {
   runPython(code: string): unknown;
   runPythonAsync(code: string): Promise<unknown>;
   globals: { set(name: string, value: unknown): void };
+  /** The class of what a Python exception throws in JavaScript */
+  ffi: { PythonError: abstract new (...args: never[]) => Error };
   FS: {
     mkdirTree(path: string): void;
     mount(type: unknown, options: object, path: string): void;
@@ -292,13 +297,34 @@ export function pythonErrorMessage(error: unknown): string {
   return match?.[1]?.trim() || last.trim() || "The build failed";
 }
 
+/** Said when the runtime itself failed in a build, which a new one gets */
+export const RUNTIME_LOST_MESSAGE =
+  "The Python runtime failed; try again, or with fewer files at a time";
+
+/**
+ * An error of the build that leaves the runtime fatally failed: anything
+ * the Python run throws that is no Python exception (a WebAssembly trap,
+ * the memory run out), after which Pyodide answers every call with "already
+ * fatally failed", and such a failure of a start. The page lets the worker
+ * go with it (LocalBuilder).
+ */
+class RuntimeLost extends Error {}
+
 /**
  * The runtime, loaded once for the worker's lifetime: the package's
  * sources unpacked, the cache directory mounted on IndexedDB and told to
- * the package before it is imported (flown/browser.py says why).
+ * the package before it is imported (flown/browser.py says why). A start
+ * that fails after Pyodide came (the parser, the package's archive around
+ * a deploy, another tab holding the cache) keeps that Pyodide, and the
+ * next build tries only the steps after it: a second one would load the
+ * whole runtime again, and hold two in memory for a while. Unless the
+ * failure was the runtime's own (RuntimeLost).
  */
 export class Runtime {
   private pyodide: Promise<PyodideLike> | null = null;
+  private loaded: Promise<PyodideLike> | null = null;
+  /** Whether the cache is mounted, which a second mount would refuse */
+  private mounted = false;
 
   constructor(
     private readonly loadPyodide: () => Promise<PyodideLoader>,
@@ -319,39 +345,62 @@ export class Runtime {
     return this.pyodide;
   }
 
-  private async start(
-    report: ProgressReport,
-    version: string | undefined,
-  ): Promise<PyodideLike> {
+  private async load(report: ProgressReport): Promise<PyodideLike> {
     report(LOADING_RUNTIME_MESSAGE);
     const watch = this.watchStart();
-    let pyodide: PyodideLike;
     try {
       const loadPyodide = await this.loadPyodide();
-      pyodide = await Promise.race([
+      return await Promise.race([
         loadPyodide({ indexURL: PYODIDE_URL }),
         watch.failed,
       ]);
     } finally {
       watch.stop();
     }
-    report(LOADING_PARSER_MESSAGE);
-    await pyodide.loadPackage("lxml");
-    report(LOADING_PACKAGE_MESSAGE);
-    const sources = await this.fetchSources(version);
-    pyodide.FS.mkdirTree(SOURCES_DIR);
-    pyodide.unpackArchive(sources, "zip", { extractDir: SOURCES_DIR });
-    pyodide.FS.mkdirTree(this.cacheDir);
-    pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, {}, this.cacheDir);
-    // Held up for as long as another tab holds the cache open, or a
-    // deletion of it waits on one (localStore.ts, deleteCache)
-    await within(syncfs(pyodide, true), CACHE_WAIT_MS, CACHE_BUSY_MESSAGE);
-    pyodide.runPython(
-      `import os, sys\n` +
-        `sys.path.insert(0, ${JSON.stringify(SOURCES_DIR)})\n` +
-        `os.environ["FLOWN_CACHE_DIR"] = ${JSON.stringify(this.cacheDir)}\n` +
-        `os.environ["HOME"] = ${JSON.stringify(this.cacheDir)}\n`,
-    );
+  }
+
+  private async start(
+    report: ProgressReport,
+    version: string | undefined,
+  ): Promise<PyodideLike> {
+    this.loaded ??= this.load(report).catch((error: unknown) => {
+      this.loaded = null;
+      throw error;
+    });
+    const pyodide = await this.loaded;
+    try {
+      report(LOADING_PARSER_MESSAGE);
+      await pyodide.loadPackage("lxml");
+      report(LOADING_PACKAGE_MESSAGE);
+      const sources = await this.fetchSources(version);
+      pyodide.FS.mkdirTree(SOURCES_DIR);
+      pyodide.unpackArchive(sources, "zip", { extractDir: SOURCES_DIR });
+      if (!this.mounted) {
+        pyodide.FS.mkdirTree(this.cacheDir);
+        pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, {}, this.cacheDir);
+        this.mounted = true;
+      }
+      // Held up for as long as another tab holds the cache open, or a
+      // deletion of it waits on one (localStore.ts, deleteCache)
+      await within(syncfs(pyodide, true), CACHE_WAIT_MS, CACHE_BUSY_MESSAGE);
+      pyodide.runPython(
+        `import os, sys\n` +
+          `sys.path.insert(0, ${JSON.stringify(SOURCES_DIR)})\n` +
+          `os.environ["FLOWN_CACHE_DIR"] = ${JSON.stringify(this.cacheDir)}\n` +
+          `os.environ["HOME"] = ${JSON.stringify(this.cacheDir)}\n`,
+      );
+    } catch (error) {
+      // A trap, or what Pyodide says to every call after one: the runtime
+      // is not kept for the next try, and the worker goes with it
+      if (
+        error instanceof WebAssembly.RuntimeError ||
+        (error instanceof Error && error.message.includes("fatally failed"))
+      ) {
+        this.loaded = null;
+        throw new RuntimeLost(RUNTIME_LOST_MESSAGE, { cause: error });
+      }
+      throw error;
+    }
     return pyodide;
   }
 
@@ -365,6 +414,7 @@ export class Runtime {
     try {
       pyodide = await this.ready(report, version);
     } catch (error) {
+      if (error instanceof RuntimeLost) throw error;
       const busy =
         error instanceof Error && error.message === CACHE_BUSY_MESSAGE;
       throw new Error(busy ? CACHE_BUSY_MESSAGE : RUNTIME_FAILED_MESSAGE, {
@@ -376,7 +426,7 @@ export class Runtime {
     removeTree(pyodide, OUTPUT_DIR);
     fs.mkdirTree(INPUT_DIR);
     for (const file of files) {
-      // The name decides the aircraft and the year (flown/browser.py)
+      // The name decides the aircraft (flown/browser.py)
       const name = file.name.replace(/[/\\]/g, "_");
       fs.writeFile(`${INPUT_DIR}/${name}`, new Uint8Array(file.bytes));
     }
@@ -395,7 +445,11 @@ export class Runtime {
       )) as string;
       outcome = JSON.parse(result) as Omit<BuildOutcome, "files">;
     } catch (error) {
-      throw new Error(pythonErrorMessage(error), { cause: error });
+      // A Python exception leaves the runtime as it was
+      if (error instanceof pyodide.ffi.PythonError) {
+        throw new Error(pythonErrorMessage(error), { cause: error });
+      }
+      throw new RuntimeLost(RUNTIME_LOST_MESSAGE, { cause: error });
     } finally {
       // The tiles and the airports fetched on the way stay for the next build
       await syncfs(pyodide, false).catch(() => undefined);
@@ -426,7 +480,11 @@ export function serveBuilds(scope: LocalWorkerScope, runtime: Runtime): void {
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        scope.postMessage({ id, error: message });
+        scope.postMessage({
+          id,
+          error: message,
+          ...(error instanceof RuntimeLost && { lost: true }),
+        });
       });
   };
 }
@@ -458,24 +516,38 @@ async function hasIntegrity(
  * Checked here rather than by the browser, which reads the whole of a file
  * before it answers: `watch` sees each part as it comes (runtimeWatch). A
  * file that is not the one pinned rejects, as the browser's check would.
+ *
+ * It fails closed. An answer that is no success rejects whatever its body:
+ * Pyodide reads the lock file without looking at the status, so a 404 or
+ * a 500 with a lock file of its own would hand it other hashes for the
+ * packages, and their code would run with the page's origin. And a file
+ * under the release's URL with no hash, pinned or asked for, rejects too.
  */
 export function verifiedFetch(
   fetch: Fetch,
   watch: () => RuntimeWatch | undefined = () => undefined,
 ): Fetch {
   return async (input, init) => {
-    // A relative URL is the site's, never the CDN's
-    const url = input instanceof Request ? input.url : String(input);
+    // A relative URL is the site's, never the CDN's; resolved, so no
+    // spelling of one under the release (a dot segment, the host in
+    // capitals) passes as another
+    const url = new URL(
+      input instanceof Request ? input.url : String(input),
+      location.href,
+    ).href;
+    const release = url.startsWith(PYODIDE_URL);
     const integrity =
       init?.integrity ||
-      (url.startsWith(PYODIDE_URL)
-        ? PYODIDE_INTEGRITY[url.slice(PYODIDE_URL.length)]
-        : undefined);
-    if (!integrity) return fetch(input, init);
+      (release ? PYODIDE_INTEGRITY[url.slice(PYODIDE_URL.length)] : undefined);
+    if (!integrity && !release) return fetch(input, init);
     const watcher = watch();
     watcher?.begin();
     try {
+      if (!integrity) throw new TypeError(`${url} has no hash pinned`);
       const response = await fetch(input, { ...init, integrity: "" });
+      if (!response.ok) {
+        throw new TypeError(`${url}: HTTP ${response.status}`);
+      }
       const parts: Uint8Array<ArrayBuffer>[] = [];
       const reader = response.body?.getReader();
       for (;;) {
@@ -485,7 +557,7 @@ export function verifiedFetch(
         watcher?.progress();
       }
       const bytes = await new Blob(parts).arrayBuffer();
-      if (response.ok && !(await hasIntegrity(bytes, integrity))) {
+      if (!(await hasIntegrity(bytes, integrity))) {
         throw new TypeError(`${url} is not the file pinned`);
       }
       watcher?.end();

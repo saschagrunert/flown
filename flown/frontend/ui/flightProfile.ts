@@ -54,7 +54,7 @@ import {
   type ProfilePoint,
 } from "../calculations/flightProfile";
 import { datasetIndex } from "../calculations/datasetIndex";
-import { flightRoute } from "./airportFlights";
+import { flightRoute } from "../features/airports";
 import { airplaneLiftPx } from "../calculations/airplaneLift";
 import { liftExaggeration } from "../calculations/lift";
 import { legAt, prepareReplaySegments } from "../features/replay";

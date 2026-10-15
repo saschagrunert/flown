@@ -723,6 +723,16 @@ body.profile-open .toast-stack {
   outline: 2px solid var(--color-text);
   outline-offset: 2px;
 }
+/* A finger gets the target of the other controls (--btn-min-height): a
+   ring around the dot that takes its presses and draws nothing */
+@media (pointer: coarse) {
+  .section-handle::before {
+    content: "";
+    position: absolute;
+    inset: calc((22px - var(--btn-min-height)) / 2);
+    border-radius: var(--radius-pill);
+  }
+}
 /* While a line is drawn the map takes presses as points, and a finger
    drags a line rather than scrolling */
 #map.is-drawing-section .maplibregl-canvas-container {

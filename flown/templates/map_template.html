@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob:; connect-src 'self' blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://nwy-tiles-api.prod.newaydata.com https://s3.amazonaws.com/elevation-tiles-prod/ https://tiles.maps.eox.at https://photon.komoot.io; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob:; connect-src 'self' blob: https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://nwy-tiles-api.prod.newaydata.com https://s3.amazonaws.com/elevation-tiles-prod/ https://tiles.maps.eox.at https://photon.komoot.io; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types flown default"
     />
     <meta
       name="viewport"
@@ -916,13 +916,13 @@
       </div>
     </div>
 
-    <!-- Wrapped Card Modal -->
+    <!-- Wrapped Card Modal, named by the title and the year of its first card -->
     <div
       id="wrapped-modal"
       hidden
       role="dialog"
       aria-modal="true"
-      aria-labelledby="wrapped-title"
+      aria-labelledby="wrapped-title wrapped-year"
     >
       <div id="wrapped-container">
         <div id="wrapped-header">

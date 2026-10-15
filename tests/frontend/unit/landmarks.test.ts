@@ -73,6 +73,20 @@ describe("the landmarks of the page", () => {
     );
     expect(page.getElementById("github-footer")!.localName).toBe("footer");
   });
+
+  it("names Wrapped's dialog by its title and the year it is of", () => {
+    // By the title alone every year's dialog had the same name
+    const ids = page
+      .getElementById("wrapped-modal")!
+      .getAttribute("aria-labelledby")!
+      .split(" ");
+    expect(ids).toEqual(["wrapped-title", "wrapped-year"]);
+    for (const id of ids) {
+      expect(page.getElementById(id)?.closest("#wrapped-modal"), id).not.toBe(
+        null,
+      );
+    }
+  });
 });
 
 describe("Groundspeed before the metadata says there are speeds", () => {

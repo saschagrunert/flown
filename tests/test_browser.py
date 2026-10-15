@@ -164,6 +164,20 @@ class TestInputFiles:
         assert [Path(f).name for f in kml_files] == ["a.KMZ", "b.kml", "c.kml"]
         assert aircraft == [tmp_path / "aircraft.json"]
 
+    def test_in_the_order_of_the_numbers_the_names_start_with(self, tmp_path):
+        # As the site build takes them: 10 after 2, which the list, Replay
+        # and the share intro play in
+        for name in ["10_DEAGJ_DA20.kml", "2_DEAGJ_DA20.kml", "1_DEHYL_DA40.kml"]:
+            (tmp_path / name).write_text("x")
+
+        kml_files, _ = browser.input_files(tmp_path)
+
+        assert [Path(f).name for f in kml_files] == [
+            "1_DEHYL_DA40.kml",
+            "2_DEAGJ_DA20.kml",
+            "10_DEAGJ_DA20.kml",
+        ]
+
     def test_without_an_aircraft_file(self, tmp_path):
         (tmp_path / "a.kml").write_text("x")
 
@@ -347,7 +361,6 @@ class TestBuild:
         cache = tmp_path / "cache" / "kml"
         cache.mkdir(parents=True, mode=0o700)
         monkeypatch.setattr("flown.parser_cache.KML_CACHE_DIR", cache)
-        monkeypatch.setattr("flown.renderer.KML_CACHE_DIR", cache, raising=False)
         inputs = tmp_path / "input"
         inputs.mkdir()
         kml = inputs / "1_DEAGJ_DA20.kml"

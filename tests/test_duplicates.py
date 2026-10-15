@@ -10,6 +10,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+import flown.duplicates as duplicates_module
+from flown.cache import decode_entry, encode_entry
 from flown.duplicates import (
     _CELL_DEGREES,
     _MIN_AGREEING,
@@ -24,6 +26,7 @@ from flown.duplicates import (
     same_flight,
 )
 from flown.types import PathMetadata, TrackPoint
+from tests.conftest import WITHOUT_EFFECT_MODULES, package_imports
 
 # East at 50 m/s (97 kt) at 50 degrees north
 SPEED = 0.0007
@@ -438,8 +441,10 @@ def _shifts_looking_everywhere(first, second):
     ]
 
 
+# Steps of up to 400 m in 2 s or more: no faster than an aircraft flies, so
+# that every line between two fixes is indexed (see _index_lines)
 _WALK = st.lists(
-    st.tuples(st.floats(-0.003, 0.003), st.floats(-0.003, 0.003), st.floats(1.0, 60.0)),
+    st.tuples(st.floats(-0.003, 0.003), st.floats(-0.003, 0.003), st.floats(2.0, 60.0)),
     min_size=2,
     max_size=40,
 )
@@ -453,6 +458,102 @@ def _walk(steps, lat=50.0, lon=8.0):
         lat, lon, time = lat + north, lon + east, time + seconds
     points.append(TrackPoint(lat, lon, 500.0, time))
     return _Timed.of(points)
+
+
+class TestFastLines:
+    def test_a_line_faster_than_any_aircraft_is_not_indexed(self):
+        """A fix 5,000 km off, which the parser left: its lines ran through
+        tens of thousands of cells, and a recording with one took 20 s to
+        compare with the others."""
+        path = _recording(JUNE_2025, 600.0)
+        path[30] = path[30]._replace(lat=5.0)
+        recording = _Timed.of(path)
+        assert recording is not None
+        assert len(recording.reach()) < 9 * len(path)
+        # Nowhere on the way to it, and still at the fixes around it
+        assert recording.time_near(27.5, path[30].lon) is None
+        assert recording.time_near(path[29].lat, path[29].lon) == path[29].ts
+        assert recording.time_near(path[31].lat, path[31].lon) == path[31].ts
+
+    def test_a_long_line_as_fast_as_an_aircraft_is_indexed(self):
+        """A fix a minute at 580 kt: 18 km between two fixes."""
+        recording = _Timed.of(
+            _recording(JUNE_2025, 600.0, step_s=60.0, lon_per_s=0.0042)
+        )
+        assert recording is not None
+        assert recording.time_near(50.0, 8.0 + 0.0042 * 90.0) is not None
+
+
+class TestKeptOverlaps:
+    """A build of the same flights finds the same recordings to drop
+    (see duplicates.OVERLAPS_CACHE_DIR)."""
+
+    @staticmethod
+    def _twice():
+        start = JUNE_2025 + 1000.0
+        coarse = _recording(start, 3600.0, step_s=10.0)
+        fine = _recording(start + 60.0, 3500.0, step_s=3.0, lat=50.0001)
+        return [coarse, [p._replace(lon=8.0 + SPEED * (p.ts - start)) for p in fine]]
+
+    def test_the_second_build_reads_what_the_first_found(self, monkeypatch, caplog):
+        paths = self._twice()
+        assert _drop(paths, ["phone.kml", "panel.kml"]) == {2025: [1]}
+
+        def compare(*args):
+            raise AssertionError("compared again")
+
+        monkeypatch.setattr(duplicates_module, "_overlapping_pairs", compare)
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            assert _drop(paths, ["phone.kml", "panel.kml"]) == {2025: [1]}
+        # Still named, as the build that found it did
+        assert "Skipping a flight in phone.kml: the same flight as in panel.kml" in (
+            caplog.text
+        )
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            lambda paths, names: paths[0].__setitem__(5, paths[0][5]._replace(ts=1.0)),
+            lambda paths, names: paths[1].__setitem__(
+                5, paths[1][5]._replace(lat=51.0)
+            ),
+            lambda paths, names: names.reverse(),
+        ],
+    )
+    def test_other_paths_are_compared_again(self, monkeypatch, change):
+        paths = self._twice()
+        names = ["phone.kml", "panel.kml"]
+        _drop(paths, names)
+        calls = []
+        real = duplicates_module._overlapping_pairs
+
+        def compare(*args):
+            calls.append(args)
+            return real(*args)
+
+        monkeypatch.setattr(duplicates_module, "_overlapping_pairs", compare)
+        change(paths, names)
+        _drop(paths, names)
+        assert len(calls) == 1
+
+    def test_the_kept_entry_is_this_users_alone(self):
+        _drop(self._twice())
+        directory = duplicates_module.OVERLAPS_CACHE_DIR
+        (entry,) = directory.iterdir()
+        assert directory.stat().st_mode & 0o777 == 0o700
+        assert entry.stat().st_mode & 0o777 == 0o600
+
+    def test_an_entry_that_holds_no_pairs_is_compared_again(self, monkeypatch):
+        paths = self._twice()
+        _drop(paths)
+        (entry,) = duplicates_module.OVERLAPS_CACHE_DIR.iterdir()
+        entry.write_bytes(encode_entry({"pairs": [["0", 1]]}))
+        assert _drop(paths) == {2025: [1]}
+        assert decode_entry(entry.read_bytes()) == {"pairs": [[0, 1]]}
+
+    def test_the_fingerprint_covers_every_module_the_comparison_imports(self):
+        imported = package_imports("duplicates") - WITHOUT_EFFECT_MODULES
+        assert imported == set(duplicates_module._OVERLAPS_MODULES)
 
 
 class TestReach:

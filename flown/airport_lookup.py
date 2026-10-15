@@ -12,7 +12,8 @@ import ssl
 import threading
 import time
 import urllib.error
-from typing import TYPE_CHECKING, NamedTuple
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, NamedTuple
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
@@ -25,7 +26,13 @@ except ImportError:
     # Windows doesn't have fcntl
     HAS_FCNTL = False
 
-from .cache import CACHE_DIR, atomic_bytes_write
+from .cache import (
+    CACHE_DIR,
+    atomic_bytes_write,
+    load_entry,
+    source_fingerprint,
+    store_entry,
+)
 from .constants import FEET_TO_METERS, ICAO_REGION_PREFIXES
 from .exceptions import AirportDatabaseError
 from .geometry import true_bearing
@@ -34,7 +41,6 @@ from .logger import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
     from typing import IO, BinaryIO
 
 # Pre-compiled pattern for ICAO code extraction. VIII is no code but August
@@ -101,6 +107,15 @@ MIN_RUNWAY_ROWS = 20_000
 RUNWAY_COLUMNS = ("airport_ident", "le_ident", "he_ident", "closed")
 # A runway designator: a number from 01 to 36, and a letter for parallels
 _DESIGNATOR = re.compile(r"^(0?[1-9]|[12][0-9]|3[0-6])([LCR]?)$")
+
+# The databases as this module reads them, kept by the digest of the file
+# they were read from (see _read_database): reading the CSV files took
+# 480 ms, a fifth of a build that found every flight in the parse cache,
+# reading the kept ones 85 ms. In a directory of this user's alone, as the
+# parse cache (see cache.store_entry).
+PARSED_DATABASE_DIR = CACHE_DIR / "databases"
+# The modules whose code decides what is read of a file
+_READER_MODULES = ("airport_lookup", "constants", "geometry", "helpers", "types")
 
 
 class AirportRecord(NamedTuple):
@@ -390,8 +405,54 @@ def _airport_rows(text: IO[str]) -> dict[str, AirportRecord]:
     return airports
 
 
+class _StoredRows[T](NamedTuple):
+    """How a database is kept once read (see ``_read_database``)."""
+
+    name: str
+    to_json: Callable[[T], Any]
+    from_json: Callable[[Any], T]
+
+
+def _kept_airport(record: list[Any]) -> AirportRecord:
+    lat, lon, name, country, elevation_m = record
+    return AirportRecord(
+        float(lat),
+        float(lon),
+        str(name),
+        str(country),
+        None if elevation_m is None else float(elevation_m),
+    )
+
+
+_STORED_AIRPORTS = _StoredRows[dict[str, AirportRecord]](
+    "airports",
+    lambda airports: {icao: list(record) for icao, record in airports.items()},
+    lambda data: {icao: _kept_airport(record) for icao, record in data.items()},
+)
+_STORED_RUNWAYS = _StoredRows[dict[str, tuple[RunwayEnd, ...]]](
+    "runways",
+    lambda runways: {
+        ident: [list(end) for end in ends] for ident, ends in runways.items()
+    },
+    lambda data: {
+        ident: tuple(RunwayEnd(str(name), float(heading)) for name, heading in ends)
+        for ident, ends in data.items()
+    },
+)
+
+
+def _stored_path(stored: _StoredRows[Any], digest: bytes) -> Path:
+    """Where ``stored`` of the file of ``digest`` is kept, by this code."""
+    fingerprint = source_fingerprint(Path(__file__).parent, _READER_MODULES)
+    name = f"{stored.name}_{digest.hex()[:32]}_{fingerprint}.json.zst"
+    return PARSED_DATABASE_DIR / name
+
+
 def _read_database[T](
-    path: Path, rows: Callable[[IO[str]], T], columns: tuple[str, ...] | None
+    path: Path,
+    rows: Callable[[IO[str]], T],
+    columns: tuple[str, ...] | None,
+    stored: _StoredRows[T] | None = None,
 ) -> tuple[T, bytes] | None:
     """A cached database and the digest of exactly the bytes it was read from.
 
@@ -402,14 +463,37 @@ def _read_database[T](
     results computed with this one. ``columns`` checks the file is complete
     and has them first (see ``_is_valid_csv``), None for no check; None is
     returned for a file that fails it.
+
+    With ``stored``, what was read of a file is kept under its digest and
+    the code that read it (see ``PARSED_DATABASE_DIR``), and read from there
+    the next time; the digest is of the file still.
     """
     with open(path, "rb") as f:
         digest = hashlib.file_digest(f, "sha256").digest()
         if columns is not None and not _is_valid_open_csv(f, columns):
             return None
+        if stored is not None:
+            kept = _kept_database(stored, digest)
+            if kept is not None:
+                return kept, digest
         f.seek(0)
         with io.TextIOWrapper(f, encoding="utf-8") as text:
-            return rows(text), digest
+            database = rows(text)
+    if stored is not None:
+        store_entry(_stored_path(stored, digest), stored.to_json(database))
+    return database, digest
+
+
+def _kept_database[T](stored: _StoredRows[T], digest: bytes) -> T | None:
+    """The database ``_read_database`` kept of the file of ``digest``, if any."""
+    kept = load_entry(_stored_path(stored, digest))
+    if kept is None:
+        return None
+    try:
+        return stored.from_json(kept)
+    except (TypeError, ValueError, AttributeError) as e:
+        logger.debug("The kept %s are unreadable: %s", stored.name, e)
+        return None
 
 
 def _ensure_cache_file(database: _CsvDatabase | None = None) -> None:
@@ -627,6 +711,7 @@ class AirportDatabases:
                         CACHE_FILE,
                         _airport_rows,
                         REQUIRED_COLUMNS if required else None,
+                        stored=_STORED_AIRPORTS,
                     )
                 except (OSError, csv.Error, ValueError, UnicodeDecodeError) as e:
                     logger.warning("Failed to load airport cache: %s", e)
@@ -684,6 +769,7 @@ class AirportDatabases:
                         database.cache_file,
                         _runway_rows,
                         database.columns if required else None,
+                        stored=_STORED_RUNWAYS,
                     )
                 except (OSError, csv.Error, ValueError, UnicodeDecodeError) as e:
                     logger.warning("Failed to load the runway cache: %s", e)

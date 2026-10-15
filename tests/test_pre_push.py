@@ -344,7 +344,18 @@ class TestCommitMessages:
         assert "git commit --amend" in err
 
     @pytest.mark.parametrize(
-        "message", ["Flights of 16 Aug", "Trip KW33", "Heiligabend bei Oma"]
+        "message",
+        [
+            "Flights of 16 Aug",
+            "Trip KW33",
+            "Heiligabend bei Oma",
+            # Compact dates with the year last, and six digits after a
+            # separator or with the time after them
+            "Add flight 16082026",
+            "Add flight 08162026",
+            "Add log_260816",
+            "Add flight 260816-1430",
+        ],
     )
     def test_refuses_what_dates_a_flight(self, repo, message):
         sha = commit(repo, {"data/2.kml": CLEAN_KML, "data/3.kml": CLEAN_KML}, message)
@@ -365,6 +376,11 @@ class TestCommitMessages:
             "Add two flights to EDDS",
         )
         assert run_check(repo, push_of(sha)) == 0
+
+    def test_refuses_a_dated_message_of_flights_outside_data(self, repo):
+        """A copy keeps its flights where FLOWN_INPUT_DIR says (hosting.md)."""
+        sha = commit(repo, {"flights/2.kml": CLEAN_KML}, "Add flight 16 Aug 2026")
+        assert run_check(repo, push_of(sha)) == 1
 
     def test_ignores_messages_of_commits_without_flights(self, repo):
         sha = commit(repo, {"README.md": "x"}, "Docs of 16 Aug 2026")
@@ -404,6 +420,27 @@ class TestRefNames:
         err = capsys.readouterr().err
         assert "ref refs/heads/flights-2026-08-16: 2026-08-16" in err
         assert "named without the dates" in err
+
+    @pytest.mark.parametrize(
+        "branch",
+        [
+            "refs/heads/flights-260816",
+            "refs/heads/260816",
+            "refs/heads/flight-16-08",
+            "refs/heads/flights-16082026",
+        ],
+    )
+    def test_refuses_a_branch_with_a_compact_date(self, repo, branch, capsys):
+        sha = commit(repo, {"data/2.kml": CLEAN_KML, "data/3.kml": CLEAN_KML})
+        lines = [f"refs/heads/x {sha} {branch} {pre_push.ZERO_SHA}"]
+        assert run_check(repo, lines) == 1
+        assert f"ref {branch}: " in capsys.readouterr().err
+
+    def test_refuses_a_dated_branch_with_flights_outside_data(self, repo):
+        sha = commit(repo, {"flights/2.kml": CLEAN_KML})
+        branch = "refs/heads/flights-2026-08-16"
+        lines = [f"refs/heads/x {sha} {branch} {pre_push.ZERO_SHA}"]
+        assert run_check(repo, lines) == 1
 
     def test_refuses_a_branch_named_after_a_weekday(self, repo):
         sha = commit(repo, {"data/2.kml": CLEAN_KML, "data/3.kml": CLEAN_KML})
@@ -508,6 +545,56 @@ class TestMain:
         assert "cannot check" in capsys.readouterr().err
 
 
+class TestCheckRange:
+    """CI checks every commit a push or a pull request adds, not the tip."""
+
+    def test_refuses_a_real_date_a_later_commit_fixes(self, repo, capsys):
+        base = git(repo, "rev-parse", "HEAD")
+        dated = commit(repo, {"data/2.kml": REAL_KML})
+        fixed = commit(repo, {"data/2.kml": CLEAN_KML})
+        assert pre_push.check_range(repo, base, fixed) == 1
+        err = capsys.readouterr().err
+        assert f"{dated[:7]} data/2.kml" in err
+        assert "never\nfetched from" not in err
+
+    def test_refuses_a_dated_message(self, repo, capsys):
+        base = git(repo, "rev-parse", "HEAD")
+        sha = commit(repo, {"data/2.kml": CLEAN_KML}, "Add flight 16082026")
+        assert pre_push.check_range(repo, base, sha) == 1
+        assert f"{sha[:7]} commit message: 16082026" in capsys.readouterr().err
+
+    def test_skips_what_the_base_has(self, repo):
+        commit(repo, {"data/2.kml": REAL_KML})
+        base = commit(repo, {"data/2.kml": CLEAN_KML})
+        sha = commit(repo, {"data/3.kml": CLEAN_KML})
+        assert pre_push.check_range(repo, base, sha) == 0
+
+    def test_checks_the_whole_history_without_a_base(self, repo):
+        commit(repo, {"data/2.kml": REAL_KML})
+        sha = commit(repo, {"data/2.kml": CLEAN_KML})
+        assert pre_push.check_range(repo, pre_push.ZERO_SHA, sha) == 1
+
+    def test_the_command_line(self, repo, monkeypatch):
+        base = git(repo, "rev-parse", "HEAD")
+        sha = commit(repo, {"data/2.kml": REAL_KML})
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr(sys, "argv", ["pre_push.py", "--range", base, sha])
+        assert pre_push.main() == 1
+        monkeypatch.setattr(sys, "argv", ["pre_push.py", "--range", base, base])
+        assert pre_push.main() == 0
+
+    def test_a_base_it_does_not_have_fails(self, repo, monkeypatch, capsys):
+        """A shallow clone without the base commit cannot pass for clean."""
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr(sys, "argv", ["pre_push.py", "--range", "1" * 40, "HEAD"])
+        assert pre_push.main() == 1
+        assert "cannot check the commits" in capsys.readouterr().err
+
+    def test_the_range_needs_both_ends(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["pre_push.py", "--range", "HEAD"])
+        assert pre_push.main() == 2
+
+
 WRAPPER = SCRIPT.parent / "pre-push-hook"
 MAKEFILE = SCRIPT.parent.parent / "Makefile"
 MAKE = shutil.which("make")
@@ -525,7 +612,9 @@ def _with_remote(repo: Path, tmp_path: Path) -> Path:
     return hook
 
 
-def _push(repo: Path) -> subprocess.CompletedProcess[str]:
+def _push(
+    repo: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     assert GIT is not None
     return subprocess.run(  # noqa: S603
         [GIT, "push", "-q", "origin", "main"],
@@ -533,7 +622,21 @@ def _push(repo: Path) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
+
+
+def _old_pythons(tmp_path: Path) -> dict[str, str]:
+    """An environment whose python3.14, python3 and python are all too old,
+    as outside the virtual environment on macOS: each fails the version
+    check the wrapper asks it"""
+    shims = tmp_path / "old-pythons"
+    shims.mkdir()
+    for name in ("python3.14", "python3", "python"):
+        shim = shims / name
+        shim.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        shim.chmod(0o755)
+    return {**os.environ, "PATH": f"{shims}{os.pathsep}{os.environ['PATH']}"}
 
 
 class TestInstalledHook:
@@ -575,6 +678,32 @@ class TestHookWrapper:
         refused = _push(repo)
         assert refused.returncode != 0
         assert "is missing" in refused.stderr
+
+    def test_refuses_the_push_without_a_python_new_enough(self, repo, tmp_path):
+        hook = _with_remote(repo, tmp_path)
+        shutil.copy(WRAPPER, hook)
+        (repo / "scripts").mkdir()
+        (repo / "scripts" / "pre_push.py").symlink_to(SCRIPT)
+
+        commit(repo, {"data/2.kml": CLEAN_KML})
+        refused = _push(repo, _old_pythons(tmp_path))
+        assert refused.returncode != 0
+        assert "no Python 3.14 or newer" in refused.stderr
+
+    def test_runs_the_check_with_the_python_of_the_worktree(self, repo, tmp_path):
+        """A Git GUI runs the hook outside the virtual environment."""
+        hook = _with_remote(repo, tmp_path)
+        shutil.copy(WRAPPER, hook)
+        (repo / "scripts").mkdir()
+        (repo / "scripts" / "pre_push.py").symlink_to(SCRIPT)
+        venv = repo / ".venv" / "bin"
+        venv.mkdir(parents=True)
+        (venv / "python").symlink_to(sys.executable)
+
+        commit(repo, {"data/2.kml": REAL_KML})
+        refused = _push(repo, _old_pythons(tmp_path))
+        assert refused.returncode != 0
+        assert "Push refused" in refused.stderr
 
     @pytest.mark.skipif(MAKE is None, reason="needs make")
     def test_make_hooks_replaces_the_link_of_an_earlier_install(self, repo, tmp_path):

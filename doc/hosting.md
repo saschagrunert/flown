@@ -9,22 +9,28 @@ any other host.
 
 ## Your own site on GitHub Pages
 
-The `test` workflow builds the site from `data/` and publishes it to GitHub
-Pages on every push to `main`, once every test has passed. To get the same for
-your own flights:
+The `test` workflow builds the site from `data/`, or from the directory the
+repository variable `FLOWN_INPUT_DIR` names, and publishes it to GitHub Pages on
+every push to `main`, once every test has passed. To get the same for your own
+flights:
 
 1. Fork the repository on GitHub (or create a repository from a clone of it).
 2. Enable the workflows: GitHub turns them off in a fork until you confirm them
    on its Actions tab.
 3. Set Settings > Pages > Source to "GitHub Actions". The workflow cannot set it
    itself: its token is not allowed to change the Pages settings.
-4. Replace the flights: delete the KML files in `data/` and
-   `data/aircraft.json`, then add your own as
-   [Adding flights](adding-flights.md) describes, obfuscated before they are
-   committed (`make obfuscate`, and `make hooks` so a push with a real date is
-   refused). Your files may sit in subdirectories of `data/`.
-5. Add the repository variable `FLOWN_OWN_FLIGHTS` with the value `1`
-   (Settings > Secrets and variables > Actions > Variables), see below.
+4. Put your flights in a directory of their own, such as `flights/`, as
+   [Adding flights](adding-flights.md) describes for `data/` (the names of the
+   files, `aircraft.json` next to them), obfuscated before they are committed
+   (`make obfuscate INPUT_DIR=flights`, and `make hooks` so a push with a real
+   date is refused; the hook needs Python 3.14 or newer, see
+   [Commit and publish](adding-flights.md#7-commit-and-publish)). Your files may
+   sit in subdirectories. Leave `data/` as it is: an update from this repository
+   changes it (see below).
+5. Add two repository variables (Settings > Secrets and variables > Actions >
+   Variables): `FLOWN_INPUT_DIR` with the directory of your flights (`flights`),
+   which the workflow builds the site from in place of `data/`, and
+   `FLOWN_OWN_FLIGHTS` with the value `1`, see below.
 6. Optionally add a CARTO tile API key as the repository secret `CARTO_API_KEY`
    (same page, Secrets). The base map loads without one (see
    [With an API key](usage.md#with-an-api-key-optional)).
@@ -32,11 +38,17 @@ your own flights:
    `https://<owner>.github.io/<repository>/`; the deploy job's summary names the
    address.
 
+Build it locally with `make build INPUT_DIR=flights` (or
+`python -m flown flights`), and check it with
+`make check-obfuscation INPUT_DIR=flights`. The CI lint job checks the files of
+`FLOWN_INPUT_DIR` and of `data/`, which are just as public.
+
 Some tests are written against the flights of this repository: the golden
 pipeline test (`GOLDEN_FILES` in `tests/test_pipeline_golden.py`), the landing
 and segment tests that read named files of `data/` (marked `repo_data`), and the
-e2e specs, which drive a site built from `data/` and expect a few flights in its
-latest year. With other flights they fail, and then nothing is published.
+e2e specs, which drive a site built from the flights of the site
+(`FLOWN_INPUT_DIR`) and expect a few of this repository's in its latest year.
+With other flights they fail, and then nothing is published.
 `FLOWN_OWN_FLIGHTS=1` skips them: pytest leaves out the tests marked
 `repo_data`, and the workflow skips its e2e jobs, which the `checks` job then
 accepts as skipped. Everything else still runs, the build of your site, the unit
@@ -45,6 +57,36 @@ environment for a local `make test` as well.
 
 The other repository settings are optional for a site of your own; the ones this
 repository uses are in [Repository rules](../CONTRIBUTING.md#repository-rules).
+
+### Keeping it up to date
+
+New releases of the code come from this repository: "Sync fork" on the fork's
+page on GitHub merges them into your `main`, or in a clone, with this repository
+as the remote `upstream`:
+
+```bash
+git fetch upstream
+git merge upstream/main
+git push origin main
+```
+
+The push runs the workflow, which publishes your site with the new code once the
+tests pass. An update brings this repository's new flights along, as new files
+in `data/`, which merge without a conflict. With `FLOWN_INPUT_DIR` naming your
+own directory they stay out of your site; only the tests read `data/`. Without
+it the site is built from `data/`, and every flight this repository adds would
+be published on yours as well. A merge only conflicts where you changed a file
+the update changes too, which is why `data/` is best left alone.
+
+A copy set up before `FLOWN_INPUT_DIR`, with its flights in place of the ones of
+`data/`, moves them to a directory of their own and takes `data/` back (after
+the `git fetch upstream` above), then sets the variable:
+
+```bash
+git mv data flights
+git checkout upstream/main -- data
+git commit -s -m "chore: keep the flights in flights/"
+```
 
 ## Any static host
 

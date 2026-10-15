@@ -363,7 +363,7 @@ describe("createYearDecoder", () => {
       expect(await drawn.source.text()).toBe(await expected.source.text());
     }
 
-    it("asks the worker to draw a heat, packed here and copied, not handed over", async () => {
+    it("asks the worker to draw a heat, packed here and handed over", async () => {
       const decoder = createYearDecoder({ createWorker });
       const postMessage = vi.spyOn(worker, "postMessage");
 
@@ -371,7 +371,8 @@ describe("createYearDecoder", () => {
 
       const [request, transfer] = postMessage.mock.calls[0]!;
       expect(request).toEqual({ id: 0, heat: heatColumns(points, weights) });
-      expect(transfer).toEqual([]);
+      const { heat } = request as { heat: Float64Array };
+      expect(transfer).toEqual([heat.buffer]);
       expect(logError).not.toHaveBeenCalled();
     });
 
@@ -456,6 +457,11 @@ describe("createYearDecoder", () => {
       worker.answers = false;
       const decoder = createYearDecoder({ createWorker });
       const owed = decoder.drawHeat(points, weights);
+      // Taken as a real worker takes it, which leaves the page's column
+      // empty: the heat is packed again to be drawn here
+      const { heat } = worker.requests[0] as { heat: Float64Array };
+      structuredClone(heat, { transfer: [heat.buffer] });
+      expect(heat).toHaveLength(0);
 
       worker.say({
         id: 0,

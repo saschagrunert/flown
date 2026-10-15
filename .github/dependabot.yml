@@ -54,6 +54,7 @@ updates:
           - "ruff"
           - "mypy"
           - "zizmor"
+          - "pre-commit-hooks"
       # The type stubs of lxml, bumped together with it
       core:
         patterns:
@@ -111,7 +112,7 @@ updates:
       # e2e jobs run in the Playwright image, whose tag and digest in
       # test.yml (and the same reference in CONTRIBUTING.md and
       # doc/development/testing.md) have to be bumped by hand on the same
-      # branch. scripts/check_locks.py fails the lint job until they are;
+      # branch. scripts/check_pins.py fails the lint job until they are;
       # the visual job comment in test.yml says how to look up the digest.
       playwright:
         patterns:
@@ -219,7 +220,7 @@ updates:
     ignore:
       # The Python and Node.js versions follow .python-version and .nvmrc,
       # which CI uses and Dependabot does not bump; move all of them together
-      # by hand (scripts/check_locks.py fails the lint job until every place
+      # by hand (scripts/check_pins.py fails the lint job until every place
       # agrees). Digest updates of the current tags still come through.
       - dependency-name: "library/python"
         update-types:
@@ -231,7 +232,7 @@ updates:
           - "version-update:semver-minor"
       # uv is the release the setup-toolchain action installs in CI as well,
       # which Dependabot does not bump; move both by hand
-      # (scripts/check_locks.py fails the lint job until they agree).
+      # (scripts/check_pins.py fails the lint job until they agree).
       # Digest updates of the current tag still come through.
       - dependency-name: "astral-sh/uv"
         update-types:
@@ -239,13 +240,15 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
 
-  # pre-commit hook revisions. Only the two pinned repos are left in
-  # .pre-commit-config.yaml; the linters and formatters run from the project
-  # environment, so nothing here can drift from what CI installs. The CI
-  # security job runs the gitleaks image test.yml pins by digest and checks
-  # that it is the release the hook pins, so a bump of the gitleaks rev fails
-  # that job until the digest is updated by hand on the same branch (the
-  # comment of that step says how to look it up).
+  # pre-commit hook revisions. Only gitleaks is left as a pinned repo in
+  # .pre-commit-config.yaml; the linters, formatters and file checks run
+  # from the project environment, so nothing here can drift from what CI
+  # installs. The CI security job runs the gitleaks image test.yml pins by
+  # digest, with its release in a comment, so a bump of the gitleaks rev
+  # fails the lint job (scripts/check_pins.py compares the comment with the
+  # rev) and the security job (which compares the release the image
+  # reports) until the image is updated by hand on the same branch (the
+  # comment of that step says how to look up the digest).
   - package-ecosystem: "pre-commit"
     directory: "/"
     # See the cooldown of the uv entry

@@ -471,7 +471,7 @@ describe("expandYearData", () => {
     ).toThrow("segments");
   });
 
-  it.each([undefined, 5, 7, "6"])(
+  it.each([undefined, 6, 8, "7"])(
     "refuses a year file written in format %s",
     (format) => {
       expect(() =>
@@ -511,5 +511,33 @@ describe("expandYearData", () => {
     expect(data.path_segments[1]!.altitude_ft).toBe(600);
     expect(data.path_segments[1]!.groundspeed_knots).toBe(3);
     expect(data.path_segments[1]!.time).toBe(4);
+  });
+
+  it("reads the coordinates as second differences", () => {
+    // Written by hand rather than by path(): steps of 2, 3, 2 and 0 in the
+    // latitude are the changes 2, 1, -1 and -2 of the step
+    const data = expandYearData(
+      rawYear(2025, {
+        "1": {
+          start: [5_000_000, 800_000],
+          columns: [
+            [2, 1, -1, -2],
+            [1, 0, 0, -1],
+            [25, 0, 0, 0],
+            [90, 0, 0, 0],
+            [10, 0, 15, 10],
+          ],
+        },
+      }),
+    );
+
+    expect(data.path_segments.map((s) => s.coords[1])).toEqual([
+      [50.00002, 8.00001],
+      [50.00005, 8.00002],
+      [50.00007, 8.00003],
+      [50.00007, 8.00003],
+    ]);
+    // The time stays a first difference, in tenths of a second
+    expect(data.path_segments.map((s) => s.time)).toEqual([1, 1, 2.5, 3.5]);
   });
 });

@@ -6,7 +6,7 @@
 
 # uv, which installs the Python dependencies from uv.lock below. Only its
 # binary is used, mounted into the step that runs it, so it never becomes a
-# layer of the image. The same release as CI (scripts/check_locks.py).
+# layer of the image. The same release as CI (scripts/check_pins.py).
 FROM ghcr.io/astral-sh/uv:0.12.24@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a AS uv
 
 # Stage 1: build the JavaScript bundles

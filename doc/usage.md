@@ -236,7 +236,12 @@ locally, from the virtual environment and `node_modules` (see
 [CONTRIBUTING.md](../CONTRIBUTING.md)). With docker the containers run as your
 user id so that generated files are not owned by root; with rootless podman the
 Makefile adds `--userns=keep-id` so that the same user id works inside the
-container.
+container. Every container runs with `--cap-drop=ALL` and
+`--security-opt=no-new-privileges`, `make serve` with `--read-only` as well, and
+on a host with SELinux under its confinement: the directories mounted carry `:z`
+(`:Z` for the cache), so podman and docker relabel them for the container rather
+than leaving it unconfined. Point `INPUT_DIR` and `OUTPUT_DIR` at directories
+that hold nothing but the flights and the site: they keep that label.
 
 ## Docker usage
 
@@ -283,11 +288,10 @@ password database; the commands above go without it, because the cache is
 directory when it has no home (see
 [Cache directory](output.md#cache-directory)). `serve.py` serves `DATA_DIR`
 (default `/data`) and reads `BIND_HOST` (default `127.0.0.1`, hence `0.0.0.0`
-inside the container), `PORT` (default `8000`), `CORS_ORIGIN` (unset by default)
-and `OPEN_URL`, the address it prints (default `http://localhost:PORT/`;
-`make serve` passes the host's). It sends `Cache-Control: no-store`, for
-development; the headers of a published site are in
-[Hosting](hosting.md#headers-and-compression).
+inside the container), `PORT` (default `8000`) and `OPEN_URL`, the address it
+prints (default `http://localhost:PORT/`; `make serve` passes the host's). It
+sends `Cache-Control: no-store`, for development; the headers of a published
+site are in [Hosting](hosting.md#headers-and-compression).
 
 ## Python usage
 
@@ -360,8 +364,10 @@ Output:
   database the site would publish (see
   [Privacy](privacy.md#what-reaches-the-site)). It writes no site and downloads
   no elevation tiles; the parse cache and the airport database are used and
-  filled as by a build. It exits with 0, or with 2 when a build of the inputs
-  would fail, as the build would.
+  filled as by a build. With `--trim-ends` it lists the flights trimmed, as the
+  site would publish them; `--obfuscate-inputs` cannot go with it (a usage
+  error, as it rewrites nothing). It exits with 0, or with 2 when a build of the
+  inputs would fail, as the build would.
 - `-q`, `--quiet` - Print only warnings and errors, and one line at the end
   naming the output directory and the years in it
 - `--debug` - Show debug output (it wins over `--quiet`)
@@ -387,7 +393,9 @@ Privacy:
 - `--trim-ends METRES` - Leave out the points of every flight within `METRES` of
   where it starts and ends, so the taxiing and the spot the aircraft is parked
   on are not published (default: 0, keep them; 300 covers most fields). A
-  recording that never leaves that distance is left out. See
+  recording that never leaves that distance is left out. The KML files keep
+  their ends, so this hides nothing while they are public, as those in `data/`
+  of a repository on GitHub are, and the deploy job does not use it. See
   [Privacy](privacy.md#what-reaches-the-site).
 
 Network and cache:
@@ -665,8 +673,9 @@ attribute, and not the id after the `#` of a reference such as
 `<styleUrl>#1712345678901</styleUrl>`) that reads as a Unix time between 2000
 and today, in seconds or milliseconds, fails the check unless it is midnight on
 January 1st: `Unix time not at midnight on Jan 1, remove it: 1710406320`. The
-rewrite takes it out of names and descriptions; anywhere else it cannot tell
-whether it is a time or some other number, so it leaves it alone: remove or
-change it by hand. Numbers that would be a time after today, such as most phone
-numbers, pass, and so do the distances and angles of a view (`<range>`,
-`<altitude>`, `<heading>`).
+rewrite takes it out of names and descriptions, and out of the other elements of
+free text (a `<Snippet>`, the `<value>` of a Data) where other text stands with
+it; alone in a value, or anywhere else, it cannot tell whether it is a time or
+some other number, so it leaves it alone: remove or change it by hand. Numbers
+that would be a time after today, such as most phone numbers, pass, and so do
+the distances and angles of a view (`<range>`, `<altitude>`, `<heading>`).

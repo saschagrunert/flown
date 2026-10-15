@@ -32,7 +32,9 @@ import { siteData } from "../state/siteData";
 import { AirportCodes, type CodeMarker } from "./airportLabels";
 import type { CodePlace } from "../calculations/codePlacement";
 import { prefersReducedMotion } from "../utils/motion";
-import { listFlights } from "./airportFlights";
+import { flightTotals } from "../calculations/flightTotals";
+import { loadExtras, loadedExtras } from "../services/featureLoader";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** Whether two sets of airports (null for all) hold the same ones */
 function sameAirports(
@@ -359,15 +361,17 @@ export class AirportManager {
 
     const counts = this.airportFlightCounts();
     this.popup.setHTML(
-      generateAirportPopupHtml({
-        name: airport.name,
-        lat: airport.lat,
-        lon: airport.lon,
-        latDms: ddToDms(airport.lat, true),
-        lonDms: ddToDms(airport.lon, false),
-        flightCount: counts[airport.name] || 0,
-        isHomeBase: airport.name === findHomeBase(counts),
-      }),
+      trustedHtml(
+        generateAirportPopupHtml({
+          name: airport.name,
+          lat: airport.lat,
+          lon: airport.lon,
+          latDms: ddToDms(airport.lat, true),
+          lonDms: ddToDms(airport.lon, false),
+          flightCount: counts[airport.name] || 0,
+          isHomeBase: airport.name === findHomeBase(counts),
+        }),
+      ),
     );
     if (this.popup.isOpen()) this.listPopupFlights(name);
   }
@@ -381,11 +385,24 @@ export class AirportManager {
    * popup taller. MapLibre neither tells when content changes nor keeps a
    * popup inside the map the way Leaflet did, so both are done here: the
    * popup is laid out again and the map panned until it shows in full.
+   *
+   * The list comes with the extras bundle (ui/airportFlights.ts), which
+   * every page fetches once it has a moment. A popup that opens before
+   * that asks for it, and is listed once it is there, if it is still open
+   * on the airport; without the bundle it shows without its list, and the
+   * next one asks again.
    */
   private listPopupFlights(name: string): void {
     const map = this.app.map;
     if (!map) return;
-    listFlights(this.app, this.popup, name);
+    const extras = loadedExtras();
+    if (!extras) {
+      void loadExtras().then((loaded) => {
+        if (loaded && this.isPopupOpen(name)) this.listPopupFlights(name);
+      });
+      return;
+    }
+    extras.listFlights(this.app, this.popup, name, flightTotals);
     // The side the popup hangs on was chosen for the height it had before
     // the list; setting the same position chooses again
     this.popup.setLngLat(this.popup.getLngLat());

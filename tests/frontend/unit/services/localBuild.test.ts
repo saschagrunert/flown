@@ -95,6 +95,26 @@ describe("LocalBuilder", () => {
     await expect(build).rejects.toThrow("No valid KML files to process!");
   });
 
+  it("keeps the worker after a build's error, and lets it go when its runtime is lost", async () => {
+    const { builder, workers } = setup();
+
+    const one = builder.build([], false, vi.fn());
+    workers[0]!.answer({ id: 1, error: "not a KML file" });
+    await expect(one).rejects.toThrow("not a KML file");
+    expect(workers[0]!.terminated).toBe(0);
+
+    // Pyodide answers every call after a fatal error with another
+    const two = builder.build([], false, vi.fn());
+    workers[0]!.answer({ id: 2, error: "The runtime failed", lost: true });
+    await expect(two).rejects.toThrow("The runtime failed");
+    expect(workers[0]!.terminated).toBe(1);
+
+    const three = builder.build([], false, vi.fn());
+    expect(workers).toHaveLength(2);
+    workers[1]!.answer({ id: 3, done: OUTCOME });
+    await expect(three).resolves.toBe(OUTCOME);
+  });
+
   it("gives every build its own id on one worker", async () => {
     const { builder, workers } = setup();
     const first = vi.fn();

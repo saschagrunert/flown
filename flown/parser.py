@@ -235,6 +235,13 @@ _GX_DECLARATION = b'xmlns:gx="http://www.google.com/kml/ext/2.2"'
 # The start tag of the root, with the prefix of a writer that gives the KML
 # namespace one (<kml:kml>)
 _KML_START = re.compile(rb"<((?:[\w.-]+:)?kml)(?=[\s/>])")
+# The byte order mark some Windows editors put before a UTF-8 document
+_UTF8_BOM = b"\xef\xbb\xbf"
+# The namespaces of KML: Google Earth's legacy ones (earth.google.com/kml/2.0
+# to 2.2) and those of the OGC (opengis.net/kml/2.2 and 2.3)
+_KML_NAMESPACE_PATTERN = re.compile(
+    r"http://(?:earth\.google\.com|www\.opengis\.net)/kml/\d+\.\d+"
+)
 
 
 def _xml_parser(*, recover: bool = False) -> etree.XMLParser:
@@ -263,11 +270,14 @@ def _repaired(data: bytes) -> bytes | None:
     """A document with the slips of some writers mended, None if it has none.
 
     White space before the XML declaration, which allows nothing before
-    it, and gx: elements without the declaration of their namespace.
+    it (also after a UTF-8 byte order mark, which goes with it: UTF-8 is
+    what a document without one is read as), and gx: elements without the
+    declaration of their namespace.
     """
     repaired = data
-    if data[:1].isspace() and data.lstrip().startswith(b"<?xml"):
-        repaired = repaired.lstrip()
+    text = data.removeprefix(_UTF8_BOM)
+    if text[:1].isspace() and text.lstrip().startswith(b"<?xml"):
+        repaired = text.lstrip()
     if b"<gx:" in repaired and b"xmlns:gx" not in repaired:
         repaired = _KML_START.sub(rb"<\1 " + _GX_DECLARATION, repaired, count=1)
     return repaired if repaired != data else None
@@ -284,28 +294,25 @@ def _parse_kml_tree(kml_file: str) -> tuple[etree._Element, KMLParseError | None
     when no path came of it.
     """
     damage: KMLParseError | None = None
-    data: bytes | None = None
     try:
         if kml_file.lower().endswith(".kmz"):
             data = _read_kmz(kml_file)
-            tree = etree.fromstring(data, _xml_parser()).getroottree()
         else:
-            # As bytes: libxml2 wants the name in UTF-8, and one that is not
-            # (unzipped from a Windows archive, copied off an old FAT drive)
-            # holds surrogates Python cannot encode
-            tree = etree.parse(os.fsencode(kml_file), _xml_parser())
+            # Read here rather than by etree.parse from the path: libxml2
+            # reports a byte that is no UTF-8 (a Windows-1252 "ü" in a name)
+            # in a file it reads as an OSError, and the damage recovery that
+            # reads the same bytes inside a KMZ never ran. The name as
+            # bytes: one that is not UTF-8 (unzipped from a Windows archive,
+            # copied off an old FAT drive) holds surrogates.
+            with open(os.fsencode(kml_file), "rb") as file:
+                data = file.read()
+        tree = etree.fromstring(data, _xml_parser()).getroottree()
     except etree.ParseError as e:
         # The message of lxml without the file it appends (see KMLParseError)
         damage = KMLParseError(
             f"XML parsing error: {e.msg}", file_path=kml_file, line_number=e.lineno
         )
-        try:
-            if data is None:
-                with open(os.fsencode(kml_file), "rb") as file:
-                    data = file.read()
-            tree, mended = _parse_damaged(data)
-        except OSError as error:
-            raise KMLParseError(f"File I/O error: {error}", file_path=kml_file) from e
+        tree, mended = _parse_damaged(data)
         if tree is None:
             raise damage from e
         if mended:
@@ -392,10 +399,21 @@ def _document_namespaces(root: etree._Element) -> dict[str, str]:
 
     Google Earth's legacy namespaces (http://earth.google.com/kml/2.x) hold
     the same elements as the OGC one and are used together with gx:Track.
-    A root element in such a namespace takes the place of the ``kml`` prefix.
+    A root element in such a namespace takes the place of the ``kml`` prefix,
+    a ``<kml>`` in any namespace and also another root (a ``<Document>``
+    some writers start with) in one of KML's.
+
+    The namespace comes from the tag as it is: etree.QName refuses the tag
+    "kml:kml" that recovering a document leaves of a prefix it never
+    declared, which is in no namespace.
     """
-    namespace = etree.QName(root).namespace
-    if namespace and namespace != KML_NAMESPACE and local_name(root.tag) == "kml":
+    tag = root.tag if isinstance(root.tag, str) else ""
+    namespace = tag[1:].partition("}")[0] if tag.startswith("{") else ""
+    if (
+        namespace
+        and namespace != KML_NAMESPACE
+        and (local_name(tag) == "kml" or _KML_NAMESPACE_PATTERN.fullmatch(namespace))
+    ):
         return {**KML_NAMESPACES, "kml": namespace}
     return KML_NAMESPACES
 
@@ -455,7 +473,7 @@ def _extract_kml_elements(
 def _build_coord_metadata_map(
     placemarks: list[etree._Element],
     namespaces: dict[str, str],
-    tracks: list[etree._Element],
+    tracks_with_path: set[int],
 ) -> tuple[dict[int, PlacemarkMetadata], set[int]]:
     """Map coordinate elements to their placemark metadata.
 
@@ -463,13 +481,14 @@ def _build_coord_metadata_map(
     holding both a track and a LineString (a MultiGeometry) is one feature,
     and the LineString is the fallback geometry for viewers without gx
     support. Parsing both would count the flight twice. Only the tracks
-    that are parsed (``tracks``) count, in whichever namespace: the <Track>
-    of KML 2.3 is in that of OGC, and one the parser leaves out leaves its
+    that made a path (``tracks_with_path``, see ``process_gx_track``) count,
+    in whichever namespace: the <Track> of KML 2.3 is in that of OGC. One
+    the parser leaves out, or one that yields no path (an empty
+    <gx:Track/>, 2D gx:coords, a track clamped to the ground), leaves its
     flight to the LineString.
     """
     coord_to_metadata: dict[int, PlacemarkMetadata] = {}
     track_fallback_lines: set[int] = set()
-    parsed_tracks = {id(track) for track in tracks}
     for placemark in placemarks:
         placemark_coords = find_xml_elements(
             placemark, ".//kml:coordinates", ".//coordinates", namespaces
@@ -477,7 +496,7 @@ def _build_coord_metadata_map(
         if not placemark_coords:
             continue
 
-        if any(id(track) in parsed_tracks for track in placemark.iter("{*}Track")):
+        if any(id(track) in tracks_with_path for track in placemark.iter("{*}Track")):
             for coord_elem in placemark_coords:
                 parent = coord_elem.getparent()
                 if parent is not None and local_name(parent.tag) == "LineString":
@@ -622,8 +641,25 @@ def _parse_kml(kml_file: str) -> ParseResult:
     coord_elements, tracks, placemarks = _extract_kml_elements(
         root, namespaces, kml_file
     )
+    # The tracks first, which tell the LineStrings that only stand in for
+    # one (see _build_coord_metadata_map), into lists of their own: their
+    # points and paths still come after those of the LineStrings
+    track_coordinates: FlightPath = []
+    track_paths: FlightPathGroup = []
+    track_metadata: list[PathMetadata] = []
+    # Once per file: it logs its complaints about the name on every call
+    aircraft_info = parse_aircraft_from_filename(Path(kml_file).name)
+    tracks_with_path = process_gx_track(
+        tracks,
+        namespaces,
+        kml_file,
+        track_coordinates,
+        track_paths,
+        track_metadata,
+        aircraft_info,
+    )
     coord_to_metadata, track_fallback_lines = _build_coord_metadata_map(
-        placemarks, namespaces, tracks
+        placemarks, namespaces, tracks_with_path
     )
     if track_fallback_lines:
         coord_elements = [
@@ -632,9 +668,6 @@ def _parse_kml(kml_file: str) -> ParseResult:
     coord_elements, unknown_altitude = _select_line_coordinates(
         coord_elements, kml_file
     )
-
-    # Once per file: it logs its complaints about the name on every call
-    aircraft_info = parse_aircraft_from_filename(Path(kml_file).name)
 
     process_standard_coordinates(
         coord_elements,
@@ -647,15 +680,9 @@ def _parse_kml(kml_file: str) -> ParseResult:
         unknown_altitude,
     )
 
-    process_gx_track(
-        tracks,
-        namespaces,
-        kml_file,
-        coordinates,
-        path_groups,
-        path_metadata,
-        aircraft_info,
-    )
+    coordinates.extend(track_coordinates)
+    path_groups.extend(track_paths)
+    path_metadata.extend(track_metadata)
 
     if damage is not None:
         if not path_groups:

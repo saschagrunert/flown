@@ -28,6 +28,7 @@ import {
 } from "../calculations/panelStats";
 import type { FilteredStatistics } from "../types";
 import { datasetIndex, type FilterView } from "../calculations/datasetIndex";
+import { flightsKey } from "../state/localFlags";
 import { knownNewAreaKm2, yearNewAreaKm2 } from "../calculations/newAreas";
 import { whenIdle } from "../utils/whenIdle";
 import { logError } from "../utils/logger";
@@ -49,6 +50,7 @@ import {
   type WrappedIntro,
 } from "./wrappedIntro";
 import { userView } from "./replayState";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /**
  * Elements that stay out of the inert set while the dialog is open: the
@@ -75,22 +77,24 @@ const MAP_REVEAL_TIMEOUT_MS = 1200;
 export const INTRO_SEEN_KEY = "flown-wrapped-intro";
 
 /**
- * The years whose intro has played in this session: ten seconds at every
- * opening was a wait for anyone who went back to the cards. Where the
- * storage is out of reach, none, and it plays every time, as it did.
+ * The years whose intro has played in this session, under `key`: ten
+ * seconds at every opening was a wait for anyone who went back to the
+ * cards. Where the storage is out of reach, none, and it plays every time,
+ * as it did. The key is the page's, and apart for the visitor's own
+ * flights (flightsKey), whose 2025 is not the site's.
  */
-function introsSeen(): string[] {
+function introsSeen(key: string): string[] {
   try {
-    return (sessionStorage.getItem(INTRO_SEEN_KEY) ?? "").split(",");
+    return (sessionStorage.getItem(key) ?? "").split(",");
   } catch {
     return [];
   }
 }
 
 /** Note that the intro of the year `year` has played (see introsSeen) */
-function introSeen(year: string): void {
+function introSeen(key: string, year: string): void {
   try {
-    sessionStorage.setItem(INTRO_SEEN_KEY, [...introsSeen(), year].join(","));
+    sessionStorage.setItem(key, [...introsSeen(key), year].join(","));
   } catch {
     // Blocked storage
   }
@@ -396,8 +400,9 @@ export class WrappedManager {
       options: this.fitOptions(),
     });
     const year = this.app.selectedYear;
+    const introKey = flightsKey(INTRO_SEEN_KEY, !!this.app.config.localFlights);
     const home =
-      intro && !prefersReducedMotion() && !introsSeen().includes(year)
+      intro && !prefersReducedMotion() && !introsSeen(introKey).includes(year)
         ? this.homeBase()
         : null;
     // The map shows at once in an opening with the intro (wrapped.css)
@@ -483,7 +488,7 @@ export class WrappedManager {
           ) {
             return;
           }
-          if (plays) introSeen(year);
+          if (plays) introSeen(introKey, year);
           this.revealMapWhenPainted(
             wrappedMapContainer,
             plays ? () => intro.fly() : undefined,
@@ -587,7 +592,9 @@ export class WrappedManager {
     const statsEl = domCache.get("wrapped-stats");
     if (statsEl) {
       const what = this.app.selectedYear === "all" ? "flight history" : "year";
-      statsEl.innerHTML = `<p class="stats-loading" role="status">Preparing your ${what}…</p>`;
+      statsEl.innerHTML = trustedHtml(
+        `<p class="stats-loading" role="status">Preparing your ${what}…</p>`,
+      );
     }
     for (const card of ["facts", "fleet", "airports"]) {
       domCache.get("wrapped-card-" + card)?.toggleAttribute("hidden", true);
@@ -627,14 +634,16 @@ export class WrappedManager {
     );
 
     const statsEl = domCache.get("wrapped-stats");
-    if (statsEl) statsEl.innerHTML = statsHtml;
+    if (statsEl) statsEl.innerHTML = trustedHtml(statsHtml);
 
     // Build fun facts section with dynamic, varied facts
     const renderFacts = (newAreaKm2: number | null): void => {
       const funFactsEl = domCache.get("wrapped-fun-facts");
       if (!funFactsEl) return;
-      funFactsEl.innerHTML = generateFunFactsHtml(
-        generateFunFacts(yearStats, filteredStats, year, newAreaKm2),
+      funFactsEl.innerHTML = trustedHtml(
+        generateFunFactsHtml(
+          generateFunFacts(yearStats, filteredStats, year, newAreaKm2),
+        ),
       );
     };
     // The airspace new in the year is counted from the earlier years the
@@ -671,15 +680,15 @@ export class WrappedManager {
     const fleetEl = domCache.get("wrapped-aircraft-fleet");
     const topAirportsEl = domCache.get("wrapped-top-airports");
     const gridEl = domCache.get("wrapped-airports-grid");
-    if (fleetEl) fleetEl.innerHTML = "";
-    if (topAirportsEl) topAirportsEl.innerHTML = "";
-    if (gridEl) gridEl.innerHTML = "";
+    if (fleetEl) fleetEl.replaceChildren();
+    if (topAirportsEl) topAirportsEl.replaceChildren();
+    if (gridEl) gridEl.replaceChildren();
     this.destinations = [];
 
     // Build aircraft fleet section using year-filtered data
     if (yearStats.aircraft_list && yearStats.aircraft_list.length > 0) {
       const fleetHtml = generateAircraftFleetHtml(yearStats);
-      if (fleetEl) fleetEl.innerHTML = fleetHtml;
+      if (fleetEl) fleetEl.innerHTML = trustedHtml(fleetHtml);
     }
 
     // Build home base section using year-filtered airport data
@@ -693,7 +702,7 @@ export class WrappedManager {
           { name: homeBase, flight_count: homeBaseCount },
           airportCode(homeBase),
         );
-        if (topAirportsEl) topAirportsEl.innerHTML = homeBaseHtml;
+        if (topAirportsEl) topAirportsEl.innerHTML = trustedHtml(homeBaseHtml);
 
         // Every airport is listed, the home base included, so the country
         // groups are complete; home base and furthest airport are accented
@@ -714,7 +723,7 @@ export class WrappedManager {
           furthest,
         });
         if (gridEl) {
-          gridEl.innerHTML = destinationsHtml;
+          gridEl.innerHTML = trustedHtml(destinationsHtml);
           // The groups fade in one after another. Set here rather than in
           // the markup: the CSP allows no style attributes.
           gridEl
@@ -807,8 +816,14 @@ export class WrappedManager {
     });
     this.inertObserver.observe(document.body, { childList: true });
 
-    const closeBtn = modal.querySelector<HTMLElement>(".close-btn");
-    if (closeBtn) closeBtn.focus();
+    // Skip while the intro plays: the cards are inert under the map for
+    // its ten seconds, and Skip comes before Close, so from Close a forward
+    // Tab never reached it. Once it hides it hands the focus to Close
+    // (showIntroChrome in ui/wrappedIntro.ts).
+    const skip = modal.querySelector<HTMLElement>("#wrapped-skip-btn");
+    const first =
+      skip && !skip.hidden ? skip : modal.querySelector(".close-btn");
+    if (first instanceof HTMLElement) first.focus();
   }
 
   private releaseFocus(): void {

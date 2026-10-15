@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from lxml import etree
 
 from flown.aircraft import parse_aircraft_from_filename
@@ -10,6 +11,7 @@ from flown.helpers import parse_timestamp_epoch
 from flown.parser_common import local_name
 from flown.parser_gx_track import (
     _collect_track_children,
+    _position_spikes,
     parse_gx_tracks,
     process_gx_track,
 )
@@ -465,6 +467,18 @@ class TestYearOfATrack:
         # Most of the stamps are in 2026: the median would say 2026
         assert path_metadata[0]["year"] == 2025
 
+    def test_a_clock_never_set_names_no_year(self):
+        """Year 1 went into data/1/, which no year directory pattern matches,
+        so it was never removed again."""
+        whens = [f"0001-03-03T10:0{i}:00Z" for i in range(3)]
+        coords = [f"{9.0 + 0.02 * i} 48.0 400" for i in range(3)]
+        track = _track(_placemark(_document(), name="EDDS - EDDP"), coords, whens)
+
+        _, path_groups, path_metadata = _run([track])
+
+        assert len(path_groups) == 1
+        assert path_metadata[0]["year"] is None
+
 
 class TestMultiTrack:
     def test_the_tracks_of_a_multi_track_are_one_flight(self):
@@ -534,3 +548,64 @@ class TestMultiTrack:
         _, path_groups, _ = _run([track])
 
         assert [point.alt for point in path_groups[0]] == [300, 350]
+
+
+def _east(count, start=0.0, lat=50.0, step_s=10.0):
+    """(lat, lon, time) fixes east at 97 kt, ``step_s`` apart."""
+    return [(lat, 8.0 + 0.007 * i, start + i * step_s) for i in range(count)]
+
+
+class TestPositionSpikes:
+    """A fix far off the flight, which stretched the map and the duplicate
+    check (see parser_gx_track._position_spikes)."""
+
+    @pytest.mark.parametrize(
+        "spike",
+        [
+            (0.0, 8.035),  # the latitude zeroed
+            (50.0, -8.035),  # the sign of the longitude flipped
+            (50.0, 0.0),  # the longitude zeroed
+        ],
+    )
+    def test_a_fix_far_off_between_two_that_agree(self, spike):
+        fixes = _east(10)
+        fixes[5] = (*spike, fixes[5][2])
+        assert _position_spikes(fixes) == {5}
+
+    def test_a_spike_at_either_end(self):
+        fixes = _east(10)
+        fixes[0] = (0.0, *fixes[0][1:])
+        fixes[-1] = (50.0, 0.0, fixes[-1][2])
+        assert _position_spikes(fixes) == {0, 9}
+
+    def test_fast_flight_is_no_spike(self):
+        """580 kt for every step: as fast as the limit allows, and kept."""
+        fixes = [(50.0, 8.0 + 0.0416 * i, i * 10.0) for i in range(10)]
+        assert _position_spikes(fixes) == set()
+
+    def test_a_track_that_goes_on_elsewhere_is_no_spike(self):
+        """A jump with nothing to go back to: a gap, not a stray fix."""
+        fixes = _east(5) + _east(5, start=41.0, lat=52.0)
+        assert _position_spikes(fixes) == set()
+
+    def test_two_fixes_at_one_moment_are_no_spike(self):
+        """GPS jitter between fixes with the same time is no jump."""
+        fixes = _east(5)
+        fixes.insert(3, (50.0005, fixes[2][1], fixes[2][2]))
+        assert _position_spikes(fixes) == set()
+
+    def test_too_few_fixes_to_tell(self):
+        assert _position_spikes([(50.0, 8.0, 0.0), (0.0, 8.0, 10.0)]) == set()
+
+    def test_a_spike_leaves_the_path_and_the_heat(self):
+        start = datetime(2025, 6, 1, 10, 0, tzinfo=UTC)
+        whens = [_iso(start + timedelta(seconds=10 * i)) for i in range(10)]
+        coords = [f"{8.0 + 0.007 * i:.3f} 50.0 500" for i in range(10)]
+        coords[4] = "8.028 0 500"
+        track = _track(_placemark(_document(), name="EDDS - EDDP"), coords, whens)
+
+        coordinates, path_groups, path_metadata = _run([track])
+
+        assert len(path_groups[0]) == len(coordinates) == 9
+        assert min(point.lat for point in coordinates) == 50.0
+        assert path_metadata[0]["start_point"][0] == 50.0

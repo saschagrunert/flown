@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from .airport_lookup import standardize_airport_names, standardize_route
 from .constants import ALT_MAX_M, ALT_MIN_M, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN
 from .date_tokens import CHARTERWARE_DATE_PATTERN, charterware_datetime
-from .helpers import DATE_PATTERN, parse_iso_timestamp
+from .helpers import DATE_PATTERN, parse_iso_timestamp, parse_timestamp_epoch
 from .logger import logger
 
 if TYPE_CHECKING:
@@ -22,9 +22,12 @@ if TYPE_CHECKING:
 YEAR_PATTERN = re.compile(r"\b((?:19|20)\d{2})\b")
 # A KML time without a time of day: xsd:date, xsd:gYearMonth or xsd:gYear
 _DATE_ONLY_PATTERN = re.compile(r"\d{4}(?:-\d{2}(?:-\d{2})?)?(?:Z|[+-]\d{2}:\d{2})?")
-# The years a date without a time of day may name: anything else in its
-# four leading digits is no year of a flight log
-_DATE_ONLY_YEARS = range(1900, 2100)
+# The years a KML time may name, with or without a time of day: anything
+# else is no year of a flight log but a clock that was never set (a logger
+# writes 0001-01-01T00:00:00Z until its GPS fix). Such a year would also
+# name a directory of the site (data/1/) that no year directory pattern
+# matches, so nothing would ever remove it.
+_FLIGHT_YEARS = range(1900, 2100)
 
 
 # altitudeMode values under which a coordinate's altitude is not its height
@@ -84,7 +87,26 @@ def _date_only_year(text: str) -> int | None:
     if not _DATE_ONLY_PATTERN.fullmatch(text):
         return None
     year = int(text[:4])
-    return year if year in _DATE_ONLY_YEARS else None
+    return year if year in _FLIGHT_YEARS else None
+
+
+def _timestamp_year(text: str) -> int | None:
+    """The UTC year of an ISO timestamp, None for other text or another year.
+
+    The obfuscator anchors on the UTC date, so this is the UTC year:
+    2025-01-01T00:30:00+02:00 belongs to 2024 before and after it. A year
+    outside ``_FLIGHT_YEARS`` is unknown, as for a date without a time.
+    """
+    parsed = parse_iso_timestamp(text)
+    if parsed is None:
+        return None
+    if parsed.tzinfo is not None:
+        try:
+            parsed = parsed.astimezone(UTC)
+        # Year 1 east of UTC, or 9999 west of it, has no UTC year
+        except OverflowError:
+            return None
+    return parsed.year if parsed.year in _FLIGHT_YEARS else None
 
 
 def extract_year_from_timestamp(timestamp: str | None) -> int | None:
@@ -96,18 +118,9 @@ def extract_year_from_timestamp(timestamp: str | None) -> int | None:
     if date_only_year is not None:
         return date_only_year
 
-    # Try to parse ISO format timestamp (e.g., "2025-03-03T08:58:01Z").
-    # The obfuscator anchors on the UTC date, so this is the UTC year:
-    # 2025-01-01T00:30:00+02:00 belongs to 2024 before and after it.
-    parsed = parse_iso_timestamp(timestamp)
-    if parsed is not None:
-        if parsed.tzinfo is not None:
-            try:
-                parsed = parsed.astimezone(UTC)
-            # Year 1 east of UTC, or 9999 west of it, has no UTC year
-            except OverflowError:
-                return None
-        return parsed.year
+    # An ISO timestamp (e.g., "2025-03-03T08:58:01Z"), see _timestamp_year
+    if parse_iso_timestamp(timestamp) is not None:
+        return _timestamp_year(timestamp)
 
     # A date string ("03 Mar 2025", "2025-03-03"), also one that holds a "T"
     # without being an ISO timestamp ("Takeoff: 03 Mar 2025 08:58 Z")
@@ -227,13 +240,14 @@ def _usable_time(text: str | None) -> str | None:
     """A KML time as it was written, or None when it cannot be read.
 
     A timestamp has to parse; a date without a time of day (xsd:date,
-    gYearMonth and gYear are valid KML times) still tells the year, as long
-    as its leading digits are a plausible one. An unreadable <when> must not
-    take the place of a date that the name or the description still holds.
+    gYearMonth and gYear are valid KML times) still tells the year. Either
+    has to name a plausible year (see ``_FLIGHT_YEARS``). An unreadable
+    <when> must not take the place of a date that the name or the
+    description still holds.
     """
     if text is None:
         return None
-    if parse_iso_timestamp(text) is not None or _date_only_year(text) is not None:
+    if _timestamp_year(text) is not None or _date_only_year(text) is not None:
         return text
     return None
 
@@ -241,7 +255,14 @@ def _usable_time(text: str | None) -> str | None:
 def _time_span(
     element: etree._Element, prefix: str, namespaces: dict[str, str]
 ) -> tuple[str | None, str | None]:
-    """The ``<TimeSpan>`` begin and end below ``element`` (see ``prefix``)."""
+    """The ``<TimeSpan>`` begin and end below ``element`` (see ``prefix``).
+
+    A span with only an ``<end>`` (or one whose ``<begin>`` cannot be read)
+    still tells when the flight was: its end comes back as the begin, with
+    no end, so that its year is not lost and the time of a container (see
+    ``_inherited_time_range``) does not take its place. An end before the
+    begin, as a writer that swapped them leaves, comes first.
+    """
     begin = find_xml_element(
         element,
         f"{prefix}kml:TimeSpan/kml:begin",
@@ -251,7 +272,20 @@ def _time_span(
     end = find_xml_element(
         element, f"{prefix}kml:TimeSpan/kml:end", f"{prefix}TimeSpan/end", namespaces
     )
-    return _usable_time(_element_text(begin)), _usable_time(_element_text(end))
+    begin_time = _usable_time(_element_text(begin))
+    end_time = _usable_time(_element_text(end))
+    if begin_time is None:
+        return end_time, None
+    if end_time is not None:
+        begin_epoch = parse_timestamp_epoch(begin_time)
+        end_epoch = parse_timestamp_epoch(end_time)
+        if (
+            begin_epoch is not None
+            and end_epoch is not None
+            and end_epoch < begin_epoch
+        ):
+            return end_time, begin_time
+    return begin_time, end_time
 
 
 def _extract_time_range(
@@ -305,7 +339,7 @@ def _inherited_time_range(
         if when is not None:
             return when, None
         begin, end = _time_span(ancestor, "", namespaces)
-        if begin is not None or end is not None:
+        if begin is not None:
             return begin, end
     return None, None
 

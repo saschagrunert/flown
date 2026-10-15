@@ -375,6 +375,8 @@ export class AirportCodes {
   /** The angle each code is drawn at, unwound so it turns the short way */
   private readonly angles = new Map<string, number>();
   private readonly sizes = new WeakMap<HTMLElement, ChipSize>();
+  /** The codes shown again in this pass, which jump there (endJumps) */
+  private jumping: HTMLElement[] = [];
   private taken: Box[] = [];
   /**
    * The squares the map's other markers take the pointer in (otherTargets),
@@ -626,6 +628,7 @@ export class AirportCodes {
         targetLost ||= !place && this.chipTargets.has(marker.name);
       }
     }
+    this.endJumps();
     if (settle) this.reserve(room, size);
     // At rest; and in a move as soon as a code that is its airport's target
     // goes, which left the airport without one for as long as the map kept
@@ -815,14 +818,26 @@ export class AirportCodes {
       .querySelector(".airport-code")
       ?.classList.toggle("is-narrow", place.narrow);
     arm.classList.remove("is-hidden");
-    if (hidden) {
-      // Its new place is styled now, while it jumps: otherwise a frame that
-      // ends the jump before the page has styled it, as when it is drawn
-      // outside a frame of the map, has it glide from where it was
-      void getComputedStyle(arm).transform;
-      requestAnimationFrame(() => arm.classList.remove("is-jump"));
-    }
+    if (hidden) this.jumping.push(arm);
     return true;
+  }
+
+  /**
+   * End the jump of the codes shown again in this pass. Their new places
+   * are styled first, while they jump: otherwise a frame that ends the
+   * jump before the page has styled them, as when they are drawn outside
+   * a frame of the map, has them glide from where they were. One read
+   * styles the page for all of them, where one per code had the page
+   * styled again for each, between the writes of the next.
+   */
+  private endJumps(): void {
+    const arms = this.jumping;
+    if (!arms.length) return;
+    this.jumping = [];
+    void getComputedStyle(arms[0]!).transform;
+    requestAnimationFrame(() => {
+      for (const arm of arms) arm.classList.remove("is-jump");
+    });
   }
 
   /**

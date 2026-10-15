@@ -126,7 +126,6 @@ export interface AircraftAggregate {
   flights: number;
   flight_time_seconds?: number;
   flight_time_str?: string;
-  flight_distance_km?: number;
 }
 
 /**

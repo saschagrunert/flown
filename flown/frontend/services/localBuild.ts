@@ -102,8 +102,14 @@ export class LocalBuilder {
       return;
     }
     this.pending.delete(response.id);
-    if ("done" in response) pending.resolve(response.done);
-    else pending.reject(new Error(response.error));
+    if ("done" in response) {
+      pending.resolve(response.done);
+      return;
+    }
+    const error = new Error(response.error);
+    pending.reject(error);
+    // The runtime in it failed for good: the next build starts another
+    if (response.lost) this.fail(error);
   }
 
   /** The worker is lost: every build waiting on it fails, and it is let go */

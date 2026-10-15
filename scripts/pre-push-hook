@@ -6,6 +6,11 @@
 # worktree that installed it would dangle once that worktree is removed,
 # which git skips without a word. No check to run refuses the push;
 # `git push --no-verify` skips it.
+#
+# The check needs Python 3.14 or newer, which a Git GUI or a shell outside
+# the project's virtual environment may not have as python3 (macOS ships
+# 3.9): the first of the worktree's .venv, python3.14, python3 and python
+# that is new enough runs it, and without one the push is refused.
 root=$(git rev-parse --show-toplevel) || exit 1
 script="$root/scripts/pre_push.py"
 if [ ! -f "$script" ]; then
@@ -13,4 +18,12 @@ if [ ! -f "$script" ]; then
   echo "Refusing the push; \`git push --no-verify\` skips the check." >&2
   exit 1
 fi
-exec python3 "$script" "$@"
+for python in "$root/.venv/bin/python" python3.14 python3 python; do
+  if "$python" -c 'import sys; sys.exit(sys.version_info < (3, 14))' 2>/dev/null; then
+    exec "$python" "$script" "$@"
+  fi
+done
+echo "pre-push: no Python 3.14 or newer (python3.14, python3, python or" >&2
+echo "$root/.venv), so the KML files cannot be checked." >&2
+echo "Refusing the push; \`git push --no-verify\` skips the check." >&2
+exit 1

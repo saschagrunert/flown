@@ -286,7 +286,7 @@ def format_listing(
     ]
     failing = len({row.file for row in rows if row.fails_build})
     if failing:
-        # renderer refuses the run: nothing is published, not the rest either
+        # the pipeline refuses the run: nothing is published, not the rest either
         text.append(
             f"A build would fail on {failing} file(s) and publish nothing: "
             "fix or remove them"
@@ -303,15 +303,18 @@ def format_listing(
     return "\n".join(text)
 
 
-def _list(paths: list[str]) -> None:
-    """Print what a build of ``paths`` would publish, and write nothing."""
+def _list(paths: list[str], trim_ends: float = 0) -> None:
+    """Print what a build of ``paths`` would publish, and write nothing.
+
+    ``trim_ends`` as for the build (see ``_generate``).
+    """
     # Needs lxml and reads the cache directory, see _generate
     from .listing import list_flights  # noqa: PLC0415
 
     kml_files, _ = _collect_kml_files(paths)
     if not kml_files:
         raise InvalidInputError("No KML files specified or found!")
-    listing = list_flights(kml_files)
+    listing = list_flights(kml_files, trim_ends)
     print(format_listing(listing.rows, listing.free_text_airports))
     failing = listing.failing_files
     if failing:
@@ -338,7 +341,7 @@ def _generate(
     ``terrain`` samples the ground under the flights from the elevation
     tiles of AWS (see ``flown.terrain``), which are downloaded once
     into the cache directory. ``force`` replaces the files of a site that
-    no earlier run wrote (see ``renderer.foreign_output_error``).
+    no earlier run wrote (see ``pipeline.foreign_output_error``).
     ``site_url`` is where the site is published, which its link preview
     images are named by (see ``flown.previews``); None takes it from
     ``FLOWN_SITE_URL``. ``private`` asks search engines not to index
@@ -381,7 +384,7 @@ def _generate(
     aircraft_files = _find_aircraft_files(kml_files, roots)
 
     # Lazy for the same reasons as the previews above
-    from .renderer import build_site, preflight  # noqa: PLC0415
+    from .pipeline import build_site, preflight  # noqa: PLC0415
 
     # Checked again inside build_site, which is public API;
     # checking here stops before --obfuscate-inputs rewrites the inputs
@@ -628,7 +631,15 @@ a refused output directory, 1 when the build failed, 130 when interrupted.
 def main() -> None:
     """Main CLI entry point; exits with the status the module describes."""
     # argparse exits with 2 on a usage error by itself
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.list and args.obfuscate_inputs:
+        # --list writes nothing: the inputs would keep the real dates the
+        # run was asked to take out of them, without a word
+        parser.error(
+            "--list writes nothing and cannot rewrite the inputs; run "
+            "--obfuscate-inputs without it"
+        )
 
     if args.debug:
         set_debug_mode(True)
@@ -651,7 +662,7 @@ def main() -> None:
         if args.refresh_airports:
             _refresh_airports()
         if args.list:
-            _list(args.paths)
+            _list(args.paths, args.trim_ends)
             return
         _generate(
             args.paths,

@@ -23,6 +23,7 @@ import {
   DATA_FORMAT_VERSION,
   expandYearData,
 } from "../../../flown/frontend/services/yearDecode";
+import { PATH_ID_BITS } from "../../../flown/frontend/state/urlState";
 import type {
   Airport,
   Metadata,
@@ -36,8 +37,8 @@ import { checkSite } from "../../e2e/site-check";
 // vitest runs with the repository root as working directory
 const DATA_DIR = join(cwd(), "docs", "data");
 
-/** Path ids are 40-bit content hashes (PATH_ID_BITS in data_exporter.py) */
-const PATH_ID_LIMIT = 2 ** 40;
+/** Path ids are content hashes of PATH_ID_BITS (path_content.py has it too) */
+const PATH_ID_LIMIT = 2 ** PATH_ID_BITS;
 
 /** Fields the exporter no longer writes; a comeback fails the contract */
 const REMOVED_PATH_INFO_KEYS = ["start_coords", "end_coords", "segment_count"];
@@ -319,11 +320,14 @@ function isMetadata(value: unknown): value is Metadata {
 
 /**
  * Column scales of the wire format, mirroring flown/segment_codec.py
- * (the altitude column counts steps of 20 ft). The sample is written in
+ * (the altitude column counts steps of 20 ft); the two coordinate columns
+ * are second differences. The sample is written in
  * the units a reader thinks in and encoded here, so the guards and the
  * loader are checked against an encoder that is not the one under test.
  */
 const SCALES = [1e5, 1e5, 1 / 20, 1, 10];
+/** The columns written as second differences */
+const SECOND_ORDER = 2;
 
 /** Tens of feet, GROUND_STEP of flown/segment_codec.py */
 const GROUND_SCALE = 1 / 10;
@@ -338,6 +342,7 @@ function encodePath(
     Math.round(start[1] * SCALES[1]!),
   ];
   const running = [scaledStart[0]!, scaledStart[1]!, 0, 0, 0];
+  const steps = [0, 0];
   const columns: (number | null)[][] = [[], [], [], []];
   if (rows.some((row) => row.length > 4)) columns.push([]);
   for (const row of rows) {
@@ -348,7 +353,13 @@ function encodePath(
         return;
       }
       const scaled = Math.round(value * SCALES[index]!);
-      column.push(scaled - running[index]!);
+      const step = scaled - running[index]!;
+      if (index < SECOND_ORDER) {
+        column.push(step - steps[index]!);
+        steps[index] = step;
+      } else {
+        column.push(step);
+      }
       running[index] = scaled;
     });
   }
@@ -666,6 +677,11 @@ describe("export contract (inline new-format sample)", () => {
       time: 0,
       ground_ft: 1400,
     });
+    expect(data.path_segments[1]!.coords).toEqual([
+      [49.5, 9.5],
+      [48.35, 11.79],
+    ]);
+    expect(data.path_segments[1]!.time).toBe(1800);
     expect(data.path_segments[1]!.ground_ft).toBe(1530);
     expect(data.path_segments[2]!.time).toBeUndefined();
     expect(data.path_segments[2]!.ground_ft).toBeUndefined();

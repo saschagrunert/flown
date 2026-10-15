@@ -318,6 +318,61 @@ class TestParseKmlCoordinates:
         assert len(paths) == 1
         assert paths[0][0].ts is not None
 
+    @pytest.mark.parametrize(
+        "track",
+        [
+            "<gx:Track/>",
+            # 2D: no altitudes, so no path
+            (
+                "<gx:Track><when>2025-03-15T10:00:00Z</when>"
+                "<gx:coord>8.5 50.0</gx:coord><when>2025-03-15T10:01:00Z</when>"
+                "<gx:coord>9.0 51.0</gx:coord></gx:Track>"
+            ),
+            (
+                "<gx:Track><altitudeMode>clampToGround</altitudeMode>"
+                "<when>2025-03-15T10:00:00Z</when><gx:coord>8.5 50.0 300</gx:coord>"
+                "<when>2025-03-15T10:01:00Z</when><gx:coord>9.0 51.0 400</gx:coord>"
+                "</gx:Track>"
+            ),
+        ],
+    )
+    def test_a_line_string_next_to_a_track_without_a_path_is_kept(
+        self, tmp_path, track
+    ):
+        """The LineString only stands in for a track that makes a path."""
+        kml = (
+            f"{KML_HEADER}<Document><Placemark><name>EDDS - EDDP</name>"
+            f"<MultiGeometry>{track}"
+            f"{_line_string('8.5,50.0,300 9.0,51.0,400')}"
+            "</MultiGeometry></Placemark></Document></kml>"
+        )
+        _, paths, metadata = parse_kml_coordinates(_write(tmp_path, "t.kml", kml))
+        assert [[p.alt for p in path] for path in paths] == [[300.0, 400.0]]
+        assert metadata[0]["airport_name"] == "EDDS Stuttgart - EDDP Leipzig/Halle"
+
+    def test_a_document_root_in_a_legacy_namespace(self, tmp_path):
+        """No <kml> around it: the names were looked for in the OGC namespace
+        and not found, next to a gx:Track."""
+        kml = (
+            '<Document xmlns="http://earth.google.com/kml/2.2" '
+            'xmlns:gx="http://www.google.com/kml/ext/2.2">'
+            "<Placemark><name>EDDS - EDDP</name>"
+            "<TimeSpan><begin>2025-03-15T09:00:00Z</begin>"
+            "<end>2025-03-15T10:00:00Z</end></TimeSpan>"
+            f"{_line_string('8.5,50.0,300 9.0,51.0,400')}</Placemark>"
+            "<Placemark><name>EDDP - EDDS</name><gx:Track>"
+            "<when>2025-03-16T10:00:00Z</when><gx:coord>9.0 51.0 400</gx:coord>"
+            "<when>2025-03-16T10:01:00Z</when><gx:coord>8.5 50.0 300</gx:coord>"
+            "</gx:Track></Placemark></Document>"
+        )
+        _, paths, metadata = parse_kml_coordinates(_write(tmp_path, "doc.kml", kml))
+        assert len(paths) == 2
+        assert [m["airport_name"] for m in metadata] == [
+            "EDDS Stuttgart - EDDP Leipzig/Halle",
+            "EDDP Leipzig/Halle - EDDS Stuttgart",
+        ]
+        assert metadata[0]["end_timestamp"] == "2025-03-15T10:00:00Z"
+
     def test_a_line_string_next_to_an_unparsed_track_is_kept(self, tmp_path):
         """A <Track> the parser leaves out leaves its flight to the line."""
         kml = f"""{KML_HEADER}<Document><Placemark><name>A</name><gx:Track>
@@ -848,6 +903,20 @@ class TestGeometryTypes:
 
 
 class TestInheritedTime:
+    def test_a_time_span_with_only_an_end_keeps_its_year(self, tmp_path):
+        """The Folder's time took the place of the placemark's own end."""
+        kml = (
+            f"{KML_HEADER}<Document><Folder>"
+            "<TimeSpan><begin>2023-07-01</begin></TimeSpan>"
+            "<Placemark><name>EDDS - EDDP</name>"
+            "<TimeSpan><begin>not a time</begin>"
+            "<end>2024-07-01T11:00:00Z</end></TimeSpan>"
+            f"{LINE.replace('MODE', '')}</Placemark></Folder></Document></kml>"
+        )
+        _, _, metadata = parse_kml_coordinates(_write(tmp_path, "e.kml", kml))
+        assert metadata[0]["year"] == 2024
+        assert metadata[0]["timestamp"] == "2024-07-01T11:00:00Z"
+
     def test_folder_time_dates_a_line_string(self, tmp_path):
         kml = (
             f"{KML_HEADER}<Document><Folder>"
@@ -1013,7 +1082,7 @@ class TestDamagedDocuments:
         with pytest.raises(KMLParseError, match="XML parsing error"):
             parse_kml_coordinates(_write(tmp_path, "bad.kml", "\n<?xml oops"))
 
-    def test_a_file_that_cannot_be_read_again(self, tmp_path, monkeypatch):
+    def test_a_file_that_cannot_be_read(self, tmp_path, monkeypatch):
         kml_file = _write(tmp_path, "cut.kml", _track(10)[:-40])
 
         def unreadable(*args, **kwargs):
@@ -1022,6 +1091,56 @@ class TestDamagedDocuments:
         monkeypatch.setattr("builtins.open", unreadable)
         with pytest.raises(KMLParseError, match="File I/O error: gone"):
             _parse_kml_tree(kml_file)
+
+    @pytest.mark.parametrize(
+        "declaration", ['<?xml version="1.0" encoding="UTF-8"?>\n', ""]
+    )
+    def test_a_byte_that_is_no_utf_8_leaves_every_point(
+        self, tmp_path, caplog, declaration
+    ):
+        """A Windows-1252 name in a file that claims, or defaults to, UTF-8.
+
+        libxml2 reported it as an OSError of reading the file, so the whole
+        flight failed with "File I/O error", where the same bytes inside a
+        KMZ were recovered.
+        """
+        line = "8.1,50.1,300 8.2,50.2,310 8.3,50.3,320"
+        kml = (
+            f'{declaration}<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+            f"<Placemark><name>EDAQ - J\u00fcrgen</name>{_line_string(line)}"
+            "</Placemark></Document></kml>"
+        )
+        path = tmp_path / "cp1252.kml"
+        path.write_bytes(kml.encode("cp1252"))
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            _, paths, _ = parse_kml_coordinates(str(path))
+        assert len(paths[0]) == 3
+        assert "cp1252.kml: damaged," in caplog.text
+        assert "File I/O error" not in caplog.text
+
+    def test_white_space_after_a_byte_order_mark_is_no_damage(self, tmp_path, caplog):
+        path = tmp_path / "bom.kml"
+        path.write_bytes(b"\xef\xbb\xbf\r\n  " + GX_TRACK_KML.encode())
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            _, paths, _ = parse_kml_coordinates(str(path))
+        assert len(paths[0]) == 2
+        assert "damaged" not in caplog.text
+
+    def test_a_root_prefix_that_is_not_declared(self, tmp_path, caplog):
+        """Recovering it leaves the tag "kml:kml", which etree.QName refuses:
+        the build logged a traceback for the file."""
+        kml = (
+            "<kml:kml><Document><Placemark><name>EDDS - EDDP</name>"
+            f"{_line_string('8.5,50.0,300 9.0,51.0,400')}"
+            "</Placemark></Document></kml:kml>"
+        )
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            _, paths, metadata = parse_kml_coordinates(
+                _write(tmp_path, "prefix.kml", kml)
+            )
+        assert len(paths) == 1
+        assert metadata[0]["airport_name"] == "EDDS Stuttgart - EDDP Leipzig/Halle"
+        assert "prefix.kml: damaged," in caplog.text
 
     def test_gx_without_its_namespace_is_read(self, tmp_path, caplog):
         kml = GX_TRACK_KML.replace(' xmlns:gx="http://www.google.com/kml/ext/2.2"', "")

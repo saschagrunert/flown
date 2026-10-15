@@ -1,11 +1,11 @@
 ---
 # Python, uv and Node.js at the versions of .python-version, the uv release
-# below and .nvmrc, with their caches, for the jobs of test.yml after their
+# below and .nvmrc, with the npm cache, for the jobs of test.yml after their
 # checkout, so each action is pinned in one place. Installing is left to the
 # jobs: each installs something else, with `uv sync --locked` into the
 # virtual environment set up here.
 name: Set up the toolchain
-description: Set up Python, uv and Node.js with their caches
+description: Set up Python, uv and Node.js with the npm cache
 inputs:
   python:
     description: >-
@@ -28,20 +28,20 @@ runs:
       with:
         python-version-file: .python-version
     # The release here and the uv image of the Dockerfile are the same
-    # (scripts/check_locks.py). Dependabot moves neither to another release:
+    # (scripts/check_pins.py). Dependabot moves neither to another release:
     # move both by hand.
     # The environment it activates is on PATH for every later step, so the
-    # tools `uv sync` installs run by name. The cache is keyed by uv.lock and
-    # the job: a key shared by every job held only what the first job to save
-    # it had downloaded.
+    # tools `uv sync` installs run by name. Without a cache: an uncached
+    # `uv sync` fetched and prepared its 40 packages in under half a second,
+    # while restoring and saving the cache took 2 to 3 s a job and kept
+    # about 300 MB of caches for every pull request.
     - name: Set up uv
       if: inputs.python == 'true'
       uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       with:
         version: "0.12.24"
         activate-environment: true
-        cache-dependency-glob: uv.lock
-        cache-suffix: ${{ github.job }}
+        enable-cache: false
     - name: Set up Node.js
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:

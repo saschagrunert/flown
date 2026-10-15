@@ -24,17 +24,25 @@ import {
 } from "../../testHelpers";
 import type { Popup as MockPopup } from "../../../mocks/maplibre-gl";
 import { REPLAY_CAMERA_MOVE } from "../../../../flown/frontend/utils/mapHelpers";
+import { flightTotals } from "../../../../flown/frontend/calculations/flightTotals";
 
-const { loadFeatures, listFlights } = vi.hoisted(() => ({
-  listFlights: vi.fn(),
-  loadFeatures: vi.fn(),
-}));
-vi.mock("../../../../flown/frontend/ui/airportFlights", () => ({
-  listFlights,
-}));
+const { loadFeatures, listFlights, extras } = vi.hoisted(() => {
+  const listFlights = vi.fn();
+  return {
+    listFlights,
+    loadFeatures: vi.fn(),
+    // The extras bundle the list comes with, there unless a test says not
+    extras: { loaded: true, module: { listFlights } },
+  };
+});
 vi.mock("../../../../flown/frontend/services/featureLoader", () => ({
   loadedFeatures: () => null,
   loadFeatures,
+  loadedExtras: () => (extras.loaded ? extras.module : null),
+  loadExtras: () => {
+    extras.loaded = true;
+    return Promise.resolve(extras.module);
+  },
 }));
 vi.mock(
   "../../../../flown/frontend/utils/mapHelpers",
@@ -126,6 +134,7 @@ describe("AirportManager", () => {
     resetSiteData();
     document.body.innerHTML = "";
     listFlights.mockReset();
+    extras.loaded = true;
     loadFeatures.mockClear();
     vi.mocked(panPopupIntoView).mockClear();
   });
@@ -300,7 +309,12 @@ describe("AirportManager", () => {
 
       markers["EDDF"]!.openPopup();
 
-      expect(listFlights).toHaveBeenCalledWith(mockApp, popup, "EDDF");
+      expect(listFlights).toHaveBeenCalledWith(
+        mockApp,
+        popup,
+        "EDDF",
+        flightTotals,
+      );
       // The list goes into the element of a popup that is on the map
       expect(order).toEqual(["setHTML", "addTo", "listFlights", "pan"]);
       // Placed, then laid out again for the height the list added
@@ -321,6 +335,30 @@ describe("AirportManager", () => {
 
       expect(listFlights).toHaveBeenCalledTimes(1);
       expect(loadFeatures).not.toHaveBeenCalled();
+    });
+
+    it("lists them once the extras bundle has come, if still open", async () => {
+      extras.loaded = false;
+      markers["EDDF"]!.openPopup();
+
+      expect(listFlights).not.toHaveBeenCalled();
+      await Promise.resolve();
+      expect(listFlights).toHaveBeenCalledWith(
+        mockApp,
+        popup,
+        "EDDF",
+        flightTotals,
+      );
+      expect(panPopupIntoView).toHaveBeenCalledOnce();
+    });
+
+    it("lists nothing in a popup closed before the extras bundle came", async () => {
+      extras.loaded = false;
+      markers["EDDF"]!.openPopup();
+      markers["EDDF"]!.closePopup();
+
+      await Promise.resolve();
+      expect(listFlights).not.toHaveBeenCalled();
     });
 
     it("lists them again whenever the content is rewritten", () => {
@@ -362,7 +400,12 @@ describe("AirportManager", () => {
       markers["EDDM"]!.openPopup();
 
       expect(listFlights).toHaveBeenCalledTimes(2);
-      expect(listFlights).toHaveBeenLastCalledWith(mockApp, popup, "EDDM");
+      expect(listFlights).toHaveBeenLastCalledWith(
+        mockApp,
+        popup,
+        "EDDM",
+        flightTotals,
+      );
     });
   });
 

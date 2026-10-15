@@ -159,6 +159,11 @@
   .local-flights-drop-touch {
     display: inline;
   }
+  /* A finger's target, as the other buttons have (styles.css) */
+  .local-flights-remove {
+    min-width: var(--btn-min-height);
+    min-height: var(--btn-min-height);
+  }
 }
 
 /* How the files are named, and the warnings of the last build */

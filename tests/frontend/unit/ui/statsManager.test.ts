@@ -1043,7 +1043,8 @@ describe("StatsManager", () => {
     });
 
     it("recomputes when the selection changes and again when it is cleared", () => {
-      const spy = vi.spyOn(panelStats, "calculateFilteredStatistics");
+      // In slices, as a large selection takes as long as a filter
+      const spy = vi.spyOn(panelStats, "statisticsInSlices");
 
       mockApp.selectedPathIds = new Set([...mockApp.selectedPathIds, 1]);
       expect(spy).toHaveBeenCalledTimes(1);
@@ -1059,7 +1060,7 @@ describe("StatsManager", () => {
     });
 
     it("keeps the filter's statistics for the next time a selection is cleared (regression)", () => {
-      const spy = vi.spyOn(panelStats, "calculateFilteredStatistics");
+      const spy = vi.spyOn(panelStats, "statisticsInSlices");
       const filterSpy = vi.spyOn(panelStats, "filterStatisticsInSlices");
 
       for (let i = 0; i < 3; i++) {
@@ -1083,7 +1084,7 @@ describe("StatsManager", () => {
     it("treats the same ids in another order as the same selection", () => {
       mockApp.selectedPathIds = new Set([...mockApp.selectedPathIds, 2]);
       mockApp.selectedPathIds = new Set([...mockApp.selectedPathIds, 1]);
-      const spy = vi.spyOn(panelStats, "calculateFilteredStatistics");
+      const spy = vi.spyOn(panelStats, "statisticsInSlices");
 
       mockApp.selectedPathIds = new Set([1, 2]);
 
@@ -1138,6 +1139,23 @@ describe("StatsManager", () => {
       expect(statsPanel.querySelector(".stats-loading")).toBeNull();
       expect(statsPanel.hasAttribute("aria-busy")).toBe(false);
       expect(leadValue(statsPanel, "Flights")).toBe("1");
+    });
+
+    it("works a long selection's statistics out in slices as well", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout"] });
+      let now = 0;
+      vi.spyOn(performance, "now").mockImplementation(() => (now += 1000));
+      const slices = vi.spyOn(panelStats, "statisticsInSlices");
+
+      mockApp.selectedPathIds = new Set([1, 2]);
+
+      expect(slices.mock.results[0]!.value).toBeInstanceOf(Promise);
+      expect(statsPanel.getAttribute("aria-busy")).toBe("true");
+
+      await vi.runAllTimersAsync();
+
+      expect(statsPanel.hasAttribute("aria-busy")).toBe(false);
+      expect(leadValue(statsPanel, "Flights")).toBe("2");
     });
 
     it("drops statistics a newer filter has overtaken", async () => {

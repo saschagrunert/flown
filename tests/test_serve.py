@@ -21,7 +21,7 @@ SERVE = Path(__file__).parent.parent / "serve.py"
 
 @pytest.fixture
 def site(tmp_path):
-    """serve.py serving a small site, with CORS for one origin.
+    """serve.py serving a small site.
 
     On a port the system picks (PORT=0), which the script prints once it is
     bound: a port probed free and closed again could be taken by another
@@ -34,7 +34,6 @@ def site(tmp_path):
         "DATA_DIR": str(tmp_path),
         "PORT": "0",
         "BIND_HOST": "127.0.0.1",
-        "CORS_ORIGIN": "https://example.org",
     }
     server = subprocess.Popen(  # noqa: S603
         [sys.executable, str(SERVE)],
@@ -64,9 +63,6 @@ def test_serves_a_file_without_caching(site):
         assert response.status == 200
         assert response.read() == b"<p>flights</p>"
         assert "no-store" in response.headers["Cache-Control"]
-        assert response.headers["Access-Control-Allow-Origin"] == (
-            "https://example.org"
-        )
 
 
 def test_a_missing_file_is_not_found(site):
@@ -108,64 +104,6 @@ def test_prints_the_address_it_is_reached_at(monkeypatch):
     # In the image the port is 8000 inside, and make serve maps another
     monkeypatch.setenv("OPEN_URL", "http://127.0.0.1:9000/")
     assert _serve_module().OPEN_URL == "http://127.0.0.1:9000/"
-
-
-@pytest.mark.parametrize(
-    ("value", "origin"),
-    [
-        ("", ""),
-        ("*", "*"),
-        ("https://example.org", "https://example.org"),
-        (" https://Example.org:8443 ", "https://example.org:8443"),
-        ("http://localhost:3000", "http://localhost:3000"),
-        # The slash a copied address ends in, which an Origin header has not
-        ("https://example.org/", "https://example.org"),
-        ("http://[::1]:8000", "http://[::1]:8000"),
-        ("http://[::1]/", "http://[::1]"),
-        # The default port of the scheme, which a browser leaves out
-        ("https://example.org:443", "https://example.org"),
-        ("http://example.org:80/", "http://example.org"),
-        ("http://example.org:443", "http://example.org:443"),
-    ],
-)
-def test_a_cors_origin_is_accepted(value, origin):
-    assert _serve_module().cors_origin(value) == origin
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "example.org",
-        "https://example.org//",
-        "https://example.org/path",
-        "https://example.org?x=1",
-        "https://example.org#x",
-        "ftp://example.org",
-        "https://user@example.org",
-        "https://example.org\r\nSet-Cookie: x=1",
-        "https://exämple.org",
-        "https://example.org:99999",
-        "null",
-    ],
-)
-def test_anything_else_is_refused(value):
-    """Not reflected: a line break in it would be a header of its own."""
-    with pytest.raises(ValueError, match="CORS_ORIGIN"):
-        _serve_module().cors_origin(value)
-
-
-def test_refuses_to_start_with_an_invalid_origin(tmp_path):
-    result = subprocess.run(  # noqa: S603
-        [sys.executable, str(SERVE)],
-        env={**os.environ, "DATA_DIR": str(tmp_path), "CORS_ORIGIN": "evil\nx"},
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
-
-    assert result.returncode == 1
-    assert "CORS_ORIGIN" in result.stdout
 
 
 def test_refuses_to_start_without_the_directory(tmp_path):

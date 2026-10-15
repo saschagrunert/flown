@@ -20,8 +20,7 @@ import {
 } from "../state/urlState";
 import { toMapBearing, toMapCenter, toMapPitch } from "../utils/geometry";
 import { mapZoomToState } from "../utils/mapHelpers";
-
-const STORAGE_KEY = "flown-state";
+import { flightsKey, STATE_KEY } from "../state/localFlags";
 
 /**
  * Whether the page started on the visitor's flights (setLocalStateMode),
@@ -45,15 +44,13 @@ export function setLocalStateMode(local: boolean): void {
  * a map at the root of its origin uses the bare key. A page that shows the
  * flights a visitor dropped (ui/localFlights.ts) keeps a state of its own
  * under `:local`: the year, the aircraft and the selection of one set of
- * flights name none of the other's.
+ * flights name none of the other's (flightsKey in state/localFlags.ts).
  */
 export function storageKey(
   pathname: string = window.location.pathname,
   local: boolean = localMode,
 ): string {
-  const directory = pathname.slice(0, pathname.lastIndexOf("/") + 1);
-  const base = local ? STORAGE_KEY + ":local" : STORAGE_KEY;
-  return directory === "/" ? base : base + ":" + directory;
+  return flightsKey(STATE_KEY, local, pathname);
 }
 
 /**
@@ -254,8 +251,12 @@ export class StateManager {
       // Silently fail if localStorage is not available
     }
 
-    // Update URL to reflect current state (for shareable links)
-    this.updateUrl(state);
+    // Update URL to reflect current state (for shareable links). Not on
+    // the visitor's own flights, which no link carries: their registrations,
+    // their flight ids and where they flew would stay in the history and
+    // in a browser's sync, for nothing (Copy link refuses there). Their
+    // address is the page's alone, whatever it started with.
+    this.updateUrl(localMode ? {} : state);
     return state;
   }
 

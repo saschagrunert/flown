@@ -400,7 +400,7 @@ def _group_paths_by_year(
     for path_idx, metadata in enumerate(all_path_metadata):
         year = metadata.get("year")
         if year is None:
-            # The pipeline drops these in renderer._drop_paths_without_year,
+            # The pipeline drops these in pipeline._drop_paths_without_year,
             # which also keeps them out of the airports.
             # This guard only covers direct calls to export_all_data.
             logger.debug(

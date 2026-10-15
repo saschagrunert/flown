@@ -37,7 +37,10 @@ from .cache import (
     CACHE_DIR,
     PRIVATE_FILE_MODE,
     atomic_bytes_write,
+    decode_entry,
+    encode_entry,
     private_directory,
+    source_fingerprint,
 )
 from .landings import FlightLandings
 from .logger import logger
@@ -64,11 +67,8 @@ __all__ = [
 # 7: the landings of the paths, 8: no circuits in them).
 # Entries of any other version are pruned (see prune_stale_cache_entries).
 CACHE_FORMAT_VERSION = 8
-# The name an entry ends in, and how hard it is compressed: level 3 is
-# zstd's default, most of the saving at a fraction of the time of the
-# higher ones
+# The name an entry ends in (see cache.encode_entry)
 CACHE_SUFFIX = ".json.zst"
-_ZSTD_LEVEL = 3
 
 # Entries not read or written for this long are removed
 CACHE_MAX_AGE_DAYS = 30
@@ -106,17 +106,7 @@ _HASH_CHUNK_BYTES = 1024 * 1024
 @functools.cache
 def parser_fingerprint() -> str:
     """A short token that changes whenever the parser code does."""
-    digest = hashlib.sha256()
-    package = Path(__file__).parent
-    for module in _PARSER_MODULES:
-        digest.update(module.encode())
-        try:
-            digest.update((package / f"{module}.py").read_bytes())
-        except OSError:
-            # No sources (a bytecode-only install): the format version
-            # still invalidates entries on structural changes
-            continue
-    return digest.hexdigest()[:8]
+    return source_fingerprint(Path(__file__).parent, _PARSER_MODULES)
 
 
 def _content_digest(kml_path: Path) -> str | None:
@@ -269,17 +259,6 @@ class CachedParse(NamedTuple):
     # The landings of every path (see landings.path_landings), None for an
     # entry stored without them
     landings: list[FlightLandings | None] | None = None
-
-
-def encode_entry(data: Any) -> bytes:
-    """An entry as it is stored: compact JSON, compressed."""
-    content = json.dumps(data, separators=(",", ":")).encode()
-    return zstd.compress(content, level=_ZSTD_LEVEL)
-
-
-def decode_entry(data: bytes) -> Any:
-    """The data of a stored entry (see ``encode_entry``)."""
-    return json.loads(zstd.decompress(data))
 
 
 def _landings_to_json(landings: FlightLandings | None) -> dict[str, Any] | None:

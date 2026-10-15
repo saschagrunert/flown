@@ -20,24 +20,39 @@ from hypothesis import settings
 # The functions under property tests take microseconds, but a GC pause or a
 # busy CI runner (the suite runs under xdist) can still trip the default
 # 200 ms deadline and report a flaky test; without it Hypothesis only
-# reports failing examples. Its own "ci" profile, which it loads on CI,
-# replays the same examples on every run (derandomize): CI would never find
-# a new one. So CI draws new examples on every run as well, with nothing to
-# remember them in but the blob it prints to reproduce a failure, and the
-# examples found that way are pinned with @example in the tests.
+# reports failing examples. CI replays the same examples on every run
+# (derandomize, as Hypothesis's own "ci" profile does): one drawn there by
+# chance would fail a pull request that did not touch the code it found
+# wrong, or hold back the flights of a push to main. New examples are drawn
+# by the weekly run instead (the properties job of test.yml, with
+# FLOWN_HYPOTHESIS_EXPLORE=1), ten times as many for a test that sets no
+# number of its own, with nothing to remember them in but the blob it
+# prints to reproduce a failure; the examples found that way are pinned
+# with @example in the tests. A local run draws new ones every time, and
+# keeps those that failed in .hypothesis/.
+EXPLORE_ENV = "FLOWN_HYPOTHESIS_EXPLORE"
 settings.register_profile("no-deadline", deadline=None)
 settings.register_profile(
-    "random-ci",
+    "fixed-ci",
+    parent=settings.get_profile("no-deadline"),
+    derandomize=True,
+    database=None,
+    print_blob=True,
+)
+settings.register_profile(
+    "explore",
     parent=settings.get_profile("no-deadline"),
     derandomize=False,
     database=None,
     print_blob=True,
+    max_examples=1000,
 )
-settings.load_profile(
-    "random-ci"
-    if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
-    else "no-deadline"
-)
+if os.environ.get(EXPLORE_ENV) == "1":
+    settings.load_profile("explore")
+elif os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+    settings.load_profile("fixed-ci")
+else:
+    settings.load_profile("no-deadline")
 
 _TEST_CACHE_DIR: Path | None = None
 
@@ -49,7 +64,7 @@ def parse_kml_file(kml_file, cache_path=None):
     """Parse a KML file, without the cache, into ``(coordinates, paths, metadata)``.
 
     The result is stored in the cache entry ``cache_path`` with the landings
-    of its paths, as a build stores it (see ``renderer._parse_with_error_handling``).
+    of its paths, as a build stores it (see ``pipeline._parse_with_error_handling``).
     """
     from flown.landings import path_landings
     from flown.parser import parse_and_cache
@@ -234,6 +249,22 @@ def private_parse_cache(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def private_build_caches(monkeypatch, tmp_path_factory):
+    """Give every test its own directories of the databases and overlaps kept.
+
+    As for the parse cache: a test that changes how a database is read, or
+    which recordings are one flight, would otherwise read what another test
+    kept of the same input.
+    """
+    monkeypatch.setattr(
+        "flown.airport_lookup.PARSED_DATABASE_DIR", tmp_path_factory.mktemp("db")
+    )
+    monkeypatch.setattr(
+        "flown.duplicates.OVERLAPS_CACHE_DIR", tmp_path_factory.mktemp("overlaps")
+    )
+
+
+@pytest.fixture(autouse=True)
 def reset_airport_cache():
     """Reset the airport cache and the download failure marker around each test.
 
@@ -314,3 +345,31 @@ def decoded_segments(entry):
 def decode_entry():
     """Fixture form of :func:`decoded_segments`."""
     return decoded_segments
+
+
+#: The modules of the package whose code cannot change what a cache entry
+#: holds: where it is kept, what is logged and which errors are raised
+WITHOUT_EFFECT_MODULES = frozenset({"__init__", "cache", "exceptions", "logger"})
+
+
+def package_imports(*modules):
+    """``modules`` and every module of the package they import, by name."""
+    import ast
+
+    package = Path(__file__).parent.parent / "flown"
+    seen: set[str] = set()
+    pending = list(modules)
+    while pending:
+        module = pending.pop()
+        if module in seen:
+            continue
+        seen.add(module)
+        tree = ast.parse((package / f"{module}.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 1:
+                pending.extend(
+                    [node.module]
+                    if node.module
+                    else [alias.name for alias in node.names]
+                )
+    return {module for module in seen if (package / f"{module}.py").is_file()}

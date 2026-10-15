@@ -7,26 +7,28 @@
  * flight alone, and its checkbox adds it to the selection or takes it out:
  * that is how flights of the airport join a selection made already, or the
  * flights of share mode (see PathSelection.pickFromList). Each flight is
- * named by its route, aircraft, year and distance only: a date or a time
- * of day would say when somebody flew.
+ * named by its route, aircraft, year and distance only (flightLabel):
+ * a date or a time of day would say when somebody flew.
  *
  * AirportManager adds it whenever the popup is open with new content (see
  * listPopupFlights), and lays the popup out again afterwards. The runways
  * the flights of the filter touched down on go above it, with their share.
- * It is part of the app rather than of the feature bundle: fetching that
- * bundle, and its stylesheet, for the first popup cost far more than the
- * list itself.
+ * It comes with the extras bundle, which every page fetches once it has a
+ * moment, so a popup seldom waits for it; in the first visit it was some
+ * 2 KB that a visit opening no popup never ran. Not with the feature
+ * bundle: fetching that, and its stylesheet, for the first popup cost far
+ * more than the list itself.
  */
 import type { Popup } from "maplibre-gl";
 import type { MapApp } from "../mapApp";
-import type { PathInfo } from "../types";
+import type { KMLDataset, PathInfo } from "../types";
 import { datasetIndex } from "../calculations/datasetIndex";
-import { flightTotals } from "../calculations/flightTotals";
-import { KM_TO_NAUTICAL_MILES } from "../utils/constants";
+import type { FlightTotals } from "../calculations/flightTotals";
 import { escapeHtml } from "../utils/escape";
-import { airportCode } from "../features/airports";
+import { airportCode, flightLabel, pickBox } from "../features/airports";
 import { watchScrollEnd, type ScrollEndWatcher } from "../utils/scrollFade";
 import type { PickList } from "./pathSelection";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** Apps whose selection the open list already follows */
 const following = new WeakSet<MapApp>();
@@ -34,63 +36,21 @@ const following = new WeakSet<MapApp>();
 /** Keeps the fade of the list that is shown; one popup, so one list */
 let listEnd: ScrollEndWatcher | null = null;
 
-/** An airport as the list names it: its code where it has one */
-function routeEnd(label = "?"): string {
-  return airportCode(label) ?? label;
-}
-
-/**
- * A flight's route by the codes of its airports ("EDAQ → EDDP"), the way
- * this list and the flight list of the statistics rail name it
- */
-export function flightRoute(path: PathInfo): string {
-  return routeEnd(path.start_airport) + " → " + routeEnd(path.end_airport);
-}
-
-/**
- * How a list names a flight: its route, aircraft, year and the `km` it
- * covered, in nautical miles. The airport popup's rows and the checkboxes
- * of both lists say it, so a row is not one of several "EDXX → EDXX"
- * circuits of one aircraft alike.
- */
-export function flightLabel(path: PathInfo, km = 0): string {
-  // Under half a mile says nothing a row could tell apart: none rather
-  // than "0 nm"
-  const nm = Math.round(km * KM_TO_NAUTICAL_MILES);
-  return [
-    flightRoute(path),
-    path.aircraft_registration,
-    path.year,
-    nm && nm + " nm",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-/**
- * The checkbox of a listed flight, which adds it to the selection or takes
- * it out, while the rest of its row picks it alone (see
- * PathSelection.pickFromList). Named after the flight by `label`, which is
- * escaped already. This list and the flight list of the statistics rail
- * have one per row.
- */
-export function pickBox(id: number, label: string): string {
-  return (
-    '<input type="checkbox" class="pick-box" data-path-id="' +
-    id +
-    '" aria-label="Select ' +
-    label +
-    '">'
-  );
-}
-
 /**
  * Add the flight list to an airport popup whose content was just written.
  * @param app - The app whose flights and selection are listed
  * @param popup - The airports' popup, open on the map for this airport
  * @param name - The airport the popup is open for
+ * @param totalsOf - flightTotals of calculations/flightTotals.ts, handed
+ *   over by the app: the Wrapped bundle reads them as well, and a module
+ *   that bundle and this one alone shared would get a chunk of its own
  */
-export function listFlights(app: MapApp, popup: Popup, name: string): void {
+export function listFlights(
+  app: MapApp,
+  popup: Popup,
+  name: string,
+  totalsOf: (data: KMLDataset) => Map<number, FlightTotals>,
+): void {
   // A closed popup has no element at all
   const container = popup.isOpen() ? popup.getElement() : undefined;
   const host = container?.querySelector(".popup-airport");
@@ -105,7 +65,7 @@ export function listFlights(app: MapApp, popup: Popup, name: string): void {
 
   const byId = datasetIndex(data).pathInfoById;
   // The distances of the flight list, worked out once per dataset
-  const totals = flightTotals(data);
+  const totals = totalsOf(data);
   let html = "";
   /** The flights in the order of the rows, for a Shift click's range */
   const order: number[] = [];
@@ -147,7 +107,7 @@ export function listFlights(app: MapApp, popup: Popup, name: string): void {
   list.className = "popup-flights";
   list.setAttribute("role", "group");
   list.setAttribute("aria-label", "Flights");
-  list.innerHTML = html;
+  list.innerHTML = trustedHtml(html);
   host.append(title, list);
   // A long list stops mid-row; the bottom fades while there is more
   listEnd?.stop();

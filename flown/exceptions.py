@@ -46,7 +46,7 @@ class KMLParseError(FlownError):
 
     The file and the line are kept as attributes, and the message does not
     repeat them: whoever reports the error names the file (see
-    ``renderer``), and the message of lxml already holds both.
+    ``pipeline``), and the message of lxml already holds both.
     """
 
     def __init__(

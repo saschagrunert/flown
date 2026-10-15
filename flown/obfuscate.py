@@ -20,9 +20,13 @@ EDDP - 16 Aug 2026", "EDDS to EDDP - 2026-08-16") and the SkyDemon marker
 names (Log Start, Takeoff, Landing, Log Stop), which lose their time. A
 date in a name that the parser reads a year from ("16 Aug 2026",
 "2026-08-16") moves to January 1st as well; every other date, part of a
-date, time of day, weekday, holiday and Unix time in a name or a
-description is taken out (``date_tokens.stray_date_spans``), as the check
-would report it, until nothing of it is left. Every ``creator`` attribute
+date, time of day, weekday, holiday and Unix time in a name, a
+description or another element of free text (a Snippet, an address, the
+value of a Data, ``TEXT_ELEMENT_PATTERN``) is taken out
+(``date_tokens.stray_date_spans``), as the check would report it, until
+nothing of it is left. The check reports the parts of dates in the text
+of every element, and those outside the free text have to go by hand, as
+the dates, times of day and weekdays there do. Every ``creator`` attribute
 is replaced with a generic value. Files are rewritten atomically and in
 place; ``rename_dated_files`` removes the date and time from Charterware
 file names ("2026-01-12_1513h_OE-AKI_LOAV-LOAV.kml") and the dates from
@@ -134,17 +138,61 @@ ROUTE_DATE_PATTERN = re.compile(
     r"(?P<tail>\s*</(?P=tag)\s*>)"
 )
 # A date in a name that the parser reads the year of a flight from: what
-# helpers.DATE_PATTERN matches, wherever it stands ("EDDS 16 Aug 2026", "16
-# Mai 2026", "2026-08-16"), and a day of one digit as well ("6 Aug 2026")
+# helpers.DATE_PATTERN matches ("EDDS 16 Aug 2026", "16 Mai 2026", "6 Aug
+# 2026", "2026-08-16"). The same two shapes (TestProperties checks that each
+# date DATE_PATTERN finds is one of them), but without its lookbehind, so it
+# matches after a digit too ("116 Aug 2026")
 NAME_YEAR_DATE_PATTERN = re.compile(
     r"(?P<day>\d{1,2})\s+(?P<month>\w{3})\s+(?P<year>\d{4})|(?P<iso_year>\d{4})-\d{2}-\d{2}"
 )
-# A name or a description, plain, in CDATA or with a comment or a processing
-# instruction inside, which a reader drops
-TEXT_ELEMENT_PATTERN = re.compile(
-    r"(<(" + _PREFIX + r"(name|description))\b[^>]*>)"
-    r"((?:<!\[CDATA\[(?s:.*?)\]\]>|<!--(?s:.*?)-->|<\?(?s:.*?)\?>|[^<])*)(</\2\s*>)"
+# The elements of KML whose text is free text, which the rewrite scrubs: a
+# name and a description, a Snippet (snippet in KML 2.0), an address and a
+# phone number, the value and the displayName of a Data, a SimpleData, the
+# text of a BalloonStyle, and the linkName, linkDescription, linkSnippet and
+# message of a NetworkLinkControl. Not the gx:value of a gx:SimpleArrayData,
+# which holds a number for each point of a track as the coordinates do.
+_FREE_TEXT_ELEMENTS = (
+    "name",
+    "description",
+    "Snippet",
+    "snippet",
+    "address",
+    "phoneNumber",
+    "value",
+    "displayName",
+    "SimpleData",
+    "text",
+    "linkName",
+    "linkDescription",
+    "linkSnippet",
+    "message",
 )
+_FREE_TEXT_TAG = (
+    r"(?!gx:)" + _PREFIX + r"(" + "|".join(_FREE_TEXT_ELEMENTS) + r")(?![\w.:-])"
+)
+_FREE_TEXT_TAG_PATTERN = re.compile(_FREE_TEXT_TAG)
+# What an element holds when it has no element inside: its text, plain, in
+# CDATA or with a comment or a processing instruction inside, which a reader
+# drops
+_ELEMENT_BODY = r"((?:<!\[CDATA\[(?s:.*?)\]\]>|<!--(?s:.*?)-->|<\?(?s:.*?)\?>|[^<])*)"
+# A free-text element (_FREE_TEXT_ELEMENTS): its start tag, its name, the
+# name without the prefix, its text and its end tag
+TEXT_ELEMENT_PATTERN = re.compile(
+    r"(<(" + _FREE_TEXT_TAG + r")\b[^>]*>)" + _ELEMENT_BODY + r"(</\2\s*>)"
+)
+# Any element with text and no element inside, for the check's scan of the
+# parts of dates: its name and its text. A quoted attribute value may hold a
+# ">"; a start tag that closes itself has no text.
+_LEAF_ELEMENT_PATTERN = re.compile(
+    r"<(?P<tag>" + _PREFIX + r"[A-Za-z_][\w.-]*)"
+    r"""(?:\s(?:[^<>"']|"[^"<]*"|'[^'<]*')*)?(?<!/)>"""
+    + _ELEMENT_BODY
+    + r"</(?P=tag)\s*>"
+)
+# A number and nothing else: in an element other than a name or a
+# description, a decimal ("16.8", "12.10") is the speed of a point or the
+# heading of a view rather than a day and a month
+_PLAIN_NUMBER = re.compile(r"\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)\s*")
 TEXT_PART_PATTERN = re.compile(
     r"<!\[CDATA\[(?P<cdata>(?s:.*?))\]\]>|<!--(?s:.*?)-->|<\?(?s:.*?)\?>|(?P<text>[^<]+)"
 )
@@ -539,7 +587,7 @@ def _scrubbed_once(kind: str, text: str) -> str:
 
 
 def _scrubbed_text(kind: str, text: str) -> str:
-    """A name or a description without what gives the day of a flight away.
+    """A free-text element without what gives the day of a flight away.
 
     A date of a name that the parser reads the year from moves to January
     1st (the route names of SkyDemon, "EDDS to EDDP - 16 Aug 2026"), and
@@ -551,10 +599,23 @@ def _scrubbed_text(kind: str, text: str) -> str:
     return _until_unchanged(lambda current: _scrubbed_once(kind, current), text)
 
 
+def _is_number(kind: str, text: str) -> bool:
+    """Whether the text of an element of ``kind`` is a number and no text.
+
+    A number in a name or a description is text a person wrote, which
+    loses what reads as a date ("16.8"). In any other element it is a
+    number (the speed of a point, the heading of a view), which the rewrite
+    leaves alone and the check's scan for parts of dates passes.
+    """
+    return kind not in ("name", "description") and bool(_PLAIN_NUMBER.fullmatch(text))
+
+
 def _scrub_text_element(match: re.Match[str]) -> str:
-    """A name or a description, scrubbed, in CDATA again where it was."""
+    """A free-text element, scrubbed, in CDATA again where it was."""
     raw = match.group(4)
     text = _element_text(raw)
+    if _is_number(match.group(3), text):
+        return match.group(0)
     scrubbed = _scrubbed_text(match.group(3), text)
     if scrubbed == text:
         return match.group(0)
@@ -1068,14 +1129,15 @@ def _find_stray_dates(content: str) -> list[str]:
 
 
 def _find_stray_times(content: str, stray_dates: list[str]) -> list[str]:
-    """The times of day in a name or a description ("Flight 14:30").
+    """The times of day in the text of a document ("Flight 14:30").
 
-    The rewrite takes them out of names and descriptions
-    (``stray_date_spans``); anywhere else they have to go by hand. The
-    timestamps, which ``_timestamp_violations`` checks, and the description
-    dates of Charterware, which the rewrite puts at 12:00AM, are left out,
-    and so are the dates already reported: the year of the next one in a
-    list of dates ("2025-09-21 2025-09-22") would read as a time after it.
+    The rewrite takes them out of the free-text elements
+    (``TEXT_ELEMENT_PATTERN``, ``stray_date_spans``); anywhere else they
+    have to go by hand. The timestamps, which ``_timestamp_violations``
+    checks, and the description dates of Charterware, which the rewrite
+    puts at 12:00AM, are left out, and so are the dates already reported:
+    the year of the next one in a list of dates ("2025-09-21 2025-09-22")
+    would read as a time after it.
     """
     text = _with_unescaped(
         CHARTERWARE_DATE_PATTERN.sub("", TIMESTAMP_PATTERN.sub("", content))
@@ -1125,6 +1187,57 @@ def _timestamp_violations(content: str) -> list[str]:
         for text in timestamps.not_understood
     )
     return violations
+
+
+def _partial_date_violations(scanned: str) -> list[str]:
+    """The parts of dates in the text of a document, which its year completes.
+
+    A day and month without the year and the like
+    (``find_partial_date_tokens``), in the text of every element: the
+    repository publishes all of the file, not only the names and the
+    descriptions the site shows. Not in the coordinates and the canonical
+    timestamps, which the caller has taken out (``scanned`` is the document
+    without them), nor in the other timestamps, which the check reads on
+    their own (``_timestamp_violations``), nor in a number alone outside a
+    name or a description (``_is_number``), nor in the id after the "#" of
+    a reference, which an attribute declares. What the rewrite scrubs (the
+    free-text elements, ``TEXT_ELEMENT_PATTERN``) it fixes; anything else
+    has to go by hand.
+    """
+    violations: list[str] = []
+    for match in _LEAF_ELEMENT_PATTERN.finditer(scanned):
+        tag = match["tag"]
+        kind = tag.rpartition(":")[2]
+        if kind in _TIMESTAMP_ELEMENTS:
+            continue
+        text = _without_charterware_dates(_element_text(match.group(2)))
+        if _REFERENCE_PATTERN.fullmatch(match.group(0)):
+            text = text.partition("#")[0]
+        if _is_number(kind, text):
+            continue
+        if not _FREE_TEXT_TAG_PATTERN.fullmatch(tag):
+            label = f"Element {tag} contains part of a date, remove it: "
+        elif kind in ("name", "description"):
+            label = "Name or description contains part of a date: "
+        else:
+            label = f"Element {tag} contains part of a date: "
+        violations.extend(label + token for token in find_partial_date_tokens(text))
+    # The text between the elements of one, which no reader shows as its own
+    # but the file holds as well
+    for match in _TEXT_BETWEEN_ELEMENTS.finditer(
+        _LEAF_ELEMENT_PATTERN.sub(" ", scanned)
+    ):
+        violations.extend(
+            f"Text contains part of a date, remove it: {token}"
+            for token in find_partial_date_tokens(html.unescape(match.group(1)))
+        )
+    return violations
+
+
+# The elements TIMESTAMP_PATTERN reads
+_TIMESTAMP_ELEMENTS = frozenset(("when", "begin", "end"))
+# The text after a tag, up to the next one
+_TEXT_BETWEEN_ELEMENTS = re.compile(r">([^<]*[^<\s][^<]*)")
 
 
 def check_kml_obfuscated(filepath: Path) -> list[str]:
@@ -1197,24 +1310,16 @@ def check_kml_obfuscated(filepath: Path) -> list[str]:
         for creator in _real_creators(content)
     )
 
-    # A day and month without the year, which the year of the flight
-    # completes, in what the site and the repository publish of a file
-    for match in TEXT_ELEMENT_PATTERN.finditer(content):
-        text = _without_charterware_dates(_element_text(match.group(4)))
-        violations.extend(
-            f"Name or description contains part of a date: {token}"
-            for token in find_partial_date_tokens(text)
-        )
+    # Coordinates cannot hold a date the parser would accept, and skipping
+    # them saves most of the time the patterns take on a track
+    scanned = CANONICAL_TIMESTAMP_PATTERN.sub("", COORDINATES_PATTERN.sub("", content))
+    violations.extend(_partial_date_violations(scanned))
 
     # Catch-all: any remaining date-shaped token that is not January 1st (or
     # the days a flight may run into after it). The checks above only know
     # the elements this tool writes, so scan the whole document for dates a
     # different exporter may have put anywhere.
-    # Coordinates cannot hold a date the parser would accept, and skipping
-    # them saves most of the time the patterns take on a track
-    without_coordinates = _with_markup_dropped(
-        CANONICAL_TIMESTAMP_PATTERN.sub("", COORDINATES_PATTERN.sub("", content))
-    )
+    without_coordinates = _with_markup_dropped(scanned)
     unescaped = _with_unescaped(without_coordinates)
     epochs = _find_stray_epochs(unescaped)
     stray_dates = _stray_dates_of(unescaped, epochs)
@@ -1226,7 +1331,7 @@ def check_kml_obfuscated(filepath: Path) -> list[str]:
         else f"Date not on Jan 1: {text}"
         for text in stray_dates
     )
-    # The rewrite takes a weekday out of the names and descriptions
+    # The rewrite takes a weekday out of the free-text elements
     # (stray_date_spans); one anywhere else has to go by hand
     violations.extend(
         f"Weekday gives the day of the flight away, remove it: {text}"

@@ -14,12 +14,18 @@ remote-tracking branches of its own, so only the refs being pushed to count,
 and a first push to a new remote checks the whole history. When that history
 is already public elsewhere and clean, `git push --no-verify` skips it.
 
+The lint job of CI runs the same check over the commits a push or a pull
+request adds (``--range BASE HEAD``, see ``check_range``): a push made with
+`--no-verify`, or a file uploaded on GitHub, fails there, if only once it is
+public.
+
 Install it once per clone with `make hooks`. It needs nothing but the
 Python the project requires, and it fails closed: when it cannot run the
 check, the push is refused. `git push --no-verify` skips it.
 
-The messages of the commits that add or change a flight in data/ are
-published with it: one that names a date or a weekday ("Add flight 16 Aug
+The messages of the commits that add or change a KML file are published
+with it (a copy keeps its flights in a directory of its own, see
+doc/hosting.md): one that names a date or a weekday ("Add flight 16 Aug
 2026") is refused as well.
 
 So are the names of the refs pushed to: a branch named after the day of
@@ -46,7 +52,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # every KMZ archive, which the check reports as one it cannot read (the
 # generator reads both, see flown.validation.find_kml_files)
 KML_PATHSPECS = (":(glob,icase)**/*.kml", ":(glob,icase)**/*.kmz")
-# The flights of the site
+# The flights of this repository's site, which the trip warning reads. The
+# messages and the refs of commits are checked when they add or change any
+# KML file (KML_PATHSPECS): a copy keeps its flights where FLOWN_INPUT_DIR
+# says, which the hook cannot know (doc/hosting.md)
 FLIGHT_PATHSPECS = (":(glob,icase)data/**/*.kml", ":(glob,icase)data/**/*.kmz")
 # What git sends for a ref that is deleted rather than pushed
 ZERO_SHA = "0" * 40
@@ -310,7 +319,7 @@ def dated_refs(lines: list[str]) -> list[str]:
 
 
 def touches_flights(repo: Path, exclude: list[str], pushed_shas: list[str]) -> bool:
-    """Whether a commit being pushed adds or changes a flight in data/."""
+    """Whether a commit being pushed adds or changes a KML file."""
     if not pushed_shas:
         return False
     output = _git(
@@ -321,7 +330,7 @@ def touches_flights(repo: Path, exclude: list[str], pushed_shas: list[str]) -> b
         *pushed_shas,
         *exclude,
         "--",
-        *FLIGHT_PATHSPECS,
+        *KML_PATHSPECS,
     )
     return bool(output.strip())
 
@@ -329,7 +338,7 @@ def touches_flights(repo: Path, exclude: list[str], pushed_shas: list[str]) -> b
 def dated_messages(
     repo: Path, exclude: list[str], pushed_shas: list[str]
 ) -> list[tuple[str, str]]:
-    """The dates, weekdays and holidays in the messages of commits to flights.
+    """The dates, weekdays and holidays in the messages of commits to KML files.
 
     Each with the commit it is in, oldest commit first: a message is
     published with the flight its commit adds ("Add flight 16 Aug 2026").
@@ -352,7 +361,7 @@ def dated_messages(
         *pushed_shas,
         *exclude,
         "--",
-        *FLIGHT_PATHSPECS,
+        *KML_PATHSPECS,
     )
     found: list[tuple[str, str]] = []
     for record in _text(output).split("\x1e"):
@@ -399,13 +408,17 @@ def _report(line: str) -> None:
     print(shown, file=sys.stderr)
 
 
-def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
-    """Print what is wrong and return the hook's exit status."""
+def _refuse_dated_commits(
+    repo: Path, exclude: list[str], shas: list[str], hint: str
+) -> bool:
+    """Report the commits that date their flights; whether there were any.
+
+    Every commit of ``shas`` but those of ``exclude`` that adds or changes a
+    KML file is checked on its own, then the messages of those that add or
+    change a flight in data/.
+    """
     found = False
-    tracked = _is_tracked(repo, remote)
-    exclude = published(repo, remote, lines, tracked)
-    hint = "" if tracked else SKIP_HINT
-    for commit in commits_to_check(repo, exclude, pushed_shas(lines)):
+    for commit in commits_to_check(repo, exclude, shas):
         for name, issues in violations_in(repo, commit).items():
             found = True
             for issue in issues:
@@ -417,8 +430,8 @@ def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
             f"commits (amend or rebase) so none of them holds the originals.{hint}",
             file=sys.stderr,
         )
-        return 1
-    messages = dated_messages(repo, exclude, pushed_shas(lines))
+        return True
+    messages = dated_messages(repo, exclude, shas)
     for commit, token in messages:
         _report(f"  {commit[:7]} commit message: {token}")
     if messages:
@@ -429,6 +442,32 @@ def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
             f"commit, `git rebase -i` with `reword` for an earlier one.{hint}",
             file=sys.stderr,
         )
+        return True
+    return False
+
+
+def check_range(repo: Path, base: str, head: str) -> int:
+    """The check of CI: the commits ``head`` has and ``base`` has not.
+
+    Each of them on its own, as the hook checks a push, and their messages:
+    a push made with `git push --no-verify`, or a file uploaded on GitHub,
+    publishes every commit, also one whose files a later commit fixes, and
+    the obfuscation check of CI only reads the last. ``base`` is what the
+    branch had before (the commit before a push, the base of a pull
+    request); with ``ZERO_SHA`` (the first push of a branch) every commit
+    of ``head`` is checked. The names of the refs are left to the hook: by
+    the time CI runs, the ref has been pushed.
+    """
+    exclude = [] if base == ZERO_SHA else ["--not", base]
+    return 1 if _refuse_dated_commits(repo, exclude, [head], "") else 0
+
+
+def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
+    """Print what is wrong and return the hook's exit status."""
+    tracked = _is_tracked(repo, remote)
+    exclude = published(repo, remote, lines, tracked)
+    hint = "" if tracked else SKIP_HINT
+    if _refuse_dated_commits(repo, exclude, pushed_shas(lines), hint):
         return 1
     shas = pushed_shas(lines)
     # Each ref by its own commits: a dated branch of code pushed together
@@ -477,10 +516,18 @@ def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
 
 
 def main() -> int:
-    # The remote's name, or the URL a push names in its place
-    remote = sys.argv[1] if len(sys.argv) > 1 else "origin"
+    # The remote's name, or the URL a push names in its place; CI passes
+    # `--range BASE HEAD` instead (see check_range)
+    args = sys.argv[1:]
+    in_ci = args[:1] == ["--range"]
+    if in_ci and len(args) != 3:
+        print("usage: pre_push.py --range BASE HEAD", file=sys.stderr)
+        return 2
     try:
         sys.path.insert(0, str(ROOT))
+        if in_ci:
+            return check_range(Path.cwd(), args[1], args[2])
+        remote = args[0] if args else "origin"
         return check(Path.cwd(), sys.stdin.read().splitlines(), remote)
     except (ImportError, SyntaxError) as e:
         reason = f"{e}; needs Python 3.14 as python3"
@@ -491,6 +538,9 @@ def main() -> int:
         reason = str(e)
     except UnicodeError as e:
         reason = f"unexpected text: {e}"
+    if in_ci:
+        print(f"pre_push: cannot check the commits ({reason}).", file=sys.stderr)
+        return 1
     print(
         f"pre-push: cannot check the KML files ({reason}). Refusing the push; "
         "`git push --no-verify` skips the check.",

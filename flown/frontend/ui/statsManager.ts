@@ -13,6 +13,8 @@ import {
   calculateFilteredStatistics,
   filterStatistics,
   filterStatisticsInSlices,
+  statisticsInSlices,
+  type StatisticsOptions,
 } from "../calculations/panelStats";
 import { logError } from "../utils/logger";
 import { airportCode } from "../features/airports";
@@ -37,6 +39,7 @@ import {
   STATS_PANEL_ID as PANEL_ID,
 } from "./statsPanel";
 import { FlightList } from "./flightList";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** Store keys the rendered statistics depend on */
 const STATS_KEYS = [
@@ -562,7 +565,7 @@ export class StatsManager {
   private showStatsFailed(): void {
     const panel = domCache.get(PANEL_ID);
     if (!panel) return;
-    panel.innerHTML = STATS_FAILED_HTML;
+    panel.innerHTML = trustedHtml(STATS_FAILED_HTML);
     panel.removeAttribute("aria-busy");
     this.lastHtml = null;
   }
@@ -583,79 +586,87 @@ export class StatsManager {
     this.statsAbort = null;
 
     const { pathInfo, segments } = inputs;
-    const selected = this.app.selectedPathIds;
+    const isSelection = this.app.selectedPathIds.size > 0;
     const data = this.app.currentData;
 
-    if (selected.size === 0 && data) {
-      // Clearing a selection comes back to the filter's statistics, which
-      // are kept with the dataset instead of computed again every time.
-      // Worked out in slices, as Wrapped's (see filterStatisticsInSlices):
-      // all the years took a third of a second on a phone in one task.
-      const controller = new AbortController();
-      const view = datasetIndex(data).filter(inputs.year, inputs.aircraft);
-      const stats = filterStatisticsInSlices(view, controller.signal);
-      if (!(stats instanceof Promise)) {
-        this.updateStatsPanel(stats, false);
-        return;
-      }
-      this.statsAbort = controller;
-      const panel = domCache.get(PANEL_ID);
-      if (panel) {
-        this.titleRail(false);
-        panel.innerHTML = LOADING_HTML;
-        panel.setAttribute("aria-busy", "true");
-        this.lastHtml = null;
-      }
-      stats.then(
-        (filtered) => {
-          if (controller.signal.aborted) return;
-          this.statsAbort = null;
-          this.updateStatsPanel(filtered, false);
-        },
-        (error: unknown) => {
-          if (controller.signal.aborted) return;
-          logError(error);
-          this.statsAbort = null;
-          // Worked out in one go instead, rather than a panel left busy
-          // until the filter changes; should that fail too, the panel says
-          // so, and the same inputs do not ask again (lastInputs)
-          let filtered: FilteredStatistics;
-          try {
-            filtered = filterStatistics(view);
-          } catch (failure) {
-            logError(failure);
-            this.showStatsFailed();
-            return;
-          }
-          this.updateStatsPanel(filtered, false);
-        },
-      );
-      return;
-    }
-    if (selected.size === 0) {
+    if (!isSelection && !data) {
       this.updateStatsPanel(
         calculateFilteredStatistics({ pathInfo, segments }),
         false,
       );
       return;
     }
+    // Worked out in slices, as Wrapped's (see filterStatisticsInSlices):
+    // all the years took a third of a second on a phone in one task, and
+    // a selection of every flight of the home base about as long. Clearing
+    // a selection comes back to the filter's statistics, which are kept
+    // with the dataset instead of computed again every time.
+    const controller = new AbortController();
+    const view = isSelection
+      ? null
+      : datasetIndex(data!).filter(inputs.year, inputs.aircraft);
+    const options = view ? null : this.selectionOptions(inputs);
+    const stats = view
+      ? filterStatisticsInSlices(view, controller.signal)
+      : statisticsInSlices(options!, controller.signal);
+    if (!(stats instanceof Promise)) {
+      this.updateStatsPanel(stats, isSelection);
+      return;
+    }
+    this.statsAbort = controller;
+    const panel = domCache.get(PANEL_ID);
+    if (panel) {
+      this.titleRail(isSelection);
+      panel.innerHTML = trustedHtml(LOADING_HTML);
+      panel.setAttribute("aria-busy", "true");
+      this.lastHtml = null;
+    }
+    stats.then(
+      (filtered) => {
+        if (controller.signal.aborted) return;
+        this.statsAbort = null;
+        this.updateStatsPanel(filtered, isSelection);
+      },
+      (error: unknown) => {
+        if (controller.signal.aborted) return;
+        logError(error);
+        this.statsAbort = null;
+        // Worked out in one go instead, rather than a panel left busy
+        // until the filter changes; should that fail too, the panel says
+        // so, and the same inputs do not ask again (lastInputs)
+        let filtered: FilteredStatistics;
+        try {
+          filtered = view
+            ? filterStatistics(view)
+            : calculateFilteredStatistics(options!);
+        } catch (failure) {
+          logError(failure);
+          this.showStatsFailed();
+          return;
+        }
+        this.updateStatsPanel(filtered, isSelection);
+      },
+    );
+  }
 
-    // The selected flights the filter shows, as the map and the chip count
-    // them: share mode keeps the ones it hides, which are of no figure
+  /**
+   * The options of the statistics of the selection of `inputs`: the
+   * selected flights the filter shows, as the map and the chip count them
+   * (share mode keeps the ones it hides, which are of no figure). A
+   * selection without segments still gets its statistics:
+   * leaving the previous flight's numbers under the title of a selection
+   * would be worse.
+   */
+  private selectionOptions(inputs: StatsInputs): StatisticsOptions {
+    const { pathInfo, segments } = inputs;
     const shown = shownSelection(this.app);
-    const selectedPathInfo = pathInfo.filter((path) => shown.has(path.id));
-    const selectedSegments = segmentsForPathIds(segments, shown);
-
-    // A selection without segments still gets rendered: leaving the previous
-    // flight's numbers under the title of a selection would be worse
-    const selectedStats = calculateFilteredStatistics({
-      pathInfo: selectedPathInfo,
-      segments: selectedSegments,
-      year: "all", // Don't filter by year for selection
-      aircraft: "all", // Don't filter by aircraft for selection
-    });
-
-    this.updateStatsPanel(selectedStats, true);
+    return {
+      pathInfo: pathInfo.filter((path) => shown.has(path.id)),
+      segments: segmentsForPathIds(segments, shown),
+      // Not filtered by year or aircraft: the selection is the filter
+      year: "all",
+      aircraft: "all",
+    };
   }
 
   /**
@@ -734,7 +745,7 @@ export class StatsManager {
     // of the panel, and most refreshes produce exactly the same content
     if (html === this.lastHtml && panel.firstChild !== null) return;
     this.lastHtml = html;
-    panel.innerHTML = html;
+    panel.innerHTML = trustedHtml(html);
     // New content, so whether there is more of it below has changed too
     this.scrollWatcher?.update();
   }

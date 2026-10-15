@@ -74,10 +74,11 @@ def is_tile_png(data: bytes) -> bool:
 # header holds the CRC of the PNG the pixels are of, so a tile fetched
 # again is decoded again. Bump the version whenever the layout or the
 # compression changes (version 1 was zlib): a file of an older version is
-# decoded again and replaced.
+# decoded again and replaced. So is one with the magic of before the rename
+# to Flown (KHTP, of versions 1 and 2), once, after the upgrade.
 PIXELS_SUFFIX = ".pixels"
 _PIXELS_HEADER = struct.Struct(">4sBI")
-_PIXELS_MAGIC = b"KHTP"
+_PIXELS_MAGIC = b"FLTP"
 _PIXELS_VERSION = 2
 _PIXELS_ZSTD_LEVEL = 3
 _PLANES_BYTES = 3 * TILE_SIZE * TILE_SIZE

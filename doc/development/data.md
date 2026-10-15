@@ -106,7 +106,7 @@ type, and of two that name as much the one with more points; the warning names
 both files. Recordings without times are not compared.
 
 Both drops run in `select_exported_paths` in `flown/data_exporter.py`, before
-`_export_site` in `flown/renderer.py` takes the map extent and the airports from
+`_export_site` in `flown/pipeline.py` takes the map extent and the airports from
 the paths that are left: a dropped copy or recording neither widens the map nor
 adds an airport.
 
@@ -128,11 +128,20 @@ minutes. A row without times gets its share of the path's average speed.
 
 ## Year file format
 
-The year files are data format 6 (`FORMAT_VERSION` in `flown/segment_codec.py`,
+The year files are data format 7 (`FORMAT_VERSION` in `flown/segment_codec.py`,
 `DATA_FORMAT_VERSION` in `services/yearDecode.ts`; bump both together, the page
 refuses any other).
 
-Format 6 writes the groundspeeds in whole knots instead of tenths of a knot. The
+Format 7 writes the latitude and longitude columns as second differences: each
+value is how much the step from the row before changed, the step before the
+first row counting as zero. An aircraft holds its course and speed for many
+rows, so the latest year on `data/` shrank by 8.5 % raw and 7.3 % gzipped. The
+other columns stay first differences, which their second differences made
+larger. Rounding the times to whole seconds would have saved another third of
+the time column, but a segment shorter than the rounding then took no time, and
+the heat of the map moved with it.
+
+Format 6 wrote the groundspeeds in whole knots instead of tenths of a knot. The
 exporter rounds them to whole knots already (`exported_knots` in
 `flown/export_pipeline.py`), so the tenths only added a trailing zero to every
 speed difference: 2.3 % of the year files on `data/`, 0.9 % gzipped. The encoder

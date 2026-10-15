@@ -335,6 +335,29 @@ class TestRenderHtml:
         assert preloaded
         assert set(preloaded) <= published
 
+    @staticmethod
+    def _policy(page):
+        from lxml import html as lxml_html
+
+        (content,) = [
+            str(meta.get("content"))
+            for meta in lxml_html.fromstring(page).iter("meta")
+            if meta.get("http-equiv") == "Content-Security-Policy"
+        ]
+        directives = (part.split() for part in content.split(";"))
+        return {name: sources for name, *sources in directives}
+
+    @pytest.mark.parametrize("site_url", [None, "https://user.github.io/flights"])
+    def test_scripts_come_from_the_origin(self, tmp_path, site_url):
+        """With the site's URL too, so the build also runs under make serve."""
+        output_file = tmp_path / "index.html"
+        render_html(output_file, "data", 2026, site_url)
+        policy = self._policy(output_file.read_text())
+        assert policy["script-src"] == policy["worker-src"] == ["'self'"]
+        # Every sink takes what a policy made of it (utils/trustedHtml.ts)
+        assert policy["require-trusted-types-for"] == ["'script'"]
+        assert policy["trusted-types"] == ["flown", "default"]
+
     def test_output_is_world_readable(self, tmp_path):
         previous = os.umask(0o022)
         try:
@@ -422,7 +445,7 @@ class TestPackageAssets:
         with zipfile.ZipFile(tmp_path / "flown-src.zip") as archive:
             names = archive.namelist()
         assert "flown/browser.py" in names
-        assert "flown/renderer.py" in names
+        assert "flown/pipeline.py" in names
         assert not any(name.startswith("flown/frontend") for name in names)
 
     def test_bundle_and_source_map_are_copied(self, tmp_path):
@@ -805,7 +828,7 @@ class TestGeneratorHash:
         "change",
         [
             "site_assets.py",
-            "renderer.py",
+            "pipeline.py",
             "templates/map_template.html",
             "static/styles.css",
             "static/favicon.svg",

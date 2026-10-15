@@ -1,4 +1,5 @@
 import { icon } from "./icons";
+import { trustedHtml } from "./trustedHtml";
 
 /** Delay between clearing a live region and writing its new message (ms) */
 export const LIVE_REGION_DELAY_MS = 100;
@@ -25,7 +26,7 @@ const pendingWrites = new WeakMap<HTMLElement, PendingWrite>();
 /** Messages read out as one, each a sentence of its own */
 function joined(messages: string[]): string {
   if (messages.length < 2) return messages[0] ?? "";
-  return messages.map((m) => (/[.!?]$/.test(m) ? m : m + ".")).join(" ");
+  return messages.map((m) => (/[.!?…]$/.test(m) ? m : m + ".")).join(" ");
 }
 
 /**
@@ -194,7 +195,7 @@ export function showToast(
     }
     // An icon, so the toast's text stays its message
     const dismiss = toastButton(toast, () => {}, "");
-    dismiss.innerHTML = icon("close", 16);
+    dismiss.innerHTML = trustedHtml(icon("close", 16));
     dismiss.setAttribute("aria-label", "Dismiss");
     dismiss.title = "Dismiss";
     toast.append(dismiss);

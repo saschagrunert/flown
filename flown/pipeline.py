@@ -1,10 +1,10 @@
 """The generation pipeline: parse, deduplicate, export, then package.
 
-The module keeps its old name, but it renders nothing itself: the page and
-the files the site is made of come from ``site_assets``, the data files from
-``data_exporter``. This module is about the order the stages run in, what
-they hand each other and how a failure is reported (the exceptions of
-``exceptions``, which ``cli`` turns into its exit status).
+It renders nothing itself: the page and the files the site is made of come
+from ``site_assets``, the data files from ``data_exporter``. This module is
+about the order the stages run in, what they hand each other and how a
+failure is reported (the exceptions of ``exceptions``, which ``cli`` turns
+into its exit status).
 """
 
 import contextlib
@@ -92,6 +92,7 @@ __all__ = [
     "parse_files",
     "parse_inline",
     "preflight",
+    "trim_paths",
 ]
 
 # Files that are not in the parse cache are parsed in this process up to
@@ -757,18 +758,9 @@ def _plan(
     where it starts and ends (see ``trim_path_ends``) before anything else
     looks at it: the extent and the airports are of what is published.
     """
-    if trim_metres > 0:
-        all_path_groups = [
-            trim_path_ends(path, trim_metres) for path in all_path_groups
-        ]
-        # The start point goes with them: a departure the airport database
-        # does not place is marked at it (airports._add_departures), which
-        # published the parking spot the trim took out. On copies: the
-        # metadata is the parse's, which the parse cache keeps.
-        all_path_metadata = [
-            _started_at(metadata, path)
-            for metadata, path in zip(all_path_metadata, all_path_groups, strict=True)
-        ]
+    all_path_groups, all_path_metadata = trim_paths(
+        all_path_groups, all_path_metadata, trim_metres
+    )
     path_groups, path_metadata, dated_landings = _drop_paths_without_year(
         all_path_groups, all_path_metadata, landings
     )
@@ -803,6 +795,31 @@ def _plan(
             else sorted({code.lower() for code in countries} & set(flags))
         ),
     )
+
+
+def trim_paths(
+    all_path_groups: FlightPathGroup,
+    all_path_metadata: list[PathMetadata],
+    trim_metres: float,
+) -> tuple[FlightPathGroup, list[PathMetadata]]:
+    """Every path without its points within ``trim_metres`` of its ends.
+
+    See ``trim_path_ends``; the paths as they are for 0. For the build
+    (``_plan``) and ``--list`` (``listing.list_flights``) alike, so that the
+    list shows what the site publishes.
+    """
+    if trim_metres <= 0:
+        return all_path_groups, all_path_metadata
+    path_groups = [trim_path_ends(path, trim_metres) for path in all_path_groups]
+    # The start point goes with them: a departure the airport database
+    # does not place is marked at it (airports._add_departures), which
+    # published the parking spot the trim took out. On copies: the
+    # metadata is the parse's, which the parse cache keeps.
+    path_metadata = [
+        _started_at(metadata, path)
+        for metadata, path in zip(all_path_metadata, path_groups, strict=True)
+    ]
+    return path_groups, path_metadata
 
 
 def _started_at(metadata: PathMetadata, path: FlightPath) -> PathMetadata:

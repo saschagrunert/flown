@@ -81,7 +81,7 @@ These numbers are the reference for the processing time mentioned in
 [Data export](../doc/output.md#data-export). The system has been tested and
 optimized to handle 100k+ flights.
 
-## check_locks.py
+## check_pins.py
 
 Checks the versions that are written down in more than one place, which nothing
 else reads together:
@@ -108,10 +108,15 @@ else reads together:
   `target-version`, and the Node.js major version of `.nvmrc` is the one of the
   `node` base image and `engines` in `package.json`. Dependabot bumps none of
   them, so they move together by hand.
+- The gitleaks image of the security job names in its comment the release the
+  gitleaks hook of `.pre-commit-config.yaml` pins. Dependabot bumps the hook and
+  not the image, and the security job, which compares the release the pulled
+  image reports, gates nothing: such a bump would merge on green and turn main
+  red.
 
-The pre-commit hook revisions are not checked: the linters and formatters run
-from the project environment, so they have no revision of their own to drift.
-`make lint` and the CI lint job run it.
+The other pre-commit hooks are not checked: the linters, formatters and file
+checks run from the project environment, so they have no revision of their own
+to drift. `make lint` and the CI lint job run it.
 
 ## pre_push.py
 
@@ -133,7 +138,11 @@ private one may hold the raw flights. It needs nothing beyond Python;
 worktree the push comes from: the worktrees of a clone share one hooks
 directory, and a link into the worktree that installed it would dangle once that
 worktree is removed, which git skips without a word. Without a `pre_push.py` to
-run, the wrapper refuses the push.
+run, the wrapper refuses the push. The check needs Python 3.14 or newer, which a
+Git GUI or a shell outside the virtual environment may not have as `python3`
+(macOS ships 3.9): the wrapper runs it with the first of the worktree's `.venv`,
+`python3.14`, `python3` and `python` that is new enough, and refuses the push
+without one.
 
 ## build_visual_site.py
 

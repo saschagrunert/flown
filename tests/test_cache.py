@@ -5,9 +5,11 @@ import contextlib
 import fnmatch
 import importlib
 import os
+import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,10 +18,14 @@ import pytest
 import flown.cache as cache_module
 from flown.cache import (
     CACHE_DIR,
+    ENTRY_MAX_AGE_DAYS,
     atomic_bytes_write,
     atomic_data_write,
     atomic_text_write,
     atomic_write,
+    load_entry,
+    source_fingerprint,
+    store_entry,
 )
 
 
@@ -166,12 +172,66 @@ class TestMakeBuildCache:
     def test_a_relative_cache_directory_is_mounted_from_where_make_runs(self, tmp_path):
         """Not a volume of the runtime named after it, which a bind mount is."""
         commands = self._build_commands(tmp_path, "FLOWN_CACHE_DIR=cache")
-        assert f'-v "{tmp_path}/cache:/cache"' in commands
+        assert f'-v "{tmp_path}/cache:/cache:Z"' in commands
         assert f'mkdir -p "{tmp_path}/cache"' in commands
 
     def test_an_absolute_one_with_spaces_stays_as_it_is(self, tmp_path):
         commands = self._build_commands(tmp_path, "CACHE_DIR=/a b/cache")
-        assert '-v "/a b/cache:/cache"' in commands
+        assert '-v "/a b/cache:/cache:Z"' in commands
+
+
+@pytest.mark.skipif(MAKE is None, reason="needs make")
+class TestMakeContainersAreConfined:
+    """No container of the Makefile runs unconfined, with podman or docker."""
+
+    @pytest.fixture(params=["podman", "docker"])
+    def runtime(self, request, tmp_path):
+        """A runtime that only says which one it is, as `--version` does."""
+        name = "podman version 5.8.8" if request.param == "podman" else "Docker 28"
+        path = tmp_path / request.param
+        path.write_text(f"#!/bin/sh\necho '{name}'\n")
+        path.chmod(0o755)
+        return path
+
+    def _commands(self, directory: Path, runtime: Path, target: str) -> str:
+        (directory / "data").mkdir(exist_ok=True)
+        (directory / "docs").mkdir(exist_ok=True)
+        (directory / "docs" / "index.html").write_text("")
+        assert MAKE is not None
+        return subprocess.run(  # noqa: S603
+            [
+                MAKE,
+                *("-n", "-s", "-f", str(MAKEFILE), "-C", str(directory), target),
+                f"CONTAINER_RUNTIME={runtime}",
+                # The fallback to the image, whatever Python the host has
+                "HOST_PYTHON_OK=false",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    @pytest.mark.parametrize(
+        "target", ["build", "serve", "obfuscate", "check-obfuscation"]
+    )
+    def test_every_run_drops_its_privileges(self, tmp_path, runtime, target):
+        commands = self._commands(tmp_path, runtime, target)
+        runs = [line for line in commands.splitlines() if f"{runtime} run " in line]
+        assert runs
+        for run in runs:
+            assert "--cap-drop=ALL" in run
+            assert "--security-opt=no-new-privileges" in run
+        assert "label=disable" not in commands
+        # Every bind mount is relabeled for SELinux rather than unconfined
+        mounts = re.findall(r'-v "[^"]*"', commands)
+        assert mounts
+        assert all(re.search(r":(?:ro,)?[zZ]\"$", mount) for mount in mounts)
+        assert ("--userns=keep-id" in commands) == (runtime.name == "podman")
+
+    def test_serve_runs_read_only(self, tmp_path, runtime):
+        commands = self._commands(tmp_path, runtime, "serve")
+        assert "--read-only" in commands
+        assert f'-v "{tmp_path}/docs:/data:ro,z"' in commands
 
 
 class TestAtomicWrite:
@@ -410,3 +470,69 @@ class TestAtomicDataWrite:
 
         assert not path.exists()
         assert list(tmp_path.iterdir()) == []
+
+
+class TestEntries:
+    """The entries of the build caches (see store_entry and load_entry)."""
+
+    def test_an_entry_is_read_back(self, tmp_path):
+        path = tmp_path / "kept" / "entry.json.zst"
+        store_entry(path, {"pairs": [[1, 0]]})
+        assert load_entry(path) == {"pairs": [[1, 0]]}
+        assert oct(path.parent.stat().st_mode & 0o777) == "0o700"
+        assert oct(path.stat().st_mode & 0o777) == "0o600"
+
+    def test_none_without_an_entry_or_with_a_broken_one(self, tmp_path):
+        path = tmp_path / "entry.json.zst"
+        assert load_entry(path) is None
+        path.write_bytes(b"not zstd")
+        assert load_entry(path) is None
+
+    def test_a_directory_that_is_not_this_users_own_is_not_used(self, tmp_path):
+        """A symlink to a directory anybody may write to."""
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        store_entry(shared / "entry.json.zst", [1])
+        link = tmp_path / "link"
+        link.symlink_to(shared)
+        assert load_entry(link / "entry.json.zst") is None
+        store_entry(link / "other.json.zst", [2])
+        assert not (shared / "other.json.zst").exists()
+
+    def test_entries_not_used_for_a_month_go_when_one_is_stored(self, tmp_path):
+        old = time.time() - (ENTRY_MAX_AGE_DAYS + 1) * 24 * 3600
+        directory = tmp_path / "kept"
+        store_entry(directory / "unused.json.zst", [1])
+        store_entry(directory / "used.json.zst", [2])
+        leftover = directory / ".unused.json.zst.abcdefgh.tmp"
+        leftover.write_bytes(b"")
+        for name in ("unused.json.zst", "used.json.zst", leftover.name):
+            os.utime(directory / name, (old, old))
+        assert load_entry(directory / "used.json.zst") == [2]
+
+        store_entry(directory / "new.json.zst", [3])
+
+        assert sorted(entry.name for entry in directory.iterdir()) == [
+            "new.json.zst",
+            "used.json.zst",
+        ]
+
+    def test_a_failed_write_costs_nothing_but_the_entry(self, tmp_path):
+        path = tmp_path / "entry.json.zst"
+        with patch("flown.cache.os.replace", side_effect=OSError("full")):
+            store_entry(path, [1])
+        assert load_entry(path) is None
+        assert list(tmp_path.iterdir()) == []
+
+
+class TestSourceFingerprint:
+    def test_changes_with_the_code_of_the_modules(self, tmp_path):
+        (tmp_path / "a.py").write_text("x = 1\n")
+        (tmp_path / "b.py").write_text("y = 1\n")
+        first = source_fingerprint(tmp_path, ("a", "b"))
+        (tmp_path / "b.py").write_text("y = 2\n")
+        second = source_fingerprint(tmp_path, ("a", "b"))
+        (tmp_path / "a.py").unlink()
+        third = source_fingerprint(tmp_path, ("a", "b"))
+        assert len({first, second, third}) == 3
+        assert len(first) == 8

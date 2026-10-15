@@ -8,14 +8,19 @@ import { domCache } from "../utils/domCache";
 import { loadedExtras, loadExtras } from "../services/featureLoader";
 import { TRY_AGAIN } from "../services/lazyImport";
 import { logError } from "../utils/logger";
-import { showToast } from "../utils/toast";
+import { dismissToast, showToast } from "../utils/toast";
 import { SHARE_UNAVAILABLE_MESSAGE } from "../state/localFlags";
 import {
   encodeStateToUrl,
   SHARE_INTRO_PARAM,
   SHARE_TOKEN_PARAM,
 } from "../state/urlState";
-import { NO_TIMING_MESSAGE, STILL_LOADING_MESSAGE } from "./actions";
+import {
+  EXPORT_BUSY_MESSAGE,
+  exportRunning,
+  NO_TIMING_MESSAGE,
+  STILL_LOADING_MESSAGE,
+} from "./actions";
 import { altitudeColours, setColorLayer } from "./layerVisibility";
 import { loadLazyBundle } from "./lazyBundles";
 
@@ -124,18 +129,35 @@ export class UIToggles {
     const btn = domCache.get("export-btn", HTMLButtonElement);
     const mapContainer = domCache.get("map");
     if (!btn || !mapContainer) return;
-    // An export is already running
+    // An export is already running, which a press is told rather than
+    // ignored without a word
+    if (exportRunning()) {
+      showToast(EXPORT_BUSY_MESSAGE);
+      return;
+    }
     if (btn.getAttribute("aria-disabled") === "true") return;
 
     // Unavailable while it runs, but not `disabled`: that takes the focus
     // off the button that was just pressed and drops it to <body>
     btn.setAttribute("aria-disabled", "true");
-    // Only the label changes so the button keeps its icon
+    btn.setAttribute("data-busy", "");
+    // Only the label changes so the button keeps its icon. Its name is its
+    // aria-label, which says the same while it runs.
+    const name = btn.getAttribute("aria-label");
     setControlLabel(btn, EXPORT_BUTTON_BUSY_LABEL);
+    btn.setAttribute("aria-label", EXPORT_BUSY_MESSAGE);
+    // The phone has no button to show it: the More sheet closed on the tap
+    showToast(EXPORT_BUSY_MESSAGE);
+    this.app.mobileBar?.refreshSheet();
 
     const restore = () => {
       btn.setAttribute("aria-disabled", "false");
+      btn.removeAttribute("data-busy");
       setControlLabel(btn, EXPORT_BUTTON_LABEL);
+      if (name) btn.setAttribute("aria-label", name);
+      // The result's toast is up by now, or none for a cancelled share
+      dismissToast(EXPORT_BUSY_MESSAGE);
+      this.app.mobileBar?.refreshSheet();
     };
 
     // The share sheet's deadline counts from the tap (see exportImage)

@@ -51,7 +51,7 @@ npm run format:check     # Check code formatting
 
 ```bash
 pytest                                  # Run all tests (see Testing for the CI flags)
-python scripts/check_locks.py           # Lock files, Playwright image, version and toolchain pins
+python scripts/check_pins.py            # Build pin, uv release, Playwright and gitleaks images, version and toolchain pins
 ruff check . && ruff format --check .   # Lint and formatting
 mypy .                                  # Type checking
 typos                                   # Spell check (config in _typos.toml)
@@ -100,5 +100,5 @@ make check-obfuscation                  # data/ and visual fixtures obfuscated
 - [Size budgets](doc/development/budgets.md): the bundle and stylesheet budgets,
   how to raise one and where their history is kept
 - [Visual snapshots](CONTRIBUTING.md#visual-snapshots), in CONTRIBUTING.md
-- [Scripts](scripts/README.md): the build helpers, the lock check, the pre-push
+- [Scripts](scripts/README.md): the build helpers, the pin check, the pre-push
   hook, the test data generator and the builder of the visual site

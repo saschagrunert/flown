@@ -32,7 +32,7 @@ test = [
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
     "pytest-randomly>=5.0.0",
-    "coverage[toml]>=7.16.2",
+    "coverage>=7.16.2",
     "hypothesis>=6.168.5",
     "lxml-stubs>=0.5.1",
 ]
@@ -42,11 +42,15 @@ dev = [
     "pip-audit>=2.10.1",
     # The audit of .github/workflows (make lint and the CI lint job)
     "zizmor>=1.30.1",
-    # scripts/check_locks.py
+    # scripts/check_pins.py
     "packaging>=26.3",
     # The spell check (make lint, the pre-commit hook and the CI lint job),
     # a prebuilt binary of crate-ci/typos
     "typos>=1.51.1",
+    # The file checks of the pre-commit hooks (final newline, trailing
+    # whitespace, merge conflict markers, TOML and YAML), which the CI lint
+    # job runs as well
+    "pre-commit-hooks>=6.0.0",
 ]
 
 [dependency-groups]
@@ -55,7 +59,7 @@ dev = [
 # isolated build would fetch whatever release satisfies the range, with no
 # hash. A group rather than an extra, so the wheel does not offer it to
 # users. Dependabot raises both ranges in the same pull request;
-# scripts/check_locks.py checks that the pin satisfies
+# scripts/check_pins.py checks that the pin satisfies
 # build-system.requires as well, for a range raised by hand.
 build = [
     "setuptools>=84.0.0",
@@ -131,7 +135,7 @@ filterwarnings = [
 [tool.coverage.run]
 branch = true
 # The scripts are measured too: pre_push.py keeps real dates from being
-# pushed and check_locks.py gates the pins that have to agree, and a gate
+# pushed and check_pins.py gates the pins that have to agree, and a gate
 # that stops checking fails open. `pytest --cov` without a value measures
 # these.
 source = ["flown", "scripts"]
@@ -139,7 +143,8 @@ source = ["flown", "scripts"]
 [tool.coverage.report]
 # One to three points below what the suite reaches, so a real regression fails
 # the build while a new defensive branch does not (see vitest.config.js for the
-# same policy on the frontend side). Codecov enforces patch coverage on top.
+# same policy on the frontend side). Codecov reports the coverage of the
+# changed lines as well, as a status no pull request has to pass.
 fail_under = 97
 exclude_also = [
     "if TYPE_CHECKING:",
@@ -185,7 +190,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.mccabe]
-# One exemption, with its reason next to it: terrain._unfilter
+# One exemption, with its reason next to it: png._unfilter
 max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]

@@ -614,7 +614,7 @@ class TestRunwayDatabase:
             load_runway_database()
 
     def test_a_list_that_cannot_be_read_leaves_the_runways_out(self, monkeypatch):
-        def broken(path, rows, columns):
+        def broken(path, rows, columns, stored=None):
             raise OSError("unreadable")
 
         monkeypatch.setattr(lookup_module, "_read_database", broken)

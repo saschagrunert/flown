@@ -368,6 +368,16 @@ describe("announceInRegion", () => {
     expect(region.textContent).toBe("Showing 2024. Aircraft filter cleared.");
   });
 
+  it("ends no sentence that ends in an ellipsis with a full stop as well", () => {
+    const region = document.createElement("div");
+
+    announceInRegion(region, "Exporting the map…", true);
+    announceInRegion(region, "Map exported", true);
+    vi.advanceTimersByTime(LIVE_REGION_DELAY_MS);
+
+    expect(region.textContent).toBe("Exporting the map… Map exported.");
+  });
+
   it("says a status that repeats a toast of the moment once", () => {
     const region = document.createElement("div");
 

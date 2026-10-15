@@ -2,11 +2,14 @@
 
 import atexit
 import contextlib
+import hashlib
 import json
 import os
 import shutil
 import stat
 import tempfile
+import time
+from compression import zstd
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
@@ -14,16 +17,22 @@ from .constants import CACHE_DIR_ENV
 from .logger import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
 __all__ = [
     "CACHE_DIR",
+    "ENTRY_MAX_AGE_DAYS",
     "PRIVATE_FILE_MODE",
     "REGULAR_FILE_MODE",
     "atomic_bytes_write",
     "atomic_data_write",
     "atomic_text_write",
     "atomic_write",
+    "decode_entry",
+    "encode_entry",
+    "load_entry",
+    "source_fingerprint",
+    "store_entry",
 ]
 
 
@@ -280,3 +289,88 @@ def atomic_data_write(path: Path, data: Any, *, sort_keys: bool = False) -> None
     # slower pure-Python one
     content = json.dumps(data, separators=(",", ":"), sort_keys=sort_keys)
     atomic_write(path, lambda tmp: tmp.write(content))
+
+
+# How hard an entry is compressed: level 3 is zstd's default, most of the
+# saving at a fraction of the time of the higher ones
+_ZSTD_LEVEL = 3
+# The entries of a directory of ``store_entry`` not read or written for this
+# long are removed
+ENTRY_MAX_AGE_DAYS = 30
+
+
+def source_fingerprint(package: Path, modules: Sequence[str]) -> str:
+    """A short token that changes whenever the code of ``modules`` does.
+
+    The modules of ``package`` whose code decides what a cache entry holds,
+    for its key: an entry computed before a change is never read after it.
+    """
+    digest = hashlib.sha256()
+    for module in modules:
+        digest.update(module.encode())
+        try:
+            digest.update((package / f"{module}.py").read_bytes())
+        except OSError:
+            # No sources (a bytecode-only install): the format version
+            # still invalidates entries on structural changes
+            continue
+    return digest.hexdigest()[:8]
+
+
+def encode_entry(data: Any) -> bytes:
+    """An entry as it is stored: compact JSON, compressed."""
+    content = json.dumps(data, separators=(",", ":")).encode()
+    return zstd.compress(content, level=_ZSTD_LEVEL)
+
+
+def decode_entry(data: bytes) -> Any:
+    """The data of a stored entry (see ``encode_entry``)."""
+    return json.loads(zstd.decompress(data))
+
+
+def load_entry(path: Path) -> Any:
+    """The data ``store_entry`` kept at ``path``, None when there is none.
+
+    Only from a directory of this user's alone (see ``private_directory``):
+    whoever else could write to it could put what a build publishes into
+    it. An entry that cannot be read counts as none, and one that is read
+    is touched, which keeps it from being pruned.
+    """
+    if not private_directory(path.parent):
+        return None
+    try:
+        data = decode_entry(path.read_bytes())
+    except (OSError, zstd.ZstdError, ValueError) as e:
+        if not isinstance(e, FileNotFoundError):
+            logger.debug("Cache entry %s is unreadable: %s", path, e)
+        return None
+    with contextlib.suppress(OSError):
+        os.utime(path)
+    return data
+
+
+def store_entry(path: Path, data: Any) -> None:
+    """Keep ``data`` at ``path`` for ``load_entry``, as compact JSON compressed.
+
+    In a directory of this user's alone (see ``private_directory``), with
+    mode 0600, written atomically: a run that reads it meanwhile finds the
+    old entry or the new one whole. The entries of the directory that were
+    not used for ``ENTRY_MAX_AGE_DAYS`` go then, and so do the temp files an
+    interrupted write left: what the directory holds is what the runs of
+    the last month used. A failure to write costs the next run the time to
+    compute it again, nothing else.
+    """
+    directory = path.parent
+    if not private_directory(directory):
+        return
+    try:
+        atomic_bytes_write(path, encode_entry(data), mode=PRIVATE_FILE_MODE)
+    except OSError as e:
+        logger.debug("Failed to write cache entry %s: %s", path, e)
+        return
+    oldest = time.time() - ENTRY_MAX_AGE_DAYS * 24 * 3600
+    with contextlib.suppress(OSError):
+        for entry in directory.iterdir():
+            with contextlib.suppress(OSError):
+                if entry != path and entry.lstat().st_mtime < oldest:
+                    entry.unlink()

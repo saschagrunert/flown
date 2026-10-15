@@ -33,8 +33,8 @@ In CI the unit job builds it first, and a missing build fails there.
 ## Python tests
 
 pytest no longer forces coverage or parallel execution, so a plain `pytest` run
-is fast and readable. The tests that build a whole site (the renderer and the
-golden pipeline among them) need the frontend bundles, so run `npm run build`
+is fast and readable. The tests that build a whole site (the pipeline tests and
+the golden ones among them) need the frontend bundles, so run `npm run build`
 first; `make test` does, and a run that fails without them says so above its
 summary. The flags used by CI and `make test` are:
 
@@ -47,10 +47,15 @@ pytest --cov --cov-report=html                  # HTML coverage report (htmlcov/
 ```
 
 A bare `--cov` measures what `[tool.coverage.run]` in `pyproject.toml` names:
-the package and `scripts/`, whose pre-push hook and lock check are gates of
-their own. A run with `--cov` fails below the `fail_under` floor there, which is
-kept one to three points below what the suite reaches. Property-based tests use
-[Hypothesis](https://hypothesis.readthedocs.io/).
+the package and `scripts/`, whose pre-push hook and pin check are gates of their
+own. A run with `--cov` fails below the `fail_under` floor there, which is kept
+one to three points below what the suite reaches. Property-based tests use
+[Hypothesis](https://hypothesis.readthedocs.io/). A local run draws new examples
+every time; CI replays the same ones on every run, so an example found by chance
+cannot fail an unrelated pull request, and the weekly `properties` job draws new
+ones, more of them (`FLOWN_HYPOTHESIS_EXPLORE=1`, see `tests/conftest.py`). A
+failure there prints the blob that reproduces it; pin the example with
+`@example` in the test.
 
 The tests run in another order every time (pytest-randomly), so a test that only
 passes after another one fails sooner or later rather than never. The header of
@@ -166,7 +171,7 @@ npm run test:e2e:mobile
 
 # On NixOS, use the system Chromium; Playwright's WebKit build does not run
 # there, but the Playwright container image carries it (the image the e2e
-# and visual jobs of .github/workflows/test.yml run; scripts/check_locks.py
+# and visual jobs of .github/workflows/test.yml run; scripts/check_pins.py
 # keeps the reference here in step with it)
 nix-shell -p chromium python3 --run 'CHROMIUM_PATH=$(which chromium) npm run test:e2e -- --project=desktop --project=mobile'
 podman run --rm --ipc=host --network host --userns=keep-id --user "$(id -u):$(id -g)" \

@@ -44,6 +44,22 @@ export function flightsFailed(): boolean {
   return document.body.classList.contains("flights-failed");
 }
 
+/**
+ * Said as an export starts, and to a press while it runs: on a phone the
+ * More sheet closes on the tap and the button whose label says so is
+ * hidden, and a screen reader heard nothing until the result
+ */
+export const EXPORT_BUSY_MESSAGE = "Exporting the map…";
+
+/**
+ * Whether an export is running (UIToggles.exportMap marks its button), and
+ * the phone's More row dims with it. Not the button's aria-disabled, which
+ * a failed load or start sets as well.
+ */
+export function exportRunning(): boolean {
+  return !!document.getElementById("export-btn")?.hasAttribute("data-busy");
+}
+
 /** Why the map could not start, once failStart said so */
 export function startFailure(): string | undefined {
   return document.body.dataset["startFailure"];

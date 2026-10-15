@@ -26,9 +26,10 @@ import { formatNumber } from "../utils/formatters";
 import { formatFlightTime } from "../utils/statsFormat";
 import { escapeHtml } from "../utils/escape";
 import { pluralFlights } from "../utils/htmlGenerators";
-import { flightLabel, flightRoute, pickBox } from "./airportFlights";
+import { flightLabel, flightRoute, pickBox } from "../features/airports";
 import type { PickList } from "./pathSelection";
 import { setStatsTitle } from "./statsPanel";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /** The tab panel the list is written into (templates/map_template.html) */
 const FLIGHT_LIST_PANEL_ID = "flight-list-panel";
@@ -303,17 +304,18 @@ export class FlightList {
     const signal = this.listeners.signal;
 
     if (this.panel) {
-      this.panel.innerHTML =
+      this.panel.innerHTML = trustedHtml(
         '<div class="flights-bar">' +
-        '<input type="search" class="flights-search" ' +
-        'placeholder="Airport, registration or type" ' +
-        'aria-label="Search flights" autocomplete="off" spellcheck="false">' +
-        '<span class="flights-count" role="status"></span>' +
-        "</div>" +
-        '<div class="flights-scroll">' +
-        '<table class="flights-table"><thead>' +
-        headerHtml() +
-        "</thead><tbody></tbody></table></div>";
+          '<input type="search" class="flights-search" ' +
+          'placeholder="Airport, registration or type" ' +
+          'aria-label="Search flights" autocomplete="off" spellcheck="false">' +
+          '<span class="flights-count" role="status"></span>' +
+          "</div>" +
+          '<div class="flights-scroll">' +
+          '<table class="flights-table"><thead>' +
+          headerHtml() +
+          "</thead><tbody></tbody></table></div>",
+      );
       this.body = this.panel.querySelector("tbody");
       this.count = this.panel.querySelector(".flights-count");
       this.search = this.panel.querySelector("input");
@@ -448,14 +450,15 @@ export class FlightList {
     const shown = sortRows(searchRows(this.rows, query), this.sort);
     this.picks = { order: shown.map((row) => row.path.id), anchor: null };
     const total = this.rows.length;
-    this.body.innerHTML =
+    this.body.innerHTML = trustedHtml(
       shown.length > 0
         ? rowsHtml(shown)
         : '<tr><td class="flights-empty" colspan="' +
-          COLUMNS.length +
-          '">' +
-          (total > 0 ? "No flight matches" : "No flights") +
-          "</td></tr>";
+            COLUMNS.length +
+            '">' +
+            (total > 0 ? "No flight matches" : "No flights") +
+            "</td></tr>",
+    );
     if (this.count) {
       this.count.textContent =
         shown.length === total

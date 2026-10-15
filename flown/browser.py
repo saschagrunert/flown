@@ -25,6 +25,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .helpers import numeric_filename_key
 from .validation import KML_SUFFIXES
 
 if TYPE_CHECKING:
@@ -183,15 +184,20 @@ def _relayed(
 def input_files(input_dir: str | Path) -> tuple[list[str], list[Path]]:
     """The flights in ``input_dir`` and the aircraft files next to them.
 
-    The files keep the names they were dropped with, which the aircraft and
-    the year of a flight are read from (see ``aircraft``), in name order:
-    the page has no order of its own to hand on.
+    The files keep the names they were dropped with, which the aircraft of
+    a flight is read from (see ``aircraft``; the year comes from the times
+    in the file), in the order the site build takes them, by the number a
+    name starts with (``numeric_filename_key``): the page has no order of
+    its own to hand on, and ``10_`` plays after ``2_`` as it does there.
     """
     root = Path(input_dir)
     kml_files = sorted(
-        str(path)
-        for path in root.iterdir()
-        if path.is_file() and path.suffix.lower() in KML_SUFFIXES
+        (
+            str(path)
+            for path in root.iterdir()
+            if path.is_file() and path.suffix.lower() in KML_SUFFIXES
+        ),
+        key=numeric_filename_key,
     )
     aircraft = root / "aircraft.json"
     return kml_files, [aircraft] if aircraft.is_file() else []
@@ -220,7 +226,7 @@ def build(
     of files that are no longer among the inputs leave the cache.
     """
     from .parser_cache import prune_cache_entries_except  # noqa: PLC0415
-    from .renderer import export_flight_data  # noqa: PLC0415
+    from .pipeline import export_flight_data  # noqa: PLC0415
     from .terrain_fetch import TerrariumTiles  # noqa: PLC0415
     from .workers import configure_workers  # noqa: PLC0415
 

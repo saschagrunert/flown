@@ -11,7 +11,13 @@ from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .constants import MAX_TIMESTAMP_DISTANCE_SECONDS
+from .constants import (
+    KM_TO_NAUTICAL_MILES,
+    MAX_GROUNDSPEED_KNOTS,
+    MAX_TIMESTAMP_DISTANCE_SECONDS,
+    SECONDS_PER_HOUR,
+)
+from .geometry import haversine_distance
 from .helpers import parse_timestamp_epoch
 from .logger import logger
 from .parser_common import (
@@ -33,6 +39,82 @@ if TYPE_CHECKING:
 
     from .aircraft import AircraftInfo
     from .types import FlightPath, FlightPathGroup, PathMetadata, PlacemarkMetadata
+
+
+# MAX_GROUNDSPEED_KNOTS in kilometres a second, and how far two fixes may
+# be apart on top of what that speed covers between them before the jump
+# counts as too fast: GPS jitter between two fixes with the same time, a
+# second of clock rounding, never comes near it, and a jump that small
+# neither stretches the map nor costs the duplicate check anything
+_MAX_KM_PER_SECOND = MAX_GROUNDSPEED_KNOTS / KM_TO_NAUTICAL_MILES / SECONDS_PER_HOUR
+_SPIKE_SLACK_KM = 1.0
+
+type _TimedFix = tuple[float, float, float]
+
+
+def _too_fast(first: _TimedFix, second: _TimedFix) -> bool:
+    """Whether no aircraft gets from one (lat, lon, time) fix to the other."""
+    distance = haversine_distance(first[0], first[1], second[0], second[1])
+    return distance > _MAX_KM_PER_SECOND * abs(second[2] - first[2]) + _SPIKE_SLACK_KM
+
+
+def _position_spikes(fixes: Sequence[_TimedFix]) -> set[int]:
+    """The indices of the fixes that leap away from both their neighbours.
+
+    Some loggers write a position that is far off for a single fix: one
+    coordinate zeroed (latitude 0, 5,000 km south of the flight), a sign
+    flipped, a stale fix of the last flight. Kept, one such fix stretched
+    the map to the equator, and the duplicate check indexed its lines into
+    tens of thousands of cells. A fix is one when the flight would have to
+    go faster than ``MAX_GROUNDSPEED_KNOTS`` to it from the fix before and
+    from it to the fix after, while the two around it are no such jump
+    apart: the recording goes on where it was. A real fast stretch, or a
+    gap in the recording after which the track goes on elsewhere, has no
+    neighbours that agree, and stays. The first and the last fix have one
+    neighbour: one is a spike when the jump to it is too fast and the next
+    step on is not.
+    """
+    count = len(fixes)
+    if count < 3:
+        return set()
+    # Whether the step from each fix to the next one is too fast
+    jumps = [_too_fast(a, b) for a, b in pairwise(fixes)]
+    spikes: set[int] = set()
+    if jumps[0] and not jumps[1]:
+        spikes.add(0)
+    for index in range(1, count - 1):
+        if (
+            jumps[index - 1]
+            and jumps[index]
+            and not _too_fast(fixes[index - 1], fixes[index + 1])
+        ):
+            spikes.add(index)
+    if jumps[-1] and not jumps[-2]:
+        spikes.add(count - 1)
+    return spikes
+
+
+def _spiking_points(
+    points: Sequence[tuple[float, float, float | None, str]],
+    timestamps: Sequence[float | None],
+    keep: Sequence[bool],
+    source: str,
+) -> set[int]:
+    """The indices of the ``points`` that are position spikes.
+
+    See ``_position_spikes``, of the points whose timestamp is kept: only
+    those with a time can be told. ``source`` names the track in the log.
+    """
+    timed = [
+        (index, ts)
+        for index, (ts, kept) in enumerate(zip(timestamps, keep, strict=True))
+        if kept and ts is not None
+    ]
+    fixes = [(points[index][0], points[index][1], ts) for index, ts in timed]
+    spikes = {timed[index][0] for index in _position_spikes(fixes)}
+    if spikes:
+        logger.debug("Dropped %d position spike(s) in %s", len(spikes), source)
+    return spikes
 
 
 def _find_placemark(track: etree._Element) -> etree._Element | None:
@@ -208,9 +290,17 @@ def parse_gx_tracks(
     if dropped:
         logger.debug("Dropped %d inconsistent <when> in %s", dropped, source)
 
+    # The fixes far off the flight go entirely: from the path, and from the
+    # points of the heat
+    spikes = _spiking_points(points, timestamps, keep, source)
+
     path: FlightPath = []
     path_whens: list[str] = []
-    for (lat, lon, alt, when), ts, kept in zip(points, timestamps, keep, strict=True):
+    for index, ((lat, lon, alt, when), ts, kept) in enumerate(
+        zip(points, timestamps, keep, strict=True)
+    ):
+        if index in spikes:
+            continue
         point = TrackPoint(lat, lon, alt, ts if kept else None)
         coordinates.append(point)
         if alt is not None:
@@ -265,14 +355,18 @@ def process_gx_track(
     path_groups: FlightPathGroup,
     path_metadata: list[PathMetadata],
     aircraft_info: AircraftInfo | None,
-) -> None:
+) -> set[int]:
     """Process all gx:Track elements of a KML document.
 
     Every gx:Track is one path, except that the tracks of a gx:MultiTrack
-    make one path together (see ``parse_gx_tracks``).
+    make one path together (see ``parse_gx_tracks``). Returns the ids of
+    the tracks that are part of a path: one that yields none (empty, with
+    2D coordinates, clamped to the ground) leaves its placemark's flight to
+    a LineString next to it (see ``parser._build_coord_metadata_map``).
     """
+    with_path: set[int] = set()
     if not tracks:
-        return
+        return with_path
 
     filename = Path(kml_file).name
     metadata_cache: dict[int, PlacemarkMetadata] = {}
@@ -317,5 +411,7 @@ def process_gx_track(
         path_metadata.append(
             build_path_metadata_dict(kml_file, path[0], track_meta, aircraft_info)
         )
+        with_path.update(id(track) for track in flight)
 
     logger.debug("Parsed %d gx:Track element(s) in %s", len(tracks), filename)
+    return with_path

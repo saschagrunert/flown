@@ -1,8 +1,8 @@
 """The files the site is made of: the page, its assets and the bundle.
 
 Everything the tool puts next to the data, and nothing about the flights
-themselves. ``renderer`` orchestrates the pipeline and calls
-``package_assets`` at the end of it; splitting the two apart keeps the
+themselves. ``pipeline`` runs the stages and calls ``package_assets`` at
+the end; splitting the two apart keeps the
 template, the stylesheet, the favicons and the vendored third-party files in
 one place, the way ``export_writers`` holds the data files.
 """
@@ -302,12 +302,15 @@ def generator_hash() -> str:
 
     ``map_config.js`` carries it next to the commit, and the e2e site check
     (tests/e2e/site-check.ts) compares it with the checkout's, so a site an
-    older generator built is refused. It used to compare modification times
-    instead, which the build sets to the build day (or older) on purpose
-    and so said nothing about which is newer. The SHA-1 of the path, relative
-    to the directory of the package, and the content of every file of
-    ``_generator_files`` in path order; the same as scripts/source-hash.js
-    computes, which TestGeneratorHashParity checks. Holds no date.
+    older generator built is refused; Your flights keys the dataset it built
+    in the browser to it (siteBuild in ui/localFlights.ts), so a deploy that
+    changes the Python builds those flights again. The check used to compare
+    modification times instead, which the build sets to the build day (or
+    older) on purpose and so said nothing about which is newer. The SHA-1 of
+    the path, relative to the directory of the package, and the content of
+    every file of ``_generator_files`` in path order; the same as
+    scripts/source-hash.js computes, which TestGeneratorHashParity checks.
+    Holds no date.
     """
     package = Path(__file__).parent
     digest = hashlib.sha1(usedforsecurity=False)
@@ -606,7 +609,9 @@ def _generate_map_config(
         "builtOn": build_date(built_at),
         "commit": commit.hash,
         "commitUrl": commit.url,
-        # Not read by the page: the e2e site check compares it
+        # Your flights keys its dataset to it (siteBuild in ui/localFlights.ts)
+        # and builds the flights again when it changes; the e2e site check
+        # compares it with the checkout's
         "generator": generator_hash(),
     }
     # ASCII only, so the file reads the same whatever charset it is served as

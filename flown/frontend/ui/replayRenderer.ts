@@ -38,7 +38,7 @@ import {
 } from "../calculations/lift";
 import { legAt, replayPoint, type ReplayPoint } from "../features/replay";
 import { datasetIndex } from "../calculations/datasetIndex";
-import { flightRoute } from "./airportFlights";
+import { flightRoute } from "../features/airports";
 import { prefersReducedMotion } from "../utils/motion";
 import { ReplayCamera } from "./replayCamera";
 import {
@@ -47,6 +47,7 @@ import {
   truncateTrail,
   trailFeatureCollection,
 } from "./replayTrail";
+import { trustedHtml } from "../utils/trustedHtml";
 
 /**
  * The replay's aircraft, which no icon set has: seen from above, nose up and
@@ -173,10 +174,11 @@ export class AirplaneMarker implements ReplayAirplane {
     element.setAttribute("aria-expanded", "false");
     // The rotation transition lives on the inner icon (see features.css);
     // MapLibre positions the root with transforms, which must not animate
-    element.innerHTML =
+    element.innerHTML = trustedHtml(
       '<div class="replay-airplane-icon">' +
-      lazyIcon("aircraftTop", 24, undefined, "solid") +
-      "</div>";
+        lazyIcon("aircraftTop", 24, undefined, "solid") +
+        "</div>",
+    );
     // MapLibre fires a map click for a click on a marker as well; the
     // app's handler tells it by its target and leaves the popup alone. The
     // second click of a double click or tap would close what the first
@@ -261,7 +263,7 @@ export class AirplaneMarker implements ReplayAirplane {
   }
 
   setPopupContent(html: string): void {
-    this.popup.setHTML(html);
+    this.popup.setHTML(trustedHtml(html));
   }
 
   openPopup(): void {

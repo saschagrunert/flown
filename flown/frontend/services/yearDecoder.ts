@@ -187,8 +187,9 @@ export function createYearDecoder(
       if (watchdog === undefined) watch();
       // The bytes of a year file are copied, not transferred: the copy is a
       // fraction of a millisecond, and the bytes are still here if the
-      // worker fails over them. The columns of flights are handed over:
-      // what the worker cannot draw is drawn from the segments.
+      // worker fails over them. The columns of flights and of a heat are
+      // handed over: what the worker cannot draw is drawn from the
+      // segments, or from the points.
       const request: YearRequest = { id, ...body };
       try {
         target.postMessage(request, transfer);
@@ -299,13 +300,19 @@ export function createYearDecoder(
       return buildDatasetInSlices(decoded);
     },
     drawHeat(points, weights) {
-      // Packed here, on the page, into what is copied to the worker
+      // Packed here, on the page, and handed over rather than copied: a
+      // year's points are megabytes, copied on the page's thread for every
+      // filter. Drawn here instead, they are packed again where the worker
+      // took them (the column it was handed reads as empty then), from the
+      // points and weights, which are still there.
       const heat = heatColumns(points, weights);
       return answerOf(
         "draw the heat",
         { heat },
         (response) => ("drawn" in response ? response.drawn : undefined),
-        () => drawHeat(heat),
+        () => drawHeat(heat.length ? heat : heatColumns(points, weights)),
+        undefined,
+        [heat.buffer],
       );
     },
     heatLines(segments, keep, exposure) {
