@@ -9,8 +9,14 @@ setup, the checks that run in CI and the conventions used in this repository.
   container image use Node.js 26, and that is the only release the tests run on,
   so `engines` in `package.json` asks for 26 or newer. Python 3.14 is required,
   not merely recommended: the code uses its syntax. On a distribution that ships
-  an older Python, `uv venv --python 3.14 .venv` or pyenv (`pyenv install 3.14`)
-  provides it, in place of the `python -m venv` below.
+  an older Python, `uv python install 3.14` or pyenv (`pyenv install 3.14`)
+  provides it.
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), the release CI
+  runs (`version` of the setup-uv step in
+  `.github/actions/setup-toolchain/action.yml`), for example with
+  `curl -LsSf https://astral.sh/uv/<release>/install.sh | sh` or
+  `pipx install uv==<release>`. It creates the virtual environment from
+  `uv.lock` and regenerates the lock.
 - podman or docker for `make build` and `make serve` (optional)
 - `.editorconfig` tells editors the indentation, line endings and final newline
   that Prettier and ruff write.
@@ -19,23 +25,21 @@ setup, the checks that run in CI and the conventions used in this repository.
 git clone https://github.com/saschagrunert/flown.git
 cd flown
 
-python -m venv .venv && source .venv/bin/activate
-pip install --require-hashes -r requirements-test.lock -r requirements-build.lock
-pip install --no-deps --no-build-isolation -e .
+uv sync --locked --extra test --extra dev && source .venv/bin/activate
 npm ci
 npm run build                 # frontend bundles (gitignored)
 
-pip install pre-commit
+uv tool install pre-commit
 make hooks                    # the pre-commit hooks and the pre-push check for real flight dates
 ```
 
-The lock files are what CI installs: `requirements-test.lock` pins the test and
-development tools together with the runtime dependencies, each with its hashes,
-and `requirements-build.lock` the setuptools that builds the package. The
-package itself is then installed on top without resolving anything again, so the
-virtual environment has exactly CI's versions. `pip install -e '.[test,dev]'`
-would resolve the ranges in `pyproject.toml` anew and can pick newer releases
-than CI tests with.
+`uv.lock` is what CI installs: it pins the runtime dependencies and the test and
+development tools, each with its hashes, and `uv sync` makes `.venv` hold
+exactly those versions, removing whatever else is in it (install other tools
+with `uv tool install`, as pre-commit above). It does not install the package
+itself (`[tool.uv] package = false` in `pyproject.toml`): run it from the
+checkout as `python -m flown`. `pip install -e '.[test,dev]'` would resolve the
+ranges in `pyproject.toml` anew and can pick newer releases than CI tests with.
 
 The pre-commit hooks run ruff (check and format), prettier, typos, gitleaks, the
 whitespace fixers and the checks for merge conflict markers and for valid TOML
@@ -82,13 +86,13 @@ your virtual environment and `node_modules`, the same way CI does, so no
 container is involved:
 
 ```bash
-make lint            # lock files and version pins, ruff (check and format), mypy, zizmor, TypeScript 7 (npm run typecheck and typecheck:tests), eslint, knip, prettier, the obfuscation of data/ and the visual fixtures, typos
+make lint            # uv.lock and the version pins, ruff (check and format), mypy, zizmor, TypeScript 7 (npm run typecheck and typecheck:tests), eslint, knip, prettier, the obfuscation of data/ and the visual fixtures, typos
 make format          # ruff format, prettier
 make test            # npm run build and the site in docs/, then vitest (shuffled) and pytest with coverage; pytest flags are in doc/development/testing.md
 npm run test:e2e     # Playwright: desktop, mobile and WebKit (see doc/development/testing.md)
 make obfuscate       # after adding flights to data/ (see doc/adding-flights.md); rewrites them in place, irreversibly
 make check-obfuscation
-make lock            # regenerates the Python lock files after changing pyproject.toml or requirements-tools.in
+make lock            # regenerates uv.lock, every package at its newest release; `uv lock` alone after changing pyproject.toml
 ```
 
 `make help` lists all targets and the current variable values.
@@ -143,21 +147,18 @@ here, not an oversight: adding the parentheses back is undone on the next
   of `flag-icons`). It is built by `npm run build` and, for the image, inside
   the Dockerfile; `make clean` removes it.
 - The Python dependencies are declared once, in `pyproject.toml` (runtime
-  dependencies plus the `test` and `dev` extras). `requirements.lock`,
-  `requirements-test.lock` and `requirements-build.lock` are compiled from it
-  with `make lock` (pip-compile with hashes), and `requirements-tools.lock`, the
-  pip-tools `make lock` runs with its dependencies, from
-  `requirements-tools.in`. Edit `pyproject.toml`, then regenerate the locks; the
-  CI lint job fails while the locks no longer satisfy `pyproject.toml`. A
-  Dependabot `pip` pull request fails it only when its new range leaves out the
-  version the locks pin, and tests the old versions either way until `make lock`
-  is pushed on top. `make lock` compiles the test lock with the runtime lock as
-  a constraint, so the pins both files share cannot drift apart. Nothing
-  regenerates them on a schedule: run `make lock` yourself to pick up new
-  releases, and push it on top of a Dependabot `pip` pull request. Like
-  Dependabot it skips releases younger than seven days;
-  `make lock LOCK_COOLDOWN=` takes the newest ones, for a range raised by hand
-  to a release that is younger.
+  dependencies plus the `test` and `dev` extras and the `build` dependency
+  group), and `uv.lock` pins all of them with their hashes. Edit
+  `pyproject.toml`, then run `uv lock`; the CI lint job (`uv lock --check`) and
+  every other job that installs from the lock (`uv sync --locked`) fail while it
+  no longer matches `pyproject.toml`. Dependabot's `uv` pull requests raise a
+  range and its pin in `uv.lock` together, so they test the new release as they
+  come. `make lock` moves every package to its newest release at once. Neither
+  takes a release younger than seven days (`exclude-newer` in `pyproject.toml`;
+  Dependabot waits a day more); a release that is younger, a security fix say,
+  needs an entry in `exclude-newer-package` for its package. uv itself is pinned
+  in the setup-toolchain action and in the Dockerfile, and Dependabot moves
+  neither to another release: move both by hand.
 - The published page carries MapLibre GL JS and html-to-image itself:
   `scripts/vendor.js` takes them out of `node_modules` at build time, so
   `package-lock.json` is the only place their versions are pinned and Dependabot
@@ -170,7 +171,7 @@ here, not an oversight: adding the parentheses back is undone on the next
 
 - Use conventional prefixes as seen in the history: `fix:`, `feat:`, `perf:`,
   `refactor:`, `build:`, `ui:`, `test:`, `docs:`, `chore:`, `ci:` (Dependabot
-  uses `npm`, `pip`, `docker`, `pre-commit` and `ci`).
+  uses `npm`, `uv`, `docker`, `pre-commit` and `ci`).
 - Sign off every commit: `git commit -s`. The Developer Certificate of Origin
   applies.
 - Keep one commit per branch. Amend it when addressing review feedback and keep

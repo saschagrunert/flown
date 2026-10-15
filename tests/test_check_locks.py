@@ -1,6 +1,6 @@
 """Tests for scripts/check_locks.py.
 
-The script is a CI gate: it is the thing that notices when the lock files,
+The script is a CI gate: it is the thing that notices when the uv releases,
 the Playwright image and the package version drift apart. A gate that
 silently stops checking fails open, and every check below therefore starts
 from a consistent fixture repository and breaks exactly one thing.
@@ -31,12 +31,25 @@ check_locks = _load_module()
 
 VERSION = "1.0.0"
 RUFF = "0.16.4"
-PIP_TOOLS = "7.6.1"
+UV = "0.12.24"
 PLAYWRIGHT = "1.63.0"
 DIGEST = "sha256:" + "ab" * 32
 IMAGE = f"mcr.microsoft.com/playwright:v{PLAYWRIGHT}-noble@{DIGEST}"
 PYTHON = "3.14"
 NODE = "26"
+# The steps of the setup-toolchain action around its setup-uv step
+ACTION = """runs:
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@abc # v7.0.0
+    - name: Set up uv
+      uses: astral-sh/setup-uv@def # v10.2.0
+      with:
+        version: "{uv}"
+        activate-environment: true
+    - name: Set up Node.js
+      uses: actions/setup-node@ghi # v7.1.0
+"""
 # The tool sections of pyproject.toml that name the Python version
 TOOLCHAIN = (
     f'[tool.mypy]\npython_version = "{PYTHON}"\n'
@@ -59,28 +72,15 @@ def repo(tmp_path, monkeypatch):
     (tmp_path / ".python-version").write_text(f"{PYTHON}\n", encoding="utf-8")
     (tmp_path / ".nvmrc").write_text(f"{NODE}\n", encoding="utf-8")
     (tmp_path / "Dockerfile").write_text(
+        f"FROM ghcr.io/astral-sh/uv:{UV}@{DIGEST} AS uv\n"
         f"FROM docker.io/library/node:{NODE}-slim@{DIGEST} AS js-builder\n"
         f"FROM docker.io/library/python:{PYTHON}-slim@{DIGEST} AS package\n"
         f"FROM docker.io/library/python:{PYTHON}-slim@{DIGEST}\n",
         encoding="utf-8",
     )
-    (tmp_path / "requirements.lock").write_text(
-        "lxml==6.0.2 \\\n    --hash=sha256:abc\n", encoding="utf-8"
-    )
-    (tmp_path / "requirements-test.lock").write_text(
-        "lxml==6.0.2 \\\n    --hash=sha256:abc\n"
-        "pytest==9.0.2 \\\n    --hash=sha256:def\n"
-        f"ruff=={RUFF} \\\n    --hash=sha256:ghi\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "requirements-tools.in").write_text(
-        f"# The pip-tools of make lock\npip-tools=={PIP_TOOLS}\n", encoding="utf-8"
-    )
-    (tmp_path / "requirements-tools.lock").write_text(
-        "click==8.5.0 \\\n    --hash=sha256:abc\n"
-        f"pip-tools=={PIP_TOOLS} \\\n    --hash=sha256:def\n",
-        encoding="utf-8",
-    )
+    action = tmp_path / ".github" / "actions" / "setup-toolchain"
+    action.mkdir(parents=True)
+    (action / "action.yml").write_text(ACTION.format(uv=UV), encoding="utf-8")
     (tmp_path / "package.json").write_text(
         json.dumps(
             {
@@ -105,7 +105,7 @@ def repo(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     workflow = tmp_path / ".github" / "workflows"
-    workflow.mkdir(parents=True)
+    workflow.mkdir()
     (workflow / "test.yml").write_text(
         f"      image: {IMAGE}\n",
         encoding="utf-8",
@@ -142,113 +142,89 @@ class TestPassingRepository:
         assert check_locks.main() == 0
 
         captured = capsys.readouterr()
-        assert "satisfy pyproject.toml" in captured.out
+        assert "the same uv" in captured.out
         assert captured.err == ""
 
 
-class TestLockFiles:
-    def test_a_pin_below_the_requirement_fails(self, repo, capsys):
-        (repo / "requirements.lock").write_text("lxml==6.0.1\n", encoding="utf-8")
+class TestUvRelease:
+    """CI and the container image install from uv.lock with the same uv."""
 
-        assert check_locks.main() == 1
-
-        err = capsys.readouterr().err
-        assert "requirements.lock pins lxml==6.0.1" in err
-        assert "make lock" in err
-
-    def test_a_missing_pin_fails(self, repo, capsys):
-        (repo / "requirements.lock").write_text("", encoding="utf-8")
-
-        assert check_locks.main() == 1
-
-        assert "requirements.lock does not pin lxml" in capsys.readouterr().err
-
-    def test_a_missing_tool_pin_fails(self, repo, capsys):
-        text = (repo / "requirements-test.lock").read_text(encoding="utf-8")
-        (repo / "requirements-test.lock").write_text(
-            text.replace(f"ruff=={RUFF} \\\n    --hash=sha256:ghi\n", ""),
-            encoding="utf-8",
-        )
-
-        assert check_locks.main() == 1
-
-        assert "requirements-test.lock does not pin ruff" in capsys.readouterr().err
-
-    def test_the_two_locks_disagreeing_fails(self, repo, capsys):
-        """CI installs requirements-test.lock alone where it needs both."""
-        (repo / "requirements.lock").write_text("lxml==6.0.3\n", encoding="utf-8")
-
-        assert check_locks.main() == 1
-
-        assert (
-            "requirements.lock pins lxml==6.0.3, requirements-test.lock lxml==6.0.2"
-            in capsys.readouterr().err
-        )
-
-    def test_a_requirement_for_another_platform_is_skipped(self, repo):
-        (repo / "pyproject.toml").write_text(
-            f'[project]\nrequires-python = ">={PYTHON}"\n'
-            'dependencies = ["lxml>=6.0.2", "pywin32>=1; sys_platform == \'win32\'"]\n'
-            "[project.optional-dependencies]\n"
-            'test = ["pytest>=9.0.2"]\n'
-            f'dev = ["ruff>={RUFF}"]\n' + TOOLCHAIN,
-            encoding="utf-8",
-        )
-
-        assert check_locks.main() == (0 if sys.platform != "win32" else 1)
-
-    def test_a_pin_is_matched_regardless_of_name_spelling(self, repo):
-        """pip-compile normalises names; the requirement may not be normalised."""
-        (repo / "pyproject.toml").write_text(
-            f'[project]\nrequires-python = ">={PYTHON}"\n'
-            'dependencies = ["LXML>=6.0.2"]\n'
-            "[project.optional-dependencies]\n"
-            'test = ["pytest>=9.0.2"]\n'
-            f'dev = ["ruff>={RUFF}"]\n' + TOOLCHAIN,
-            encoding="utf-8",
-        )
-
-        assert check_locks.main() == 0
-
-
-class TestToolsLock:
-    """make lock installs pip-tools from requirements-tools.lock, so the lock
-    has to pin what the .in file asks for."""
-
-    def test_a_pin_other_than_the_input_fails(self, repo, capsys):
-        (repo / "requirements-tools.in").write_text(
-            "pip-tools==7.7.0\n", encoding="utf-8"
-        )
+    def test_an_image_on_another_release_fails(self, repo, capsys):
+        dockerfile = repo / "Dockerfile"
+        text = dockerfile.read_text(encoding="utf-8")
+        dockerfile.write_text(text.replace(f"uv:{UV}@", "uv:0.13.0@"), encoding="utf-8")
 
         assert check_locks.main() == 1
 
         err = capsys.readouterr().err
         assert (
-            f"requirements-tools.lock pins pip-tools=={PIP_TOOLS}, "
-            'requirements-tools.in asks for "pip-tools==7.7.0"'
+            f"the Dockerfile takes uv 0.13.0, {check_locks.UV_ACTION} installs {UV}"
         ) in err
-        assert "requirements-tools.lock." in err
+        assert "Set the same uv release" in err
 
-    def test_a_lock_without_pip_tools_fails(self, repo, capsys):
-        (repo / "requirements-tools.lock").write_text(
-            "click==8.5.0 \\\n    --hash=sha256:abc\n", encoding="utf-8"
+    def test_an_image_without_a_digest_fails(self, repo, capsys):
+        dockerfile = repo / "Dockerfile"
+        text = dockerfile.read_text(encoding="utf-8")
+        dockerfile.write_text(
+            text.replace(f"uv:{UV}@{DIGEST}", f"uv:{UV}"), encoding="utf-8"
         )
 
         assert check_locks.main() == 1
 
-        assert "requirements-tools.lock does not pin pip-tools" in (
+        assert f"does not pin the uv image {UV} by its @sha256 digest" in (
             capsys.readouterr().err
         )
 
-    @pytest.mark.parametrize(
-        "name", ["requirements-tools.in", "requirements-tools.lock"]
-    )
-    def test_a_missing_file_fails(self, repo, capsys, name):
-        (repo / name).unlink()
+    def test_a_dockerfile_without_uv_fails(self, repo, capsys):
+        dockerfile = repo / "Dockerfile"
+        lines = dockerfile.read_text(encoding="utf-8").splitlines(keepends=True)
+        dockerfile.write_text("".join(lines[1:]), encoding="utf-8")
 
         assert check_locks.main() == 1
 
-        assert f"{name} is missing" in capsys.readouterr().err
+        assert "takes uv from no ghcr.io/astral-sh/uv image" in capsys.readouterr().err
+
+    def test_an_action_without_a_version_fails(self, repo, capsys):
+        """setup-uv without a version installs whatever release is newest."""
+        path = repo / check_locks.UV_ACTION
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace(f'        version: "{UV}"\n', ""), encoding="utf-8"
+        )
+
+        assert check_locks.main() == 1
+
+        assert "installs no uv release by version" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("version", [UV, f"'{UV}'", f"{UV} # the release"])
+    def test_an_unquoted_or_commented_version_is_read(self, repo, version):
+        path = repo / check_locks.UV_ACTION
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace(f'"{UV}"', version), encoding="utf-8")
+
+        assert check_locks.main() == 0
+
+    def test_a_missing_action_is_a_problem_not_a_crash(self, repo, capsys):
+        (repo / check_locks.UV_ACTION).unlink()
+
+        assert check_locks.main() == 1
+
+        assert f"{check_locks.UV_ACTION} cannot be read" in capsys.readouterr().err
+
+    def test_a_version_of_another_step_is_not_read(self, repo, capsys):
+        """The version input belongs to the setup-uv step, not to the one
+        after it."""
+        path = repo / check_locks.UV_ACTION
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace(f'        version: "{UV}"\n', "")
+            + f'      with:\n        version: "{UV}"\n',
+            encoding="utf-8",
+        )
+
+        assert check_locks.main() == 1
+
+        assert "installs no uv release by version" in capsys.readouterr().err
 
 
 class TestPlaywrightImage:
@@ -460,7 +436,7 @@ class TestToolchainVersions:
     def test_a_dockerfile_without_a_node_image_fails(self, repo, capsys):
         dockerfile = repo / "Dockerfile"
         lines = dockerfile.read_text(encoding="utf-8").splitlines(keepends=True)
-        dockerfile.write_text("".join(lines[1:]), encoding="utf-8")
+        dockerfile.write_text("".join(lines[:1] + lines[2:]), encoding="utf-8")
 
         assert check_locks.main() == 1
 

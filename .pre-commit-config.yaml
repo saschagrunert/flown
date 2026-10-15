@@ -1,5 +1,5 @@
 ---
-# Install with: pip install pre-commit && pre-commit install
+# Install with: uv tool install pre-commit && pre-commit install
 # Input data (data/) is excluded from the fixers; the generated site (docs/)
 # is not tracked at all. Dependabot bumps the two revs below. They are
 # commits, with the release in a comment (`pre-commit autoupdate --freeze`
@@ -30,8 +30,8 @@ repos:
 
   - repo: local
     hooks:
-      # ruff is resolved off $PATH, so it is the requirements-test.lock
-      # version CI installs as long as the virtual environment is active.
+      # ruff is resolved off $PATH, so it is the uv.lock version CI
+      # installs as long as the virtual environment is active.
       # --force-exclude makes it honour its default excludes (and any
       # pyproject.toml adds) even though pre-commit passes the file names
       # explicitly.
@@ -56,8 +56,8 @@ repos:
         language: system
         types: [text]
 
-      # typos comes with the dev extra in requirements-test.lock, so it is
-      # the release the CI lint job runs
+      # typos comes with the dev extra in uv.lock, so it is the release the
+      # CI lint job runs
       - id: typos
         name: typos
         entry: typos --force-exclude

@@ -187,6 +187,7 @@ hooks: ## Install the pre-push hook that refuses to push KML files with real dat
 	  echo "warning: pre-commit is not installed, skipping its hooks (see CONTRIBUTING.md)" >&2; fi
 
 lint: ## Run the linters, formatters (check only), type checkers and typos of the CI lint job
+	$(UV) lock --check
 	python scripts/check_locks.py
 	ruff check .
 	ruff format --check .
@@ -215,47 +216,16 @@ test: ## Build the frontend bundles and the site in docs/, then run the JavaScri
 	npm run test:coverage -- --sequence.shuffle
 	pytest -n auto --cov --cov-report=xml:coverage/coverage.xml --cov-report=term
 
-# The dependencies are declared once, in pyproject.toml: the runtime
-# dependencies become requirements.lock, the test and dev extras
-# requirements-test.lock. pip-tools is installed into a throwaway environment
-# rather than added to the extras, so it cannot drift into what the lock
-# files pin. It comes from requirements-tools.lock with the hashes of its
-# dependencies as well, so `make lock` runs nothing it has not pinned; that
-# lock is compiled last from requirements-tools.in, with the pip-tools it
-# pins, and --allow-unsafe keeps pip and setuptools in it.
-# The test lock is compiled against the runtime lock as a constraint, so a
-# dependency both of them pin gets the same version in each: CI installs
-# requirements-test.lock alone where it needs both.
-# requirements-build.lock pins what build-system.requires asks for
-# (setuptools), which CI installs to build the wheel without build isolation;
-# with isolation pip would fetch whatever release satisfies the range, with
-# no hash. setuptools is one of the packages pip-compile leaves out unless
-# told otherwise, hence --allow-unsafe.
-# --upgrade moves every package to its newest release, so only releases at
-# least LOCK_COOLDOWN old are considered (pip's --uploaded-prior-to, which
-# pip-compile hands on): the same seven days Dependabot waits (see
-# dependabot.yml), which a release pulled again within days never reaches.
-# `make lock LOCK_COOLDOWN=` takes the newest releases, for a pin raised by
-# hand to one that is younger.
-LOCK_COOLDOWN ?= P7D
-LOCK_COMPILE = CUSTOM_COMPILE_COMMAND="make lock" "$$tmp/bin/pip-compile" --quiet \
-	--generate-hashes --strip-extras --upgrade \
-	$(if $(LOCK_COOLDOWN),--pip-args "--uploaded-prior-to=$(LOCK_COOLDOWN)")
-lock: ## Regenerate the lock files from pyproject.toml and requirements-tools.in with pip-compile
-	@tmp=$$(mktemp -d) && \
-	  python -m venv "$$tmp" && \
-	  "$$tmp/bin/pip" install --quiet --disable-pip-version-check --require-hashes -r requirements-tools.lock && \
-	  $(LOCK_COMPILE) \
-	    --output-file=requirements.lock pyproject.toml && \
-	  $(LOCK_COMPILE) --extra test --extra dev \
-	    --constraint requirements.lock \
-	    --output-file=requirements-test.lock pyproject.toml && \
-	  $(LOCK_COMPILE) --allow-unsafe \
-	    --only-build-deps --build-deps-for wheel \
-	    --output-file=requirements-build.lock pyproject.toml && \
-	  $(LOCK_COMPILE) --allow-unsafe \
-	    --output-file=requirements-tools.lock requirements-tools.in; \
-	  status=$$?; rm -rf "$$tmp"; exit $$status
+# The dependencies are declared once, in pyproject.toml, and uv.lock pins
+# all of them, the extras among them, with their hashes. --upgrade moves every
+# package to its newest release past the cooldown of [tool.uv] exclude-newer;
+# Dependabot moves one package at a time between runs of it. uv is the
+# release CI and the container image run (scripts/check_locks.py checks that
+# the two agree), installed on its own: see CONTRIBUTING.md.
+UV ?= uv
+
+lock: ## Regenerate uv.lock from pyproject.toml, moving every package to its newest release
+	$(UV) lock --upgrade
 
 clean: ## Remove the container image (when a runtime is available) and local build artifacts, including the frontend build output in flown/static/ and the fixture site of the visual snapshots
 	-@test -z "$(CONTAINER_RUNTIME)" || $(CONTAINER_RUNTIME) rmi $(IMAGE_NAME) 2>/dev/null
