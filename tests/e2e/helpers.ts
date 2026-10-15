@@ -63,6 +63,18 @@ export async function attachErrorCollectors(
   });
   await page.addInitScript(() => {
     document.addEventListener("securitypolicyviolation", (event) => {
+      // Not the page's: the WebKit of Playwright 1.64 draws every <select>
+      // with inline styles in its own shadow tree, which the CSP refuses
+      // and reports on the <select>. One with a style attribute of its own
+      // still counts.
+      const target = event.target;
+      if (
+        event.violatedDirective === "style-src-attr" &&
+        target instanceof HTMLSelectElement &&
+        !target.hasAttribute("style")
+      ) {
+        return;
+      }
       const report = `${event.violatedDirective}: ${event.blockedURI}`;
       (
         window as unknown as { __reportCspViolation: (t: string) => void }
@@ -73,19 +85,22 @@ export async function attachErrorCollectors(
 }
 
 /**
- * Every console error. The fixture in fixtures.ts answers all CDN and tile
- * requests locally, so a failed resource load is a defect of the page or of
- * the test setup, never a network hiccup to filter out.
+ * Every console error but the one WebKit logs for a refused inline style.
+ * The fixture in fixtures.ts answers all CDN and tile requests locally, so a
+ * failed resource load is a defect of the page or of the test setup, never a
+ * network hiccup to filter out.
  *
- * Not the page's: in WebKit, "Refused to apply a stylesheet because its
- * hash, its nonce, or 'unsafe-inline' does not appear in the style-src
- * directive" in a trace after a failure. Playwright adds and removes a
- * <style> element to line up the animations before every screenshot in
- * WebKit, which the CSP refuses; only the screenshot of a failed test takes
- * one here, after the checks.
+ * WebKit logs "Refused to apply a stylesheet because its hash, its nonce,
+ * or 'unsafe-inline' does not appear in the style-src directive" without
+ * saying for what. Every <select> brings one (see attachErrorCollectors),
+ * and so does a trace after a failure: Playwright adds and removes a <style>
+ * element to line up the animations before every screenshot in WebKit. The
+ * page's own refused styles are in cspViolations, with their directive.
  */
 export function relevantConsoleErrors(collector: ErrorCollector): string[] {
-  return collector.consoleErrors;
+  return collector.consoleErrors.filter(
+    (text) => !text.startsWith("Refused to apply a stylesheet because"),
+  );
 }
 
 /**
