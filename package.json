@@ -39,7 +39,7 @@
   "//devDependencies": "Two TypeScripts: typescript7 (an alias of typescript 7) runs the type checks, called by path in the scripts above since both ship a tsc; typescript 6 stays only for typescript-eslint, which does not support 7 yet. Dependabot skips npm aliases, so typescript7 is bumped by hand (npm install -D --save-exact typescript7@npm:typescript@<version>, see doc/development/frontend.md). @babel/parser and @babel/types find the template literals scripts/build-helpers.js tightens",
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
-    "@babel/parser": "^8.0.6",
+    "@babel/parser": "^8.0.7",
     "@babel/types": "^8.0.6",
     "@eslint/js": "^10.0.1",
     "@maplibre/maplibre-gl-style-spec": "26.4.4",
