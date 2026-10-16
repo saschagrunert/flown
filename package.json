@@ -33,7 +33,7 @@
   "dependencies": {
     "flag-icons": "7.5.0",
     "html-to-image": "1.11.13",
-    "lucide": "1.53.0",
+    "lucide": "1.54.0",
     "maplibre-gl": "6.13.0"
   },
   "//devDependencies": "Two TypeScripts: typescript7 (an alias of typescript 7) runs the type checks, called by path in the scripts above since both ship a tsc; typescript 6 stays only for typescript-eslint, which does not support 7 yet. Dependabot skips npm aliases, so typescript7 is bumped by hand (npm install -D --save-exact typescript7@npm:typescript@<version>, see doc/development/frontend.md). @babel/parser and @babel/types find the template literals scripts/build-helpers.js tightens",
@@ -53,7 +53,7 @@
     "fake-indexeddb": "6.2.5",
     "fast-check": "4.10.2",
     "jsdom": "^30.1.2",
-    "knip": "6.40.0",
+    "knip": "6.41.0",
     "prettier": "^3.9.9",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1",
