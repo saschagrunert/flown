@@ -50,7 +50,7 @@ RUN npm run build
 # Stage 2: the Python package without the TypeScript sources. A stage of its
 # own so the sources never become a layer of the image; they are dropped here
 # rather than in .dockerignore, which would hide them from the build as well.
-FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS package
+FROM docker.io/library/python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS package
 COPY flown/ /package/flown/
 RUN rm -rf /package/flown/frontend
 
@@ -60,7 +60,7 @@ RUN rm -rf /package/flown/frontend
 # pyproject.toml that leaves them as they were (a ruff or mypy setting)
 # writes the same file. --locked fails the build when uv.lock no longer
 # matches pyproject.toml instead of resolving again.
-FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS requirements
+FROM docker.io/library/python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS requirements
 WORKDIR /build
 COPY pyproject.toml uv.lock ./
 RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
@@ -69,7 +69,7 @@ RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
       --quiet --output-file requirements.txt
 
 # Stage 4: Python runtime
-FROM docker.io/library/python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2
+FROM docker.io/library/python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
