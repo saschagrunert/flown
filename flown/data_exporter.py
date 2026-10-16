@@ -36,6 +36,7 @@ from concurrent.futures import (
     wait,
 )
 from concurrent.futures.process import BrokenProcessPool
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
@@ -216,12 +217,17 @@ class _ChunkPlan:
     landings: list[FlightLandings | None] = field(default_factory=list)
 
 
-def _part_paths(output_dir: str, year: int, index: int) -> tuple[Path, Path]:
+# The fragments a chunk writes: its path_info entries, then one per array of
+# the segments object (see segment_codec, format 8): the start points, the
+# five encoded columns and the ground
+_PARTS = ("info", "start", "lat", "lon", "altitude", "speed", "time", "ground")
+_COLUMN_PARTS = _PARTS[2:7]
+
+
+def _part_paths(output_dir: str, year: int, index: int) -> list[Path]:
+    """The fragment files of a chunk, in the order of ``_PARTS``."""
     year_dir = Path(output_dir) / str(year)
-    return (
-        year_dir / f".data.{index}.info.part",
-        year_dir / f".data.{index}.segments.part",
-    )
+    return [year_dir / f".data.{index}.{name}.part" for name in _PARTS]
 
 
 def process_year_chunk(
@@ -245,26 +251,26 @@ def process_year_chunk(
     without; a path gets a ground column when they cover every row of it.
     ``path_landings`` holds the landings of each path (see
     ``landings.detect_landings``), None for a path without. Writes
-    ``<output_dir>/<year>/.data.<index>.info.part`` (the path_info entries,
-    comma separated) and ``.data.<index>.segments.part`` (the
-    ``"<id>":{...}`` entries of the segments object, comma separated). The
-    fragments are streamed path by path, so the chunk never holds all of its
-    segment rows in memory at once.
+    ``<output_dir>/<year>/.data.<index>.<part>.part`` for each of
+    ``_PARTS``: the path_info entries, then the entries of each array of the
+    segments object, one per path, comma separated. The fragments are
+    streamed path by path, so the chunk never holds all of its segment rows
+    in memory at once.
     """
     original_points = sum(len(path) for path in year_path_groups)
     groundspeed = GroundspeedRange()
-    info_part, segments_part = _part_paths(output_dir, year, index)
-    info_part.parent.mkdir(parents=True, exist_ok=True)
+    parts = _part_paths(output_dir, year, index)
+    parts[0].parent.mkdir(parents=True, exist_ok=True)
 
     if path_elevations is None:
         path_elevations = [None] * len(path_ids)
     if not path_landings:
         path_landings = [None] * len(path_ids)
     path_count = 0
-    with (
-        open(info_part, "w", encoding="utf-8") as info_out,
-        open(segments_part, "w", encoding="utf-8") as segments_out,
-    ):
+    with ExitStack() as stack:
+        info_out, *segment_outs = (
+            stack.enter_context(open(part, "w", encoding="utf-8")) for part in parts
+        )
         for path, metadata, path_id, elevations, landings in zip(
             year_path_groups,
             year_path_metadata,
@@ -286,11 +292,9 @@ def process_year_chunk(
             separator = "," if path_count else ""
             info_out.write(separator + json.dumps(info, separators=JSON_SEPARATORS))
             # Scaled to integers, stored as differences and written column
-            # by column, see segment_codec
-            segments: dict[str, object] = {
-                "start": encode_start(start),
-                "columns": encode_rows(start, rows),
-            }
+            # by column across the paths, see segment_codec. The time column
+            # and the ground are null for a path without them.
+            columns = encode_rows(start, rows)
             ground = (
                 ground_profile_ft(
                     start, rows, elevations_by_coordinate(path, elevations)
@@ -298,12 +302,14 @@ def process_year_chunk(
                 if elevations is not None
                 else None
             )
-            if ground is not None:
-                segments["ground"] = encode_ground(ground)
-            segments_out.write(
-                f'{separator}"{path_id}":'
-                + json.dumps(segments, separators=JSON_SEPARATORS)
-            )
+            values = [
+                encode_start(start),
+                *columns,
+                *[None] * (len(_COLUMN_PARTS) - len(columns)),
+                encode_ground(ground) if ground is not None else None,
+            ]
+            for out, value in zip(segment_outs, values, strict=True):
+                out.write(separator + json.dumps(value, separators=JSON_SEPARATORS))
 
             speeds = [row[SPEED] for row in rows if row[SPEED] > 0]
             if speeds:
@@ -354,16 +360,25 @@ def _assemble_year_file(
     # The object stays open for the paths that follow
     head = json.dumps(header, separators=JSON_SEPARATORS).removesuffix("}")
 
+    chunk_parts = [_part_paths(output_dir, year, chunk.index) for chunk in chunks]
+
+    def copy(out: IO[str], name: str) -> None:
+        position = _PARTS.index(name)
+        _copy_fragments(out, [parts[position] for parts in chunk_parts])
+
     def write(out: IO[str]) -> None:
         out.write(head + ',"path_info":[')
-        _copy_fragments(
-            out, [_part_paths(output_dir, year, chunk.index)[0] for chunk in chunks]
-        )
-        out.write('],"segments":{')
-        _copy_fragments(
-            out, [_part_paths(output_dir, year, chunk.index)[1] for chunk in chunks]
-        )
-        out.write("}}")
+        copy(out, "info")
+        out.write('],"segments":{"start":[')
+        copy(out, "start")
+        out.write('],"columns":[')
+        for position, name in enumerate(_COLUMN_PARTS):
+            out.write(("," if position else "") + "[")
+            copy(out, name)
+            out.write("]")
+        out.write('],"ground":[')
+        copy(out, "ground")
+        out.write("]}}")
 
     try:
         atomic_write(output_file, write)

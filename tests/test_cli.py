@@ -676,6 +676,26 @@ class TestObfuscateFlag:
         assert "2025-01-01T00:00:00Z" in renamed.read_text()
         assert mock_create.call_args.args[0] == [str(renamed)]
 
+    def test_a_possible_date_is_warned_of_and_built(self, tmp_path, capsys):
+        """As `make obfuscate`: a day, a word and a year the patterns do not
+        know is said, and refuses nothing."""
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        kml = input_dir / "flight.kml"
+        kml.write_text(
+            "<kml><Placemark><name>Flyg 16 augusti 2026</name><gx:Track>"
+            "<when>2025-03-03T08:25:15Z</when><gx:coord>12.0 51.5 100</gx:coord>"
+            "</gx:Track></Placemark></kml>"
+        )
+
+        mock_create = _run(
+            ["--obfuscate-inputs", str(kml), "--output-dir", str(tmp_path / "out")]
+        )
+
+        assert mock_create.called
+        err = capsys.readouterr().err
+        assert f"Possible date to look at in {kml}: May be a date" in err
+
     def test_a_charterware_kmz_is_refused_under_its_own_name(self, tmp_path, capsys):
         input_dir = tmp_path / "input"
         input_dir.mkdir()

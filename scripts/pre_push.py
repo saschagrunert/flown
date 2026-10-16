@@ -32,11 +32,17 @@ So are the names of the refs pushed to: a branch named after the day of
 its flights ("flights-2026-08-16") is refused when its commits add or
 change one.
 
-A push that adds the flights of one trip to data/ gets a warning, not a
-refusal: the files carry no date, but the push does, and dates the trip to
-about the day it was pushed. One trip is up to three flights (a day's
-flying), or legs that each start where the one before ended and come back
-to the field of the first only at the end (see ``one_trip``).
+A push that adds the flights of one trip gets a warning, not a refusal:
+the files carry no date, but the push does, and dates the trip to about the
+day it was pushed. One trip is up to three flights (a day's flying), or legs
+that each start where the one before ended and come back to the field of
+the first only at the end (see ``one_trip``). A flight is a KML file
+anywhere but under tests/: in data/, or in the directory a copy keeps its
+own in (FLOWN_INPUT_DIR, doc/hosting.md), which the hook cannot know.
+
+The pre-commit hook runs the obfuscation check on the KML files a commit
+stages, wherever they are (``--files NAME...``, see ``check_files``), so a
+real date is not even committed.
 """
 
 import re
@@ -52,11 +58,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # every KMZ archive, which the check reports as one it cannot read (the
 # generator reads both, see flown.validation.find_kml_files)
 KML_PATHSPECS = (":(glob,icase)**/*.kml", ":(glob,icase)**/*.kmz")
-# The flights of this repository's site, which the trip warning reads. The
-# messages and the refs of commits are checked when they add or change any
-# KML file (KML_PATHSPECS): a copy keeps its flights where FLOWN_INPUT_DIR
-# says, which the hook cannot know (doc/hosting.md)
-FLIGHT_PATHSPECS = (":(glob,icase)data/**/*.kml", ":(glob,icase)data/**/*.kmz")
+# The flights the trip warning reads: every KML file but those of the
+# tests. A copy keeps its flights where FLOWN_INPUT_DIR says, which the hook
+# cannot know (doc/hosting.md), so not only those of data/
+FLIGHT_PATHSPECS = (*KML_PATHSPECS, ":(exclude,glob)tests/**")
 # What git sends for a ref that is deleted rather than pushed
 ZERO_SHA = "0" * 40
 # As many flights as a day of flying has, which a push dates together
@@ -192,7 +197,7 @@ def changed_kml_files(repo: Path, commit: str) -> list[str]:
 
 
 def added_flights(repo: Path, exclude: list[str], pushed_shas: list[str]) -> list[str]:
-    """The flight files under data/ that the commits being pushed add."""
+    """The flight files (FLIGHT_PATHSPECS) that the commits being pushed add."""
     if not pushed_shas:
         return []
     output = _git(
@@ -378,10 +383,16 @@ def dated_messages(
     return found
 
 
-def violations_in(repo: Path, commit: str) -> dict[str, list[str]]:
-    """The obfuscation violations of the KML files a commit adds or changes."""
+def violations_in(
+    repo: Path, commit: str, warned: list[str] | None = None
+) -> dict[str, list[str]]:
+    """The obfuscation violations of the KML files a commit adds or changes.
+
+    What may be a date only for a person to tell refuses nothing
+    (``check_kml``): it goes to ``warned``, as the lines to print.
+    """
     # Imported here: main() puts the checkout on the path first
-    from flown.obfuscate import check_directory_obfuscated  # noqa: PLC0415
+    from flown.obfuscate import check_directory  # noqa: PLC0415
 
     with tempfile.TemporaryDirectory(prefix="kml-pre-push-") as tmp:
         directory = Path(tmp)
@@ -389,7 +400,29 @@ def violations_in(repo: Path, commit: str) -> dict[str, list[str]]:
             target = directory / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(_git(repo, "cat-file", "blob", f"{commit}:{name}"))
-        return check_directory_obfuscated(directory)
+        violations, warnings = check_directory(directory)
+    if warned is not None:
+        warned.extend(_lines(warnings, f"{commit[:7]} "))
+    return violations
+
+
+def _lines(found: dict[str, list[str]], prefix: str = "") -> list[str]:
+    """One line per issue of each file, as the hooks print them."""
+    return [
+        f"  {prefix}{name}: {issue}"
+        for name, issues in found.items()
+        for issue in issues
+    ]
+
+
+def _report_warnings(lines: list[str]) -> None:
+    """What may be a date, for a person to look at, in a block of its own
+    after any refusal: it refuses nothing."""
+    if not lines:
+        return
+    print("\nPossible dates to look at (not refused):", file=sys.stderr)
+    for line in lines:
+        _report(line)
 
 
 def pushed_shas(lines: list[str]) -> list[str]:
@@ -414,15 +447,23 @@ def _refuse_dated_commits(
     """Report the commits that date their flights; whether there were any.
 
     Every commit of ``shas`` but those of ``exclude`` that adds or changes a
-    KML file is checked on its own, then the messages of those that add or
-    change a flight in data/.
+    KML file is checked on its own, then the messages of those commits.
     """
+    warned: list[str] = []
+    refused = _refuse_dated(repo, exclude, shas, hint, warned)
+    _report_warnings(warned)
+    return refused
+
+
+def _refuse_dated(
+    repo: Path, exclude: list[str], shas: list[str], hint: str, warned: list[str]
+) -> bool:
+    """``_refuse_dated_commits``, with what may be a date put in ``warned``."""
     found = False
     for commit in commits_to_check(repo, exclude, shas):
-        for name, issues in violations_in(repo, commit).items():
+        for line in _lines(violations_in(repo, commit, warned), f"{commit[:7]} "):
             found = True
-            for issue in issues:
-                _report(f"  {commit[:7]} {name}: {issue}")
+            _report(line)
     if found:
         print(
             "\nPush refused: the commits above carry real flight dates, and the\n"
@@ -460,6 +501,38 @@ def check_range(repo: Path, base: str, head: str) -> int:
     """
     exclude = [] if base == ZERO_SHA else ["--not", base]
     return 1 if _refuse_dated_commits(repo, exclude, [head], "") else 0
+
+
+def check_files(names: list[str]) -> int:
+    """The check of the pre-commit hook: the KML files a commit stages.
+
+    pre-commit passes their names and has the unstaged changes put aside,
+    so the files hold what is committed. Each is checked from a copy, as
+    ``violations_in`` checks those of a commit: the tool takes a directory,
+    and the copies are all it reads, wherever the files are.
+    """
+    # Imported here: main() puts the checkout on the path first
+    from flown.obfuscate import check_directory  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="kml-pre-commit-") as tmp:
+        directory = Path(tmp)
+        for name in names:
+            target = directory / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(name, target)
+        violations, warnings = check_directory(directory)
+    for line in _lines(violations):
+        _report(line)
+    if violations:
+        print(
+            "\nCommit refused: the files above carry real flight dates, and the\n"
+            "repository is public. Run `python -m flown.obfuscate DIRECTORY`\n"
+            "(`make obfuscate INPUT_DIR=DIRECTORY`) to rewrite the timestamps,\n"
+            "dates and names it knows; remove the rest by hand.",
+            file=sys.stderr,
+        )
+    _report_warnings(_lines(warnings))
+    return 1 if violations else 0
 
 
 def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
@@ -517,16 +590,20 @@ def check(repo: Path, lines: list[str], remote: str = "origin") -> int:
 
 def main() -> int:
     # The remote's name, or the URL a push names in its place; CI passes
-    # `--range BASE HEAD` instead (see check_range)
+    # `--range BASE HEAD` instead (see check_range), the pre-commit hook
+    # `--files NAME...` (see check_files)
     args = sys.argv[1:]
     in_ci = args[:1] == ["--range"]
     if in_ci and len(args) != 3:
         print("usage: pre_push.py --range BASE HEAD", file=sys.stderr)
         return 2
+    staged = args[:1] == ["--files"]
     try:
         sys.path.insert(0, str(ROOT))
         if in_ci:
             return check_range(Path.cwd(), args[1], args[2])
+        if staged:
+            return check_files(args[1:])
         remote = args[0] if args else "origin"
         return check(Path.cwd(), sys.stdin.read().splitlines(), remote)
     except (ImportError, SyntaxError) as e:
@@ -540,6 +617,9 @@ def main() -> int:
         reason = f"unexpected text: {e}"
     if in_ci:
         print(f"pre_push: cannot check the commits ({reason}).", file=sys.stderr)
+        return 1
+    if staged:
+        print(f"pre-commit: cannot check the KML files ({reason}).", file=sys.stderr)
         return 1
     print(
         f"pre-push: cannot check the KML files ({reason}). Refusing the push; "

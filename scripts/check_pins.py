@@ -87,6 +87,8 @@ GITLEAKS_HOOK = re.compile(
     r"[ \t]*rev:[ \t]*(\S+)(?:[ \t]*#[ \t]*frozen:[ \t]*(\S+))?",
     re.MULTILINE,
 )
+# An exact release of Node.js, as .nvmrc names it
+EXACT_RELEASE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 # A base image of the Dockerfile and the version of its tag, the part before
 # the first hyphen: python of "FROM docker.io/library/python:3.14-slim@...",
 # also after options such as "FROM --platform=$BUILDPLATFORM"
@@ -257,6 +259,11 @@ def toolchain_mismatches(pyproject: dict[str, Any]) -> list[str]:
     package.json state the oldest version the code is written for. A bump
     of one of them alone passes every job that does not read the others
     (the image kept building on the old Python), so they are compared here.
+
+    .nvmrc names an exact release, not a major version: the gzipped size
+    budgets of build.js depend on the zlib Node.js bundles and are nearly
+    full, so a new release CI picked up on its own could turn main red
+    without a change. ``engines`` asks for its major version or newer.
     """
     problems: list[str] = []
     versions: dict[str, str] = {}
@@ -290,7 +297,12 @@ def toolchain_mismatches(pyproject: dict[str, Any]) -> list[str]:
             "py" + python.replace(".", ""),
         )
     if node is not None:
-        expected['package.json engines "node"'] = (engines.get("node"), f">={node}")
+        if not EXACT_RELEASE.fullmatch(node):
+            problems.append(
+                f".nvmrc names Node.js {node}, not an exact release such as 26.12.0"
+            )
+        major = node.split(".", 1)[0]
+        expected['package.json engines "node"'] = (engines.get("node"), f">={major}")
     problems.extend(
         f'{source} is "{actual}", .python-version and .nvmrc ask for "{wanted}"'
         for source, (actual, wanted) in expected.items()

@@ -99,6 +99,7 @@ describe("ReliefState", () => {
       ...PATH_RIBBON_SOURCES,
       MAP_SOURCES.selectionHighlightRibbons,
       MAP_SOURCES.replayTrailRibbons,
+      MAP_SOURCES.replayTrailTipRibbons,
     ]);
     expect(Object.values(MAP_LAYERS)).toEqual(
       expect.arrayContaining([...RIBBON_SOURCES]),

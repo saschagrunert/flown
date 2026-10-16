@@ -7,11 +7,12 @@ import {
 } from "../../../../flown/frontend/services/yearDataset";
 import { decodeYear } from "../../../../flown/frontend/services/yearDecode";
 import { dataset, path, rawYear } from "../../yearFixtures";
+import type { PathSegments } from "../../yearFixtures";
 import type { RawYearData } from "../../../../flown/frontend/types";
 
 /** A year of `paths` paths with `rows` rows each */
 function longYear(paths: number, rows: number): RawYearData {
-  const segments: RawYearData["segments"] = {};
+  const segments: Record<string, PathSegments> = {};
   for (let id = 1; id <= paths; id++) {
     segments[String(id)] = path(
       [50, 8],

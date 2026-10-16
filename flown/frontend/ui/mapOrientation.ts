@@ -92,6 +92,12 @@ export class MapOrientation {
    * or on as the visit opened, in this visit
    */
   private threeDHinted: boolean;
+  /**
+   * Take back what the last switch into the 3D view changed on its way
+   * (toggleThreeD), whose code could not come (LayerManager.syncTerrain):
+   * the altitude colours it turned on and the tilt it gave the map
+   */
+  undoThreeD = (): void => {};
   private readonly unsubscribe: () => void;
   /**
    * Ends the listening for the moments of the tip (listenForTip), as it is
@@ -383,18 +389,21 @@ export class MapOrientation {
     // tour turned on, and needs no offer any more
     this.threeDHinted = true;
     this.usedTip();
+    this.undoThreeD = () => {};
     if (!entering) return;
     const map = this.app.map;
-    if (
+    const lit =
       !this.app.heatmapVisible &&
       !this.app.altitudeVisible &&
-      !this.app.airspeedVisible
-    ) {
-      this.app.uiToggles.toggleAltitude();
-    }
-    if (map && map.getPitch() < THREE_D_MIN_PITCH) {
-      map.easeTo({ pitch: THREE_D_PITCH });
-    }
+      !this.app.airspeedVisible;
+    if (lit) this.app.uiToggles.toggleAltitude();
+    const pitch = map?.getPitch() ?? THREE_D_MIN_PITCH;
+    if (pitch < THREE_D_MIN_PITCH) map!.easeTo({ pitch: THREE_D_PITCH });
+    this.undoThreeD = () => {
+      this.undoThreeD = () => {};
+      if (lit && this.app.altitudeVisible) this.app.uiToggles.toggleAltitude();
+      if (pitch < THREE_D_MIN_PITCH) map!.easeTo({ pitch });
+    };
   }
 
   private applyProjection(): void {

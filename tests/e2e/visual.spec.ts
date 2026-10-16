@@ -52,10 +52,17 @@ const PINNED_YEAR = 2025;
 /**
  * The pinned image renders the same page identically run after run, and the
  * fixture site never changes on its own, so any differing pixel is a change
- * to the look. Spelled out, although it is Playwright's default, so that the
- * next tolerance somebody needs is an exception made here, in plain sight.
+ * to the look. `maxDiffPixels: 0` is Playwright's default, spelled out so
+ * that the next tolerance somebody needs is an exception made here, in plain
+ * sight. `threshold: 0` is not: by default a pixel only counts as different
+ * once its colour moves by a fifth of the range, which let a grey hairline
+ * vanish on white, or text fade from #666 to #999, with every snapshot green.
  */
-const EXACT = { animations: "disabled", maxDiffPixels: 0 } as const;
+const EXACT = {
+  animations: "disabled",
+  maxDiffPixels: 0,
+  threshold: 0,
+} as const;
 
 test.describe("visual", () => {
   test.beforeEach(async ({ page }) => {

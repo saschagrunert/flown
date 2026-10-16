@@ -267,6 +267,7 @@ function createTool(app: MapApp): CrossSectionTool {
 
   const notify = (): void => {
     for (const listener of followers.get(app) ?? []) listener();
+    app.syncResetButton();
   };
 
   /** Keep the control's pressed state and the page's class in step */

@@ -32,6 +32,7 @@ import { flightsKey } from "../state/localFlags";
 import { knownNewAreaKm2, yearNewAreaKm2 } from "../calculations/newAreas";
 import { whenIdle } from "../utils/whenIdle";
 import { logError } from "../utils/logger";
+import { STATS_FAILED_HTML } from "./statsManager";
 import {
   generateStatsHtml,
   generateFunFactsHtml,
@@ -51,6 +52,9 @@ import {
 } from "./wrappedIntro";
 import { userView } from "./replayState";
 import { trustedHtml } from "../utils/trustedHtml";
+
+/** What the map holds that takes focus: markers, and their popups */
+const MAP_TAB_STOPS = ".maplibregl-marker, .maplibregl-popup";
 
 /**
  * Elements that stay out of the inert set while the dialog is open: the
@@ -543,9 +547,13 @@ export class WrappedManager {
         this.renderContent(filteredStats);
       },
       (error: unknown) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || this.destroyed) return;
         this.statsAbort = null;
         logError(error);
+        // Not "Preparing" for as long as the dialog stays open
+        domCache.get("wrapped-cards-column")?.removeAttribute("aria-busy");
+        const statsEl = domCache.get("wrapped-stats");
+        if (statsEl) statsEl.innerHTML = trustedHtml(STATS_FAILED_HTML);
       },
     );
   }
@@ -767,12 +775,13 @@ export class WrappedManager {
    * taken out of the tab cycle until the dialog closes, one by one. The
    * container they sit in is the element MapLibre listens on for every
    * drag, pinch and wheel, so making that one inert would freeze the
-   * overview map, which is there to be panned and zoomed. A snapshot is
-   * enough here: the airports are created once at start-up, before Wrapped
-   * can open, and the only other marker is replay's airplane, which cannot
-   * exist while Wrapped is open (neither starts while the other runs).
-   * Popups are closed, the values a hover or a tap left on a flight
-   * included, and whatever should be left of them is made inert as well.
+   * overview map, which is there to be panned and zoomed. The airports are
+   * created at start-up, or late by the Retry of their failed load, whose
+   * toast stays above the dialog: those that come while it is open are made
+   * inert as they come. Replay's airplane cannot exist while Wrapped is
+   * open (neither starts while the other runs). Popups are closed, the
+   * values a hover or a tap left on a flight included, and whatever should
+   * be left of them is made inert as well.
    *
    * A container that still takes gestures also still reports clicks and
    * pointer moves. Those select flights and show their values on the main
@@ -803,18 +812,31 @@ export class WrappedManager {
       if (marker.isPopupOpen()) marker.closePopup();
     }
     this.app.layerManager.closeSegmentPopup();
-    document
-      .querySelectorAll("#map .maplibregl-marker, #map .maplibregl-popup")
-      .forEach(makeInert);
+    document.querySelectorAll(`#map :is(${MAP_TAB_STOPS})`).forEach(makeInert);
 
     this.inertObserver = new MutationObserver((records) => {
       for (const record of records) {
         for (const node of record.addedNodes) {
-          if (node instanceof Element) makeInert(node);
+          if (
+            node instanceof Element &&
+            (record.target === document.body || node.matches(MAP_TAB_STOPS))
+          ) {
+            makeInert(node);
+          }
         }
       }
     });
-    this.inertObserver.observe(document.body, { childList: true });
+    // And on the map, the markers of airports that come late, from the
+    // Retry of their failed load whose toast stays above the dialog, and
+    // their popups
+    const map = this.app.map;
+    for (const parent of [
+      document.body,
+      map?.getContainer(),
+      map?.getCanvasContainer(),
+    ]) {
+      if (parent) this.inertObserver.observe(parent, { childList: true });
+    }
 
     // Skip while the intro plays: the cards are inert under the map for
     // its ten seconds, and Skip comes before Close, so from Close a forward

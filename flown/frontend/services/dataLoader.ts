@@ -263,6 +263,15 @@ function isMetadata(value: unknown): value is Metadata {
 }
 
 /**
+ * The size of the file of `year` the metadata gives, if it is in. A size
+ * of zero is as good as none: nothing can be a share of it.
+ */
+function yearFileSize(year: string): number | undefined {
+  const size = siteData.metadata?.year_file_bytes?.[year];
+  return size !== undefined && size > 0 ? size : undefined;
+}
+
+/**
  * Data loader class with caching, in-flight request deduplication and a
  * reference-counted loading indicator.
  *
@@ -312,6 +321,11 @@ export class DataLoader {
   private yearDownloads = new Map<string, Download>();
   /** A year file was written by another release than this page's */
   private staleData = false;
+  /** The load preload started, until the first load of a year (getYear) */
+  private early: {
+    year: string;
+    data: Promise<KMLDataset | null>;
+  } | null = null;
   /** The request in flight, so that concurrent callers share it */
   private airportsRequest: Promise<{ airports: Airport[] }> | null = null;
   private metadataRequest: Promise<Metadata> | null = null;
@@ -394,10 +408,8 @@ export class DataLoader {
 
   /** A year file starts downloading */
   private beginDownload(year: string): Download {
-    const size = siteData.metadata?.year_file_bytes?.[year];
     const download: Download = {
-      // A size of zero is as good as none: nothing can be a share of it
-      size: size !== undefined && size > 0 ? size : undefined,
+      size: yearFileSize(year),
       received: 0,
       before: 0,
       pending: true,
@@ -417,6 +429,8 @@ export class DataLoader {
    */
   private wait(year: string, download: Download, signal?: AbortSignal): void {
     download.waiters += signal ? 1 : Infinity;
+    // A preload started before the metadata
+    download.size ??= yearFileSize(year);
     if (!download.held) {
       download.held = true;
       this.loadingDepth++;
@@ -441,10 +455,10 @@ export class DataLoader {
   private advanceDownload(download: Download, fileBytes: number): void {
     const { size, received } = download;
     // A request that was given up on may still report
-    if (!download.pending || size === undefined || fileBytes <= received) {
-      return;
-    }
+    if (!download.pending || fileBytes <= received) return;
     download.received = fileBytes;
+    // A preload's bytes before the metadata: counted once it brings the size
+    if (size === undefined) return;
     if (fileBytes > size) {
       // Said once, when the file outgrows its size: the bar stands still at
       // full from here on, which is otherwise hard to explain
@@ -492,6 +506,20 @@ export class DataLoader {
       download.received = size;
     }
     this.endLoading();
+  }
+
+  /**
+   * The metadata has come: a preload that started before it, and is held
+   * by a load already, gets its size, and the bar what of it has arrived
+   */
+  private sizeDownloads(): void {
+    let sized = false;
+    for (const [year, download] of this.yearDownloads) {
+      if (download.size !== undefined) continue;
+      download.size = yearFileSize(year);
+      sized ||= download.held && download.size !== undefined;
+    }
+    if (sized) this.report();
   }
 
   private endLoading(): void {
@@ -593,13 +621,32 @@ export class DataLoader {
   }
 
   /**
+   * Start loading `year` before anybody asks for it: the page's first year
+   * while the map loads its style. Nothing is on the indicator for it, and
+   * a failure is said by the first load that asks for it: that load takes
+   * this one over, failed or not, and does not fetch the file again.
+   */
+  preload(year: string): void {
+    if (year === "all" || !isValidYear(year) || this.destroyed) return;
+    this.early = {
+      year,
+      data: this.shared(year, () => this.loadYear(year, true)),
+    };
+  }
+
+  /**
    * Cached and de-duplicated single-year load
    */
   private getYear(
     year: string,
     signal?: AbortSignal,
   ): Promise<KMLDataset | null> {
-    const promise = this.shared(year, () => this.loadYear(year));
+    const early = this.early;
+    this.early = null;
+    const promise =
+      early?.year === year
+        ? early.data
+        : this.shared(year, () => this.loadYear(year));
     const download = this.yearDownloads.get(year);
     if (download) this.wait(year, download, signal);
     return promise;
@@ -621,7 +668,10 @@ export class DataLoader {
     return promise;
   }
 
-  private async loadYear(year: string): Promise<KMLDataset | null> {
+  private async loadYear(
+    year: string,
+    early = false,
+  ): Promise<KMLDataset | null> {
     const download = this.beginDownload(year);
     let arrived = false;
     try {
@@ -634,14 +684,17 @@ export class DataLoader {
       // answered by one that is already under way, which is why the file is
       // fetched here and not by the worker: a preload serves the page that
       // made it. Bytes are counted only for a file whose size is known:
-      // without it no bar is drawn.
+      // without it no bar is drawn. A preload (`early`) starts before the
+      // metadata, which may still bring it.
       const bytes = await this.fetchBytes(
         this.dataDir + "/" + year + "/data.json",
-        download.size === undefined
+        download.size === undefined && !early
           ? undefined
           : {
-              onProgress: (loadedBytes) =>
-                this.advanceDownload(download, loadedBytes),
+              onProgress: (loadedBytes) => {
+                download.size ??= yearFileSize(year);
+                this.advanceDownload(download, loadedBytes);
+              },
             },
       );
       const data = await (await decoder).decode(bytes);
@@ -802,6 +855,7 @@ export class DataLoader {
         if (!siteData.metadata) {
           siteData.metadata = metadata;
           this.onMetadata?.(metadata);
+          this.sizeDownloads();
         }
       }
       return siteData.metadata;

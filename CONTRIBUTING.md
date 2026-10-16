@@ -6,11 +6,14 @@ setup, the checks that run in CI and the conventions used in this repository.
 ## Setup
 
 - Python 3.14 (`.python-version`) and Node.js 26 (`.nvmrc`). CI and the
-  container image use Node.js 26, and that is the only release the tests run on,
-  so `engines` in `package.json` asks for 26 or newer. Python 3.14 is required,
-  not merely recommended: the code uses its syntax. On a distribution that ships
-  an older Python, `uv python install 3.14` or pyenv (`pyenv install 3.14`)
-  provides it.
+  container image use the exact release `.nvmrc` names, the only one the tests
+  run on, so `engines` in `package.json` asks for 26 or newer. It is exact
+  because the gzipped size budgets of `build.js` depend on the zlib Node.js
+  bundles; a new release is taken by hand, with the `node` image of the
+  `Dockerfile` (`scripts/check_pins.py` fails the lint job until both agree).
+  Python 3.14 is required, not merely recommended: the code uses its syntax. On
+  a distribution that ships an older Python, `uv python install 3.14` or pyenv
+  (`pyenv install 3.14`) provides it.
 - [uv](https://docs.astral.sh/uv/getting-started/installation/), the release CI
   runs (`version` of the setup-uv step in
   `.github/actions/setup-toolchain/action.yml`), for example with
@@ -87,7 +90,7 @@ your virtual environment and `node_modules`, the same way CI does, so no
 container is involved:
 
 ```bash
-make lint            # uv.lock and the version pins, ruff (check and format), mypy, zizmor, TypeScript 7 (npm run typecheck and typecheck:tests), eslint, knip, prettier, the obfuscation of data/ and the visual fixtures, typos
+make lint            # uv.lock and the version pins, ruff (check and format), mypy, zizmor, TypeScript 7 (npm run typecheck and typecheck:tests), eslint, knip, prettier, the file checks of the pre-commit hooks, the obfuscation of data/, INPUT_DIR and the visual fixtures, each commit since origin/main (LINT_BASE) with its message, typos
 make format          # ruff format, prettier
 make test            # npm run build and the site in docs/, then vitest (shuffled) and pytest with coverage; pytest flags are in doc/development/testing.md
 npm run test:e2e     # Playwright: desktop, mobile and WebKit (see doc/development/testing.md)
@@ -123,16 +126,18 @@ here, not an oversight: adding the parentheses back is undone on the next
   Actions" (Settings > Pages). Set it by hand: the workflow token is not allowed
   to change it.
 - **The other settings made by hand.** A ruleset on `main` (Settings > Rules)
-  requires the `checks` status, the last job of the `test` workflow, which
-  passes only when every test job a pull request runs did; it blocks force
-  pushes, and it requires a branch to be up to date with `main` before it merges
-  (strict status checks; the merge queue is not available to a repository a user
-  owns), so `checks` passed on what `main` becomes. "Update branch" on the pull
-  request merges `main` into it, and the run of that push is the one that
-  counts. Settings > Actions > General requires every action to be pinned to a
-  full commit SHA and allows only the actions of GitHub, of verified creators,
-  `codecov/*` and `crate-ci/*`; a workflow that uses any other action fails
-  until it is allowed there.
+  requires a pull request, merged by rebase (the only merge method the
+  repository allows), and the `checks` status, the last job of the `test`
+  workflow, which passes only when every test job a pull request runs did. It
+  blocks force pushes and deleting `main`, and it requires a branch to be up to
+  date with `main` before it merges (strict status checks; the merge queue is
+  not available to a repository a user owns), so `checks` passed on what `main`
+  becomes. "Update branch" on the pull request merges `main` into it, and the
+  run of that push is the one that counts. Admins may bypass the ruleset.
+  Settings > Actions > General requires every action to be pinned to a full
+  commit SHA and allows only the actions of GitHub and two more by name:
+  `codecov/codecov-action` and `astral-sh/setup-uv`. A workflow that uses any
+  other action fails until it is allowed there.
 - **Never commit un-obfuscated KML files.** Generating a site no longer rewrites
   them: run `make obfuscate` after adding flights to `data/` (or pass
   `--obfuscate-inputs`). The pre-commit hook, `make check-obfuscation` and the
@@ -219,18 +224,17 @@ script leaves the hash of the fixture in `visual-site/fixture.sha1`, and
 `map_config.js` carries the hash of the generator.
 
 Nothing in that site changes on its own and the pinned image renders it the same
-on every run, so every snapshot is compared exactly (`maxDiffPixels: 0`). An
-earlier tolerance of 1% for the rail and the dialog let a missing control row
-and three stale snapshots pass. `PINNED_YEAR` in the spec picks the earlier of
-the fixture's two years through the URL.
+on every run, so every snapshot is compared exactly (`maxDiffPixels: 0` and
+`threshold: 0`, so no pixel may change, not even in colour). An earlier
+tolerance of 1% for the rail and the dialog let a missing control row and three
+stale snapshots pass. `PINNED_YEAR` in the spec picks the earlier of the
+fixture's two years through the URL.
 
 When a change is meant to alter the look, or the fixture changes, add
 `--update-snapshots=all` to the command above and commit the new screenshots.
-The plain `--update-snapshots` only rewrites a snapshot whose comparison fails,
-and the comparison still ignores a small difference in the colour of a pixel
-(Playwright's `threshold`), so a snapshot can be stale and pass; `=all` rewrites
-every snapshot that is not identical. The diff of a failing CI run is in the
-`visual-diff` artifact.
+The plain `--update-snapshots` only rewrites a snapshot whose comparison fails;
+`=all` rewrites every snapshot that is not identical. The diff of a failing CI
+run is in the `visual-diff` artifact.
 
 The image is pinned by tag and digest, in the `visual` and `e2e` jobs of
 `.github/workflows/test.yml` and in the command above alike. The tag has to

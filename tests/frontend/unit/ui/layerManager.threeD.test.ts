@@ -6,7 +6,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Point, type Map as MapLibreMap } from "maplibre-gl";
 import { LngLatBounds } from "../../../mocks/maplibre-gl";
-import type { LayerManager } from "../../../../flown/frontend/ui/layerManager";
+import {
+  THREE_D_UNAVAILABLE_MESSAGE,
+  type LayerManager,
+} from "../../../../flown/frontend/ui/layerManager";
 import type { PathSegment } from "../../../../flown/frontend/types";
 import { createDataset, createSegment, type MockApp } from "../../testHelpers";
 import { liftOffsetPx } from "../../../../flown/frontend/calculations/lift";
@@ -21,6 +24,7 @@ import {
   ALTITUDE_SELECTED,
   segmentsAlong,
   drawMode,
+  endZoom,
   layerManagerHelpers,
   setupLayerManager,
   teardownLayerManager,
@@ -34,6 +38,8 @@ const featureBundle = vi.hoisted(() => ({
   followHeatCloud: vi.fn(),
   followSelectionRibbons: vi.fn(),
 }));
+const toast = vi.hoisted(() => ({ showToast: vi.fn(), dismissToast: vi.fn() }));
+vi.mock("../../../../flown/frontend/utils/toast", () => toast);
 vi.mock("../../../../flown/frontend/services/featureLoader", async () => {
   const { followTerrain } =
     await import("../../../../flown/frontend/ui/terrain");
@@ -98,6 +104,8 @@ describe("LayerManager 3D view", () => {
 
   beforeEach(() => {
     featureBundle.held = false;
+    toast.showToast.mockClear();
+    toast.dismissToast.mockClear();
     ({ layerManager, mockApp, frames } = setupLayerManager());
   });
 
@@ -189,6 +197,33 @@ describe("LayerManager 3D view", () => {
       ]);
     });
 
+    it("turns the 3D view back off and says so when its code cannot be fetched", async () => {
+      featureBundle.available = false;
+      try {
+        mockApp.store.set("threeDVisible", true);
+        await terrainCode();
+        // The switch stayed on over flat flights, and nothing said why
+        expect(mockApp.threeDVisible).toBe(false);
+        // Nor does the press leave its tilt and colours behind
+        expect(mockApp.mapOrientation.undoThreeD).toHaveBeenCalledOnce();
+        expect(toast.showToast).toHaveBeenCalledExactlyOnceWith(
+          THREE_D_UNAVAILABLE_MESSAGE,
+          "error",
+        );
+
+        // The next press asks again, and the failure is no longer true
+        featureBundle.available = true;
+        mockApp.store.set("threeDVisible", true);
+        await terrainCode();
+        expect(mockApp.threeDVisible).toBe(true);
+        expect(toast.dismissToast).toHaveBeenCalledWith(
+          THREE_D_UNAVAILABLE_MESSAGE,
+        );
+      } finally {
+        featureBundle.available = true;
+      }
+    });
+
     it("writes no ribbon outside the 3D view", async () => {
       await drawClimb();
       mockApp.store.set("threeDVisible", false);
@@ -206,20 +241,42 @@ describe("LayerManager 3D view", () => {
 
       // Within the level nothing is cut again
       mockApp.map!.jumpTo({ zoom: 7.9 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(setDataCalls(RIBBONS)).toBe(writes);
 
       // A level further in, half as wide on the ground: as wide on screen.
       // Written over the cut of before, which stands on the relief of both
       // levels until the new one has landed.
       mockApp.map!.jumpTo({ zoom: 8.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(setDataCalls(RIBBONS)).toBe(writes + 1);
       expect(ribbonWidthM()).toBeCloseTo(at7 / 2, 3);
       // About 3 pixels at zoom 8.5, 512 px tiles, at 48 degrees
       const metresPerPixel =
         (40075016.686 * Math.cos((48 * Math.PI) / 180)) / (512 * 2 ** 8.5);
       expect(ribbonWidthM() / metresPerPixel).toBeCloseTo(3, 1);
+    });
+
+    it("cuts the ribbons for a new level in a task after the one the zoom ends in, unless another zoom is under way", async () => {
+      mockApp.map!.jumpTo({ zoom: 7.2 });
+      await drawClimb();
+      await terrainCode();
+      const writes = setDataCalls(RIBBONS);
+      vi.useFakeTimers();
+      try {
+        mockApp.map!.jumpTo({ zoom: 8.1 });
+        mockApp.map!.emit("zoomend");
+        expect(setDataCalls(RIBBONS)).toBe(writes);
+        mockApp.map!.isZooming.mockReturnValueOnce(true);
+        vi.advanceTimersByTime(0);
+        expect(setDataCalls(RIBBONS)).toBe(writes);
+
+        mockApp.map!.emit("zoomend");
+        vi.advanceTimersByTime(0);
+        expect(setDataCalls(RIBBONS)).toBe(writes + 1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("leaves the zooms of the replay's camera to its own rest", async () => {
@@ -229,11 +286,11 @@ describe("LayerManager 3D view", () => {
       const writes = setDataCalls(RIBBONS);
 
       mockApp.map!.jumpTo({ zoom: 8.1 });
-      mockApp.map!.emit("zoomend", REPLAY_CAMERA_MOVE);
+      await endZoom(mockApp.map!, REPLAY_CAMERA_MOVE);
       expect(setDataCalls(RIBBONS)).toBe(writes);
 
       // Which it tells the map of as MapLibre would
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(setDataCalls(RIBBONS)).toBe(writes + 1);
     });
 
@@ -249,7 +306,7 @@ describe("LayerManager 3D view", () => {
       const workerAnswers = holdSetData(RIBBONS);
 
       mockApp.map!.jumpTo({ zoom: 13.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
 
       // The same runs, so the tiles of before still stand for them: no
       // click or pointer is kept waiting for the new ones
@@ -271,12 +328,12 @@ describe("LayerManager 3D view", () => {
 
       // The camera is lower than a circuit there
       mockApp.map!.jumpTo({ zoom: 17.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(ribbons()).toEqual([]);
       expect(features(ALTITUDE)).toHaveLength(1);
 
       mockApp.map!.jumpTo({ zoom: 16.8 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(features(ALTITUDE)).toEqual([]);
       expect(ribbons().length).toBeGreaterThan(0);
     });
@@ -287,7 +344,7 @@ describe("LayerManager 3D view", () => {
       const writes = setDataCalls(RIBBONS);
 
       mockApp.map!.jumpTo({ zoom: 3 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
 
       expect(setDataCalls(RIBBONS)).toBe(writes);
     });
@@ -385,14 +442,14 @@ describe("LayerManager 3D view", () => {
 
       // A line is the same at every zoom
       mockApp.map!.jumpTo({ zoom: 18.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       mockApp.map!.jumpTo({ zoom: 19.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(setDataCalls(ALTITUDE)).toBe(writes);
 
       // Out to where they are lifted again, as ribbons
       mockApp.map!.jumpTo({ zoom: 16.5 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(ribbons().length).toBeGreaterThan(0);
       expect(features(ALTITUDE)).toEqual([]);
     });
@@ -409,7 +466,7 @@ describe("LayerManager 3D view", () => {
       mockApp.altitudeVisible = true;
       mockApp.selectedPathIds = new Set([...mockApp.selectedPathIds, 1]);
       layerManager.updateSelectionStyles();
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
 
       expect(ribbonWidthM()).toBeCloseTo(at7 / 2, 3);
     });
@@ -446,7 +503,7 @@ describe("LayerManager 3D view", () => {
       // Framed on another level: the selection is cut for it, the flights
       // out of sight are not
       mockApp.map!.jumpTo({ zoom: 8.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(drawnWrites(RIBBONS)).toBe(main);
       expect(drawnWrites(RIBBONS_SELECTED)).toBe(selected + 1);
       expect(features(RIBBONS_SELECTED)[0]!.properties.g).toBe(g);
@@ -482,11 +539,13 @@ describe("LayerManager 3D view", () => {
       // its end writes them again, cut for the zoom, before the worker
       // has answered for the first write
       mockApp.map!.jumpTo({ zoom: 18.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       mockApp.isolateSelection = false;
       layerManager.updateSelectionStyles();
-      expect(answers).toHaveLength(2);
+      // The worker is asked for the recut once it has answered the first
+      expect(answers).toHaveLength(1);
       answers[0]!();
+      expect(answers).toHaveLength(2);
       answers[1]!();
       await landed();
       settled();
@@ -512,7 +571,7 @@ describe("LayerManager 3D view", () => {
       // and its ribbons are let go of on another level (see releaseRibbons)
       mockApp.altitudeLayer.setVisible(false);
       mockApp.map!.jumpTo({ zoom: 9.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       mockApp.store.set("threeDVisible", false);
       expect(cuts()).toBe(writes);
       expect(setDataCalls(ALTITUDE)).toBe(0);
@@ -561,7 +620,7 @@ describe("LayerManager 3D view", () => {
       expect(smoothed()).toBeNull();
 
       mockApp.map!.jumpTo({ zoom: 12 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       await terrainCode();
       expect(smoothed()).not.toBeNull();
       layerManager.clearLayer("altitude");

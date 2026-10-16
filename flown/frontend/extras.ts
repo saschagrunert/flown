@@ -10,10 +10,12 @@
  * at a share control fetches ahead of the press (prepareOnIntent); the
  * reading of a token is the first visit's; and the flight list of an
  * airport's popup (ui/airportFlights.ts), which a popup opened before the
- * bundle came waits for (AirportManager.listPopupFlights). None has a
- * stylesheet of its
- * own: the bar and its sheet are drawn by styles.css, and the rest draws
- * nothing.
+ * bundle came waits for (AirportManager.listPopupFlights). The sheet is
+ * drawn by extras.css, which services/featureLoader.ts fetches with the
+ * bundle, and the bar by styles.css; the rest draws nothing. The bundle is
+ * there once both have come, so a stylesheet that does not come takes
+ * all of it away, as a bundle that does not would: the same build puts
+ * both next to each other.
  * Whatever it uses has to be the app's or its own, as for the search (see
  * search.ts): a module it shared with another lazy bundle alone would get
  * a chunk of its own, which the site does not publish.

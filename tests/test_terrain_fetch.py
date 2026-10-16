@@ -761,6 +761,29 @@ class TestTerrariumTiles:
         assert tiles.remove_stale_temp_files() == 0
         assert TerrariumTiles(tmp_path / "none").remove_stale_temp_files() == 0
 
+    def test_prunes_every_tile_but_those_asked_for(self, tmp_path):
+        """The build in the page keeps no tile under a flight removed."""
+        tiles = TerrariumTiles(tmp_path)
+        kept, gone = TileKey(10, 1, 1), TileKey(10, 2, 1)
+        for tile in (kept, gone):
+            tiles.path(tile).write_bytes(_tile_png(1.0))
+        assert tiles.pixels({kept: [0], gone: [0]})
+        assert (tmp_path / "10-2-1.pixels").exists()
+        temp = tmp_path / ".10-3-1.png.a8b7.tmp"
+        temp.write_bytes(b"half")
+        other = tmp_path / "notes.txt"
+        other.write_text("not a tile")
+        assert tiles.asked == {kept, gone}
+
+        assert tiles.prune_except([kept]) == 3
+
+        assert sorted(path.name for path in tmp_path.iterdir()) == [
+            "10-1-1.pixels",
+            "10-1-1.png",
+            "notes.txt",
+        ]
+        assert TerrariumTiles(tmp_path / "none").prune_except([]) == 0
+
     def test_decodes_many_tiles_in_a_pool(self, tmp_path):
         tiles = TerrariumTiles(tmp_path)
         wanted = {}

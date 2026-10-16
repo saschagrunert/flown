@@ -177,7 +177,7 @@ function addRibbons(
     type: "geojson",
     data: emptyGeoJson(),
     tolerance: 0,
-    ...(id !== MAP_SOURCES.replayTrailRibbons && { buffer: 32 }),
+    ...(!id.startsWith(MAP_SOURCES.replayTrail) && { buffer: 32 }),
     maxzoom: 14,
     promoteId: "k",
   });
@@ -441,14 +441,14 @@ function addDataLayersTo(map: MapLibreMap): void {
     cssVar("--selection-highlight-color") || SELECTION_COLOR,
   );
 
-  // In the 3D view the trail is written here instead (see ReplayRenderer)
-  addRibbons(
-    map,
+  // In the 3D view the trail is written here instead: the runs it has
+  // finished, and the one the airplane is on (see ReplayRenderer)
+  for (const id of [
     MAP_SOURCES.replayTrailRibbons,
-    {},
-    REPLAY_TRAIL_LINE.opacity,
-    before,
-  );
+    MAP_SOURCES.replayTrailTipRibbons,
+  ]) {
+    addRibbons(map, id, {}, REPLAY_TRAIL_LINE.opacity, before);
+  }
 
   // The room of the airport codes and their dots: labels, so on top of
   // every layer, the base style's own labels included (see

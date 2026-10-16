@@ -493,8 +493,28 @@ function compareBundles(before, after, names) {
 // bundle (lazyIcon in utils/icons.ts). The reading of a token stays: a
 // link with one is read before anything else reads it. Lowered by 1 KB
 // raw as the airport popup's list of flights moved to the extras bundle
-// (164.07 KB and 57.74 KB gzipped in a local build after).
-const BUDGET_APP = { raw: 165.5 * 1024, gzip: 58.75 * 1024 };
+// (164.07 KB and 57.74 KB gzipped in a local build after). Raised by 0.75
+// KB raw, the gzipped budget kept, for the first year decoded while the
+// map loads its style (DataLoader.preload), the heats of the last filters
+// kept, one heat and one set of lines asked of the year worker at a time,
+// and the ribbons cut for a new level in a task after the zoom's end
+// (165.84 KB and 58.41 KB gzipped in a local build). Raised again by 0.5
+// KB raw and 0.25 KB gzipped with the fixes of the same analysis: the
+// tapped flight's popup closed on a filter change, 3D switched back off
+// when its code cannot come, the link shown when it cannot be copied, the
+// cross-section in Reset view, and dropped folders passed on to Your
+// flights (166.42 KB and 58.56 KB gzipped in a local build). Raised by
+// 0.25 KB raw for the fixes of its review: the link of a failed Copy link
+// beside its message, the heats that failed not asked for in turn, the
+// worker's next lines asked for after a write that threw, and the
+// cross-section's line let go of by Reset view before it has opened
+// (166.81 KB and 58.68 KB gzipped in a local build). Raised to 167.75 KB
+// and 59.25 KB gzipped for the fixes of the second review: the link of a
+// failed Copy link in a field of its own, bytes of a preload counted before
+// the metadata, a throw while writing a heat, and 3D's tilt taken back when
+// its code cannot come (167.33 KB and 59.02 KB gzipped with CI's Node
+// 26.12.0).
+const BUDGET_APP = { raw: 167.75 * 1024, gzip: 59.25 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section and the
 // hotspot tour. Fetched only when one of them is first used, so no part of
@@ -537,8 +557,19 @@ const BUDGET_APP = { raw: 165.5 * 1024, gzip: 58.75 * 1024 };
 // kept, for the hotspots kept by filter view and isolated selection, which
 // a tour started again found by walking every segment once more (some
 // 45 ms on a desktop; ui/hotspotTour.ts): 156.07 KB and 59.32 KB gzipped
-// in a local build.
-const BUDGET_FEATURES = { raw: 156.25 * 1024, gzip: 59.75 * 1024 };
+// in a local build. Raised by 1.5 KB raw and 0.5 KB gzipped for the
+// replay's trail in the 3D view written in two sources, the runs behind
+// the airplane as they change and the one it is on in every frame (some
+// 0.95 MB a frame less at the end of the longest flight of 2025), and for
+// the index of the segments by cell the cross-section measures a corridor
+// with: 157.39 KB and 59.82 KB gzipped in a local build. Raised by 0.25
+// KB raw for a run the airplane has just finished kept in the source of
+// the run it is on until the tiles of the runs behind show it, and for
+// Reset view following the cross-section as it opens without a line:
+// 157.88 KB and 60.03 KB gzipped in a local build. Raised to 158.5 KB and
+// 60.5 KB gzipped for the runs behind the airplane written at most every
+// 250 ms: 158 KB and 60.35 KB gzipped with CI's Node 26.12.0.
+const BUDGET_FEATURES = { raw: 158.5 * 1024, gzip: 60.5 * 1024 };
 // The Wrapped bundle: the Wrapped dialog with its intro, and the statistics
 // rail, fetched the first time either opens. It shares nothing with the
 // feature bundle that the app does not have as well. Raised by 0.5 KB raw
@@ -548,8 +579,11 @@ const BUDGET_FEATURES = { raw: 156.25 * 1024, gzip: 59.75 * 1024 };
 // by 0.25 KB gzipped for the dialog's name with its year, the focus on
 // Skip intro while the intro plays, an intro seen apart for the visitor's
 // own flights and the statistics of a selection worked out in slices:
-// 43.33 KB and 14.97 KB gzipped in a local build.
-const BUDGET_WRAPPED = { raw: 43.5 * 1024, gzip: 15.25 * 1024 };
+// 43.33 KB and 14.97 KB gzipped in a local build. Raised by 0.25 KB raw
+// for the markers that come while the dialog is open, made inert as they
+// come, and the failure of the cards' statistics said in place of
+// "Preparing": 43.64 KB and 15.07 KB gzipped in a local build.
+const BUDGET_WRAPPED = { raw: 43.75 * 1024, gzip: 15.25 * 1024 };
 // The search bundle: the panel of the search of airports and places, the
 // matching of the site's airports and the client of Photon, fetched the
 // first time the search opens. About 5.3 KB gzipped (13.25 KB raw) in a
@@ -570,15 +604,28 @@ const BUDGET_EXTRAS = { raw: 22 * 1024, gzip: 8 * 1024 };
 // Your flights: the panel that takes the KML files a visitor drops, the
 // store in the browser and the page's side of the build worker, fetched
 // the first time the panel opens or a file is dragged over the page, and at
-// start by a page that shows those flights. Set with about 10 % of room.
-const BUDGET_LOCAL = { raw: 20 * 1024, gzip: 7 * 1024 };
+// start by a page that shows those flights. Set with about 10 % of room,
+// then raised to 21 KB and 7.75 KB gzipped for dropped folders, the cap on
+// the files kept in all, Stop the build, Remove all asking twice and the
+// focus kept through a redraw: 20.76 KB and 7.44 KB gzipped in a local
+// build. Raised to 22 KB and 8 KB gzipped for what the review of those
+// found: drops kept one at a time, files of one name in folders, Stop not
+// once the dataset is kept, Show my flights after a stop, a drop that
+// finds nothing: 21.62 KB and 7.73 KB gzipped in a local build. Raised to
+// 22.5 KB raw for the second review's: a failed Remove all redrawn, Show my
+// flights for a dataset the page does not show yet, Remove all's question
+// said in the status: 22.06 KB and 7.84 KB gzipped with CI's Node 26.12.0.
+const BUDGET_LOCAL = { raw: 22.5 * 1024, gzip: 8 * 1024 };
 // The worker of Your flights, which runs the site's Python in Pyodide;
 // the runtime itself comes from its CDN and is no part of this. Raised to
 // 7 KB and 3.5 KB gzipped for the check of the runtime's files against
 // their hashes, part by part, and the watch on their downloads and its
 // start (services/localWorker.ts): 6.05 KB and 3.09 KB gzipped in a local
-// build then, which CI's zlib makes a little larger.
-const BUDGET_LOCAL_WORKER = { raw: 7 * 1024, gzip: 3.5 * 1024 };
+// build then, which CI's zlib makes a little larger. Raised to 7.75 KB and
+// 3.75 KB gzipped for the watch on the parser's load and the check that it
+// came, the cache's opening and reading bounded apart, and the files let
+// go of after a build: 7.56 KB and 3.64 KB gzipped in a local build.
+const BUDGET_LOCAL_WORKER = { raw: 7.75 * 1024, gzip: 3.75 * 1024 };
 // The year worker (services/yearWorker.ts): fetched by every visit, preloaded
 // in the page head beside the app and started with the first year file. It
 // decodes the year files and draws the heat sources off the main thread,

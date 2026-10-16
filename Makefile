@@ -85,6 +85,7 @@ help: ## Show available targets and variables
 	@echo "  CACHE_DIR=$(CACHE_DIR)"
 	@echo "  HOST_BIND=$(HOST_BIND)"
 	@echo "  PORT=$(PORT)"
+	@echo "  LINT_BASE=$(LINT_BASE)"
 	@echo "  CARTO_API_KEY (value is not printed)"
 	@echo "  FLOWN_SITE_URL=$(FLOWN_SITE_URL)"
 
@@ -201,7 +202,15 @@ hooks: ## Install the pre-push hook that refuses to push KML files with real dat
 	@if command -v pre-commit >/dev/null 2>&1; then pre-commit install; else \
 	  echo "warning: pre-commit is not installed, skipping its hooks (see CONTRIBUTING.md)" >&2; fi
 
-lint: ## Run the linters, formatters (check only), type checkers and typos of the CI lint job
+# Every check of the CI lint job. The file checks are the fixers of the
+# pre-commit hooks, which fix what they find (as the hooks do) and fail
+# naming the file, over every tracked text file but the flights of data/ and
+# INPUT_DIR. The commits of the branch that main (LINT_BASE) does not have
+# are checked one by one with their messages, as the pre-push hook and CI
+# check them (scripts/pre_push.py --range).
+LINT_BASE ?= origin/main
+
+lint: ## Run the linters, formatters (check only), type checkers, file checks and typos of the CI lint job
 	$(UV) lock --check
 	python scripts/check_pins.py
 	ruff check .
@@ -213,8 +222,18 @@ lint: ## Run the linters, formatters (check only), type checkers and typos of th
 	npm run lint:unused
 	npm run format:check
 	zizmor --min-severity medium .github
+	@files=$$(mktemp) || exit 1; status=0; \
+	  git grep -Izl -e '' -- ':(exclude)data/' ':(exclude,glob,icase)**/*.km[lz]' > "$$files" || status=1; \
+	  xargs -0 end-of-file-fixer < "$$files" || status=1; \
+	  xargs -0 trailing-whitespace-fixer --markdown-linebreak-ext=md < "$$files" || status=1; \
+	  git grep -Izl -e '' | xargs -0 check-merge-conflict --assume-in-merge || status=1; \
+	  git ls-files -z -- '*.toml' | xargs -0 check-toml || status=1; \
+	  git ls-files -z -- '*.yml' '*.yaml' | xargs -0 check-yaml || status=1; \
+	  rm -f "$$files"; exit $$status
 	python -m flown.obfuscate data --check
+	test "$(INPUT_DIR)" = data || python -m flown.obfuscate "$(INPUT_DIR)" --check
 	python -m flown.obfuscate tests/fixtures/visual --check
+	python scripts/pre_push.py --range "$(LINT_BASE)" HEAD
 	typos
 
 format: ## Run formatters

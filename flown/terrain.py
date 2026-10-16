@@ -35,9 +35,10 @@ by ``terrain_pixels``; this module samples the ground from them.
 
 import math
 import os
+import re
 import time
 from array import array
-from itertools import compress, pairwise
+from itertools import pairwise
 from statistics import median_high
 from typing import TYPE_CHECKING, Protocol
 
@@ -45,7 +46,7 @@ from .constants import METERS_TO_FEET
 from .exceptions import TerrainUnavailableError
 from .geometry import TERRAIN_MAX_LATITUDE, planar_metres
 from .logger import logger
-from .segment_codec import ALTITUDE, GROUND_STEP, LAT, LON, SPEED
+from .segment_codec import ALTITUDE, GROUND_STEP, LAT, LON, SPEED, TIME
 from .terrain_fetch import TERRAIN_CACHE_DIR, TerrariumTiles
 from .terrain_pixels import TILE_SIZE, DecodeFailedError, TileKey
 from .types import COORDINATE_DECIMALS
@@ -110,6 +111,11 @@ Coordinate = tuple[float, float]
 # Python objects take a gigabyte and are pickled into every export chunk.
 type PointElevations = array[float]
 TILE_PIXELS = TILE_SIZE * TILE_SIZE
+# A pixel asked for, in the bytes of a tile that mark them (see
+# sample_elevations): found by the regular expression engine, which skips
+# the tens of thousands of the others in C, where going through every one
+# of them took half the time of sampling
+_WANTED = re.compile(b"\x01")
 
 
 def _position(lat: float, lon: float, zoom: int) -> tuple[int, int, float, float]:
@@ -171,22 +177,24 @@ def sample_elevations(
     asked for and how many of them were missing.
 
     Every pixel is asked for once. Nothing is kept per coordinate but four
-    numbers in arrays, and the pixels of one tile at a time are looked up
-    in a dense array; only the rare coordinate whose pixels are in several
-    tiles goes through a mapping.
+    numbers in arrays (its fractions, and its index and that of its top
+    left pixel in its tile), and the pixels of one tile at a time are looked
+    up in a dense array; only the rare coordinate whose pixels are in
+    several tiles goes through a mapping.
     """
     tiles_across = 1 << zoom
-    last = TILE_SIZE - 1
-    lefts = array("i")
-    tops = array("i")
+    size = TILE_SIZE
+    last = size - 1
     fractions_x = array("d")
     fractions_y = array("d")
     # The pixels each tile is asked for, one byte per pixel
     wanted_pixels: dict[int, bytearray] = {}
-    # The points whose four pixels are all in one tile, by that tile
-    inner: dict[int, array[int]] = {}
-    # The other points, and the pixels they need of each tile
-    across: list[int] = []
+    # The points whose four pixels are all in one tile, by that tile, with
+    # the index of their top left pixel in it
+    inner: dict[int, tuple[array[int], array[int]]] = {}
+    # The other points, with the column and the row of that pixel, and the
+    # pixels they need of each tile
+    across: list[tuple[int, int, int]] = []
     across_pixels: dict[int, set[int]] = {}
 
     def tile_pixels(tile: int) -> bytearray:
@@ -200,30 +208,34 @@ def sample_elevations(
     # The tile of the last point: the next one is mostly in it as well
     current = -1
     current_pixels = bytearray()
-    current_points = array("i")
-    for point, coordinate in enumerate(coordinates):
+    # The loop runs once per point of every flight, a few hundred thousand
+    # times: the methods it calls are looked up once, and those that add
+    # a point to its tile once per tile it enters
+    add_fraction_x, add_fraction_y = fractions_x.append, fractions_y.append
+    add_point = add_index = array("i").append
+    count = 0
+    for count, coordinate in enumerate(coordinates, 1):
         # Consecutive points of a slow flight often round to the same place
         if coordinate != previous:
             position = _position(coordinate[0], coordinate[1], zoom)
             previous = coordinate
         left, top, fraction_x, fraction_y = position
-        lefts.append(left)
-        tops.append(top)
-        fractions_x.append(fraction_x)
-        fractions_y.append(fraction_y)
+        add_fraction_x(fraction_x)
+        add_fraction_y(fraction_y)
         if left & last != last and top >= 0 and top & last != last:
-            tile = top // TILE_SIZE * tiles_across + left // TILE_SIZE
+            tile = top // size * tiles_across + left // size
             if tile != current:
                 current = tile
                 current_pixels = tile_pixels(tile)
-                current_points = inner.setdefault(tile, array("i"))
-            index = (top & last) * TILE_SIZE + (left & last)
+                points, indices = inner.setdefault(tile, (array("i"), array("i")))
+                add_point, add_index = points.append, indices.append
+            index = (top & last) * size + (left & last)
             current_pixels[index] = current_pixels[index + 1] = 1
-            current_pixels[index + TILE_SIZE] = 1
-            current_pixels[index + TILE_SIZE + 1] = 1
-            current_points.append(point)
+            current_pixels[index + size] = current_pixels[index + size + 1] = 1
+            add_point(count - 1)
+            add_index(index)
         else:
-            across.append(point)
+            across.append((count - 1, left, top))
             for tile, index in _corner_pixels(left, top, zoom):
                 tile_pixels(tile)[index] = 1
                 across_pixels.setdefault(tile, set()).add(index)
@@ -233,13 +245,16 @@ def sample_elevations(
         for tile in wanted_pixels
     }
     wanted = {
-        keys[tile]: array("H", compress(range(TILE_PIXELS), wanted_pixels.pop(tile)))
+        keys[tile]: array(
+            "H", [match.start() for match in _WANTED.finditer(wanted_pixels.pop(tile))]
+        )
         for tile in list(wanted_pixels)
     }
     answered = source.pixels(wanted)
 
-    elevations = array("d", [math.nan]) * len(lefts)
+    elevations = array("d", [math.nan]) * count
     unknown_tile = array("d", [math.nan]) * TILE_PIXELS
+    no_points = (array("i"), array("i"))
     across_values: dict[tuple[int, int], float] = {}
     for tile, key in keys.items():
         values = answered.get(key)
@@ -250,20 +265,18 @@ def sample_elevations(
             dense[index] = value
         for index in across_pixels.get(tile, ()):
             across_values[tile, index] = dense[index]
-        for point in inner.get(tile, ()):
-            index = (tops[point] & last) * TILE_SIZE + (lefts[point] & last)
+        points, indices = inner.get(tile, no_points)
+        for point, index in zip(points, indices, strict=True):
             top_left = dense[index]
-            bottom_left = dense[index + TILE_SIZE]
+            bottom_left = dense[index + size]
             fraction_x = fractions_x[point]
             upper = top_left + (dense[index + 1] - top_left) * fraction_x
-            lower = (
-                bottom_left + (dense[index + TILE_SIZE + 1] - bottom_left) * fraction_x
-            )
+            lower = bottom_left + (dense[index + size + 1] - bottom_left) * fraction_x
             elevations[point] = upper + (lower - upper) * fractions_y[point]
-    for point in across:
+    for point, left, top in across:
         top_left, top_right, bottom_left, bottom_right = (
             across_values.get(pixel, math.nan)
-            for pixel in _corner_pixels(lefts[point], tops[point], zoom)
+            for pixel in _corner_pixels(left, top, zoom)
         )
         upper = top_left + (top_right - top_left) * fractions_x[point]
         lower = bottom_left + (bottom_right - bottom_left) * fractions_x[point]
@@ -274,6 +287,16 @@ def sample_elevations(
 def _rounded(path: FlightPath) -> Iterable[Coordinate]:
     return (
         (round(point.lat, COORDINATE_DECIMALS), round(point.lon, COORDINATE_DECIMALS))
+        for point in path
+    )
+
+
+def _all_rounded(paths: Iterable[FlightPath]) -> Iterable[Coordinate]:
+    """``_rounded`` of every path, one after the other, in one generator."""
+    decimals = COORDINATE_DECIMALS
+    return (
+        (round(point.lat, decimals), round(point.lon, decimals))
+        for path in paths
         for point in path
     )
 
@@ -295,8 +318,7 @@ def sample_path_elevations(
     required = os.environ.get(REQUIRE_TERRAIN_ENV) == "1"
     try:
         elevations, tiles, missing = sample_elevations(
-            (coordinate for path in paths.values() for coordinate in _rounded(path)),
-            source,
+            _all_rounded(paths.values()), source
         )
     except DecodeFailedError as e:
         if required:
@@ -371,13 +393,17 @@ def _field_offset_ft(
     middle of the model under them the field as the model has it. None for
     a path that starts or ends in the air, or without speeds to tell. A
     speed of 0 is no speed (see ``process_path_segments``), which ends the
-    taxiing like a fast one, here and in the frontend (fieldFt).
+    taxiing like a fast one, here and in the frontend (fieldFt). So does a
+    row without a time: its speed is the average of a line without times
+    (``calculate_fallback_groundspeed``), the same for every row, and a
+    flight of circuits whose average was below ``TAXI_KNOTS`` taxied all
+    of its way at the median of its altitudes.
     """
     altitudes: list[float] = []
     grounds: list[float] = []
     for index in order:
         row = rows[index]
-        if not 0 < row[SPEED] < TAXI_KNOTS:
+        if len(row) <= TIME or not 0 < row[SPEED] < TAXI_KNOTS:
             break
         altitudes.append(row[ALTITUDE])
         grounds.append(dem_ft[index])

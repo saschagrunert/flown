@@ -38,6 +38,7 @@ ASSETS = (
     "wrapped.css",
     "search.css",
     "local.css",
+    "extras.css",
     "vendor/maplibre-gl.mjs",
     "vendor/maplibre-gl-worker.mjs",
     "vendor/maplibre-gl.css",

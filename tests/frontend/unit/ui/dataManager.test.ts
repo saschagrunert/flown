@@ -1369,6 +1369,33 @@ describe("DataManager", () => {
       expect(dataManager.heatRequests).toBe(0);
     });
 
+    it("asks for the heat waiting behind one whose write threw", async () => {
+      const answer = held<ReturnType<typeof drawHeat>>();
+      decoder.drawHeat.mockReturnValueOnce(answer.promise);
+      mockApp.currentData = baseData();
+      await answered();
+      mockApp.selectedPathIds = new Set([...mockApp.selectedPathIds, 2]);
+      mockApp.isolateSelection = true;
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledOnce();
+
+      vi.spyOn(
+        dataManager as unknown as { followExposure(): void },
+        "followExposure",
+      ).mockImplementationOnce(() => {
+        throw new Error("broken");
+      });
+      const [points, weights] = decoder.drawHeat.mock.calls[0]!;
+      answer.resolve(drawHeat(heatColumns(points, weights)));
+      await answered();
+
+      expect(decoder.drawHeat).toHaveBeenCalledTimes(2);
+      expect(logError).toHaveBeenCalledWith(
+        "Could not write the heat:",
+        expect.any(Error),
+      );
+    });
+
     it("writes no heat that was let go of before the worker answered", async () => {
       const answer = held<ReturnType<typeof drawHeat>>();
       decoder.drawHeat.mockReturnValueOnce(answer.promise);
@@ -1417,6 +1444,59 @@ describe("DataManager", () => {
       expect(mockApp.map!.triggerRepaint).toHaveBeenCalledOnce();
     });
 
+    it("asks for one heat at a time, and then only for the one wanted", async () => {
+      const answer = held<ReturnType<typeof drawHeat>>();
+      decoder.drawHeat.mockReturnValueOnce(answer.promise);
+      mockApp.currentData = baseData();
+      await answered();
+
+      // Walked through with the arrow keys while the worker draws the first
+      mockApp.selectedYear = "2025";
+      await answered();
+      mockApp.selectedYear = "2024";
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledOnce();
+      expect(dataManager.heatRequests).toBe(1);
+
+      const [points, weights] = decoder.drawHeat.mock.calls[0]!;
+      answer.resolve(drawHeat(heatColumns(points, weights)));
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledTimes(2);
+      expect(decoder.drawHeat.mock.calls[1]![0]).toEqual([[52.0, 10.0]]);
+      expect(heatPoints()).toEqual([[10.0, 52.0]]);
+      expect(dataManager.heatRequests).toBe(0);
+    });
+
+    it("draws the heat of a filter shown shortly before as it was", async () => {
+      mockApp.currentData = baseData();
+      await answered();
+      mockApp.selectedYear = "2025";
+      await answered();
+      mockApp.selectedYear = "2024";
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledTimes(3);
+
+      mockApp.selectedYear = "2025";
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledTimes(3);
+      expect(heatPoints()).toEqual([
+        [8.0, 50.0],
+        [8.1, 50.1],
+      ]);
+
+      // Only the last few are kept
+      mockApp.selectedAircraft = "D-EFGH";
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledTimes(4);
+      mockApp.selectedAircraft = "all";
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledTimes(4);
+      mockApp.selectedYear = "all";
+      await answered();
+      expect(decoder.drawHeat).toHaveBeenCalledTimes(5);
+      expect(heatPoints()).toEqual(HEAT_POINTS);
+    });
+
     it("writes only the heat lines asked for last", async () => {
       mockApp.heatmapLayer.setVisible(true);
       mockApp.map!.jumpTo({ zoom: HEAT_LINES.fullZoom });
@@ -1454,6 +1534,32 @@ describe("DataManager", () => {
       await answered();
       expect(decoder.drawHeat).toHaveBeenCalledTimes(2);
       expect(heatPoints()).toEqual(HEAT_POINTS);
+    });
+
+    it("does not ask in turn for an isolated heat and the heat that both fail", async () => {
+      mockApp.currentData = baseData();
+      await answered();
+      decoder.drawHeat.mockRejectedValue(new Error("no answer"));
+
+      try {
+        mockApp.selectedYear = "2025";
+        mockApp.selectedPathIds = new Set([2]);
+        mockApp.isolateSelection = true;
+        await answered();
+        await answered();
+
+        // Each once, and not again until they are wanted anew
+        const asked = decoder.drawHeat.mock.calls.length;
+        expect(asked).toBe(3);
+        await answered();
+        expect(decoder.drawHeat).toHaveBeenCalledTimes(asked);
+
+        dataManager.updateLayers();
+        await answered();
+        expect(decoder.drawHeat.mock.calls.length).toBeGreaterThan(asked);
+      } finally {
+        decoder.drawHeat.mockReset();
+      }
     });
 
     it("says nothing of the requests the worker takes along as it ends with the app", async () => {

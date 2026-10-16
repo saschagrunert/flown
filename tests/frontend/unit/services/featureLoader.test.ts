@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  EXTRAS_CSS_URL,
   FEATURES_CSS_URL,
   LOCAL_CSS_URL,
   SEARCH_CSS_URL,
@@ -396,16 +397,18 @@ describe("loadExtras", () => {
     resetSearchLoader(importSearch);
     resetExtrasLoader(importExtras);
     importExtras.mockResolvedValue(extras);
+    loadStylesheet.mockResolvedValue(undefined);
   });
 
-  it("imports its own bundle, without a stylesheet, and none of the others", async () => {
+  it("imports its own bundle and stylesheet, the phone's sheet's, and none of the others", async () => {
     expect(loadedExtras()).toBeNull();
 
     await expect(loadExtras()).resolves.toBe(extras);
 
     expect(loadedExtras()).toBe(extras);
     expect(importExtras).toHaveBeenCalledTimes(1);
-    expect(loadStylesheet).not.toHaveBeenCalled();
+    expect(loadStylesheet).toHaveBeenCalledExactlyOnceWith(EXTRAS_CSS_URL);
+    expect(EXTRAS_CSS_URL.startsWith("./")).toBe(true);
     expect(importFeatures).not.toHaveBeenCalled();
     expect(importWrapped).not.toHaveBeenCalled();
     expect(importSearch).not.toHaveBeenCalled();

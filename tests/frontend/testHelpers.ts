@@ -103,6 +103,7 @@ export function segmentOf(
 interface MockManagers {
   dataManager: {
     loadData: Mock;
+    preloadYear: Mock;
     loadAirports: Mock;
     loadMetadata: Mock;
     updateLayers: Mock;
@@ -188,6 +189,7 @@ interface MockManagers {
   toggleSearch: Mock;
   toggleLocalFlights: Mock;
   resetView: Mock;
+  syncResetButton: Mock;
   isReset: Mock;
   canResetView: Mock;
   loadReplay: Mock;
@@ -217,6 +219,7 @@ interface MockManagers {
   mapOrientation: {
     toggleGlobe: Mock;
     toggleThreeD: Mock;
+    undoThreeD: Mock;
     resetNorth: Mock;
   };
   uiToggles: {
@@ -328,6 +331,7 @@ function createMockManagers(): MockManagers {
   return {
     dataManager: {
       loadData: vi.fn().mockResolvedValue(null),
+      preloadYear: vi.fn(),
       loadAirports: vi.fn().mockResolvedValue([]),
       loadMetadata: vi.fn().mockResolvedValue(null),
       updateLayers: vi.fn(),
@@ -446,6 +450,7 @@ function createMockManagers(): MockManagers {
     toggleSearch: vi.fn(),
     toggleLocalFlights: vi.fn(),
     resetView: vi.fn(() => Promise.resolve()),
+    syncResetButton: vi.fn(),
     // Something to reset unless a test says otherwise
     isReset: vi.fn(() => false),
     canResetView: vi.fn(function (this: MockApp) {
@@ -463,6 +468,7 @@ function createMockManagers(): MockManagers {
     mapOrientation: {
       toggleGlobe: vi.fn(),
       toggleThreeD: vi.fn(),
+      undoThreeD: vi.fn(),
       resetNorth: vi.fn(),
     },
     uiToggles: {

@@ -11,9 +11,11 @@ the page. What the files hold is described for users in
 
 The dependencies are declared once, in `pyproject.toml`: the runtime
 dependencies plus the `test` and `dev` extras, and the `build` dependency group
-with the setuptools that builds the package. CI, the container image and the
-setup in [CONTRIBUTING.md](../../CONTRIBUTING.md#setup) install what `uv.lock`
-pins with `uv sync --locked`, with the hashes it records, so nothing is resolved
+with the setuptools that builds the package. CI and the setup in
+[CONTRIBUTING.md](../../CONTRIBUTING.md#setup) install what `uv.lock` pins with
+`uv sync --locked`, and the container image exports the same pins with
+`uv export` and installs them with `uv pip install --require-hashes`, so every
+one of them installs with the hashes the lock records and nothing is resolved
 from the ranges. None of them installs the package into that environment: the
 tests and the site builds run it from the checkout, the container image copies
 the sources and runs them from `PYTHONPATH`, and the packaging job of CI builds
@@ -128,9 +130,24 @@ minutes. A row without times gets its share of the path's average speed.
 
 ## Year file format
 
-The year files are data format 7 (`FORMAT_VERSION` in `flown/segment_codec.py`,
+The year files are data format 8 (`FORMAT_VERSION` in `flown/segment_codec.py`,
 `DATA_FORMAT_VERSION` in `services/yearDecode.ts`; bump both together, the page
 refuses any other).
+
+Format 8 lays the segments out column by column across all flights of the year
+instead of flight by flight: `start`, each of the five `columns` and `ground`
+are arrays of one entry per flight, in the order of `path_info`, which carries
+the ids (`null` for a flight without times or ground). Written flight by flight,
+the five columns and the ground alternated every few hundred values, and gzip's
+32 KB window kept switching between unrelated number streams. On `data/` the
+2026 file went from 203,957 to 189,722 bytes gzipped at level 6 (-7.0 %, what
+GitHub Pages serves) and 2025 from 387,354 to 355,840 (-8.1 %); raw they barely
+changed. One flat array per column with row counts came out within 0.1 % of
+that, so each flight keeps an array of its own, which lets the page check and
+cut one flight short without losing the rest. The exporter streams every array
+into a fragment of its own per chunk (`_PARTS` in `flown/data_exporter.py`) and
+joins them like before; `split_segments` in `flown/segment_codec.py` turns a
+file back into one entry per flight for the tests.
 
 Format 7 writes the latitude and longitude columns as second differences: each
 value is how much the step from the row before changed, the step before the
@@ -181,7 +198,7 @@ without a code shows none.
 
 The tiles (zoom 10, about 100 KB each) are cached as PNGs in `terrain/` of the
 [cache directory](../output.md#cache-directory) and decoded by a small
-pure-Python PNG reader in a process pool; `data/` needs 389 of them, 44 MB. The
+pure-Python PNG reader in a process pool; `data/` needs a few hundred. The
 decoded pixels of a tile are kept next to its PNG (`<tile>.pixels`, compressed
 with zstd, checked against its CRC), so a later build reads them in a fraction
 of a millisecond instead of decoding the PNG again. A tile is only cached once

@@ -100,6 +100,21 @@ test("page loads without errors or CSP violations", async ({ page }) => {
   expect(relevantConsoleErrors(errors)).toEqual([]);
 });
 
+// Outside the describe below as well: the year has to fail on the first load
+test("the panel of a first load without flights has no WCAG A/AA violations", async ({
+  page,
+}) => {
+  await page.route("**/data/*/data.json", (route) => route.abort());
+
+  await gotoApp(page);
+
+  await expect(page.locator("#map-empty")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Retry loading the flights" }),
+  ).toBeVisible();
+  await expectNoA11yViolations(page, "map without flights");
+});
+
 test.describe("Core", () => {
   test.beforeEach(async ({ page }) => {
     await gotoApp(page);
@@ -459,6 +474,24 @@ test.describe("Core", () => {
       await activate(page, marker, hasTouch);
       await expect(mapPopup(page)).toHaveCount(0);
       await expect(marker).toHaveAttribute("aria-expanded", "false");
+    });
+
+    test("an open popup has no WCAG A/AA violations", async ({
+      page,
+      hasTouch,
+    }) => {
+      const [name] = await twoAirports(page);
+      await centerOnAirport(page, name, 10);
+      await activate(page, airportMarker(page, name), hasTouch);
+      await expect(mapPopup(page)).toContainText(name);
+
+      // Without target-size: a marker next to the popup's airport can
+      // shrink below 24 px for as long as the popup is open (a known
+      // trade-off of placing the codes); the scan of the initial page,
+      // without a popup, checks the markers for it
+      await expectNoA11yViolations(page, "airport popup", (builder) =>
+        builder.disableRules(["target-size"]),
+      );
     });
 
     test("another airport takes the open popup over without closing it", async ({

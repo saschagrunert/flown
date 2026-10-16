@@ -1,10 +1,12 @@
 ---
 # Install with: uv tool install pre-commit && pre-commit install
-# Input data (data/) is excluded from the fixers; the generated site (docs/)
-# is not tracked at all. Dependabot bumps the rev of gitleaks below. It is a
-# commit, with the release in a comment (`pre-commit autoupdate --freeze`
-# writes it so): a tag can be moved to other code, which would then run
-# here on the next commit, before the flights in data/ are checked.
+# The flights are left out of the fixers: data/, and every KML file, which
+# also covers those of a copy's FLOWN_INPUT_DIR (doc/hosting.md) that the
+# hooks cannot know; the generated site (docs/) is not tracked at all.
+# Dependabot bumps the rev of gitleaks below. It is a commit, with the
+# release in a comment (`pre-commit autoupdate --freeze` writes it so): a
+# tag can be moved to other code, which would then run here on the next
+# commit, before the flights are checked.
 #
 # The linters, the formatters and the file checks are local hooks
 # (`repo: local`, `language: system`) rather than pinned mirrors, so no hook
@@ -27,13 +29,13 @@ repos:
         entry: end-of-file-fixer
         language: system
         types: [text]
-        exclude: ^data/
+        exclude: (?i)^data/|\.km[lz]$
       - id: trailing-whitespace
         name: trim trailing whitespace
         entry: trailing-whitespace-fixer --markdown-linebreak-ext=md
         language: system
         types: [text]
-        exclude: ^data/
+        exclude: (?i)^data/|\.km[lz]$
       - id: check-merge-conflict
         name: check for merge conflicts
         entry: check-merge-conflict
@@ -85,14 +87,16 @@ repos:
         types: [text]
 
       # The obfuscation check of the CI lint job only runs once the dates are
-      # already pushed to the public repository. Needs Python 3.14 as
+      # already pushed to the public repository. It checks the KML files a
+      # commit stages, wherever they are: those of data/, of a copy's
+      # FLOWN_INPUT_DIR (doc/hosting.md) and the flights of the visual
+      # snapshots, which are copies of real ones. Needs Python 3.14 as
       # `python`, such as the project's virtual environment (see
-      # CONTRIBUTING.md). The flights of the visual snapshots are copies of
-      # real ones, so they are checked too; the tool takes one directory at a
-      # time.
+      # CONTRIBUTING.md). Verbose, as pre-commit shows a hook's output only
+      # when it fails, and the possible dates it warns of fail nothing.
       - id: check-obfuscation
         name: check that the KML files are obfuscated
-        entry: sh -c 'python -m flown.obfuscate data --check && python -m flown.obfuscate tests/fixtures/visual --check'
+        entry: python scripts/pre_push.py --files
         language: system
-        files: (?i)^(data|tests/fixtures/visual)/.*\.km[lz]$
-        pass_filenames: false
+        files: (?i)\.km[lz]$
+        verbose: true

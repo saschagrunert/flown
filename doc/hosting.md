@@ -24,13 +24,16 @@ flights:
    files, `aircraft.json` next to them), obfuscated before they are committed
    (`make obfuscate INPUT_DIR=flights`, and `make hooks` so a push with a real
    date is refused; the hook needs Python 3.14 or newer, see
-   [Commit and publish](adding-flights.md#7-commit-and-publish)). Your files may
-   sit in subdirectories. Leave `data/` as it is: an update from this repository
-   changes it (see below).
-5. Add two repository variables (Settings > Secrets and variables > Actions >
-   Variables): `FLOWN_INPUT_DIR` with the directory of your flights (`flights`),
-   which the workflow builds the site from in place of `data/`, and
-   `FLOWN_OWN_FLIGHTS` with the value `1`, see below.
+   [Commit and publish](adding-flights.md#7-commit-and-publish)). The pre-commit
+   hooks check every KML file a commit stages and the pre-push hook every one a
+   push adds, wherever they are, so `flights/` is covered as well as `data/`.
+   `.gitignore` keeps every other KML file out of `git add`; a directory with
+   another name needs a `!/name/**/*.[kK][mM][lL]` line of its own there. Your
+   files may sit in subdirectories. Leave `data/` as it is: an update from this
+   repository changes it (see below).
+5. Add the repository variable `FLOWN_INPUT_DIR` (Settings > Secrets and
+   variables > Actions > Variables) with the directory of your flights
+   (`flights`), which the workflow builds the site from in place of `data/`.
 6. Optionally add a CARTO tile API key as the repository secret `CARTO_API_KEY`
    (same page, Secrets). The base map loads without one (see
    [With an API key](usage.md#with-an-api-key-optional)).
@@ -46,23 +49,28 @@ Build it locally with `make build INPUT_DIR=flights` (or
 Some tests are written against the flights of this repository: the golden
 pipeline test (`GOLDEN_FILES` in `tests/test_pipeline_golden.py`), the landing
 and segment tests that read named files of `data/` (marked `repo_data`), and the
-e2e specs, which drive a site built from the flights of the site
-(`FLOWN_INPUT_DIR`) and expect a few of this repository's in its latest year.
-With other flights they fail, and then nothing is published.
-`FLOWN_OWN_FLIGHTS=1` skips them: pytest leaves out the tests marked
-`repo_data`, and the workflow skips its e2e jobs, which the `checks` job then
-accepts as skipped. Everything else still runs, the build of your site, the unit
-tests and the visual snapshots of the fixture site among them. Set it in the
-environment for a local `make test` as well.
+e2e specs, which drive a site built from `data/` and expect a few of this
+repository's flights in its latest year. With `data/` left as it is they pass in
+your copy too, and test the code your pull requests change. Your own flights are
+built by the unit job, which fails a pull request that adds a flight whose
+ground cannot be fetched, and by the job that publishes them.
+
+A copy set up before `FLOWN_INPUT_DIR`, with its flights in `data/` in place of
+the ones of this repository, fails those tests, and then nothing is published.
+The repository variable `FLOWN_OWN_FLIGHTS` with the value `1` skips them:
+pytest leaves out the tests marked `repo_data`, and the workflow skips its e2e
+jobs, which the `checks` job then accepts as skipped. Set it in the environment
+for a local `make test` as well. Better, move the flights to a directory of
+their own (below) and leave the variable unset.
 
 The other repository settings are optional for a site of your own; the ones this
 repository uses are in [Repository rules](../CONTRIBUTING.md#repository-rules).
 
 ### Keeping it up to date
 
-New releases of the code come from this repository: "Sync fork" on the fork's
-page on GitHub merges them into your `main`, or in a clone, with this repository
-as the remote `upstream`:
+Changes to the code come from this repository: "Sync fork" on the fork's page on
+GitHub merges them into your `main`, or in a clone, with this repository as the
+remote `upstream`:
 
 ```bash
 git fetch upstream
@@ -80,7 +88,8 @@ the update changes too, which is why `data/` is best left alone.
 
 A copy set up before `FLOWN_INPUT_DIR`, with its flights in place of the ones of
 `data/`, moves them to a directory of their own and takes `data/` back (after
-the `git fetch upstream` above), then sets the variable:
+the `git fetch upstream` above), then sets `FLOWN_INPUT_DIR` and removes
+`FLOWN_OWN_FLIGHTS`:
 
 ```bash
 git mv data flights
@@ -126,11 +135,11 @@ build date and commit under the same name in every build too. So nothing may be
 cached as if it were immutable, and a rebuild has to reach the browser through
 revalidation:
 
-| Path                                                                                | Cache policy                                                                                                                              |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.html`, `map_config.js`, `data/**`                                            | `no-cache`, or a `max-age` of minutes: what a rebuild changes first. With `no-cache` the browser keeps a copy and asks whether it changed |
-| `*.bundle.js`, `styles.css`, `features.css`, `wrapped.css`, `search.css`, `vendor/` | A modest `max-age` (an hour to a day), never `immutable`: they change with a rebuild under the same names                                 |
-| `flags/`, the favicons, `manifest.json`, `preview.png`, `y/`, `f/`, `*.map`         | The same modest `max-age`                                                                                                                 |
+| Path                                                                        | Cache policy                                                                                                                              |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.html`, `map_config.js`, `data/**`                                    | `no-cache`, or a `max-age` of minutes: what a rebuild changes first. With `no-cache` the browser keeps a copy and asks whether it changed |
+| `*.bundle.js`, `*.css`, `flown-src.zip`, `vendor/`                          | A modest `max-age` (an hour to a day), never `immutable`: they change with a rebuild under the same names                                 |
+| `flags/`, the favicons, `manifest.json`, `preview.png`, `y/`, `f/`, `*.map` | The same modest `max-age`                                                                                                                 |
 
 Revalidation works with `ETag` or `Last-Modified`. A server that derives its
 ETags from the modification times, as GitHub Pages does, keeps them for the

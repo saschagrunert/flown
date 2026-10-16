@@ -14,6 +14,9 @@ import {
   showToast,
 } from "../../../../flown/frontend/utils/toast";
 import * as motion from "../../../../flown/frontend/utils/motion";
+import * as statistics from "../../../../flown/frontend/calculations/panelStats";
+import * as logger from "../../../../flown/frontend/utils/logger";
+import { STATS_FAILED_HTML } from "../../../../flown/frontend/ui/statsManager";
 import { HIDEABLE_CONTROL_IDS } from "../../../../flown/frontend/ui/wrappedChrome";
 import { LngLat, Popup } from "../../../mocks/maplibre-gl";
 import { asMapApp, type MockApp } from "../../testHelpers";
@@ -168,6 +171,28 @@ describe("WrappedManager dialog", () => {
       expect(el("wrapped-cards-column").hasAttribute("aria-busy")).toBe(false);
       expect(el("wrapped-stats").querySelector(".stats-loading")).toBeNull();
       expect(statValue("Flights")).toBe("3");
+    });
+
+    it("says so when the statistics of the cards fail, rather than preparing them for good", async () => {
+      mockApp.currentData = createFlightHistory();
+      const failure = new Error("bad data");
+      const slices = vi
+        .spyOn(statistics, "filterStatisticsInSlices")
+        .mockReturnValue(Promise.reject(failure));
+      const logged = vi.spyOn(logger, "logError").mockImplementation(() => {});
+      try {
+        wrappedManager.showWrapped();
+        await vi.runAllTimersAsync();
+
+        expect(logged).toHaveBeenCalledWith(failure);
+        expect(el("wrapped-cards-column").hasAttribute("aria-busy")).toBe(
+          false,
+        );
+        expect(el("wrapped-stats").innerHTML).toBe(STATS_FAILED_HTML);
+      } finally {
+        slices.mockRestore();
+        logged.mockRestore();
+      }
     });
 
     it("prepares the flight history for all the years", () => {
@@ -756,6 +781,31 @@ describe("WrappedManager dialog", () => {
       for (const marker of markers) {
         expect(marker.hasAttribute("inert")).toBe(false);
       }
+    });
+
+    it("takes the markers and popups out that come while it is open, from the Retry of the airports", async () => {
+      openWrapped();
+      // The toast with Retry stays above the dialog
+      const marker = document.createElement("button");
+      marker.className = "maplibregl-marker";
+      mockApp.map!.getCanvasContainer().appendChild(marker);
+      const popup = document.createElement("div");
+      popup.className = "maplibregl-popup";
+      mockApp.map!.getContainer().appendChild(popup);
+      // Anything else the map adds keeps taking gestures
+      const other = document.createElement("div");
+      mockApp.map!.getContainer().appendChild(other);
+      await Promise.resolve();
+
+      expect(marker.hasAttribute("inert")).toBe(true);
+      expect(popup.hasAttribute("inert")).toBe(true);
+      expect(other.hasAttribute("inert")).toBe(false);
+
+      wrappedManager.closeWrapped();
+      expect(marker.hasAttribute("inert")).toBe(false);
+      expect(popup.hasAttribute("inert")).toBe(false);
+      popup.remove();
+      other.remove();
     });
 
     it("puts away the values a hover or a tap left on a flight", () => {

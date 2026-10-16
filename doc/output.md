@@ -38,6 +38,7 @@ output-dir/
 ├── wrapped.css            # Wrapped, the statistics panel and the flight list, fetched with its bundle
 ├── search.css             # The search, fetched with its bundle
 ├── local.css              # Your flights, fetched with its bundle
+├── extras.css             # The phone's sheet, fetched with the extras bundle
 ├── manifest.json
 ├── favicon.svg
 ├── favicon.ico
@@ -75,15 +76,18 @@ with timestamps also has its `landings` (full stops), `touch_and_goes`,
 `go_arounds` (low approaches included, which GPS cannot tell apart from them)
 and `touchdowns`, one `[airport, runway]` per full stop and touch-and-go in the
 order flown, with `null` for a runway the build could not tell (see
-[Airport database](#airport-database)). `segments` maps a path id to
-`{"start": [lat, lon], "columns": [lats, lons, altitudes, speeds, times], "ground": [...]}`,
-one row per segment, written column by column: the n-th entry of each column is
-the n-th row's latitude, longitude, altitude in feet, groundspeed in whole knots
-(0 for a speed that is not known, and at least 1 for one that is) and relative
-time in seconds. The `times` column is only present for files with timestamps,
-and holds `null` for a row without one. `ground` is the ground under each row in
-feet (see [Elevation data](#elevation-data)); a path whose ground the build does
-not know has none, and the page takes it from the airfields.
+[Airport database](#airport-database)). `segments` is
+`{"start": [...], "columns": [lats, lons, altitudes, speeds, times], "ground": [...]}`,
+each array holding one entry per flight in the order of `path_info`: its start
+point `[lat, lon]`, its rows of each column, and its ground. A flight has one
+row per segment, written column by column: the n-th entry of each of its columns
+is the n-th row's latitude, longitude, altitude in feet, groundspeed in whole
+knots (0 for a speed that is not known, and at least 1 for one that is) and
+relative time in seconds. A flight without timestamps has `null` in `times`, and
+a `null` among its times marks a row without one. `ground` is the ground under
+each row in feet (see [Elevation data](#elevation-data)); a flight whose ground
+the build does not know has `null` there, and the page takes it from the
+airfields.
 
 The coordinate in a row is the segment's **end** point. Its start is the end of
 the previous row, and the first row continues from `start`, so a shared point is
@@ -97,11 +101,12 @@ rather than as the number itself (`flown/segment_codec.py`, mirrored by
 exporter has already rounded each column to the step the format counts in (1e-5
 degrees, 20 ft, 1 kt, 0.1 s and 10 ft of ground), so every value is a whole
 number of steps, and neighbouring rows barely differ: the encoding is lossless
-and roughly halves a year file. Writing the rows column by column puts the
-repeating differences of one quantity next to each other, which takes another
-sixth off the compressed download. The numbers the page works with are the ones
-described above; only the file is written this way. The page skips the rest of a
-path, with a warning in the console, from the first value that is not a number.
+and roughly halves a year file. Writing the rows column by column, across all
+flights of the year, puts the repeating differences of one quantity next to each
+other, which takes about a fifth off the compressed download. The numbers the
+page works with are the ones described above; only the file is written this way.
+The page skips the rest of a path, with a warning in the console, from the first
+value that is not a number.
 
 ## Index files and loading
 

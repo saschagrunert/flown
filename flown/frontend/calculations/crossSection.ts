@@ -278,6 +278,87 @@ function fieldLevelsOf(segments: readonly PathSegment[]): Map<number, number> {
   return levels;
 }
 
+/**
+ * The side of a cell of the index of the segments (segmentCells), in
+ * degrees: a corridor is a few kilometres wide, and a segment a few
+ * hundred metres long
+ */
+const CELL_DEG = 0.05;
+
+/** A row of cells in the numbers of cellOf: more than the world's columns */
+const ROW = 16384;
+
+/** The cell a point is in: its row times ROW, and its column */
+function cellOf(lat: number, lon: number): number {
+  return Math.floor(lat / CELL_DEG) * ROW + Math.floor(lon / CELL_DEG);
+}
+
+/** The key of the segments every corridor measures: a cell of none */
+const EVERY = 0.5;
+
+/**
+ * The segments of a dataset by the cell they start in, and those longer
+ * than a cell either way, which every corridor measures (EVERY)
+ */
+const segmentCells = new WeakMap<
+  readonly PathSegment[],
+  Map<number, number[]>
+>();
+
+/**
+ * Which segments of `segments` may reach into the corridor of `frame`,
+ * `halfWidthM` either side, whose box is `box`: those that start in a cell
+ * of the index the corridor comes near. A corridor across a diagonal of a
+ * few dozen kilometres had a box that held most of the flights, which
+ * every frame of a drag measured.
+ */
+function corridorSegments(
+  segments: readonly PathSegment[],
+  frame: LineFrame,
+  halfWidthM: number,
+  [south, north, west, east]: number[],
+): Uint8Array {
+  let cells = segmentCells.get(segments);
+  if (!cells) {
+    cells = new Map();
+    for (let i = 0; i < segments.length; i++) {
+      const [[lat0, lon0], [lat1, lon1]] = segments[i]!.coords;
+      const key =
+        Math.abs(lat1 - lat0) > CELL_DEG || Math.abs(lon1 - lon0) > CELL_DEG
+          ? EVERY
+          : cellOf(lat0, lon0);
+      const cell = cells.get(key);
+      if (cell) cell.push(i);
+      else cells.set(key, [i]);
+    }
+    segmentCells.set(segments, cells);
+  }
+  const flags = new Uint8Array(segments.length);
+  const take = (cell: number[] | undefined): void =>
+    cell?.forEach((i) => (flags[i] = 1));
+  take(cells.get(EVERY));
+  // How far a segment that starts in a cell reaches from its middle, in
+  // the line's plane: half the cell, and the segment
+  const reach = 1.5 * CELL_DEG * Math.hypot(frame.kx, frame.ky);
+  const [top, right] = [cellOf(north!, 0), cellOf(0, east!)];
+  for (let row = cellOf(south!, 0) - ROW; row <= top + ROW; row += ROW) {
+    for (let column = cellOf(0, west!) - 1; column <= right + 1; column++) {
+      const [along, across] = toFrame(frame, [
+        (row / ROW + 0.5) * CELL_DEG,
+        (column + 0.5) * CELL_DEG,
+      ]);
+      if (
+        along > -reach &&
+        along < frame.lengthM + reach &&
+        Math.abs(across) < halfWidthM + reach
+      ) {
+        take(cells.get(row + column));
+      }
+    }
+  }
+  return flags;
+}
+
 /** Whether `segment` carries on where `before` ended, in the same flight */
 function carriesOn(segment: PathSegment, before: PathSegment | undefined) {
   const end = before?.coords[1];
@@ -322,8 +403,12 @@ function corridorPieces(request: SectionRequest): {
   const pieces: Piece[] = [];
   const flights = new Set<number>();
   let fromTerrain = true;
+  const near = wraps
+    ? null
+    : corridorSegments(segments, frame, halfWidthM, [south, north, west, east]);
   const count = segments.length;
   for (let i = 0; i < count; i++) {
+    if (near?.[i] === 0) continue;
     const segment = segments[i]!;
     const from = segment.coords[0];
     const to = segment.coords[1];

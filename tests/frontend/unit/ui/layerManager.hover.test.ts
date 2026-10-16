@@ -211,6 +211,29 @@ describe("LayerManager pointer", () => {
       ).toHaveBeenCalledExactlyOnceWith(1);
     });
 
+    it.each([
+      ["another year", (app: MockApp) => (app.selectedYear = "2024")],
+      ["another aircraft", (app: MockApp) => (app.selectedAircraft = "D-EXYZ")],
+      [
+        "new data",
+        (app: MockApp) => (app.currentData = { ...app.currentData! }),
+      ],
+      ["its colour hidden", (app: MockApp) => (app.altitudeVisible = false)],
+    ])("puts the values of a tap away for %s", (_, change) => {
+      mockApp.altitudeVisible = true;
+      layerManager.onPathClick(
+        hitOf(mockApp.currentData!.path_segments[0]!),
+        mockApp.map!.unproject([10, 10]) as LngLat,
+        true,
+      );
+      expect(tooltips()[0]!.isOpen()).toBe(true);
+
+      change(mockApp);
+
+      // Its Select would pick a flight the map does not show
+      expect(tooltips()[0]!.isOpen()).toBe(false);
+    });
+
     it("puts the values of a tap away as a mouse toggles a flight", () => {
       const at = mockApp.map!.unproject([10, 10]) as LngLat;
       const hit = hitOf(mockApp.currentData!.path_segments[0]!);

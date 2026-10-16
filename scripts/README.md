@@ -105,9 +105,11 @@ else reads together:
   both version fields of `package-lock.json`.
 - The Python version of `.python-version` is the one of the `python` base images
   in the `Dockerfile`, `requires-python`, mypy's `python_version` and ruff's
-  `target-version`, and the Node.js major version of `.nvmrc` is the one of the
-  `node` base image and `engines` in `package.json`. Dependabot bumps none of
-  them, so they move together by hand.
+  `target-version`. The Node.js release of `.nvmrc` is exact (`26.12.0`, since
+  the gzipped size budgets depend on the zlib it bundles), the tag of the `node`
+  base image is the same, and `engines` in `package.json` asks for its major
+  version or newer. Dependabot bumps none of them, so they move together by
+  hand.
 - The gitleaks image of the security job names in its comment the release the
   gitleaks hook of `.pre-commit-config.yaml` pins. Dependabot bumps the hook and
   not the image, and the security job, which compares the release the pulled

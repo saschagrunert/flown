@@ -30,6 +30,7 @@ from flown.terrain import (
     TERRAIN_ZOOM,
     TILE_SIZE,
 )
+from flown.validation import MAX_KML_FILE_SIZE
 
 FRONTEND = Path(__file__).parent.parent / "flown" / "frontend"
 
@@ -113,6 +114,8 @@ def _ts_constant(relative, name):
         ("state/urlState.ts", "STATE_SCHEMA_VERSION", previews.STATE_SCHEMA_VERSION),
         # The previews colour their heat as the heat cloud does
         ("ui/heatCloudShaders.ts", "CLOUD_COLOUR", previews.CLOUD_COLOUR),
+        # Your flights refuses a file the build in the page would skip
+        ("ui/localFlights.ts", "MAX_FILE_BYTES", MAX_KML_FILE_SIZE),
     ],
 )
 def test_the_frontend_reads_what_the_exporter_writes(relative, name, value):

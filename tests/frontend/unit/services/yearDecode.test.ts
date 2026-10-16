@@ -14,11 +14,8 @@ import {
   expandYearData,
 } from "../../../../flown/frontend/services/yearDecode";
 import { path, rawYear, yearBytes } from "../../yearFixtures";
-import type {
-  KMLDataset,
-  RawPathSegments,
-  RawYearData,
-} from "../../../../flown/frontend/types";
+import type { PathSegments } from "../../yearFixtures";
+import type { KMLDataset, RawYearData } from "../../../../flown/frontend/types";
 
 describe("decodeYear", () => {
   it("lays the paths out in flat columns, a point more than rows per path", () => {
@@ -103,7 +100,7 @@ describe("decodeYear ground", () => {
     const decoded = decodeYear(
       rawYear(2025, {
         "1": short,
-        "2": broken as unknown as RawPathSegments,
+        "2": broken as unknown as PathSegments,
         "3": path([50, 8], rows, [480, 1210, 590]),
       }),
     );
@@ -250,35 +247,31 @@ describe("expandYearData", () => {
     ]);
   });
 
-  it("still expands segments that path_info does not list", () => {
+  it("skips a listed path without segments, and keeps the next in place", () => {
     const data = expandYearData(
-      rawYear(
-        2025,
-        {
-          "10": path([50, 8], [[50.1, 8.1, 1, 1]]),
-          "2": path([50, 8], [[50.1, 8.1, 1, 1]]),
-        },
-        [{ id: 10, year: 2025 }],
-      ),
+      rawYear(2025, { "30": path([50, 8], [[50.1, 8.1, 1, 1]]) }, [
+        { id: 20, year: 2025 },
+        { id: 30, year: 2025 },
+      ]),
     );
-    expect(data.path_segments.map((s) => s.path_id)).toEqual([10, 2]);
+    expect(data.path_segments.map((s) => s.path_id)).toEqual([30]);
+    expect(data.path_info).toHaveLength(2);
   });
 
-  it("expands an unlisted path even when the counts match", () => {
-    const data = expandYearData(
-      rawYear(
-        2025,
-        {
-          "10": path([50, 8], [[50.1, 8.1, 1, 1]]),
-          "30": path([50, 8], [[50.1, 8.1, 1, 1]]),
-        },
-        [
-          { id: 10, year: 2025 },
-          { id: 20, year: 2025 },
-        ],
-      ),
-    );
-    expect(data.path_segments.map((s) => s.path_id)).toEqual([10, 30]);
+  it("reads each path at its own place in the arrays, not by id", () => {
+    const raw = rawYear(2025, {
+      "5": path([50, 8], [[50.1, 8.1, 100, 1]]),
+      "6": path([51, 9], [[51.1, 9.1, 200, 2]]),
+    });
+    // Arrays that end early leave the paths after the end out
+    raw.segments.start.pop();
+    for (const column of raw.segments.columns) column.pop();
+
+    const data = expandYearData(raw);
+
+    expect(data.path_segments.map((s) => [s.path_id, s.altitude_ft])).toEqual([
+      [5, 100],
+    ]);
   });
 
   it("expands a path listed twice once", () => {
@@ -327,12 +320,12 @@ describe("expandYearData", () => {
     });
     afterEach(() => warn.mockRestore());
 
-    const good = (): RawPathSegments => path([51, 9], [[51.1, 9.1, 500, 80]]);
+    const good = (): PathSegments => path([51, 9], [[51.1, 9.1, 500, 80]]);
 
     /** Expand path "1" next to a good path "2" */
     function expandWith(bad: unknown): KMLDataset {
       return expandYearData(
-        rawYear(2025, { "1": bad as RawPathSegments, "2": good() }),
+        rawYear(2025, { "1": bad as PathSegments, "2": good() }),
       );
     }
 
@@ -471,7 +464,7 @@ describe("expandYearData", () => {
     ).toThrow("segments");
   });
 
-  it.each([undefined, 6, 8, "7"])(
+  it.each([undefined, 7, 9, "8"])(
     "refuses a year file written in format %s",
     (format) => {
       expect(() =>

@@ -240,6 +240,30 @@ describe("a transaction that fails", () => {
     await expect(listFiles()).resolves.toEqual([]);
   });
 
+  it("rejects with the error of the request that failed, a full quota among them", async () => {
+    // As the browser has it: the request's error comes up to the
+    // transaction, whose own error is still null then
+    const quota = new DOMException("Over the quota", "QuotaExceededError");
+    const put = vi
+      .spyOn(IDBObjectStore.prototype, "put")
+      .mockImplementation(function (this: IDBObjectStore) {
+        const transaction = this.transaction;
+        queueMicrotask(() => {
+          transaction.onerror?.call(transaction, {
+            target: { error: quota },
+          } as unknown as Event);
+        });
+        return {} as IDBRequest<IDBValidKey>;
+      });
+
+    await expect(
+      putFiles([
+        { name: "a.kml", size: 1, added: 1, bytes: new ArrayBuffer(1) },
+      ]),
+    ).rejects.toBe(quota);
+    put.mockRestore();
+  });
+
   it("rejects with what went wrong in it, and nothing else unheard", async () => {
     const getAll = vi
       .spyOn(IDBObjectStore.prototype, "getAll")

@@ -168,6 +168,10 @@
   color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
+/* The muted grey on the active background is 4.47:1, short of 4.5:1 */
+[aria-selected="true"] > .location-search-detail {
+  color: var(--color-text-secondary);
+}
 
 /* The line that says what is going on, and the credit Photon and
    OpenStreetMap ask for, which is always there */

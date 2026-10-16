@@ -34,8 +34,8 @@ gzipped sizes CI prints when a budget is close.
 The stylesheets are minified by the Python side, not by `build.js`, so their
 budgets are a test, `tests/test_asset_budget.py`, which fails in CI on a
 regression and leaves the generator itself alone. `styles.css` is on the
-critical path of every visit; `features.css`, `wrapped.css`, `search.css` and
-`local.css` are fetched with their lazy bundles (see
+critical path of every visit; `features.css`, `wrapped.css`, `search.css`,
+`local.css` and `extras.css` are fetched with their lazy bundles (see
 [Stylesheets](frontend.md#stylesheets)), so room taken in them is not the same
 as room taken in `styles.css`, and each has a budget of its own, for its bytes
 as the site serves it and one for them gzipped at level 9, as the bundles have.

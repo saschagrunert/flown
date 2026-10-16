@@ -17,7 +17,7 @@ import type { KMLDataset, RawYearData } from "../types";
  * Wire format of the year files this build reads (flown/segment_codec.py).
  * A file written by another release is refused rather than misread.
  */
-export const DATA_FORMAT_VERSION = 7;
+export const DATA_FORMAT_VERSION = 8;
 
 /**
  * How the encoded columns become values again, the mirror of
@@ -33,19 +33,20 @@ const GROUND_STEP = 10;
 /**
  * Decode the compact per-year file format into flat columns.
  *
- * Each path stores a start point and, column by column, the rows of
- * `[lat, lon, altitude_ft, groundspeed_knots, time?]`, where the coordinate
- * is the row's END point: consecutive rows are contiguous, so the start of a
- * row is the end of the one before it.
+ * The file is laid out column by column across its paths (RawSegments):
+ * every array holds one entry per path, in `path_info` order. A path has a
+ * start point and the rows of `[lat, lon, altitude_ft, groundspeed_knots,
+ * time?]`, where the coordinate is the row's END point: consecutive rows are
+ * contiguous, so the start of a row is the end of the one before it.
  *
  * Every column holds integers scaled to the step the exporter rounded to,
  * stored as differences to the row before (the start point seeds the two
  * coordinate columns). The coordinates are second differences: each value
  * is how much the step from the row before changed, the step before the
- * first row being zero. A path without a time column carries no relative
+ * first row being zero. A path whose time entry is null carries no relative
  * times, and a null in it marks a row without one; the running time then
  * stays where the last row that had one left it. The ground under every
- * row is a column of its own, `ground`, which a path may leave out; one that
+ * row is a column of its own, `ground`, null for a path without; one that
  * does not fit its path is dropped, the path is not.
  *
  * A value that is not a finite number would turn into a NaN coordinate,
@@ -69,31 +70,35 @@ export function decodeYear(raw: RawYearData): DecodedYear {
     error.name = "StaleDataError";
     throw error;
   }
-  const segmentsByPath = raw.segments;
-  if (typeof segmentsByPath !== "object" || segmentsByPath === null) {
-    throw new Error("Invalid year data: missing 'segments' map");
+  const segments = raw.segments;
+  if (typeof segments !== "object" || segments === null) {
+    throw new Error("Invalid year data: missing 'segments' object");
   }
 
-  // Paths in path_info order, which is the order of the input. The keys of
-  // the segments object are no substitute: ids are content hashes, and
-  // JavaScript iterates the ones below 2^32 in numeric order first.
+  // Every array of the segments holds one entry per path, in path_info
+  // order, which is the order of the input
   const pathInfo = Array.isArray(raw.path_info) ? raw.path_info : [];
-  // A Set keeps a path listed twice from being decoded twice
-  const listed = new Set(pathInfo.map((info) => String(info.id)));
-  for (const id of Object.keys(segmentsByPath)) listed.add(id);
-  const pathIds = [...listed];
+  const starts = Array.isArray(segments.start) ? segments.start : [];
+  const [
+    latColumn = [],
+    lonColumn = [],
+    altitudeColumn = [],
+    speedColumn = [],
+    timeColumn = [],
+  ] = Array.isArray(segments.columns) ? segments.columns : [];
+  const groundColumn = Array.isArray(segments.ground) ? segments.ground : [];
 
   // Room for every row the file has; a path that is cut short leaves some of
   // it unused, which is trimmed at the end
   let maxRows = 0;
-  for (const id of pathIds) {
-    const lats = segmentsByPath[id]?.columns?.[0];
+  for (let index = 0; index < pathInfo.length; index++) {
+    const lats = latColumn[index];
     maxRows += Array.isArray(lats) ? lats.length : 0;
   }
-  const maxPoints = maxRows + pathIds.length;
+  const maxPoints = maxRows + pathInfo.length;
 
-  const ids = new Float64Array(pathIds.length);
-  const rowCounts = new Uint32Array(pathIds.length);
+  const ids = new Float64Array(pathInfo.length);
+  const rowCounts = new Uint32Array(pathInfo.length);
   const lats = new Float64Array(maxPoints);
   const lons = new Float64Array(maxPoints);
   const altitudes = new Float64Array(maxRows);
@@ -106,24 +111,26 @@ export function decodeYear(raw: RawYearData): DecodedYear {
   let points = 0;
   let rows = 0;
 
-  for (const id of pathIds) {
-    const entry = segmentsByPath[id];
+  // A Set keeps a path listed twice from being decoded twice
+  const seen = new Set<number>();
+  for (let index = 0; index < pathInfo.length; index++) {
+    const id = Number(pathInfo[index]!.id);
+    const start = starts[index];
     // A listed path without segments is legal, and has nothing to draw
-    if (!entry) continue;
-    // Columns that are missing altogether read as one row that is not
+    if ((start == null && latColumn[index] == null) || seen.has(id)) continue;
+    seen.add(id);
+    // A column that is missing altogether reads as one row that is not
     // numeric, so the path is reported like any other broken one
-    const [
-      latDeltas = [NaN],
-      lonDeltas,
-      altitudeDeltas,
-      speedDeltas,
-      timeDeltas,
-    ] = Array.isArray(entry.columns) ? entry.columns : [];
+    const latDeltas = latColumn[index] ?? [NaN];
+    const lonDeltas = lonColumn[index];
+    const altitudeDeltas = altitudeColumn[index];
+    const speedDeltas = speedColumn[index];
+    const timeDeltas = timeColumn[index];
 
     // Running totals of the encoded columns; the coordinates start at the
     // path's start point, the rest at zero
-    let latScaled = entry.start?.[0] ?? NaN;
-    let lonScaled = entry.start?.[1] ?? NaN;
+    let latScaled = start?.[0] ?? NaN;
+    let lonScaled = start?.[1] ?? NaN;
     // The last step of each coordinate, which its column changes
     let latStep = 0;
     let lonStep = 0;
@@ -131,8 +138,8 @@ export function decodeYear(raw: RawYearData): DecodedYear {
     let speedScaled = 0;
     let timeScaled = 0;
     // NaN without a ground column, so every row of the path reads as none
-    const groundDeltas =
-      entry.ground?.length === latDeltas.length ? entry.ground : [NaN];
+    const ground = groundColumn[index];
+    const groundDeltas = ground?.length === latDeltas.length ? ground : [NaN];
     let groundScaled = 0;
     const firstRow = rows;
 
@@ -189,7 +196,7 @@ export function decodeYear(raw: RawYearData): DecodedYear {
     if (!Number.isFinite(groundScaled)) grounds.fill(NaN, firstRow, rows);
 
     if (row > 0) {
-      ids[paths] = Number(id);
+      ids[paths] = id;
       rowCounts[paths] = row;
       paths++;
     }

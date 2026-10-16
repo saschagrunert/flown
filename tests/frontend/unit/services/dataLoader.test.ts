@@ -27,11 +27,8 @@ import {
 import { logDebug, logError } from "../../../../flown/frontend/utils/logger";
 import { createYearDecoder } from "../../../../flown/frontend/services/yearDecoder";
 import { FakeYearWorker, path, rawYear, yearBytes } from "../../yearFixtures";
-import type {
-  LoadingState,
-  Metadata,
-  RawYearData,
-} from "../../../../flown/frontend/types";
+import type { PathSegments } from "../../yearFixtures";
+import type { LoadingState, Metadata } from "../../../../flown/frontend/types";
 
 // Mock logger
 vi.mock("../../../../flown/frontend/utils/logger", () => ({
@@ -393,7 +390,7 @@ describe("DataLoader", () => {
 
   function defineYear(
     year: number,
-    segments: RawYearData["segments"] = {
+    segments: Record<string, PathSegments> = {
       "1": path([50, 8], [[50.1, 8.1, 1000, 100, 0]]),
     },
   ): void {
@@ -593,6 +590,57 @@ describe("DataLoader", () => {
       expect(await loader.loadData("2025")).not.toBeNull();
       // The failure was not remembered: the file was requested again
       expect(mockFetchJson).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("preload", () => {
+    it("loads a year with nothing on the indicator, for the first load to take over", async () => {
+      defineYear(2025);
+      let answer: () => void = () => {};
+      mockFetchJson.mockImplementationOnce(
+        (url) =>
+          new Promise((resolve) => {
+            answer = () => resolve(files[url]);
+          }),
+      );
+
+      loader.preload("2025");
+      await vi.waitFor(() => expect(mockFetchJson).toHaveBeenCalledOnce());
+      expect(mockShowLoading).not.toHaveBeenCalled();
+
+      const loaded = loader.loadData("2025");
+      // The load that asks for it waits on the file, and says so
+      await vi.waitFor(() => expect(mockShowLoading).toHaveBeenCalled());
+      answer();
+      expect(await loaded).not.toBeNull();
+      expect(mockFetchJson).toHaveBeenCalledOnce();
+    });
+
+    it("leaves its failure to the first load to say, once, without fetching again", async () => {
+      loader.preload("2025");
+      await vi.waitFor(() => expect(logError).toHaveBeenCalled());
+      expect(onLoadError).not.toHaveBeenCalled();
+
+      expect(await loader.loadData("2025")).toBeNull();
+      expect(onLoadError).toHaveBeenCalledOnce();
+      expect(mockFetchJson).toHaveBeenCalledOnce();
+
+      // A Retry fetches it again
+      defineYear(2025);
+      expect(await loader.loadData("2025")).not.toBeNull();
+      expect(mockFetchJson).toHaveBeenCalledTimes(2);
+    });
+
+    it("is let go of by a first load of another year, and not for all or a year that is no year", async () => {
+      defineYear(2024);
+      loader.preload("all");
+      loader.preload("../x");
+      expect(mockFetchJson).not.toHaveBeenCalled();
+
+      loader.preload("2025");
+      expect(await loader.loadData("2024")).not.toBeNull();
+      // Its failure is news to nobody
+      expect(onLoadError).not.toHaveBeenCalled();
     });
   });
 
@@ -796,6 +844,43 @@ describe("DataLoader", () => {
         "2025 (1000) 1000/1000",
       ]);
       expect(mockHideLoading).toHaveBeenCalledOnce();
+    });
+
+    it("counts the bytes of a preload against the size the metadata brings after it", async () => {
+      defineYear(2025);
+      loader.preload("2025");
+      await vi.waitFor(() => expect(request(2025)).toBeDefined());
+      request(2025).read(200);
+
+      withSizes({ "2025": 1000 });
+      const loading = loader.loadData("2025");
+      request(2025).read(400);
+      request(2025).settle();
+      await loading;
+
+      // What arrived before the size was known counts once it is
+      expect(shown()).toEqual(["2025 (1000) 200/1000", "2025 (1000) 400/1000"]);
+    });
+
+    it("shows what a preload held before the metadata brought its size", async () => {
+      defineYear(2025);
+      loader.preload("2025");
+      await vi.waitFor(() => expect(request(2025)).toBeDefined());
+      request(2025).read(550);
+      // Held by the load before the size is known: no share to show yet
+      const loading = loader.loadData("2025");
+      expect(shown()).toEqual(["2025 (undefined) 0/undefined"]);
+
+      // Then the metadata comes, and no further byte: the bar shows what
+      // arrived already, without waiting for the next chunk
+      files["test-data/metadata.json"] = {
+        available_years: [2025],
+        year_file_bytes: { "2025": 1000 },
+      };
+      await loader.loadMetadata();
+      expect(shown().at(-1)).toBe("2025 (1000) 550/1000");
+      request(2025).settle();
+      await loading;
     });
 
     it("counts a file no further than its expected size, and never back", async () => {

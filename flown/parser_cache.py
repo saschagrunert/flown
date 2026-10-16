@@ -90,6 +90,7 @@ _PARSER_MODULES = (
     "parser_common",
     "parser_gx_track",
     "parser_standard",
+    "spikes",
     "types",
     "validation",
 )

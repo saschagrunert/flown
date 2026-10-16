@@ -647,7 +647,7 @@ class TestWritePreviews:
         assert _meta(page, "twitter:card") == ["summary_large_image"]
         assert _meta(page, "og:title") == ["EDAQ Halle-Oppin (2025) · Flown"]
         assert _meta(page, "og:description") == [
-            "Flown in 2025 in D-EAGJ DA20, on the flight heatmap"
+            "Flown in 2025 in D-EAGJ DA20, on the map"
         ]
         # No script, and nothing loaded
         assert "<script" not in page
@@ -673,9 +673,7 @@ class TestWritePreviews:
             "0; url=../?y=2026"
         ]
         assert _meta(page, "og:image") == [f"{SITE}/y/2026.png"]
-        assert _meta(page, "og:description") == [
-            "1 flight of 2026 on the flight heatmap"
-        ]
+        assert _meta(page, "og:description") == ["1 flight of 2026 on the map"]
 
     def test_without_a_site_url_no_image_and_no_url(self, tmp_path):
         files = _write(tmp_path, None)
@@ -715,9 +713,7 @@ class TestWritePreviews:
         title = f"{start} → EDDC Dresden (2025) · Flown"
         assert _meta(page, "og:title") == [title]
         assert lxml_html.fromstring(page).findtext(".//title") == title
-        assert _meta(page, "og:description") == [
-            "Flown in 2025 in D-<b>, on the flight heatmap"
-        ]
+        assert _meta(page, "og:description") == ["Flown in 2025 in D-<b>, on the map"]
 
     def test_a_flight_without_airports(self, tmp_path):
         metadata = [{"year": 2025, "airport_name": "", "start_point": [0, 0, 0]}]
@@ -725,7 +721,7 @@ class TestWritePreviews:
 
         page = (tmp_path / "f" / "1.html").read_text()
         assert _meta(page, "og:title") == ["A flight of 2025 · Flown"]
-        assert _meta(page, "og:description") == ["Flown in 2025, on the flight heatmap"]
+        assert _meta(page, "og:description") == ["Flown in 2025, on the map"]
 
     @pytest.mark.usefixtures("fake_images")
     def test_no_date_finer_than_the_year(self, tmp_path):

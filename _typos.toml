@@ -22,6 +22,12 @@ juni = "juni"
 juli = "juli"
 oktober = "oktober"
 dezember = "dezember"
+# French month names without their accents, and the German "or" and "days",
+# which flown/date_tokens.py reads in dates and keeps out of possible ones
+aout = "aout"
+decembre = "decembre"
+oder = "oder"
+tage = "tage"
 # The time zone of India and Ireland, and the German "is", which
 # flown/date_tokens.py tells apart by their case
 ist = "ist"

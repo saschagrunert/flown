@@ -12,8 +12,7 @@ import type {
 } from "../../flown/frontend/services/yearWorker";
 import type {
   KMLDataset,
-  RawColumns,
-  RawPathSegments,
+  RawSegments,
   RawYearData,
 } from "../../flown/frontend/types";
 
@@ -86,6 +85,18 @@ const SCALES = [1e5, 1e5, 1 / 20, 1, 10];
 const SECOND_ORDER = 2;
 
 /**
+ * One path's encoded segments, as segment_codec.py's encode_rows returns
+ * them: the scaled start point, the columns of its rows (without a time
+ * column when no row has a time) and its ground. A year file holds them
+ * column by column across its paths; rawYear lays them out that way.
+ */
+export interface PathSegments {
+  start: number[];
+  columns: (number | null)[][];
+  ground?: number[];
+}
+
+/**
  * One path's exported segments, given as plain `[lat, lon, ft, kt, s?]` rows,
  * and the feet of ground under each row when the path has them
  */
@@ -93,7 +104,7 @@ export function path(
   start: [number, number],
   rows: number[][],
   groundFt?: number[],
-): RawPathSegments {
+): PathSegments {
   const scaledStart = [
     Math.round(start[0] * SCALES[0]!),
     Math.round(start[1] * SCALES[1]!),
@@ -122,10 +133,7 @@ export function path(
       running[index] = scaled;
     });
   }
-  const encoded: RawPathSegments = {
-    start: scaledStart,
-    columns: columns as RawColumns,
-  };
+  const encoded: PathSegments = { start: scaledStart, columns };
   if (groundFt) {
     // In tens of feet, as differences (GROUND_STEP of segment_codec.py)
     encoded.ground = groundFt.map(
@@ -135,12 +143,35 @@ export function path(
   return encoded;
 }
 
+/**
+ * A year file of the given paths, by id. `pathInfo` lists the paths in the
+ * order of the file and defaults to the ids of `paths`; a path it does not
+ * list cannot be written. Entries that are not well formed are laid out as
+ * they are, so a test can hand the decoder a broken path.
+ */
 export function rawYear(
   year: number,
-  segments: RawYearData["segments"],
-  pathInfo: RawYearData["path_info"] = [],
+  paths: Record<string, PathSegments>,
+  pathInfo: RawYearData["path_info"] = Object.keys(paths).map((id) => ({
+    id: Number(id),
+  })),
   originalPoints = 0,
 ): RawYearData {
+  const listed = new Set(pathInfo.map((info) => String(info.id)));
+  const unlisted = Object.keys(paths).filter((id) => !listed.has(id));
+  if (unlisted.length > 0) {
+    throw new Error(`path_info does not list ${unlisted.join(", ")}`);
+  }
+  const entries = pathInfo.map((info) => paths[String(info.id)]);
+  const columnsOf = (entry?: PathSegments): unknown[] =>
+    Array.isArray(entry?.columns) ? entry.columns : [];
+  const segments = {
+    start: entries.map((entry) => entry?.start ?? null),
+    columns: [0, 1, 2, 3, 4].map((column) =>
+      entries.map((entry) => columnsOf(entry)[column] ?? null),
+    ),
+    ground: entries.map((entry) => entry?.ground ?? null),
+  } as RawSegments;
   return {
     format: DATA_FORMAT_VERSION,
     year,

@@ -13,6 +13,7 @@ from .parser_common import (
     empty_placemark_metadata,
     parse_coordinate_point,
 )
+from .spikes import distance_spikes
 from .types import TrackPoint
 
 if TYPE_CHECKING:
@@ -87,19 +88,30 @@ def process_standard_coordinates(
         element_coords = 0
         altitude_known = id(coord_elem) not in unknown_altitude
 
-        for point_text in coord_text.split():
-            parsed = parse_coordinate_point(point_text, filename)
-            if parsed is None:
-                continue
+        parsed_points = [
+            parsed
+            for point_text in coord_text.split()
+            if (parsed := parse_coordinate_point(point_text, filename)) is not None
+        ]
+        # The points far off the line go entirely, from the path and from
+        # the heat, as those of a gx:Track do (see spikes.distance_spikes)
+        spikes = distance_spikes([(lat, lon) for lat, lon, _ in parsed_points])
+        if spikes:
+            logger.debug(
+                "Dropped %d position spike(s) in %s (element %d)",
+                len(spikes),
+                filename,
+                idx,
+            )
 
-            lat, lon, alt = parsed
-            if not altitude_known:
-                alt = None
-            point = TrackPoint(lat, lon, alt, None)
+        for index, (lat, lon, alt) in enumerate(parsed_points):
+            if index in spikes:
+                continue
+            point = TrackPoint(lat, lon, alt if altitude_known else None, None)
             coordinates.append(point)
 
             # Only points with a known altitude form the flight path
-            if alt is not None:
+            if point.alt is not None:
                 current_path.append(point)
 
             element_coords += 1

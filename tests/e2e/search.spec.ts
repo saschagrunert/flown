@@ -9,7 +9,7 @@
  * for every keystroke, or one the page should have kept, fails.
  */
 import { test, expect, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { expectNoA11yViolations, gotoApp } from "./helpers";
 import { mapPopup } from "./map";
 import { PLACE_DEBOUNCE_MS } from "../../flown/frontend/services/photon";
 
@@ -132,6 +132,9 @@ test.describe("the search @desktop", () => {
       "aria-activedescendant",
       /location-search-results-\d+/,
     );
+    // The results with the option the arrow keys are on, whose own
+    // background the contrast of its lines has to hold on
+    await expectNoA11yViolations(page, "search results");
     await field(page).press("Escape");
     await expect(panel(page)).toBeHidden();
     expect(asked).toEqual([]);

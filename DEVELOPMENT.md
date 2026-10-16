@@ -55,7 +55,7 @@ python scripts/check_pins.py            # Build pin, uv release, Playwright and 
 ruff check . && ruff format --check .   # Lint and formatting
 mypy .                                  # Type checking
 typos                                   # Spell check (config in _typos.toml)
-gitleaks dir .                          # Secret scan (config in .gitleaks.toml)
+gitleaks dir .                          # Secret scan (config in .gitleaks.toml; gitleaks is not in uv.lock, the pre-commit hook fetches its own)
 make check-obfuscation                  # data/ and visual fixtures obfuscated
 ```
 

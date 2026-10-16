@@ -58,6 +58,7 @@ from tests.conftest import (
     FIXTURE_AIRPORTS_CSV,
     FIXTURE_RUNWAYS_CSV,
     decoded_segments,
+    segments_by_id,
 )
 
 TRACK_KML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -1649,7 +1650,7 @@ class TestCreateProgressiveHeatmap:
         def ids_by_waypoint(out):
             ids = {}
             for data_file in sorted((out / "data").glob("*/data.json")):
-                for path_id, entry in parse_data(data_file)["segments"].items():
+                for path_id, entry in segments_by_id(parse_data(data_file)).items():
                     _, rows = decoded_segments(entry)
                     ids[rows[0][1]] = int(path_id)
             return ids

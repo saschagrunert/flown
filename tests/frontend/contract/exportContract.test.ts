@@ -28,11 +28,11 @@ import type {
   Airport,
   Metadata,
   PathInfo,
-  RawPathSegments,
-  RawColumns,
   RawYearData,
 } from "../../../flown/frontend/types";
 import { checkSite } from "../../e2e/site-check";
+import { rawYear } from "../yearFixtures";
+import type { PathSegments } from "../yearFixtures";
 
 // vitest runs with the repository root as working directory
 const DATA_DIR = join(cwd(), "docs", "data");
@@ -178,7 +178,7 @@ function isPathInfo(value: unknown): value is PathInfo {
  * a float here would mean the exporter stopped scaling a column. Only the
  * time column may hold null, for a row without a relative time.
  */
-function isRawColumns(value: unknown): value is RawColumns {
+function isPathColumns(value: unknown): value is (number | null)[][] {
   if (!Array.isArray(value)) return false;
   if (value.length !== 4 && value.length !== 5) return false;
   if (!value.every(Array.isArray)) return false;
@@ -193,11 +193,12 @@ function isRawColumns(value: unknown): value is RawColumns {
   );
 }
 
-function isRawPathSegments(value: unknown): boolean {
+/** One path's share of the segments, see segmentsOfPath */
+function isPathSegments(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if ("rows" in value) return false;
   const columns = value["columns"];
-  if (!isRawColumns(columns)) return false;
+  if (!isPathColumns(columns)) return false;
   // The ground under every row, in tens of feet (GROUND_STEP in
   // segment_codec.py), left out for a path whose ground the build does not
   // know; where it is written it covers every row
@@ -206,7 +207,7 @@ function isRawPathSegments(value: unknown): boolean {
     ground !== undefined &&
     !(
       Array.isArray(ground) &&
-      ground.length === columns[0].length &&
+      ground.length === columns[0]!.length &&
       ground.length > 0 &&
       ground.every(isInteger)
     )
@@ -217,12 +218,47 @@ function isRawPathSegments(value: unknown): boolean {
   if (!Array.isArray(start)) return false;
   // A path with rows has to say where its first row starts, as a scaled
   // coordinate pair
-  if (columns[0].length === 0) return start.length === 0;
+  if (columns[0]!.length === 0) return start.length === 0;
   return (
     start.length === 2 &&
     start.every(isInteger) &&
     isCoordinatePair(start.map((v: number) => v / 1e5))
   );
+}
+
+/**
+ * The entries of path `index` in the segments of a year file, which are laid
+ * out column by column across the paths (format 8): its start point, its
+ * columns without the time when that is null, and its ground unless null
+ */
+function segmentsOfPath(segments: Json, index: number): Json {
+  const columns = (segments["columns"] as unknown[][]).map((c) => c[index]);
+  const entry: Json = {
+    start: (segments["start"] as unknown[])[index],
+    columns: columns[4] === null ? columns.slice(0, 4) : columns,
+  };
+  const ground = (segments["ground"] as unknown[])[index];
+  if (ground !== null) entry["ground"] = ground;
+  return entry;
+}
+
+/**
+ * The segments of a year file: the start points, five columns and the
+ * ground, each an array of one entry per path, and every path's entries well
+ * formed
+ */
+function isRawSegments(value: unknown, paths: number): boolean {
+  if (!isRecord(value)) return false;
+  const columns = value["columns"];
+  if (!Array.isArray(columns) || columns.length !== 5) return false;
+  const arrays = [value["start"], ...(columns as unknown[]), value["ground"]];
+  if (!arrays.every((a) => Array.isArray(a) && a.length === paths)) {
+    return false;
+  }
+  for (let index = 0; index < paths; index++) {
+    if (!isPathSegments(segmentsOfPath(value, index))) return false;
+  }
+  return true;
 }
 
 function isRawYearData(value: unknown): value is RawYearData {
@@ -233,13 +269,7 @@ function isRawYearData(value: unknown): value is RawYearData {
     return false;
   const pathInfo = value["path_info"];
   if (!Array.isArray(pathInfo) || !pathInfo.every(isPathInfo)) return false;
-  const segments = value["segments"];
-  if (!isRecord(segments)) return false;
-  for (const [key, entry] of Object.entries(segments)) {
-    if (!/^\d+$/.test(key)) return false;
-    if (!isRawPathSegments(entry)) return false;
-  }
-  return true;
+  return isRawSegments(value["segments"], pathInfo.length);
 }
 
 /**
@@ -336,7 +366,7 @@ function encodePath(
   start: [number, number],
   rows: number[][],
   groundFt?: number[],
-): RawPathSegments {
+): PathSegments {
   const scaledStart = [
     Math.round(start[0] * SCALES[0]!),
     Math.round(start[1] * SCALES[1]!),
@@ -363,10 +393,7 @@ function encodePath(
       running[index] = scaled;
     });
   }
-  const encoded: RawPathSegments = {
-    start: scaledStart,
-    columns: columns as RawColumns,
-  };
+  const encoded: PathSegments = { start: scaledStart, columns };
   if (groundFt) {
     let previous = 0;
     encoded.ground = groundFt.map((feet) => {
@@ -402,11 +429,24 @@ const sampleAirports = {
   ],
 };
 
-const sampleYear2025: RawYearData = {
-  format: DATA_FORMAT_VERSION,
-  year: 2025,
-  original_points: 3,
-  path_info: [
+/** The first path of sampleYear2025, with relative times and ground */
+const samplePath = encodePath(
+  [50.03, 8.57],
+  [
+    [49.5, 9.5, 3000, 110, 0],
+    [48.35, 11.79, 4000, 120, 1800],
+  ],
+  [1400, 1530],
+);
+
+const sampleYear2025: RawYearData = rawYear(
+  2025,
+  {
+    "840108108563": samplePath,
+    // A path whose ground the build does not know, without relative times
+    "5": encodePath([48.35, 11.79], [[48.4, 11.8, 1000, 60]]),
+  },
+  [
     // Ids are content hashes: large, sparse and in no particular order
     {
       id: 840108108563,
@@ -429,19 +469,8 @@ const sampleYear2025: RawYearData = {
     // A path without airports, aircraft or altitudes has only an id and a year
     { id: 5, year: 2025 },
   ],
-  segments: {
-    "840108108563": encodePath(
-      [50.03, 8.57],
-      [
-        [49.5, 9.5, 3000, 110, 0],
-        [48.35, 11.79, 4000, 120, 1800],
-      ],
-      [1400, 1530],
-    ),
-    // A path whose ground the build does not know
-    "5": encodePath([48.35, 11.79], [[48.4, 11.8, 1000, 60]]),
-  },
-};
+  3,
+);
 
 function serialize(value: unknown): string {
   return JSON.stringify(value);
@@ -524,11 +553,12 @@ describe("export contract (inline new-format sample)", () => {
   });
 
   it("checks the encoded columns of a path", () => {
-    const valid = sampleYear2025.segments["840108108563"]!;
-    expect(isRawPathSegments(valid)).toBe(true);
+    const valid = samplePath;
+    expect(isPathSegments(valid)).toBe(true);
+    expect(segmentsOfPath({ ...sampleYear2025.segments }, 0)).toEqual(valid);
     // Row by row, as format 2 wrote it
     expect(
-      isRawPathSegments({ start: valid.start, rows: [[1, 2, 3, 4, 5]] }),
+      isPathSegments({ start: valid.start, rows: [[1, 2, 3, 4, 5]] }),
     ).toBe(false);
     for (const columns of [
       // Columns of different lengths
@@ -540,17 +570,17 @@ describe("export contract (inline new-format sample)", () => {
       // Too few columns
       [[1], [1], [1]],
     ]) {
-      expect(isRawPathSegments({ start: valid.start, columns })).toBe(false);
+      expect(isPathSegments({ start: valid.start, columns })).toBe(false);
     }
     // The ground covers every row, in whole steps, or is left out
     for (const ground of [[], [140], [140, 13.5], [140, null], "140,13"]) {
-      expect(isRawPathSegments({ ...valid, ground })).toBe(false);
+      expect(isPathSegments({ ...valid, ground })).toBe(false);
     }
     const { ground: _ground, ...withoutGround } = valid;
-    expect(isRawPathSegments(withoutGround)).toBe(true);
+    expect(isPathSegments(withoutGround)).toBe(true);
     // A row without a relative time
     expect(
-      isRawPathSegments({
+      isPathSegments({
         start: valid.start,
         columns: [
           [1, 1],
@@ -578,6 +608,23 @@ describe("export contract (inline new-format sample)", () => {
         segments: { "5": [[1, 2, 3, 4, 5]] },
       }),
     ).toBe(false);
+    // Path by path, keyed by id, as format 7 wrote it
+    expect(
+      isRawYearData({
+        ...sampleYear2025,
+        segments: { "840108108563": samplePath },
+      }),
+    ).toBe(false);
+    // An array with an entry more or less than path_info has paths
+    const { start, columns, ground } = sampleYear2025.segments;
+    for (const segments of [
+      { start: start.slice(1), columns, ground },
+      { start, columns, ground: [...ground, null] },
+      { start, columns: [...columns.slice(0, 4), []], ground },
+      { start, columns: columns.slice(0, 4), ground },
+    ]) {
+      expect(isRawYearData({ ...sampleYear2025, segments })).toBe(false);
+    }
     expect(
       isRawYearData({
         ...sampleYear2025,
@@ -789,35 +836,23 @@ describe("export contract (docs/data)", () => {
           seenIds.add(id);
         }
 
-        // every segment list belongs to a known path of this year
-        const idSet = new Set(ids);
-        for (const key of Object.keys(raw.segments)) {
-          expect(idSet.has(Number(key)), `orphan segments for ${key}`).toBe(
-            true,
-          );
-        }
-        for (const info of raw.path_info) {
+        const rowCounts = raw.segments.columns[0].map((rows) => rows.length);
+        raw.path_info.forEach((info, index) => {
           expect(info.year, `path ${info.id} year`).toBe(Number(year));
           for (const key of REMOVED_PATH_INFO_KEYS) {
             expect(info, `path ${info.id}`).not.toHaveProperty(key);
           }
           // Every exported path has at least one segment to draw
-          expect(
-            raw.segments[String(info.id)]?.columns[0].length ?? 0,
-            `path ${info.id} rows`,
-          ).toBeGreaterThan(0);
+          expect(rowCounts[index], `path ${info.id} rows`).toBeGreaterThan(0);
           if (info.aircraft_registration) {
             registrations.add(info.aircraft_registration);
           }
-        }
+        });
 
         // the loader can expand it
         const data = expandYearData(raw);
         expect(data.path_segments.length).toBe(
-          Object.values(raw.segments).reduce(
-            (n, e) => n + e.columns[0].length,
-            0,
-          ),
+          rowCounts.reduce((n, rows) => n + rows, 0),
         );
 
         // The decoded values have to be the ones the exporter put in. The

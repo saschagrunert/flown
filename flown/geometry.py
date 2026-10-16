@@ -5,9 +5,14 @@ here, each with the exact value and formula its callers used before they
 were shared, so that no exported number moves.
 """
 
+from bisect import bisect_left, bisect_right
+from collections import deque
 from dataclasses import dataclass
+from itertools import pairwise
 from math import atan2, cos, degrees, hypot, log, pi, radians, sin, sqrt, tan
 from typing import TYPE_CHECKING
+
+from .constants import FEET_TO_METERS, KM_TO_NAUTICAL_MILES, SECONDS_PER_HOUR
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -59,18 +64,206 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return EARTH_RADIUS_KM * c
 
 
-def trim_path_ends(path: Sequence[TrackPoint], metres: float) -> list[TrackPoint]:
-    """``path`` without its points within ``metres`` of where it starts and ends.
+# --trim-ends anchors the trim on the flight itself where the times tell
+# it: the stretches at a groundspeed of at least TRIM_FLIGHT_KNOTS, a takeoff
+# roll passes it and taxiing never does, measured over
+# TRIM_SPEED_HALF_WINDOW_SECONDS on either side of a fix (over less than
+# TRIM_SPEED_MIN_SECONDS or more than TRIM_SPEED_MAX_SECONDS it is jitter or
+# a gap, and unknown). A takeoff climbs TRIM_CLIMB_M above where its stretch
+# began within TRIM_CLIMB_SECONDS, a landing sinks as much to where its
+# stretch ended; a drive along a road does neither as fast. A stretch that
+# runs from the first fix or on to the last for TRIM_MOVING_SECONDS was
+# recorded on the move (in the air, or on the road), so the times do not
+# tell that end; a shorter one is a stale fix jumping to the receiver's own.
+# The start of a takeoff roll lies less than TRIM_FIELD_M above the lowest
+# heights recorded before it (TRIM_LOW_SHARE of them, so a stray fix does
+# not count), the field: a glider circling level after its launch, a
+# helicopter hovering or an ultralight's slow climb out sit above the field
+# they rose from, while a home or an apron above the field, or a height the
+# receiver had wrong while it warmed up, do not lower it.
+TRIM_FLIGHT_KNOTS = 40.0
+TRIM_FIELD_M = 30.0
+TRIM_LOW_SHARE = 0.05
+TRIM_SPEED_HALF_WINDOW_SECONDS = 5.0
+TRIM_SPEED_MIN_SECONDS = 2.0
+TRIM_SPEED_MAX_SECONDS = 120.0
+TRIM_CLIMB_M = 300 * FEET_TO_METERS
+TRIM_CLIMB_SECONDS = 180.0
+TRIM_MOVING_SECONDS = 30.0
 
-    What is left begins with the first point that is farther from the first
-    point of the path, and ends with the last that is farther from the last:
-    the taxiing at the start and the end, and the spot the aircraft is
-    parked on, go. A path that never leaves the circles (a recording of a
-    taxi) is left with its first point alone, which the export leaves out
-    as a path that does not move: kept whole, it would publish the spot.
+
+def _window_knots(fixes: Sequence[tuple[int, TrackPoint]]) -> list[float | None]:
+    """The groundspeed at each timed fix, over a few seconds around it.
+
+    As the landing detector measures it (``landings._groundspeeds``): a
+    logger writes fixes a fraction of a second apart as often as seconds
+    apart, and the jitter over a fraction of a second reads as hundreds of
+    knots. None where it cannot be told.
+    """
+    times = [point.ts or 0.0 for _, point in fixes]
+    last = len(fixes) - 1
+    speeds: list[float | None] = []
+    for t in times:
+        before = bisect_right(times, t - TRIM_SPEED_HALF_WINDOW_SECONDS) - 1
+        after = bisect_left(times, t + TRIM_SPEED_HALF_WINDOW_SECONDS)
+        a, b = fixes[max(0, before)][1], fixes[min(last, after)][1]
+        seconds = (b.ts or 0.0) - (a.ts or 0.0)
+        if not TRIM_SPEED_MIN_SECONDS <= seconds <= TRIM_SPEED_MAX_SECONDS:
+            speeds.append(None)
+            continue
+        km = haversine_distance(a.lat, a.lon, b.lat, b.lon)
+        speeds.append(km * KM_TO_NAUTICAL_MILES / seconds * SECONDS_PER_HOUR)
+    return speeds
+
+
+def _gains_quickly(heights: Sequence[tuple[float, float]]) -> bool:
+    """Whether ``heights`` (time, height) gain ``TRIM_CLIMB_M`` within
+    ``TRIM_CLIMB_SECONDS`` anywhere: the lowest height of the window so
+    far, kept in a queue of rising heights."""
+    window: deque[tuple[float, float]] = deque()
+    for t, height in heights:
+        while window and window[0][0] < t - TRIM_CLIMB_SECONDS:
+            window.popleft()
+        if window and height - window[0][1] >= TRIM_CLIMB_M:
+            return True
+        while window and window[-1][1] >= height:
+            window.pop()
+        window.append((t, height))
+    return False
+
+
+def _level(heights: Sequence[float]) -> float | None:
+    """The height ``heights`` keep (their median) when all but a tenth at
+    either end lie within ``TRIM_CLIMB_M`` of each other: the ground of a
+    field, where taxiing never climbs. None when they climb or sink, as a
+    thermal or a slow climb out does, or for none."""
+    if not heights:
+        return None
+    ordered = sorted(heights)
+    cut = len(ordered) // 10
+    if ordered[-1 - cut] - ordered[cut] >= TRIM_CLIMB_M:
+        return None
+    return ordered[len(ordered) // 2]
+
+
+def _takeoff(
+    fixes: Sequence[tuple[int, TrackPoint]],
+    speeds: Sequence[float | None],
+) -> int | None:
+    """Where the takeoff roll of ``fixes`` begins, as a position in them.
+
+    The first stretch of fixes not known to be slow that climbs like a
+    takeoff (``_gains_quickly``), from the level ground the slow fixes
+    before it waited at for ``TRIM_MOVING_SECONDS`` or more, starting less
+    than ``TRIM_FIELD_M`` above the lowest heights recorded before it
+    (``TRIM_LOW_SHARE`` of them), and nothing before it higher: what the
+    trim then drops was on the ground. A wait in the air (level circling
+    after a winch launch, a hover, the top of a slow climb out) is above
+    the field it rose from, and so is a field above the home the recording
+    began at: both leave the end to the circle. A stretch that climbs
+    slower is skipped (a road over a rise); one that climbs fast but
+    follows no such wait (a slow climb out into the wind, a logger that
+    froze or lost its height in the air, a thermal) leaves the end to the
+    circle, as does a recording that starts on the move. Only the first
+    stretch that climbs like a takeoff counts, so what a slow stretch in
+    the air splits off later never does.
+    """
+    heights = [point.alt or 0.0 for _, point in fixes]
+    times = [point.ts or 0.0 for _, point in fixes]
+    first: int | None = None
+    stopped = moving = False
+    waited = 0
+    for position, speed in enumerate([*speeds, 0.0]):
+        slow = speed is not None and speed < TRIM_FLIGHT_KNOTS
+        if not slow:
+            if speed is not None and first is None:
+                first, moving = position, not stopped
+            continue
+        stopped = True
+        if first is None:
+            continue
+        last, start, first = position - 1, first, None
+        if moving:
+            # From the first fix: on the move, or a stale fix
+            if times[last] - times[0] >= TRIM_MOVING_SECONDS:
+                return None
+            waited = position
+            continue
+        ground = _level(heights[waited:start])
+        long_enough = times[start - 1] - times[waited] >= TRIM_MOVING_SECONDS
+        stretch = heights[start : last + 1]
+        if max(stretch) - heights[start] < TRIM_CLIMB_M or not _gains_quickly(
+            list(zip(times[start : last + 1], stretch, strict=True))
+        ):
+            waited = position
+            continue
+        before = sorted(heights[:start])
+        low = before[int(len(before) * TRIM_LOW_SHARE)]
+        if (
+            ground is None
+            or not long_enough
+            or heights[start] - low >= TRIM_FIELD_M
+            or before[-1] - heights[start] >= TRIM_CLIMB_M
+        ):
+            return None
+        return start
+    return None
+
+
+def _flight_span(path: Sequence[TrackPoint]) -> tuple[int | None, int | None]:
+    """Where the takeoff roll of a path begins and the landing roll ends.
+
+    As indices of ``path`` (``_takeoff``, and the same for the landing on
+    the fixes the other way round). None for an end the times cannot tell:
+    a path without times, one that starts or ends on the move, one whose
+    times run backwards, one whose ground there is not level.
+    """
+    fixes = [
+        (index, point)
+        for index, point in enumerate(path)
+        if point.ts is not None and point.alt is not None
+    ]
+    if len(fixes) < 3 or any(
+        (b.ts or 0.0) < (a.ts or 0.0) for (_, a), (_, b) in pairwise(fixes)
+    ):
+        return None, None
+    speeds = _window_knots(fixes)
+    start = _takeoff(fixes, speeds)
+    # The other way round, with the times running backwards from the end
+    end_ts = fixes[-1][1].ts or 0.0
+    backwards = [
+        (index, point._replace(ts=end_ts - (point.ts or 0.0)))
+        for index, point in reversed(fixes)
+    ]
+    end = _takeoff(backwards, speeds[::-1])
+    return (
+        None if start is None else fixes[start][0],
+        None if end is None else backwards[end][0],
+    )
+
+
+def trim_path_ends(path: Sequence[TrackPoint], metres: float) -> list[TrackPoint]:
+    """``path`` without its ground at either end and what is near it.
+
+    Where the times tell where the flight began and ended (``_flight_span``),
+    everything before its takeoff roll and after its landing roll goes,
+    whatever it is: the taxiing, the spot the aircraft was parked on, a
+    stale fix from before the receiver had its own, a drive to the field or
+    home from it. Then, as at an end the times cannot tell, the points
+    within ``metres`` of where the rest starts and ends go: what is left
+    begins with the first point that is farther from its first point, and
+    ends with the last that is farther from its last. A path that never
+    leaves the circles (a recording of a taxi) is left with its first point
+    alone, which the export leaves out as a path that does not move: kept
+    whole, it would publish the spot.
     """
     if metres <= 0 or len(path) < 2:
         return list(path)
+    takeoff, landing = _flight_span(path)
+    first_index = 0 if takeoff is None else takeoff
+    last_index = len(path) - 1 if landing is None else landing
+    if last_index - first_index >= 1:
+        path = path[first_index : last_index + 1]
     km = metres / 1000
     first, last = path[0], path[-1]
     start = next(

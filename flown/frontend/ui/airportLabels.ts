@@ -469,9 +469,15 @@ export class AirportCodes {
       return found;
     };
     follow();
-    // A panel added to the page may take room at once
+    // A panel added to the page may take room at once, or to the <main>
+    // of the map, where the cross-section goes
     const added = new MutationObserver(() => follow() && changed());
-    added.observe(document.body, { childList: true });
+    for (const parent of [
+      document.body,
+      document.getElementById("map")?.closest("main"),
+    ]) {
+      if (parent) added.observe(parent, { childList: true });
+    }
     return () => {
       panels.disconnect();
       added.disconnect();

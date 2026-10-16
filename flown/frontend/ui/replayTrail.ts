@@ -11,7 +11,7 @@ import type {
 } from "geojson";
 import type { MapApp } from "../mapApp";
 import type { ReplayState, TrailTip } from "./replayState";
-import type { PathSegment } from "../types";
+import type { PathSegment, TrailRun } from "../types";
 import { toLngLat, toLngLatAfter, unwrapLng } from "../utils/mapHelpers";
 import { getColorForAirspeed, getColorForAltitude } from "../utils/colors";
 import { isLiftedAt } from "../calculations/lift";
@@ -216,13 +216,14 @@ export function trailFeatureCollection(
   widthZoom: number,
   level: number,
   epoch = 0,
+  runs: readonly TrailRun[] = state.trailRuns,
 ): FeatureCollection<LineString | MultiPolygon, TrailProperties> {
   const curve = state.smoothed;
   const lifted = state.lifted && isLiftedAt(widthZoom) ? curve : null;
   const tip = state.trailTip;
   return {
     type: "FeatureCollection",
-    features: state.trailRuns.flatMap((run): TrailFeature[] => {
+    features: runs.flatMap((run): TrailFeature[] => {
       // The run the airplane flies on ends where it is
       const cutAt =
         tip?.index === run.lastIndex &&
@@ -276,4 +277,51 @@ export function trailFeatureCollection(
       }));
     }),
   };
+}
+
+/**
+ * What the ribbons of the runs of the trail before the last are cut from
+ * (see ReplayRenderer.flushTrail): written again only once one of these
+ * has changed. The airplane is on the last run, unless a seek left it on
+ * the one before.
+ */
+export type TrailDone = readonly unknown[];
+
+export function trailDone(
+  state: Pick<ReplayState, "trailRuns" | "trailPieces" | "trailTip">,
+  widthZoom: number,
+  level: number,
+  epoch: number,
+): TrailDone {
+  const runs = state.trailRuns;
+  const last = runs[runs.length - 2];
+  const tip = state.trailTip;
+  return [
+    runs,
+    runs.length,
+    last,
+    last?.lastIndex,
+    last && tip?.index === last.lastIndex ? tip : null,
+    state.trailPieces,
+    widthZoom,
+    level,
+    epoch,
+  ];
+}
+
+/** Whether two answers of trailDone are the same */
+export function sameTrailDone(a: TrailDone | null, b: TrailDone): boolean {
+  return !!a && a.every((value, i) => value === b[i]);
+}
+
+/**
+ * Whether `b` only has more runs behind the airplane than `a`: the same
+ * runs, cut the same way
+ */
+export function trailDoneGrew(a: TrailDone | null, b: TrailDone): boolean {
+  return (
+    !!a &&
+    (b[1] as number) > (a[1] as number) &&
+    [0, 5, 6, 7, 8].every((i) => a[i] === b[i])
+  );
 }

@@ -226,8 +226,10 @@ class TestSamplePathElevations:
 # --- The ground of a flight ---------------------------------------------
 
 
-def _row(lon, altitude_ft, speed, lat=50.0):
-    return [lat, lon, altitude_ft, speed]
+def _row(lon, altitude_ft, speed, lat=50.0, time=0.0):
+    """A row with a relative time, as a recording with timestamps has."""
+    row = [lat, lon, altitude_ft, speed]
+    return row if time is None else [*row, time]
 
 
 def _flight(from_ft, to_ft):
@@ -323,6 +325,18 @@ class TestGroundProfile:
         ground = ground_profile_ft(START, rows, _elevations(rows, lambda lon: 0.0))
 
         assert ground == [0, 0, 0, 0]
+
+    def test_rows_without_a_time_are_no_taxiing(self):
+        """A line with a TimeSpan has the average speed in every row: below
+        TAXI_KNOTS, a flight of circuits taxied at its circuit height."""
+        rows = [
+            _row(8.01 + i / 100, altitude, 30, time=None)
+            for i, altitude in enumerate([1000, 1300, 1300, 1300, 1300, 1000])
+        ]
+
+        ground = ground_profile_ft(START, rows, _elevations(rows, lambda lon: 100.0))
+
+        assert ground == [round(100 * METERS_TO_FEET / 10) * 10] * 6
 
     def test_too_little_taxiing_is_no_field(self):
         rows = [_row(8.01, 400, 5), _row(8.02, 400, 5), *_flight(0, 0)[3:5]]

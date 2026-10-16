@@ -39,6 +39,7 @@ export const mockDataManagerInstance = {
   loadAirports: vi.fn(),
   loadMetadata: vi.fn(),
   loadData: vi.fn(),
+  preloadYear: vi.fn(),
   updateLayers: vi.fn(),
   showLoading: vi.fn(),
   hideLoading: vi.fn(),

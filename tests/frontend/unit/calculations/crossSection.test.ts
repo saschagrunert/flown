@@ -17,6 +17,7 @@ import {
   windowSeconds,
   type SectionRequest,
 } from "../../../../flown/frontend/calculations/crossSection";
+import { heatWeight } from "../../../../flown/frontend/calculations/heatLines";
 import type { PathSegment } from "../../../../flown/frontend/types";
 import type { Coordinate } from "../../../../flown/frontend/utils/geometry";
 
@@ -281,6 +282,57 @@ describe("crossSection", () => {
     }));
     const section = crossSection(request([...beside, ...passing]));
     expect(section.totalSeconds).toBe(0);
+  });
+
+  it("measures every segment that reaches into a corridor, whichever way it runs", () => {
+    // Wandering flights over a few dozen kilometres, a long jump among them
+    let seed = 7;
+    const random = (): number =>
+      (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const segments: PathSegment[] = [];
+    let at: Coordinate = [49.9, 7.9];
+    for (let i = 0; i < 3000; i++) {
+      const to: Coordinate =
+        i === 1500
+          ? [50.3, 8.4]
+          : [at[0] + (random() - 0.5) * 0.01, at[1] + (random() - 0.5) * 0.01];
+      segments.push({
+        path_id: Math.floor(i / 300),
+        coords: [at, to],
+        altitude_ft: 1000 + i,
+        groundspeed_knots: 90,
+        time: i * 5,
+        ground_ft: 300,
+      });
+      at = to;
+    }
+    for (let k = 0; k < 20; k++) {
+      const start: Coordinate = [49.85 + random() * 0.4, 7.85 + random() * 0.6];
+      const end: Coordinate = [49.85 + random() * 0.4, 7.85 + random() * 0.6];
+      const halfWidthM = [250, 1000, 5000][k % 3]!;
+      // Every segment measured, without the index
+      const frame = lineFrame(start, end);
+      let seconds = 0;
+      const flights = new Set<number>();
+      segments.forEach((segment, i) => {
+        const span = clipToCorridor(
+          toFrame(frame, segment.coords[0]),
+          toFrame(frame, segment.coords[1]),
+          frame.lengthM,
+          halfWidthM,
+        );
+        const spent = heatWeight(segment, segments[i + 1]);
+        if (!span || !(spent > 0)) return;
+        seconds += spent * (span[1] - span[0]);
+        flights.add(segment.path_id);
+      });
+
+      const section = crossSection(
+        request(segments, { start, end, halfWidthM }),
+      );
+      expect(section.totalSeconds).toBeCloseTo(seconds, 6);
+      expect(section.flights).toBe(flights.size);
+    }
   });
 
   it("keeps a corridor across the antimeridian measuring every segment", () => {

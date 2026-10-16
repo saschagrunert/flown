@@ -162,6 +162,7 @@ export const MAP_SOURCES = {
   selectionHighlightRibbons: "selection-highlight-3d",
   replayTrail: "replay-trail",
   replayTrailRibbons: "replay-trail-3d",
+  replayTrailTipRibbons: "replay-trail-tip-3d",
   airportLabels: "airport-labels",
   terrain: "terrain",
   satellite: "satellite",
@@ -197,6 +198,7 @@ export const MAP_LAYERS = {
   selectionHighlightRibbons: "selection-highlight-3d",
   replayTrail: "replay-trail",
   replayTrailRibbons: "replay-trail-3d",
+  replayTrailTipRibbons: "replay-trail-tip-3d",
   airportLabels: "airport-labels",
   airportDots: "airport-dots",
 } as const;

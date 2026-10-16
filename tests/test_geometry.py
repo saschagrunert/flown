@@ -20,6 +20,7 @@ from flown.geometry import (
     true_bearing,
     web_mercator,
 )
+from flown.types import TrackPoint
 
 latitudes = st.floats(min_value=-90.0, max_value=90.0)
 longitudes = st.floats(min_value=-180.0, max_value=180.0)
@@ -182,3 +183,332 @@ class TestTrimPathEnds:
         """Which the export leaves out, rather than publish the spot."""
         path = _east(0, 50, 100, 20)
         assert trim_path_ends(path, 300) == path[:1]
+
+
+class _Recorder:
+    """A logger writing a fix a second, moving east and north in metres."""
+
+    def __init__(self, lat=51.0, lon=12.0):
+        self.lat, self.lon, self.t = lat, lon, 0.0
+        self.fixes: list[TrackPoint] = []
+
+    def at(self, north_m=0.0, east_m=0.0, alt=100.0):
+        """One fix this far off the current place, which stays."""
+        lat = self.lat + north_m / METRES_PER_DEGREE
+        lon = self.lon + east_m / (METRES_PER_DEGREE * math.cos(math.radians(lat)))
+        self.fixes.append(TrackPoint(lat, lon, alt, self.t))
+        self.t += 1.0
+        return self
+
+    def stand(self, seconds, alt=100.0):
+        for _ in range(seconds):
+            self.at(alt=alt)
+        return self
+
+    def go(self, seconds, knots, alt_from=100.0, alt_to=None, north=False):
+        """Move at ``knots`` for ``seconds``, climbing or sinking evenly."""
+        alt_to = alt_from if alt_to is None else alt_to
+        step = knots * 1852 / 3600
+        for i in range(seconds):
+            if north:
+                self.lat += step / METRES_PER_DEGREE
+            else:
+                self.lon += step / (
+                    METRES_PER_DEGREE * math.cos(math.radians(self.lat))
+                )
+            self.at(alt=alt_from + (alt_to - alt_from) * (i + 1) / seconds)
+        return self
+
+    def circle(self, seconds, alt_from=100.0, alt_to=None, period=24, radius=80):
+        """Circle for ``seconds``, once every ``period``: slow over the
+        ground, as the chord of a circle is short, at the speed of flight."""
+        alt_to = alt_from if alt_to is None else alt_to
+        lat, lon = self.lat, self.lon
+        for i in range(seconds):
+            angle = 2 * math.pi * i / period
+            self.lat, self.lon = lat, lon
+            self.at(
+                north_m=radius * math.sin(angle),
+                east_m=radius * (math.cos(angle) - 1),
+                alt=alt_from + (alt_to - alt_from) * (i + 1) / seconds,
+            )
+        self.lat, self.lon = lat, lon
+        return self
+
+
+def _flight(recorder):
+    """Taxi out, take off, climb, cruise, descend, land, taxi in."""
+    return (
+        recorder.go(120, 10)
+        .go(30, 60)
+        .go(300, 90, 100.0, 1000.0)
+        .go(600, 100, 1000.0)
+        .go(300, 90, 1000.0, 100.0)
+        .go(20, 50)
+        .go(120, 10)
+    )
+
+
+def _within(points, lat, lon, metres):
+    return [
+        point
+        for point in points
+        if haversine_distance(lat, lon, point.lat, point.lon) * 1000 <= metres
+    ]
+
+
+class TestTrimPathEndsOnTheFlight:
+    """--trim-ends measured from the first and the last fix, which a stale
+    fix or a drive home moved away from the parking spot."""
+
+    def test_a_stale_first_fix_publishes_no_parking_spot(self):
+        recorder = _Recorder()
+        recorder.at(north_m=500).stand(60)
+        parked = recorder.fixes[1]
+        _flight(recorder)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert recorder.fixes[0] not in trimmed
+        assert not _within(trimmed, parked.lat, parked.lon, 300)
+        # The circle is measured from where the takeoff roll began
+        assert (
+            haversine_distance(parked.lat, parked.lon, trimmed[0].lat, trimmed[0].lon)
+            > 0.3
+        )
+
+    def test_two_stale_last_fixes_publish_no_parking_spot(self):
+        recorder = _flight(_Recorder().stand(60))
+        recorder.stand(60)
+        parked = recorder.fixes[-1]
+        recorder.at(north_m=700).at(north_m=700)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert not _within(trimmed, parked.lat, parked.lon, 300)
+        assert recorder.fixes[-1] not in trimmed
+
+    def test_the_drive_home_is_not_published(self):
+        recorder = _flight(_Recorder().stand(60)).stand(120)
+        landed = len(recorder.fixes)
+        # Ten minutes on a road at 50 kt, a little down, then home
+        recorder.go(600, 50, 100.0, 80.0, north=True).stand(300, alt=80.0)
+        home = recorder.fixes[-1]
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert not _within(trimmed, home.lat, home.lon, 300)
+        assert all(point in recorder.fixes[:landed] for point in trimmed)
+
+    def test_the_drive_to_the_field_is_not_published(self):
+        """Over a rise on the road, from a home at about the height of the
+        field: the road climbs, slower than a takeoff, and comes down."""
+        recorder = _Recorder().stand(120, alt=90.0)
+        home = recorder.fixes[0]
+        recorder.go(600, 50, 90.0, 160.0, north=True)
+        recorder.go(600, 50, 160.0, 100.0, north=True).stand(300)
+        driven = len(recorder.fixes)
+        _flight(recorder)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert not _within(trimmed, home.lat, home.lon, 300)
+        assert all(point in recorder.fixes[driven:] for point in trimmed)
+
+    def _drops_all_before_the_roll(self, recorder, parked, rolled):
+        trimmed = trim_path_ends(recorder.fixes, 300)
+        assert not _within(trimmed, parked.lat, parked.lon, 300)
+        assert all(point in recorder.fixes[rolled:] for point in trimmed)
+
+    def test_a_receiver_warming_up_high_still_anchors(self):
+        """Forty metres too high for the first half minute, as a cold GPS
+        can be: the field is the lowest the recording was."""
+        recorder = _Recorder().stand(30, alt=140.0).stand(60)
+        parked = recorder.fixes[0]
+        rolled = len(recorder.fixes) + 120
+        _flight(recorder)
+
+        self._drops_all_before_the_roll(recorder, parked, rolled)
+
+    def test_an_apron_above_the_runway_still_anchors(self):
+        """Parked 35 m above the runway, taxiing down to it."""
+        recorder = _Recorder().stand(60, alt=135.0).go(120, 10, 135.0, 100.0)
+        parked = recorder.fixes[0]
+        rolled = len(recorder.fixes)
+        recorder.go(30, 60).go(300, 90, 100.0, 1000.0).go(600, 100, 1000.0)
+        recorder.go(300, 90, 1000.0, 100.0).go(20, 50).go(120, 10)
+
+        self._drops_all_before_the_roll(recorder, parked, rolled)
+
+    def test_the_drive_down_from_a_home_above_the_field_is_not_published(self):
+        recorder = _Recorder().stand(120, alt=150.0)
+        home = recorder.fixes[0]
+        recorder.go(600, 50, 150.0, 100.0, north=True).stand(300)
+        rolled = len(recorder.fixes) + 120
+        _flight(recorder)
+
+        self._drops_all_before_the_roll(recorder, home, rolled)
+
+    @pytest.mark.parametrize("home", [50.0, 0.0, 200.0])
+    def test_a_home_off_the_height_of_the_field_leaves_the_circle(self, home):
+        """A home TRIM_FIELD_M or more below the field, or TRIM_CLIMB_M or
+        more above it, reads as a wait in the air would: the circle alone
+        trims that end, and the drive is published but for the spot it
+        started at."""
+        recorder = _Recorder().stand(120, alt=home)
+        recorder.go(600, 50, home, 100.0, north=True).stand(300)
+        _flight(recorder)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert self._starts_as_without_times(recorder, trimmed)
+
+    def test_a_recording_that_starts_in_the_air_keeps_its_start(self):
+        """Nothing tells where it started: the circle around its first fix."""
+        recorder = _Recorder().go(600, 100, 1000.0).go(300, 90, 1000.0, 100.0)
+        recorder.go(20, 50).go(120, 10).stand(60)
+        parked = recorder.fixes[-1]
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert not _within(trimmed, parked.lat, parked.lon, 300)
+        first = recorder.fixes[0]
+        assert trimmed[0] == next(
+            point
+            for point in recorder.fixes
+            if haversine_distance(first.lat, first.lon, point.lat, point.lon) > 0.3
+        )
+
+    def test_a_flight_at_one_height_trims_as_without_times(self):
+        """A stretch that never climbs is no flight the times can tell."""
+        recorder = _Recorder().go(600, 100)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        untimed = [point._replace(ts=None) for point in recorder.fixes]
+        assert [point.lat for point in trimmed] == [
+            point.lat for point in trim_path_ends(untimed, 300)
+        ]
+
+    def test_a_gap_in_the_recording_tells_no_speed(self):
+        """A logger that paused on the ground: no speed across the gap, and
+        the parked fixes before it are no flight."""
+        recorder = _Recorder().stand(60)
+        parked = recorder.fixes[-1]
+        recorder.t += 600
+        _flight(recorder)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert not _within(trimmed, parked.lat, parked.lon, 300)
+
+    @staticmethod
+    def _airborne_kept(recorder, trimmed, field=100.0):
+        """Every fix of the recording well above the field is published."""
+        kept = {tuple(point) for point in trimmed}
+        return all(
+            tuple(point) in kept
+            for point in recorder.fixes
+            if (point.alt or 0.0) >= field + 100
+        )
+
+    def test_a_logger_that_froze_in_the_air_keeps_the_flight(self):
+        """Slow fixes in cruise end a stretch in the air: no takeoff there."""
+        recorder = _Recorder().stand(60).go(120, 10).go(30, 60)
+        recorder.go(300, 90, 100.0, 1000.0).go(600, 100, 1000.0)
+        recorder.stand(60, alt=1000.0).go(300, 100, 1000.0, 1500.0)
+        recorder.go(600, 100, 1500.0).go(300, 90, 1500.0, 100.0)
+        recorder.go(20, 50).go(120, 10).stand(60)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert self._airborne_kept(recorder, trimmed)
+
+    def test_a_logger_that_lost_its_height_in_the_air_keeps_the_flight(self):
+        recorder = _Recorder().stand(60).go(120, 10).go(30, 60)
+        recorder.go(300, 90, 100.0, 1000.0).go(600, 100, 1000.0)
+        recorder.stand(40, alt=0.0).go(300, 100, 1000.0, 1500.0)
+        recorder.go(300, 90, 1500.0, 100.0).go(20, 50).go(120, 10).stand(60)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert self._airborne_kept(recorder, trimmed)
+
+    def test_a_glider_keeps_its_thermals_and_glides(self):
+        """Circling in a thermal is slow over the ground, in the air."""
+        recorder = _Recorder().stand(60).go(40, 60, 100.0, 400.0)
+        recorder.go(120, 50, 400.0, 300.0).go(240, 20, 300.0, 700.0)
+        recorder.go(120, 50, 700.0, 600.0).go(240, 20, 600.0, 900.0)
+        recorder.go(400, 55, 900.0, 100.0).go(15, 30).stand(60)
+        parked = recorder.fixes[0]
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert self._airborne_kept(recorder, trimmed)
+        assert not _within(trimmed, parked.lat, parked.lon, 300)
+
+    def test_a_slow_takeoff_into_the_wind_keeps_its_climb(self):
+        """Under TRIM_FLIGHT_KNOTS over the ground on the roll and the climb:
+        the first fast stretch starts in the air, over no level ground."""
+        recorder = _Recorder().stand(60).go(120, 10).go(20, 30)
+        climb = len(recorder.fixes)
+        recorder.go(150, 35, 100.0, 400.0)
+        climbed = len(recorder.fixes)
+        recorder.go(600, 50, 400.0).go(200, 45, 400.0, 100.0)
+        recorder.go(15, 30).go(120, 10).stand(60)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        kept = {tuple(point) for point in trimmed}
+        assert all(tuple(point) in kept for point in recorder.fixes[climb:climbed])
+
+    @staticmethod
+    def _starts_as_without_times(recorder, trimmed):
+        """The start the circle alone gives: no wait in the air was taken
+        for the field."""
+        untimed = [point._replace(ts=None) for point in recorder.fixes]
+        return trimmed[0][:3] == trim_path_ends(untimed, 300)[0][:3]
+
+    def test_a_glider_circling_level_after_a_winch_launch_keeps_its_launch(self):
+        """A winch launch into the wind, slow over the ground, a glide, then
+        level circling and a fast climb: the circling is no field."""
+        recorder = _Recorder().stand(180, alt=200.0).go(40, 25, 200.0, 600.0)
+        recorder.go(60, 50, 600.0, 560.0).circle(90, 560.0)
+        recorder.go(200, 55, 560.0, 800.0).go(900, 55, 800.0, 300.0)
+        recorder.go(60, 50, 300.0, 200.0).go(10, 25, 200.0).stand(300, alt=200.0)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert self._starts_as_without_times(recorder, trimmed)
+
+    def test_a_helicopter_hovering_after_a_low_transit_keeps_the_transit(self):
+        """A hover 70 m above the field after a low transit is no field."""
+        recorder = _Recorder().stand(120).go(10, 5, 100.0, 110.0)
+        recorder.go(200, 60, 110.0, 170.0).stand(60, alt=170.0)
+        recorder.go(200, 70, 170.0, 600.0).go(600, 100, 600.0)
+        recorder.go(300, 90, 600.0, 100.0).go(10, 20).stand(120)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert self._starts_as_without_times(recorder, trimmed)
+
+    def test_an_ultralight_climbing_out_slowly_keeps_its_climb_out(self):
+        """Under TRIM_FLIGHT_KNOTS to 70 m above the field, then fast: the
+        fast stretch starts above the field."""
+        recorder = _Recorder().stand(600).go(120, 10).go(60, 30, 100.0, 170.0)
+        recorder.go(300, 70, 170.0, 600.0).go(600, 70, 600.0)
+        recorder.go(300, 70, 600.0, 100.0).go(20, 45).go(120, 10).stand(60)
+
+        trimmed = trim_path_ends(recorder.fixes, 300)
+
+        assert self._starts_as_without_times(recorder, trimmed)
+
+    def test_times_that_run_backwards_trim_as_without_times(self):
+        recorder = _flight(_Recorder().stand(60))
+        fixes = recorder.fixes
+        fixes[100] = fixes[100]._replace(ts=0.0)
+
+        untimed = [point._replace(ts=None) for point in fixes]
+        assert [point[:2] for point in trim_path_ends(fixes, 300)] == [
+            point[:2] for point in trim_path_ends(untimed, 300)
+        ]

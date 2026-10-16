@@ -53,6 +53,7 @@ import {
   ALTITUDE,
   ALTITUDE_SELECTED,
   drawMode,
+  endZoom,
   layerManagerHelpers,
   setupLayerManager,
   teardownLayerManager,
@@ -406,6 +407,24 @@ describe("the relief", () => {
       expect(start("place_town")).toBe(8);
     });
 
+    it("come back after a lost WebGL context built the layers anew where the walk had them", async () => {
+      swapBaseStyle(CARTO_LIKE);
+      await follow();
+      app.terrainActive = true;
+      map().jumpTo({ zoom: 9.2, pitch: 70 });
+      map().emit("moveend");
+      expect(start("place_town")).toBe(8);
+
+      // MapLibre builds the style it kept anew, as new layer objects
+      map().layers = map().layers.map((layer) => ({ ...layer }));
+      map().emit("styledata");
+      expect(start("place_town")).toBe(8);
+
+      map().jumpTo({ pitch: 30 });
+      map().emit("moveend");
+      expect(start("place_town")).toBe(0);
+    });
+
     it("are left alone off the relief, and in a new base style too", async () => {
       await follow();
       map().jumpTo({ zoom: 6.5, pitch: 70 });
@@ -640,7 +659,7 @@ describe("LayerManager on the relief", () => {
       await drawOverHills(11);
       for (const zoom of [11, 4.5]) {
         mockApp.map!.jumpTo({ zoom });
-        mockApp.map!.emit("zoomend");
+        await endZoom(mockApp.map!);
 
         expect(mockApp.terrainActive).toBe(true);
         expect(mockApp.map!.getTerrain()).toEqual({
@@ -744,7 +763,7 @@ describe("LayerManager on the relief", () => {
       mockApp.replayActive = true;
       layerManager.syncModes();
       mockApp.map!.jumpTo({ zoom: 14.1 });
-      mockApp.map!.emit("zoomend", REPLAY_CAMERA_MOVE);
+      await endZoom(mockApp.map!, REPLAY_CAMERA_MOVE);
       const before = writes();
       const ribbonsBefore = setDataCalls(RIBBONS);
 
@@ -757,7 +776,7 @@ describe("LayerManager on the relief", () => {
 
       mockApp.map!.jumpTo({ zoom: 9.3 });
       mockApp.map!.isMoving.mockReturnValue(false);
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       mockApp.map!.emit("moveend");
       // Cut once, for the level the move has ended on
       expect(setDataCalls(RIBBONS) - ribbonsBefore).toBe(1);
@@ -786,7 +805,7 @@ describe("LayerManager on the relief", () => {
       const before = writes().length;
 
       mockApp.map!.jumpTo({ zoom: 7.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
 
       // The relief and the flights exaggerated alike, for the new level
       expect(mockApp.reliefLevel).toBe(7);
@@ -828,7 +847,7 @@ describe("LayerManager on the relief", () => {
       expect(mockApp.map!.featureStates.size).toBe(0);
 
       mockApp.map!.jumpTo({ zoom: 7.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
 
       // The ribbons cut for level 8 take the exaggeration of level 7 in the
       // same task as the relief does, and stay in sight
@@ -856,7 +875,7 @@ describe("LayerManager on the relief", () => {
       // has its own again, the one for 7 that of 8, and the new cut for 8
       // an id of its own
       mockApp.map!.jumpTo({ zoom: 8.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(given(cut8)).toBeUndefined();
       expect(given(cut7)).toBe(liftExaggeration(8));
       expect(idOf(8)).not.toBe(cut8);
@@ -869,7 +888,7 @@ describe("LayerManager on the relief", () => {
       const states = mockApp.map!.setFeatureState.mock.calls.length;
       mockApp.map!.isSourceLoaded.mockImplementation((id) => id !== RIBBONS);
       mockApp.map!.jumpTo({ zoom: 9.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       const calls = mockApp.map!.setFeatureState.mock.calls.slice(states);
       expect(calls.length).toBeGreaterThan(0);
       expect(
@@ -883,12 +902,12 @@ describe("LayerManager on the relief", () => {
       // The cut for level 7 is still on its way as the zoom goes on
       mockApp.map!.isSourceLoaded.mockImplementation((id) => id !== RIBBONS);
       mockApp.map!.jumpTo({ zoom: 7.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       // Level 6 has the exaggeration of 7: they stay in sight
       expect(opacity()).toBeGreaterThan(0);
 
       mockApp.map!.jumpTo({ zoom: 8.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       // The map may still draw the cut for level 6, which it knows by no id
       // and which cannot take the exaggeration of level 8
       expect(opacity()).toBe(0);
@@ -898,11 +917,11 @@ describe("LayerManager on the relief", () => {
       mockApp.map!.emit("render");
       expect(opacity()).toBeGreaterThan(0);
       mockApp.map!.jumpTo({ zoom: 7.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       mockApp.map!.emit("render");
       mockApp.map!.isSourceLoaded.mockImplementation((id) => id !== RIBBONS);
       mockApp.map!.jumpTo({ zoom: 8.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(opacity()).toBeGreaterThan(0);
     });
 
@@ -913,7 +932,7 @@ describe("LayerManager on the relief", () => {
       mockApp.altitudeLayer.setVisible(false);
 
       mockApp.map!.jumpTo({ zoom: 7.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
 
       // Emptied rather than left with the cut for level 8, which would show
       // on the ground of another level until it was cut again
@@ -966,7 +985,7 @@ describe("LayerManager on the relief", () => {
 
       // Within the level it ends in, nothing is cut again either
       mockApp.map!.jumpTo({ zoom: 7.8 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(mockApp.map!.setTerrain).not.toHaveBeenCalled();
       expect(writes()).toHaveLength(before);
     });
@@ -978,7 +997,7 @@ describe("LayerManager on the relief", () => {
       const opacityBefore = opacity();
 
       mockApp.map!.jumpTo({ zoom: 13.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
 
       expect(mockApp.map!.setTerrain).not.toHaveBeenCalled();
       expect(writes().slice(before)).toEqual([heights().length]);
@@ -1001,10 +1020,13 @@ describe("LayerManager on the relief", () => {
       await drawOverHills(7.2);
       expect(features(RIBBONS)).toEqual([]);
 
-      // The next zoom tries again
+      // The switch went back off (layerManager.threeD.test.ts), and the
+      // next press, on another level, asks again
+      expect(mockApp.threeDVisible).toBe(false);
       featureBundle.available = true;
       mockApp.map!.jumpTo({ zoom: 8.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
+      mockApp.store.set("threeDVisible", true);
       await new Promise((resolve) => setTimeout(resolve));
 
       expect(mockApp.terrainActive).toBe(true);
@@ -1021,7 +1043,7 @@ describe("LayerManager on the relief", () => {
       // switchesExaggeration), and 7 has another exaggeration
       mockApp.map!.isSourceLoaded.mockImplementation((id) => id !== "terrain");
       mockApp.map!.jumpTo({ zoom: 7.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(opacity()).toBe(0);
       expect(
         mockApp.map!.layer("replay-trail-3d").paint["fill-extrusion-opacity"],
@@ -1049,7 +1071,7 @@ describe("LayerManager on the relief", () => {
           (id) => id !== "terrain",
         );
         mockApp.map!.jumpTo({ zoom: 7.2 });
-        mockApp.map!.emit("zoomend");
+        await endZoom(mockApp.map!);
         expect(opacity()).toBe(0);
 
         // A slow device: the elevation tiles are still coming in
@@ -1121,7 +1143,7 @@ describe("LayerManager on the relief", () => {
 
       // Another level on the globe lifts them as much as off it
       mockApp.map!.jumpTo({ zoom: 6.5 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(exaggerations()).toEqual(new Set([liftExaggeration(6)]));
       expect(mockApp.map!.getTerrain()).toBeNull();
 
@@ -1152,7 +1174,7 @@ describe("LayerManager on the relief", () => {
 
       // The line between their fields is the same at every level
       mockApp.map!.jumpTo({ zoom: 6.5 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(smoothed()).toBe(onGlobe);
 
       // On the relief each level has its own ground
@@ -1160,7 +1182,7 @@ describe("LayerManager on the relief", () => {
       const onRelief = smoothed();
       expect(onRelief).not.toBe(onGlobe);
       mockApp.map!.jumpTo({ zoom: 9.5 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       expect(smoothed()).not.toBe(onRelief);
     });
 
@@ -1199,7 +1221,7 @@ describe("LayerManager on the relief", () => {
       // Arrived for the next zoom
       featureBundle.held = false;
       mockApp.map!.jumpTo({ zoom: 11.2 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       await new Promise((resolve) => setTimeout(resolve));
       expect(mockApp.terrainActive).toBe(false);
       expect(features(RIBBONS).length).toBeGreaterThan(0);
@@ -1242,7 +1264,7 @@ describe("LayerManager on the relief", () => {
 
       // Not even zoomed in further, on another level
       mockApp.map!.jumpTo({ zoom: 12.1 });
-      mockApp.map!.emit("zoomend");
+      await endZoom(mockApp.map!);
       await new Promise((resolve) => setTimeout(resolve));
       expect(features(RIBBONS)).toEqual([]);
       expect(features(ALTITUDE).length).toBeGreaterThan(0);

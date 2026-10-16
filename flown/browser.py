@@ -222,8 +222,15 @@ def build(
     ``skipped``: the visitor sees the rest, and which file to look at.
     Answers with the years, the extent the map opens on, what was found
     and the warnings of the build; raises the errors of
-    ``export_flight_data`` for inputs that make no site at all. The parses
-    of files that are no longer among the inputs leave the cache.
+    ``export_flight_data`` for inputs that make no site at all.
+
+    What the cache holds of files no longer among the inputs leaves it:
+    their parses, with the real dates and times, whether the build got
+    through or not, and the elevation tiles under them, which show roughly
+    where they went. A tile no flight of a build that got through asked for
+    goes, all of them in a build without the ground, which the next one with
+    it fetches again. A build that failed may not have got to the ground,
+    and keeps the tiles for the next.
     """
     from .parser_cache import prune_cache_entries_except  # noqa: PLC0415
     from .pipeline import export_flight_data  # noqa: PLC0415
@@ -234,17 +241,23 @@ def build(
     # No processes in the page: every pool works here, without trying
     configure_workers(1, processes=False)
     kml_files, aircraft_files = input_files(input_dir)
-    source = TerrariumTiles(get=_xhr_tile_get, workers=1) if terrain else None
-    with _relayed(report, input_dir) as relay:
-        result = export_flight_data(
-            kml_files,
-            output_dir,
-            aircraft_files=aircraft_files,
-            terrain=source,
-            skip_unusable=True,
-            flags=flags,
-        )
-    prune_cache_entries_except(kml_files)
+    tiles = TerrariumTiles(get=_xhr_tile_get, workers=1)
+    built = False
+    try:
+        with _relayed(report, input_dir) as relay:
+            result = export_flight_data(
+                kml_files,
+                output_dir,
+                aircraft_files=aircraft_files,
+                terrain=tiles if terrain else None,
+                skip_unusable=True,
+                flags=flags,
+            )
+        built = True
+    finally:
+        prune_cache_entries_except(kml_files)
+        if built or not terrain:
+            tiles.prune_except(tiles.asked)
     extent = result.extent
     return {
         "years": list(result.years),

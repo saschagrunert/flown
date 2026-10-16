@@ -7,7 +7,12 @@
  */
 import { test, expect } from "./fixtures";
 import type { Page } from "./fixtures";
-import { gotoApp, openMobileSheet, toastMessage } from "./helpers";
+import {
+  expectNoA11yViolations,
+  gotoApp,
+  openMobileSheet,
+  toastMessage,
+} from "./helpers";
 
 const CLOCK = /^\d+:\d{2} into every flight$/;
 
@@ -73,6 +78,7 @@ test.describe("Replay all flights", () => {
       return location.search;
     });
     expect(search).not.toMatch(/[?&]t=/);
+    await expectNoA11yViolations(page, "Replay all controls");
   });
 
   test("pauses with the clock held, and gives the page back as it was", async ({
