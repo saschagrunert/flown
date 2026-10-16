@@ -221,6 +221,41 @@ describe("LayerManager drawing", () => {
       expect(features(ALTITUDE)).toEqual([]);
     });
 
+    it("asks the year worker for one set of lines at a time, and then for the last runs only", () => {
+      const answers: ((answer: unknown) => void)[] = [];
+      mockApp.dataManager.askWorker.mockImplementation(
+        (_ask: unknown, take: (answer: unknown) => void) => answers.push(take),
+      );
+
+      drawMode(layerManager, "altitude");
+      drawMode(layerManager, "altitude");
+      drawMode(layerManager, "altitude");
+      expect(answers).toHaveLength(1);
+
+      answers[0]!({ type: "FeatureCollection", features: ["of before"] });
+      expect(answers).toHaveLength(2);
+      answers[1]!({ type: "FeatureCollection", features: [] });
+      expect(answers).toHaveLength(2);
+      expect(mockApp.map!.source(ALTITUDE).setData).toHaveBeenCalledOnce();
+    });
+
+    it("asks for the next set of lines when writing an answer throws", () => {
+      const answers: ((answer: unknown) => void)[] = [];
+      mockApp.dataManager.askWorker.mockImplementation(
+        (_ask: unknown, take: (answer: unknown) => void) => answers.push(take),
+      );
+      mockApp.dataManager.writeSource.mockImplementationOnce(() => {
+        throw new Error("write");
+      });
+
+      drawMode(layerManager, "altitude");
+      expect(() =>
+        answers[0]!({ type: "FeatureCollection", features: [] }),
+      ).toThrow("write");
+      drawMode(layerManager, "altitude");
+      expect(answers).toHaveLength(2);
+    });
+
     it("writes the lines of every flight itself when the year worker fails", () => {
       const failures: (() => void)[] = [];
       mockApp.dataManager.askWorker.mockImplementation(

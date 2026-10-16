@@ -56,6 +56,7 @@ import {
   takeReopen,
 } from "../state/localFlags";
 import { trustedHtml } from "../utils/trustedHtml";
+import { droppedOf } from "./fileDropWatch";
 
 /** The button in the left column, and the row of the phone's More sheet */
 export const LOCAL_BUTTON_ID = "local-flights-btn";
@@ -94,11 +95,30 @@ export const LINK_OPENED_SITE_MESSAGE =
   "This link opened the site's flights, which it is of";
 export const STORAGE_FAILED_MESSAGE =
   "This browser does not let the page keep files";
+/** Said when the browser's storage for the page is full (QuotaExceededError) */
+export const STORAGE_FULL_MESSAGE =
+  "The browser's storage for this page is full; remove some files";
 export const REMOVED_MESSAGE = "Your files are removed from this browser";
-/** What one drop may add in all: three copies of it are held while it builds */
-export const MAX_DROP_BYTES = 200 * 1024 * 1024;
+/**
+ * What the files kept may come to in all: every build takes all of them,
+ * and holds some copies of them while it runs
+ */
+export const MAX_KEPT_BYTES = 200 * 1024 * 1024;
 export const TOO_LARGE_MESSAGE =
-  "That is more than 200 MB at once; drop fewer files at a time";
+  "Your files would come to more than 200 MB; remove some first";
+/** The largest file the build reads (MAX_KML_FILE_SIZE in flown/validation.py) */
+export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+export const CANCELLED_MESSAGE = "The build is stopped; your files are kept";
+/** What Remove all says while it waits for the second press */
+export const CONFIRM_CLEAR_LABEL = "Remove all files?";
+/** How long it waits for it */
+const CONFIRM_CLEAR_MS = 4000;
+/** Said as it asks, for a screen reader the label's change is not */
+export const CONFIRM_CLEAR_MESSAGE =
+  "Press Remove all again to remove all the files from this browser";
+/** A later click this soon after the first is of a triple-click, at the
+ * 500 ms double-click time of most systems */
+const DOUBLE_CLICK_MS = 500;
 
 /**
  * Said in a page framed by another: Your flights does not open there (see
@@ -126,9 +146,92 @@ export function replacedMessage(names: readonly string[]): string {
   return `${names.join(", ")} replaced ${names.length === 1 ? "a file" : "files"} of the same name`;
 }
 
+/**
+ * Said of files of one drop under the same name, in folders of their own:
+ * the store keeps one file a name, the first
+ */
+export function duplicateMessage(names: readonly string[]): string {
+  return `More than one file is named ${names.join(", ")}; the first is kept, rename the others`;
+}
+
+/** Said of a drop with nothing the build takes in it (a folder of others) */
+export const NO_FILES_MESSAGE =
+  "No KML or KMZ files were found in what was dropped";
+/** Said while the folders of a drop are read */
+const READING_MESSAGE = "Reading the folders…";
+
 /** Said of files the browser would not read (one moved since it was picked) */
 export function unreadableMessage(names: readonly string[]): string {
   return `Could not read ${names.join(", ")}; pick ${names.length === 1 ? "it" : "them"} again`;
+}
+
+/** Said of files larger than the build reads (MAX_FILE_BYTES) */
+export function oversizedMessage(names: readonly string[]): string {
+  return `${names.join(", ")} ${names.length === 1 ? "is" : "are"} larger than 100 MB, which the build cannot read`;
+}
+
+/** What a failure to keep something in the store is said as */
+function storageMessage(error: unknown): string {
+  return error instanceof DOMException && error.name === "QuotaExceededError"
+    ? STORAGE_FULL_MESSAGE
+    : STORAGE_FAILED_MESSAGE;
+}
+
+/** What a drop hands over: files, and folders by their entries (dropped) */
+export type Dropped = FileList | readonly (File | FileSystemEntry)[];
+
+function fileOf(entry: FileSystemFileEntry): Promise<File> {
+  return new Promise((resolve, reject) => entry.file(resolve, reject));
+}
+
+/** The entries of a folder, read in the parts the browser hands out */
+async function entriesOf(
+  folder: FileSystemDirectoryEntry,
+): Promise<FileSystemEntry[]> {
+  const reader = folder.createReader();
+  const entries: FileSystemEntry[] = [];
+  for (;;) {
+    const part = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject),
+    );
+    if (!part.length) return entries;
+    entries.push(...part);
+  }
+}
+
+/**
+ * The files of a drop: those dropped, and those in the folders dropped,
+ * however deep. Of a folder only what the build takes: it holds other
+ * files too, which are no mistake of the visitor's. What could not be
+ * read is named in `unreadable`.
+ */
+async function filesOf(
+  dropped: Dropped,
+  unreadable: string[],
+): Promise<File[]> {
+  const files: File[] = [];
+  const walk = async (entry: FileSystemEntry, top: boolean): Promise<void> => {
+    try {
+      if (entry.isDirectory) {
+        const entries = await entriesOf(entry as FileSystemDirectoryEntry);
+        for (const inner of entries) await walk(inner, false);
+      } else if (
+        top ||
+        ACCEPTED.test(entry.name) ||
+        entry.name === AIRCRAFT_FILE
+      ) {
+        files.push(await fileOf(entry as FileSystemFileEntry));
+      }
+    } catch (error) {
+      logError(`Could not read ${entry.name}:`, error);
+      unreadable.push(entry.name);
+    }
+  };
+  for (const item of Array.from(dropped)) {
+    if ("isDirectory" in item) await walk(item, true);
+    else files.push(item);
+  }
+  return files;
 }
 
 /** What the panel says about what is shown */
@@ -191,8 +294,11 @@ function markOwnTab(): void {
   }
 }
 
-/** Set by a start whose dataset another deploy built: the panel rebuilds */
-let staleAtStart = false;
+/**
+ * Set by a start whose dataset is not of the files kept or of this deploy,
+ * to what the panel says as it builds them again
+ */
+let staleAtStart: string | null = null;
 /** The app the page started (reopenAfterSwitch), whose save a reload drops */
 let started: MapApp | null = null;
 /** Set by a start on a link of the site's flights, with the flag set */
@@ -245,7 +351,10 @@ export async function localStartConfig(
   // Of other files than the ones kept (a file removed while the rebuild
   // failed) as well: built again as the panel opens
   if (!upToDate(info, files, config)) {
-    staleAtStart = true;
+    // Said to be an update of the site only where another deploy built
+    // it; otherwise a stopped build of a drop left it behind
+    staleAtStart =
+      info.build === siteBuild(config) ? BUILDING_MESSAGE : REBUILDING_MESSAGE;
     return null;
   }
   markOwnTab();
@@ -334,7 +443,7 @@ const PANEL_HTML =
   "such as 1_DEAGJ_DA20.kml " +
   `(<a href="${NAMING_DOCS_URL}" target="_blank" rel="noopener">how to ` +
   "name them</a>), and the year from the times in it; add an aircraft.json " +
-  "for the model names. Up to 200 MB at a time.</p>" +
+  "for the model names. Folders too, up to 200 MB in all.</p>" +
   '<ul class="local-flights-files" aria-label="Your files"></ul>' +
   '<ul class="local-flights-warnings" aria-label="What the build said" hidden></ul>' +
   '<p class="local-flights-status" role="status"></p>' +
@@ -343,6 +452,7 @@ const PANEL_HTML =
   "Without the ground under the flights</label>" +
   '<div class="local-flights-actions">' +
   '<button type="button" class="btn-surface" data-local="show">Show my flights</button>' +
+  '<button type="button" class="btn-surface" data-local="cancel" hidden>Stop the build</button>' +
   '<button type="button" class="btn-surface" data-local="site">Show the site’s flights</button>' +
   '<button type="button" class="btn-surface" data-local="clear">Remove all</button>' +
   "</div>" +
@@ -363,13 +473,25 @@ export class LocalFlights {
   private readonly input: HTMLInputElement;
   private readonly terrainOff: HTMLInputElement;
   private readonly actions: Record<
-    "show" | "site" | "clear",
+    "show" | "cancel" | "site" | "clear",
     HTMLButtonElement
   >;
   private files: StoredFile[] = [];
   private info: LocalInfo | null;
   private building = false;
+  /** Set while the dataset a build made is being kept: too late to stop */
+  private keeping = false;
   private buildAgain = false;
+  /**
+   * Whether a build asked for since the last one ended goes on to show the
+   * flights: a drop and Show my flights do, a removal or the ground asked
+   * for otherwise only where the visitor's flights are shown already
+   */
+  private reveal = false;
+  /** The wait for the second press of Remove all, while there is one */
+  private confirming: ReturnType<typeof setTimeout> | undefined;
+  /** When Remove all began to ask (Date.now()) */
+  private askedAt = 0;
   /** Counts up as files go, so a build of files since removed is dropped */
   private generation = 0;
   /**
@@ -384,6 +506,12 @@ export class LocalFlights {
    * meanwhile would go with it, or come back as the flights it removed
    */
   private clearing: Promise<unknown> = Promise.resolve();
+  /**
+   * The drops being kept, one after the other: each checks what is kept
+   * already against the cap (MAX_KEPT_BYTES), which two at once would
+   * each pass alone
+   */
+  private adding: Promise<unknown> = Promise.resolve();
   private opener: HTMLElement | null = null;
   private readonly lifetime = new AbortController();
 
@@ -414,6 +542,7 @@ export class LocalFlights {
     this.terrainOff.checked = storedFlag(NO_TERRAIN_KEY);
     this.actions = {
       show: panel.querySelector('[data-local="show"]')!,
+      cancel: panel.querySelector('[data-local="cancel"]')!,
       site: panel.querySelector('[data-local="site"]')!,
       clear: panel.querySelector('[data-local="clear"]')!,
     };
@@ -444,9 +573,10 @@ export class LocalFlights {
       "change",
       () => {
         storeFlag(NO_TERRAIN_KEY, this.terrainOff.checked);
-        // Built again the way asked for, as a changed set of files is
+        // Built again the way asked for, as a changed set of files is,
+        // and shown only where the visitor's flights are shown already
         this.clearAlert();
-        if (this.files.length) void this.build();
+        if (this.files.length) void this.build(BUILDING_MESSAGE, false);
       },
       listen,
     );
@@ -472,8 +602,8 @@ export class LocalFlights {
         // map hides on it (ui/fileDrop.ts)
         event.preventDefault();
         drop.classList.remove("is-over");
-        const dropped = event.dataTransfer?.files;
-        if (dropped?.length) void this.add(dropped);
+        const files = event.dataTransfer && droppedOf(event.dataTransfer);
+        if (files?.length) void this.add(files);
       },
       listen,
     );
@@ -489,10 +619,26 @@ export class LocalFlights {
       listen,
     );
     this.actions.show.addEventListener("click", () => void this.show(), listen);
+    this.actions.cancel.addEventListener("click", () => this.cancel(), listen);
     this.actions.site.addEventListener("click", () => this.showSite(), listen);
+    // Twice: once, and again while it asks (CONFIRM_CLEAR_LABEL), since
+    // it lets go of everything, a long build among it, with no way back
     this.actions.clear.addEventListener(
       "click",
-      () => void this.clear(),
+      (event) => {
+        // Not the second click of a double-click, however slow, which is
+        // one press, nor the clicks of a triple-click right after; a press
+        // of its own after a pause, however quick the clicks, confirms
+        if (
+          this.confirming !== undefined &&
+          (event.detail === 2 ||
+            (event.detail > 2 && Date.now() - this.askedAt < DOUBLE_CLICK_MS))
+        ) {
+          return;
+        }
+        if (this.confirming === undefined) this.askToClear();
+        else void this.clear();
+      },
       listen,
     );
     // The page's Escape, after whatever is open inside it took its own
@@ -559,6 +705,8 @@ export class LocalFlights {
 
   close(restoreFocus = true): void {
     if (this.panel.hidden) return;
+    // Opened again, one press would remove everything
+    this.stopAsking();
     const focused = this.panel.contains(document.activeElement);
     this.panel.hidden = true;
     this.setButtonExpanded(false);
@@ -571,6 +719,14 @@ export class LocalFlights {
 
   destroy(): void {
     this.lifetime.abort();
+    this.stopAsking();
+    // A build on its way is let go of, as a stop lets go of one: nothing it
+    // ends with is said, kept or shown, and none queued after it starts
+    this.run++;
+    this.building = false;
+    this.buildAgain = false;
+    this.reveal = false;
+    this.panel.hidden = true;
     this.builder.destroy();
     this.panel.remove();
     this.setButtonExpanded(false);
@@ -615,6 +771,32 @@ export class LocalFlights {
   }
 
   private render(): void {
+    // A control with the focus that the redraw removes or hides would drop
+    // it to the page, and the next Tab would start there again
+    const focused = document.activeElement;
+    const had =
+      focused instanceof HTMLElement && this.panel.contains(focused)
+        ? focused
+        : null;
+    const removes = (): HTMLElement[] =>
+      Array.from(this.list.querySelectorAll<HTMLElement>("[data-remove]"));
+    const removeIndex = had ? removes().indexOf(had) : -1;
+    this.draw();
+    if (!had || (had.isConnected && !had.closest("[hidden]"))) return;
+    const left = removes();
+    // The Remove that took its place, an action still there (Stop the
+    // build, for Show my flights), the files' field, Close
+    [
+      left[Math.min(removeIndex, left.length - 1)],
+      ...Object.values(this.actions),
+      this.input,
+      this.panel.querySelector<HTMLElement>(".local-flights-close"),
+    ]
+      .find((control) => control && !control.closest("[hidden]"))
+      ?.focus();
+  }
+
+  private draw(): void {
     const local = !!this.app.config.localFlights;
     this.shown.textContent = shownMessage(this.app.config.localFlights);
     // The files the last build left out, marked with the reason
@@ -647,12 +829,53 @@ export class LocalFlights {
     );
     this.warnings.hidden = !warnings.length;
     const any = this.files.length > 0;
-    // Show my flights: the dataset is there and the page shows the site's;
-    // a changed set of files is built again as it is shown
-    this.actions.show.hidden = !any || local || this.building;
+    // Show my flights: the dataset is there and the page shows the site's,
+    // or the visitor's are shown but not of the files kept (a build of a
+    // drop was stopped) or not the latest (one built while the panel was
+    // closed, said only by a toast); a changed set of files is built again
+    // as it is shown
+    const current =
+      local &&
+      upToDate(this.info, this.files) &&
+      this.app.config.localFlights?.builtAt === this.info?.builtAt;
+    this.actions.show.hidden = !any || current || this.building;
+    // Not once the build is done and its dataset is being kept, which a
+    // stop would no longer keep from showing
+    this.actions.cancel.hidden = !this.building || this.keeping;
     this.actions.site.hidden = !local;
     this.actions.clear.hidden = !any && !local;
+    if (this.actions.clear.hidden) this.stopAsking();
     if (!this.building) this.say("");
+  }
+
+  /** Remove all asks to be pressed again, for a while */
+  private askToClear(): void {
+    this.actions.clear.textContent = CONFIRM_CLEAR_LABEL;
+    this.askedAt = Date.now();
+    this.confirming = setTimeout(() => this.stopAsking(), CONFIRM_CLEAR_MS);
+    this.say(CONFIRM_CLEAR_MESSAGE);
+  }
+
+  private stopAsking(): void {
+    clearTimeout(this.confirming);
+    this.confirming = undefined;
+    this.actions.clear.textContent = "Remove all";
+    if (this.status.textContent === CONFIRM_CLEAR_MESSAGE) this.say("");
+  }
+
+  /**
+   * Stop the build on its way: the worker goes with it, and the next build
+   * starts another. The files stay, and Show my flights builds them again.
+   */
+  private cancel(): void {
+    if (!this.building || this.keeping) return;
+    this.builder.destroy();
+    this.run++;
+    this.building = false;
+    this.buildAgain = false;
+    this.reveal = false;
+    this.render();
+    this.say(CANCELLED_MESSAGE);
   }
 
   /**
@@ -674,21 +897,73 @@ export class LocalFlights {
   }
 
   /** Keep the dropped files and build them */
-  async add(dropped: FileList | File[]): Promise<void> {
+  async add(dropped: Dropped): Promise<void> {
+    const kept = this.adding.then(() => this.keep(dropped));
+    this.adding = kept.catch(() => undefined);
+    // Outside the queue: a drop while a build runs is kept, and built next
+    if (await kept) await this.build();
+  }
+
+  /** Keep the dropped files; whether there are any to build */
+  private async keep(dropped: Dropped): Promise<boolean> {
     this.clearAlert();
     const files: StoredFileWithBytes[] = [];
     let refused = 0;
     const unreadable: string[] = [];
-    const taken = Array.from(dropped);
-    if (taken.reduce((sum, file) => sum + file.size, 0) > MAX_DROP_BYTES) {
-      this.say(TOO_LARGE_MESSAGE, true);
-      return;
+    const oversized: string[] = [];
+    const duplicates = new Set<string>();
+    const taken = new Map<string, File>();
+    // A large tree takes a while; a build on its way says its own
+    const folders = Array.from(dropped).some(
+      (item) => "isDirectory" in item && item.isDirectory,
+    );
+    if (folders && !this.building) this.say(READING_MESSAGE);
+    const found = await filesOf(dropped, unreadable);
+    if (folders && !this.building) this.say("");
+    for (const file of found) {
+      if (!ACCEPTED.test(file.name) && file.name !== AIRCRAFT_FILE) refused++;
+      else if (file.size > MAX_FILE_BYTES) oversized.push(file.name);
+      else if (taken.has(file.name)) duplicates.add(file.name);
+      else taken.set(file.name, file);
     }
-    for (const file of taken) {
-      if (!ACCEPTED.test(file.name) && file.name !== AIRCRAFT_FILE) {
-        refused++;
-        continue;
-      }
+    const problems = [
+      ...(refused ? [UNSUPPORTED_FILES_MESSAGE] : []),
+      ...(oversized.length ? [oversizedMessage(oversized)] : []),
+      ...(duplicates.size ? [duplicateMessage([...duplicates])] : []),
+    ];
+    if (!taken.size) {
+      const all = [
+        ...problems,
+        ...(unreadable.length ? [unreadableMessage(unreadable)] : []),
+      ];
+      this.say((all.length ? all : [NO_FILES_MESSAGE]).join(". "), true);
+      return false;
+    }
+    // Every build takes all the files kept, these among them
+    let sizes: Map<string, number>;
+    try {
+      await this.clearing;
+      sizes = new Map(
+        (await listFiles()).map((kept) => [kept.name, kept.size]),
+      );
+    } catch (error) {
+      logError("Could not read the files kept:", error);
+      this.say(STORAGE_FAILED_MESSAGE, true);
+      return false;
+    }
+    // Kept by name: one of another size under it is said to be replaced
+    const replaced: string[] = [];
+    for (const { name, size } of taken.values()) {
+      if ((sizes.get(name) ?? size) !== size) replaced.push(name);
+      sizes.set(name, size);
+    }
+    let total = 0;
+    for (const size of sizes.values()) total += size;
+    if (total > MAX_KEPT_BYTES) {
+      this.say(TOO_LARGE_MESSAGE, true);
+      return false;
+    }
+    for (const file of taken.values()) {
       let bytes: ArrayBuffer;
       try {
         bytes = await file.arrayBuffer();
@@ -706,50 +981,45 @@ export class LocalFlights {
         added: Date.now(),
       });
     }
-    const problems = [
-      ...(refused ? [UNSUPPORTED_FILES_MESSAGE] : []),
-      ...(unreadable.length ? [unreadableMessage(unreadable)] : []),
-    ];
+    if (unreadable.length) problems.push(unreadableMessage(unreadable));
     if (!files.length) {
       if (problems.length) this.say(problems.join(". "), true);
-      return;
+      return false;
     }
+    const kept = new Set(files.map((file) => file.name));
+    const replacedKept = replaced.filter((name) => kept.has(name));
+    if (replacedKept.length) problems.push(replacedMessage(replacedKept));
+    if (problems.length) this.say(problems.join(". "), true);
     try {
-      await this.clearing;
-      // Kept by name: one of another size under it is said to be replaced
-      const sizes = new Map(
-        (await listFiles()).map((kept) => [kept.name, kept.size]),
-      );
-      const replaced: string[] = [];
-      for (const { name, size } of files) {
-        if ((sizes.get(name) ?? size) !== size) replaced.push(name);
-        sizes.set(name, size);
-      }
-      if (replaced.length) problems.push(replacedMessage(replaced));
-      if (problems.length) this.say(problems.join(". "), true);
       await putFiles(files);
       void requestPersistence();
     } catch (error) {
       logError("Could not keep the files:", error);
-      this.say(STORAGE_FAILED_MESSAGE, true);
-      return;
+      this.say(storageMessage(error), true);
+      return false;
     }
     await this.refresh();
-    await this.build();
+    return true;
   }
 
   private async remove(name: string): Promise<void> {
     this.clearAlert();
+    // A build on its way of the file is dropped at once
     this.generation++;
     try {
       await removeFile(name);
     } catch (error) {
       logError("Could not remove the file:", error);
       this.say(STORAGE_FAILED_MESSAGE, true);
+      // The file is still kept: the files a build dropped for it, or is
+      // dropping, are built again, which takes up what it was asked for
+      if (this.building || this.reveal) {
+        await this.build(BUILDING_MESSAGE, false);
+      }
       return;
     }
     await this.refresh();
-    if (this.files.length) await this.build();
+    if (this.files.length) await this.build(BUILDING_MESSAGE, false);
     else await this.clear();
   }
 
@@ -763,14 +1033,17 @@ export class LocalFlights {
   }
 
   /**
-   * Build the files kept again: the dataset is of another deploy. One that
+   * Build the files kept again: the dataset is of another deploy, or of
+   * other files than those (a build of a drop stopped). One that
    * fails (offline, or no file makes a flight any more) lets the flag go,
    * so the next visit opens on the site's flights rather than trying again
    * on every one; Show my flights tries again when asked to.
    */
-  async rebuild(): Promise<void> {
+  async rebuild(message = REBUILDING_MESSAGE): Promise<void> {
     await this.refresh();
-    if (this.files.length) await this.build(REBUILDING_MESSAGE);
+    if (this.files.length) await this.build(message);
+    // A page torn down meanwhile let go of the build, not of the flag
+    if (this.lifetime.signal.aborted) return;
     if (!upToDate(this.info, this.files)) storeFlag(LOCAL_FLIGHTS_KEY, false);
   }
 
@@ -779,9 +1052,11 @@ export class LocalFlights {
   }
 
   private async clear(): Promise<void> {
+    this.stopAsking();
     this.clearAlert();
     this.generation++;
     this.buildAgain = false;
+    this.reveal = false;
     // The worker goes with its connection to the cache, which can then go
     // as well: the parsed tracks of the flights are in it. The cache goes
     // first, so a failure to clear the files leaves no parse of them
@@ -789,6 +1064,8 @@ export class LocalFlights {
     this.builder.destroy();
     this.building = false;
     this.run++;
+    // Stop the build goes with the build it stopped
+    this.render();
     const clearing = (async () => {
       await deleteCache();
       await clearAll();
@@ -801,6 +1078,7 @@ export class LocalFlights {
       // Another tab of the page holds them: nothing is said to be gone
       const busy =
         error instanceof Error && error.message === CACHE_BUSY_MESSAGE;
+      this.render();
       this.say(busy ? CACHE_BUSY_MESSAGE : STORAGE_FAILED_MESSAGE, true);
       return;
     }
@@ -843,11 +1121,20 @@ export class LocalFlights {
     this.switchTo(true);
   }
 
-  /** Build the dataset of the files kept, and switch to it */
-  private async build(message = BUILDING_MESSAGE): Promise<void> {
-    // After a Remove all on its way, which may leave nothing to build
+  /**
+   * Build the dataset of the files kept, and switch to it where `reveal`
+   * asks for it or the visitor's flights are shown already; it says they
+   * are ready otherwise, with the way to them
+   */
+  private async build(
+    message = BUILDING_MESSAGE,
+    reveal = true,
+  ): Promise<void> {
+    // After a Remove all on its way, which may leave nothing to build; and
+    // none after the panel is torn down (destroy), by a drop it was keeping
     await this.clearing;
-    if (!this.files.length) return;
+    if (this.lifetime.signal.aborted || !this.files.length) return;
+    if (reveal) this.reveal = true;
     if (this.building) {
       this.buildAgain = true;
       return;
@@ -873,12 +1160,12 @@ export class LocalFlights {
       }
       const options = { flags: await flags, version: siteBuild(config) };
       // A file went while they were read, or all of them with the worker
-      // and its cache (clear): no worker starts again, with a cache of its
-      // own, for files no longer kept. And one went while it built: what it
-      // made is of them, and a Remove all would come back as the flights
-      // it removed.
+      // and its cache (clear), or the build was stopped: no worker starts
+      // again, with a cache of its own, for files no longer kept. And one
+      // went while it built: what it made is of them, and a Remove all
+      // would come back as the flights it removed.
       const outcome =
-        generation !== this.generation
+        generation !== this.generation || run !== this.run
           ? null
           : await this.builder.build(
               inputs,
@@ -891,11 +1178,10 @@ export class LocalFlights {
               options,
             );
       if (!outcome || generation !== this.generation) {
-        // A Remove all said what it left
+        // A Remove all, or the stop, said what it left
         if (run !== this.run) return;
-        this.building = false;
-        this.render();
-        if (this.buildAgain) await this.build();
+        this.settle(generation !== this.generation);
+        if (this.buildAgain) await this.build(BUILDING_MESSAGE, false);
         return;
       }
       const info: LocalInfo = {
@@ -912,17 +1198,30 @@ export class LocalFlights {
         warnings: outcome.warnings ?? [],
         terrain,
       };
-      await putDataset(outcome.files, info);
+      this.keeping = true;
+      this.render();
+      try {
+        await putDataset(outcome.files, info);
+      } finally {
+        this.keeping = false;
+      }
+      // A Remove all while it was kept said what it left
+      if (run !== this.run) return;
       this.info = info;
-      this.building = false;
-      if (this.buildAgain) {
-        await this.build();
+      // And a file removed meanwhile builds again (buildAgain)
+      if (this.buildAgain || generation !== this.generation) {
+        this.settle(generation !== this.generation);
+        if (this.buildAgain) await this.build(BUILDING_MESSAGE, false);
         return;
       }
+      const reveal = this.reveal || !!this.app.config.localFlights;
+      this.building = false;
+      this.reveal = false;
       // The visitor moved on while it built (the first build takes a
       // while): the page is not reloaded under a replay, the tour or
-      // Wrapped, or with the panel closed, but says it is ready
-      if (this.isOpen() && !this.app.mapHeld) {
+      // Wrapped, or with the panel closed, but says it is ready. Nor for
+      // a removal or the ground asked for while the site's flights show.
+      if (reveal && this.isOpen() && !this.app.mapHeld) {
         this.say(BUILT_MESSAGE);
         this.showBuilt();
         return;
@@ -934,28 +1233,42 @@ export class LocalFlights {
         run: () => this.showBuilt(),
       });
     } catch (error) {
-      // Let go of by a Remove all (the worker went with it), which said
-      // what it left
+      // Let go of by a Remove all or the stop (the worker went with it),
+      // which said what it left
       if (run !== this.run) return;
-      this.building = false;
+      this.settle(generation !== this.generation);
       // Of files since removed: what it failed with is not of those kept
       if (generation === this.generation) {
         logError("The build of the flights failed:", error);
-        this.say(error instanceof Error ? error.message : String(error), true);
+        this.say(
+          error instanceof DOMException
+            ? storageMessage(error)
+            : error instanceof Error
+              ? error.message
+              : String(error),
+          true,
+        );
       }
-      this.render();
-      if (this.buildAgain) await this.build();
+      if (this.buildAgain) await this.build(BUILDING_MESSAGE, false);
     }
+  }
+
+  /**
+   * A build ended without showing what it made. `removed`: of files since
+   * removed, whose removal builds the rest next (remove)
+   */
+  private settle(removed = false): void {
+    this.building = false;
+    // Kept for the build asked for meanwhile, or on its way, which goes on
+    if (!this.buildAgain && !removed) this.reveal = false;
+    this.render();
   }
 }
 
 let current: LocalFlights | null = null;
 
 /** Open or close the panel; `dropped` files are added as it opens */
-export function toggleLocalFlights(
-  app: MapApp,
-  dropped?: FileList | File[],
-): void {
+export function toggleLocalFlights(app: MapApp, dropped?: Dropped): void {
   if (framed()) {
     showToast(FRAMED_MESSAGE, "info");
     return;
@@ -1012,10 +1325,11 @@ export function reopenAfterSwitch(
     });
   }
   if (staleAtStart) {
-    staleAtStart = false;
+    const message = staleAtStart;
+    staleAtStart = null;
     takeReopen();
     toggleLocalFlights(app);
-    void current?.rebuild();
+    void current?.rebuild(message);
   } else if (takeReopen()) toggleLocalFlights(app);
   else if (app.config.localFlights) {
     // The button says the page shows the visitor's flights

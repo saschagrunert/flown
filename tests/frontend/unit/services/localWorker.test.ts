@@ -11,6 +11,8 @@ import { webcrypto } from "node:crypto";
 import { ReadableStream } from "node:stream/web";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
+  CACHE_LOAD_MS,
+  CACHE_SLOW_MESSAGE,
   fetchSources,
   importPyodide,
   importVerified,
@@ -69,8 +71,14 @@ class FakePyodide implements PyodideLike {
   answer: string | Error = JSON.stringify(OUTCOME);
   /** What a sync fails with, if anything */
   syncError: unknown = null;
-  /** Whether a sync never comes back: another tab holds the cache */
+  /** Whether a sync never comes back: a cache read in slowly */
   syncHangs = false;
+  /** Whether lxml did not come, which its load does not say (loadPackage) */
+  parserMissing = false;
+  /** Whether lxml's load never settles: its download stalled */
+  parserHangs = false;
+  /** The files under /input as the Python run saw them */
+  inputsAtRun = new Map<string, Uint8Array>();
   readonly ffi = { PythonError };
   readonly globals = {
     set: (name: string, value: unknown): void => {
@@ -123,8 +131,11 @@ class FakePyodide implements PyodideLike {
     },
   };
 
+  // As Pyodide's: it resolves whether or not the package came, and only
+  // warns of one that did not; the import then fails
   loadPackage(name: string): Promise<unknown> {
     this.packages.push(name);
+    if (this.parserHangs) return new Promise(() => {});
     return Promise.resolve();
   }
 
@@ -138,11 +149,17 @@ class FakePyodide implements PyodideLike {
 
   runPython(code: string): unknown {
     this.python.push(code);
+    if (this.parserMissing && code.includes("import lxml")) {
+      throw new PythonError("ModuleNotFoundError: No module named 'lxml'");
+    }
     return undefined;
   }
 
   runPythonAsync(code: string): Promise<unknown> {
     this.python.push(code);
+    this.inputsAtRun = new Map(
+      [...this.files].filter(([path]) => path.startsWith("/input/")),
+    );
     if (this.answer instanceof Error) return Promise.reject(this.answer);
     // The build writes its data files as it answers
     this.FS.mkdirTree("/site/2025");
@@ -221,11 +238,13 @@ describe("Runtime", () => {
     // The cache under the page's name (localCacheDbName), at the root here
     expect(pyodide.mounted).toEqual(["idbfs:/flown-cache"]);
     expect(pyodide.synced).toEqual([true]);
-    expect(pyodide.python[0]).toContain('sys.path.insert(0, "/lib/flown-src")');
-    expect(pyodide.python[0]).toContain(
+    // The parser is tried before anything else of the package runs
+    expect(pyodide.python[0]).toBe("import lxml.etree");
+    expect(pyodide.python[1]).toContain('sys.path.insert(0, "/lib/flown-src")');
+    expect(pyodide.python[1]).toContain(
       'os.environ["FLOWN_CACHE_DIR"] = "/flown-cache"',
     );
-    expect(pyodide.python[0]).toContain('os.environ["HOME"] = "/flown-cache"');
+    expect(pyodide.python[1]).toContain('os.environ["HOME"] = "/flown-cache"');
     expect(PYODIDE_URL).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/pyodide\/v\d/);
   });
 
@@ -236,7 +255,7 @@ describe("Runtime", () => {
     await runtime.ready(vi.fn());
 
     expect(pyodide.mounted).toEqual(["idbfs:/flown-cache%3A%2Fa%2F"]);
-    expect(pyodide.python[0]).toContain(
+    expect(pyodide.python[1]).toContain(
       'os.environ["FLOWN_CACHE_DIR"] = "/flown-cache%3A%2Fa%2F"',
     );
   });
@@ -319,23 +338,27 @@ describe("Runtime", () => {
     pyodide.FS.mkdirTree("/input");
     pyodide.files.set("/input/old.kml", new Uint8Array([8]));
     const progress = vi.fn();
+    const inputs = [
+      { name: "a.kml", bytes: bytes(1, 2, 3) },
+      { name: "sub/b.kml", bytes: bytes(4) },
+    ];
 
-    const outcome = await runtime.build(
-      [
-        { name: "a.kml", bytes: bytes(1, 2, 3) },
-        { name: "sub/b.kml", bytes: bytes(4) },
-      ],
-      true,
-      progress,
-    );
+    const outcome = await runtime.build(inputs, true, progress);
 
-    expect(
-      [...pyodide.files.keys()].filter((p) => p.startsWith("/input")),
-    ).toEqual(["/input/a.kml", "/input/sub_b.kml"]);
-    expect(pyodide.files.get("/input/a.kml")).toEqual(
+    expect([...pyodide.inputsAtRun.keys()]).toEqual([
+      "/input/a.kml",
+      "/input/sub_b.kml",
+    ]);
+    expect(pyodide.inputsAtRun.get("/input/a.kml")).toEqual(
       new Uint8Array([1, 2, 3]),
     );
-    expect(pyodide.files.has("/site/2024/data.json")).toBe(false);
+    // Neither the inputs nor the outputs stay in the worker's memory, nor
+    // the bytes it was handed
+    expect([...pyodide.files.keys()]).toEqual([]);
+    expect([...pyodide.dirs].filter((d) => /^\/(input|site)/.test(d))).toEqual(
+      [],
+    );
+    expect(inputs.map((input) => input.bytes.byteLength)).toEqual([0, 0]);
     const run = pyodide.python.at(-1)!;
     expect(run).toContain(
       'browser.build("/input", "/site", report, terrain=True, flags=json.loads("null"))',
@@ -347,10 +370,6 @@ describe("Runtime", () => {
     ]);
     const metadata = outcome.files.find((f) => f.path === "metadata.json")!;
     expect(new Uint8Array(metadata.bytes)).toEqual(new Uint8Array([1, 2]));
-    // A copy, not the file system's own buffer
-    expect(metadata.bytes).not.toBe(
-      pyodide.files.get("/site/metadata.json")!.buffer,
-    );
     // The cache went out after the build
     expect(pyodide.synced).toEqual([true, false]);
   });
@@ -393,10 +412,32 @@ describe("Runtime", () => {
     pyodide.synced.length = 0;
     pyodide.syncError = new Error("later");
 
+    pyodide.FS.mkdirTree("/input");
+    pyodide.files.set("/input/kept.kml", new Uint8Array([8]));
+
     await expect(runtime.build([], true, vi.fn())).rejects.toThrow(
       "Export failed: no room",
     );
     expect(pyodide.synced).toEqual([false]);
+    // Nor do the files of a build that failed stay
+    expect([...pyodide.files.keys()]).toEqual([]);
+  });
+
+  it("lets the runtime go when lxml did not come, which its load does not say", async () => {
+    const pyodide = new FakePyodide();
+    pyodide.parserMissing = true;
+    const { runtime, loader } = runtimeOf(pyodide);
+
+    const failed = runtime.build([], true, vi.fn());
+
+    // Said as the runtime that could not be loaded, and lost: the page
+    // starts a new worker for the next build
+    await expect(failed).rejects.toThrow(RUNTIME_FAILED_MESSAGE);
+    await expect(failed).rejects.toBeInstanceOf(Error);
+    expect(pyodide.python).toEqual(["import lxml.etree"]);
+    pyodide.parserMissing = false;
+    await expect(runtime.ready(vi.fn())).resolves.toBe(pyodide);
+    expect(loader).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -475,6 +516,23 @@ describe("serveBuilds", () => {
 
     expect(posted.at(-1)).toEqual([
       { id: 6, error: RUNTIME_LOST_MESSAGE, lost: true },
+      undefined,
+    ]);
+  });
+
+  it("answers a parser that did not come as a runtime that could not load, and lost", async () => {
+    const pyodide = new FakePyodide();
+    pyodide.parserMissing = true;
+    const { runtime } = runtimeOf(pyodide);
+    const { posted, send } = scopeOf(runtime);
+
+    send({ id: 7, build: { files: [], terrain: true } });
+    await vi.waitFor(() =>
+      expect(posted.some(([m]) => "error" in m)).toBe(true),
+    );
+
+    expect(posted.at(-1)).toEqual([
+      { id: 7, error: RUNTIME_FAILED_MESSAGE, lost: true },
       undefined,
     ]);
   });
@@ -842,15 +900,69 @@ describe("a start of the runtime that never comes", () => {
     expect(rejected).not.toHaveBeenCalled();
   });
 
+  it("fails the build when lxml's download stalls, rather than load it for good", async () => {
+    vi.useFakeTimers();
+    const pyodide = new FakePyodide();
+    pyodide.parserHangs = true;
+    const watches: RuntimeWatch[] = [];
+    const runtime = new Runtime(
+      () => Promise.resolve(() => Promise.resolve(pyodide)),
+      () => Promise.resolve(new ArrayBuffer(8)),
+      "/flown-cache",
+      () => {
+        const watch = runtimeWatch();
+        watches.push(watch);
+        return watch;
+      },
+    );
+    const build = runtime.build([], true, vi.fn());
+    const failed = expect(build).rejects.toThrow(RUNTIME_FAILED_MESSAGE);
+    // One for the runtime, one for the parser
+    await vi.waitFor(() => expect(watches).toHaveLength(2));
+
+    watches[1]!.begin();
+    await vi.advanceTimersByTimeAsync(DOWNLOAD_IDLE_MS);
+
+    await failed;
+  });
+
   it("says another tab holds the files when the cache does not open in time", async () => {
     vi.useFakeTimers();
     const pyodide = new FakePyodide();
-    pyodide.syncHangs = true;
-    const { runtime } = runtimeOf(pyodide);
+    const runtime = new Runtime(
+      () => Promise.resolve(() => Promise.resolve(pyodide)),
+      () => Promise.resolve(new ArrayBuffer(8)),
+      "/flown-cache",
+      runtimeWatch,
+      // A deletion waiting on another tab holds the opening up
+      () => new Promise<void>(() => {}),
+    );
 
     const build = runtime.build([], true, vi.fn());
     const failed = expect(build).rejects.toThrow(CACHE_BUSY_MESSAGE);
     await vi.advanceTimersByTimeAsync(CACHE_WAIT_MS);
+
+    await failed;
+    expect(pyodide.synced).toEqual([]);
+  });
+
+  it("gives reading the cache in a longer while, and says so when it takes longer", async () => {
+    vi.useFakeTimers();
+    const pyodide = new FakePyodide();
+    pyodide.syncHangs = true;
+    const { runtime } = runtimeOf(pyodide);
+    const build = runtime.build([], true, vi.fn());
+    let settled = false;
+    const failed = expect(
+      build.finally(() => {
+        settled = true;
+      }),
+    ).rejects.toThrow(CACHE_SLOW_MESSAGE);
+
+    // Tens of megabytes of tiles on a slow phone: past the wait on a tab
+    await vi.advanceTimersByTimeAsync(CACHE_WAIT_MS * 2);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(CACHE_LOAD_MS);
 
     await failed;
   });

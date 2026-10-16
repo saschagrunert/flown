@@ -229,6 +229,17 @@ export const LOADING_RUNTIME_MESSAGE = "Loading the Python runtime…";
 export const LOADING_PARSER_MESSAGE = "Loading the KML parser…";
 export const LOADING_PACKAGE_MESSAGE = "Loading the build…";
 
+/**
+ * How long the cache may take to be read into the worker's memory once it
+ * is open: all of it comes in at every start, the airport database and
+ * some hundred elevation tiles, tens of megabytes a slow phone takes a
+ * while over
+ */
+export const CACHE_LOAD_MS = 120_000;
+/** Said when that takes longer */
+export const CACHE_SLOW_MESSAGE =
+  "Reading what the build keeps in this browser took too long; try again";
+
 /** `promise`, or a rejection with `message` after `ms` */
 function within<T>(
   promise: Promise<T>,
@@ -250,6 +261,23 @@ function syncfs(pyodide: PyodideLike, populate: boolean): Promise<void> {
       if (!error) resolve();
       else reject(error instanceof Error ? error : new Error("syncfs failed"));
     });
+  });
+}
+
+/**
+ * Open the IndexedDB database `name` and let it go again: this is what
+ * waits on another tab that holds it, or on a deletion of it that waits on
+ * one (localStore.ts, deleteCache), before the cache in it is read
+ */
+function openDatabase(name: string): Promise<void> {
+  if (typeof indexedDB === "undefined") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(name);
+    request.onsuccess = () => {
+      request.result.close();
+      resolve();
+    };
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB"));
   });
 }
 
@@ -297,9 +325,13 @@ export function pythonErrorMessage(error: unknown): string {
   return match?.[1]?.trim() || last.trim() || "The build failed";
 }
 
-/** Said when the runtime itself failed in a build, which a new one gets */
+/**
+ * Said when the runtime itself failed in a build, which a new one gets:
+ * most often for lack of memory, which every file kept takes its share of
+ * in every build
+ */
 export const RUNTIME_LOST_MESSAGE =
-  "The Python runtime failed; try again, or with fewer files at a time";
+  "The Python runtime failed, perhaps for lack of memory; try again, or remove some files";
 
 /**
  * An error of the build that leaves the runtime fatally failed: anything
@@ -310,15 +342,23 @@ export const RUNTIME_LOST_MESSAGE =
  */
 class RuntimeLost extends Error {}
 
+/** A trap, or what Pyodide says to every call after one */
+function fatal(error: unknown): boolean {
+  return (
+    error instanceof WebAssembly.RuntimeError ||
+    (error instanceof Error && error.message.includes("fatally failed"))
+  );
+}
+
 /**
  * The runtime, loaded once for the worker's lifetime: the package's
  * sources unpacked, the cache directory mounted on IndexedDB and told to
  * the package before it is imported (flown/browser.py says why). A start
- * that fails after Pyodide came (the parser, the package's archive around
- * a deploy, another tab holding the cache) keeps that Pyodide, and the
- * next build tries only the steps after it: a second one would load the
- * whole runtime again, and hold two in memory for a while. Unless the
- * failure was the runtime's own (RuntimeLost).
+ * that fails after Pyodide came (the package's archive around a deploy,
+ * another tab holding the cache) keeps that Pyodide, and the next build
+ * tries only the steps after it: a second one would load the whole runtime
+ * again, and hold two in memory for a while. Unless the failure was the
+ * runtime's own, or its parser's (RuntimeLost, loadParser).
  */
 export class Runtime {
   private pyodide: Promise<PyodideLike> | null = null;
@@ -334,6 +374,8 @@ export class Runtime {
     private readonly cacheDir: string = localCacheDbName(),
     /** What watches each start, a new one for every try (runtimeWatch) */
     private readonly watchStart: () => RuntimeWatch = runtimeWatch,
+    /** Opens the cache's database and lets it go (openDatabase) */
+    private readonly openCache: (name: string) => Promise<void> = openDatabase,
   ) {}
 
   ready(report: ProgressReport, version?: string): Promise<PyodideLike> {
@@ -370,7 +412,7 @@ export class Runtime {
     const pyodide = await this.loaded;
     try {
       report(LOADING_PARSER_MESSAGE);
-      await pyodide.loadPackage("lxml");
+      await this.loadParser(pyodide);
       report(LOADING_PACKAGE_MESSAGE);
       const sources = await this.fetchSources(version);
       pyodide.FS.mkdirTree(SOURCES_DIR);
@@ -381,8 +423,14 @@ export class Runtime {
         this.mounted = true;
       }
       // Held up for as long as another tab holds the cache open, or a
-      // deletion of it waits on one (localStore.ts, deleteCache)
-      await within(syncfs(pyodide, true), CACHE_WAIT_MS, CACHE_BUSY_MESSAGE);
+      // deletion of it waits on one (localStore.ts, deleteCache), which
+      // the opening alone tells; reading it all in has a limit of its own
+      await within(
+        this.openCache(this.cacheDir),
+        CACHE_WAIT_MS,
+        CACHE_BUSY_MESSAGE,
+      );
+      await within(syncfs(pyodide, true), CACHE_LOAD_MS, CACHE_SLOW_MESSAGE);
       pyodide.runPython(
         `import os, sys\n` +
           `sys.path.insert(0, ${JSON.stringify(SOURCES_DIR)})\n` +
@@ -392,16 +440,39 @@ export class Runtime {
     } catch (error) {
       // A trap, or what Pyodide says to every call after one: the runtime
       // is not kept for the next try, and the worker goes with it
-      if (
-        error instanceof WebAssembly.RuntimeError ||
-        (error instanceof Error && error.message.includes("fatally failed"))
-      ) {
+      if (error instanceof RuntimeLost) {
+        this.loaded = null;
+        throw error;
+      }
+      if (fatal(error)) {
         this.loaded = null;
         throw new RuntimeLost(RUNTIME_LOST_MESSAGE, { cause: error });
       }
       throw error;
     }
     return pyodide;
+  }
+
+  /**
+   * lxml, the KML parser. Pyodide's load of a package resolves whether or
+   * not it came: a failed download or a hash that does not match is only
+   * written to the console, and every build would then fail on the import.
+   * And a download that stalls never settles. So the load is watched as
+   * the runtime's is, and the import tried. Either failing lets the runtime
+   * go (RuntimeLost), whose loader may still wait on the stalled download:
+   * the next build starts a worker of its own.
+   */
+  private async loadParser(pyodide: PyodideLike): Promise<void> {
+    const watch = this.watchStart();
+    try {
+      await Promise.race([pyodide.loadPackage("lxml"), watch.failed]);
+      pyodide.runPython("import lxml.etree");
+    } catch (error) {
+      if (fatal(error)) throw error;
+      throw new RuntimeLost(RUNTIME_FAILED_MESSAGE, { cause: error });
+    } finally {
+      watch.stop();
+    }
   }
 
   async build(
@@ -415,12 +486,33 @@ export class Runtime {
       pyodide = await this.ready(report, version);
     } catch (error) {
       if (error instanceof RuntimeLost) throw error;
-      const busy =
-        error instanceof Error && error.message === CACHE_BUSY_MESSAGE;
-      throw new Error(busy ? CACHE_BUSY_MESSAGE : RUNTIME_FAILED_MESSAGE, {
+      const message = error instanceof Error ? error.message : "";
+      const said = [CACHE_BUSY_MESSAGE, CACHE_SLOW_MESSAGE].includes(message);
+      throw new Error(said ? message : RUNTIME_FAILED_MESSAGE, {
         cause: error,
       });
     }
+    try {
+      return await this.run(pyodide, files, terrain, report, flags);
+    } finally {
+      // Nothing of the files stays in the worker's memory between builds:
+      // the page keeps them, and the next build writes them again
+      try {
+        removeTree(pyodide, INPUT_DIR);
+        removeTree(pyodide, OUTPUT_DIR);
+      } catch {
+        // A runtime lost, which goes with the worker
+      }
+    }
+  }
+
+  private async run(
+    pyodide: PyodideLike,
+    files: InputFile[],
+    terrain: boolean,
+    report: ProgressReport,
+    flags: string[] | undefined,
+  ): Promise<BuildOutcome> {
     const fs = pyodide.FS;
     removeTree(pyodide, INPUT_DIR);
     removeTree(pyodide, OUTPUT_DIR);
@@ -429,6 +521,8 @@ export class Runtime {
       // The name decides the aircraft (flown/browser.py)
       const name = file.name.replace(/[/\\]/g, "_");
       fs.writeFile(`${INPUT_DIR}/${name}`, new Uint8Array(file.bytes));
+      // The file system holds its copy; the one handed over can go
+      file.bytes = new ArrayBuffer(0);
     }
     pyodide.globals.set("report", (_level: string, message: string) =>
       report(message),

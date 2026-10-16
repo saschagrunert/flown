@@ -180,7 +180,7 @@ def _obfuscate_inputs(kml_files: list[str]) -> list[str]:
     """
     # Reads the cache directory at import, which --cache-dir sets first
     from .obfuscate import (  # noqa: PLC0415
-        check_kml_obfuscated,
+        check_kml,
         obfuscate_kml_files,
         rename_dated_files,
     )
@@ -209,7 +209,12 @@ def _obfuscate_inputs(kml_files: list[str]) -> list[str]:
 
     failed = False
     for path in renamed:
-        violations = check_kml_obfuscated(path)
+        violations, warnings = check_kml(path)
+        # What may be a date refuses nothing, as in `make obfuscate`
+        for warning in warnings[:MAX_REPORTED_VIOLATIONS]:
+            logger.warning("Possible date to look at in %s: %s", path, warning)
+        if len(warnings) > MAX_REPORTED_VIOLATIONS:
+            logger.warning("  ... and %d more", len(warnings) - MAX_REPORTED_VIOLATIONS)
         if not violations:
             continue
         failed = True
@@ -346,8 +351,9 @@ def _generate(
     images are named by (see ``flown.previews``); None takes it from
     ``FLOWN_SITE_URL``. ``private`` asks search engines not to index
     the site. ``quiet`` leaves out the banner and prints one line at the end.
-    ``trim_ends`` leaves out the points of every flight within that many
-    metres of where it starts and ends (see ``geometry.trim_path_ends``).
+    ``trim_ends`` leaves out the ground of every flight before its takeoff
+    and after its landing, and its points within that many metres of where
+    the rest starts and ends (see ``geometry.trim_path_ends``).
 
     The generated site never carries a flight date finer than the year,
     whatever the inputs hold: the exported paths keep their year, their
@@ -583,10 +589,15 @@ a refused output directory, 1 when the build failed, 130 when interrupted.
         type=_metres,
         default=0,
         help=(
-            "leave out the points of every flight within METRES of where it "
-            "starts and ends, so the taxiing and the spot the aircraft is "
-            "parked on are not published (300 covers most; default: 0, keep "
-            "them)"
+            "leave out what every flight did on the ground before its takeoff "
+            "and after its landing, where its times tell them, and its points "
+            "within METRES of where the rest starts and ends, so the taxiing "
+            "and the spot the aircraft is parked on are not published (300 "
+            "covers most; default: 0, keep them). A drive to or from the field "
+            "goes as well from a home at the field's height or up to 300 ft "
+            "above it: one that starts or ends on the move, or at a home 30 m "
+            "or more below the field or 300 ft or more above it, keeps the "
+            "drive but for METRES around where it starts or ends"
         ),
     )
 

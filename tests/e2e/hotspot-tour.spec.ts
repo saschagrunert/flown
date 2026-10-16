@@ -15,7 +15,7 @@
  * a frame: the state of the page is read in one go where it can be.
  */
 import { test, expect, HEAVY, holdElevationTiles, type Page } from "./fixtures";
-import { gotoApp, readSavedState } from "./helpers";
+import { expectNoA11yViolations, gotoApp, readSavedState } from "./helpers";
 import { getZoom } from "./map";
 
 /** What every step waits for: a frame of the 3D view, and more */
@@ -97,6 +97,7 @@ test.describe("Hotspot tour", HEAVY, () => {
       });
     const first = await tourState(page);
     expect(first.pitch).toBeGreaterThan(30);
+    await expectNoA11yViolations(page, "hotspot tour");
 
     const places = Number(first.count.split(" of ")[1]);
     if (places > 1) {

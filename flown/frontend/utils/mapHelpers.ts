@@ -622,10 +622,13 @@ export const MAP_COMPLETE_TIMEOUT_MS = 5000;
  * while `loaded` stays false until a frame has asked for the new ones. In a
  * frame that is done, and `loaded` waits on more than the tiles (the
  * labels' glyphs), which the reveal of Wrapped's far globe is not to wait
- * for. The frames are `render`s, not `idle`, which a map whose heat cloud
- * pulses never reaches. After `timeoutMs` at the latest: a tile that does not load,
- * offline, must not hold the caller for good. At once when `signal` aborts,
- * as for a caller that no longer waits (the close of Wrapped).
+ * for. The frames are `render`s, not `idle`, which waits for `loaded` as
+ * well, and says nothing of rest where the heat cloud pulses: a repaint
+ * asked for within a frame does not hold it back (MapLibre 6.13), so such
+ * a map fires it at every frame. After `timeoutMs` at the latest: a tile
+ * that does not load, offline, must not hold the caller for good. At once
+ * when `signal` aborts, as for a caller that no longer waits (the close of
+ * Wrapped).
  */
 export function whenMapComplete(
   map: MapLibreMap,

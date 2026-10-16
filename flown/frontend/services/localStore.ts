@@ -89,8 +89,14 @@ function settle<T>(request: IDBRequest<T>): Promise<T> {
 function done(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () =>
-      reject(transaction.error ?? new Error("IndexedDB"));
+    // The error of the request that failed, which the event comes up from
+    // (a put over the quota): the transaction's own is still null then
+    transaction.onerror = (event) =>
+      reject(
+        (event.target as { error?: DOMException | null } | null)?.error ??
+          transaction.error ??
+          new Error("IndexedDB"),
+      );
     transaction.onabort = () =>
       reject(transaction.error ?? new Error("IndexedDB aborted"));
   });

@@ -578,6 +578,14 @@ class TestPositionSpikes:
         fixes[-1] = (50.0, 0.0, fixes[-1][2])
         assert _position_spikes(fixes) == {0, 9}
 
+    @pytest.mark.parametrize("count", [3, 4])
+    def test_a_stale_first_fix_of_a_short_track(self, count):
+        """Too short for the share of the rest an end needs (regression)."""
+        fixes = [(0.0, 11.0, 0.0)] + [
+            (48.0, 11.0 + 0.0001 * i, 1.0 + i) for i in range(count - 1)
+        ]
+        assert _position_spikes(fixes) == {0}
+
     def test_fast_flight_is_no_spike(self):
         """580 kt for every step: as fast as the limit allows, and kept."""
         fixes = [(50.0, 8.0 + 0.0416 * i, i * 10.0) for i in range(10)]
@@ -596,6 +604,79 @@ class TestPositionSpikes:
 
     def test_too_few_fixes_to_tell(self):
         assert _position_spikes([(50.0, 8.0, 0.0), (0.0, 8.0, 10.0)]) == set()
+
+    def test_a_run_of_spikes_between_two_that_agree(self):
+        """Two or three zeroed fixes in a row were all kept: the map went to
+        the equator, and a 30 km flight measured 10,000 km (regression)."""
+        for run in (2, 3):
+            fixes = _east(600, step_s=1.0)
+            for index in range(300, 300 + run):
+                fixes[index] = (0.0001 * (index - 299), 8.0, fixes[index][2])
+            assert _position_spikes(fixes) == set(range(300, 300 + run))
+
+    def test_spikes_in_a_row_at_different_places(self):
+        fixes = _east(600, step_s=1.0)
+        fixes[300] = (0.0, *fixes[300][1:])
+        fixes[301] = (50.0, 0.0, fixes[301][2])
+        assert _position_spikes(fixes) == {300, 301}
+
+    def test_stale_fixes_at_either_end(self):
+        """The fixes of the last flight, 500 km off, before the receiver had
+        its own; one of them alone was dropped, more were not (regression)."""
+        fixes = _east(600, step_s=1.0)
+        for index in (0, 1, 2, 598, 599):
+            fixes[index] = (52.0, 13.0, fixes[index][2])
+        assert _position_spikes(fixes) == {0, 1, 2, 598, 599}
+
+    def test_good_fixes_between_spikes_stay(self):
+        """A spike at every other fix took the good ones between with it."""
+        fixes = _east(600, step_s=1.0)
+        for index in range(1, 18, 2):
+            fixes[index] = (0.0001, 8.0, fixes[index][2])
+        assert _position_spikes(fixes) == set(range(1, 18, 2))
+
+    def test_a_lagging_clock_is_no_spike(self):
+        """Fixes along the flight a few kilometres apart and a fraction of a
+        second: no aircraft flies that fast, but this one flew there."""
+        fixes = _east(600, step_s=1.0)
+        start = fixes[300][2]
+        for offset in range(12):
+            fixes[300 + offset] = (
+                50.0 + 0.02 * (offset + 1),
+                fixes[300][1],
+                start + 0.05 * offset,
+            )
+        assert _position_spikes(fixes) == set()
+
+    def test_a_long_stretch_elsewhere_stays(self):
+        """Too many fixes for a spike: the track goes on there."""
+        fixes = _east(600, step_s=1.0)
+        for index in range(300, 400):
+            fixes[index] = (0.0, *fixes[index][1:])
+        assert _position_spikes(fixes) == set()
+
+    @pytest.mark.parametrize(
+        ("coord", "when"),
+        [
+            # The whole record zeroed, its time the GPS epoch, which the
+            # timestamp check drops
+            ("0 0 0", "1980-01-06T00:00:00Z"),
+            ("8.035 0 500", "not a time"),
+        ],
+    )
+    def test_a_spike_without_a_time_leaves_the_path(self, coord, when):
+        """Only the fixes with a time were checked (regression)."""
+        start = datetime(2025, 6, 1, 10, 0, tzinfo=UTC)
+        whens = [_iso(start + timedelta(seconds=10 * i)) for i in range(20)]
+        coords = [f"{8.0 + 0.007 * i:.3f} 50.0 500" for i in range(20)]
+        coords[10] = coord
+        whens[10] = when
+        track = _track(_placemark(_document(), name="EDDS - EDDP"), coords, whens)
+
+        coordinates, path_groups, _ = _run([track])
+
+        assert len(path_groups[0]) == len(coordinates) == 19
+        assert min(point.lat for point in coordinates) == 50.0
 
     def test_a_spike_leaves_the_path_and_the_heat(self):
         start = datetime(2025, 6, 1, 10, 0, tzinfo=UTC)

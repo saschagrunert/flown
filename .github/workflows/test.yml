@@ -140,7 +140,7 @@ jobs:
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           status=0
-          git grep -Izl -e '' -- ':(exclude)data/' ":(exclude)$FLOWN_INPUT_DIR/" > "$RUNNER_TEMP/text-files"
+          git grep -Izl -e '' -- ':(exclude)data/' ':(exclude,glob,icase)**/*.km[lz]' > "$RUNNER_TEMP/text-files"
           xargs -0 end-of-file-fixer < "$RUNNER_TEMP/text-files" || status=1
           xargs -0 trailing-whitespace-fixer --markdown-linebreak-ext=md < "$RUNNER_TEMP/text-files" || status=1
           git grep -Izl -e '' | xargs -0 check-merge-conflict --assume-in-merge || status=1
@@ -205,11 +205,16 @@ jobs:
         with:
           extras: test dev
           flights: ${{ env.FLOWN_INPUT_DIR }}
-      # The export contract test reads the data files of a real build
+      # The export contract test reads the data files of a real build. Of
+      # the flights the site is published from: without the ground of a
+      # flight the deploy fails (the site job), so a pull request that adds
+      # one over a tile that cannot be fetched fails here already. The e2e
+      # sites are built from data/, whatever FLOWN_INPUT_DIR says.
       - name: Build the site from the current sources
         run: python -m flown "$FLOWN_INPUT_DIR" --output-dir docs
         env:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
+          FLOWN_REQUIRE_TERRAIN: "1"
       # In an order of its own every run, so a test that only passes after
       # another one shows; the log names the seed to repeat it with
       # (`npx vitest run --sequence.seed=<seed>`). pytest does the same
@@ -221,8 +226,9 @@ jobs:
       # slowest tests are listed, so one that grows shows in the log. The
       # property tests replay the same examples on every run, and the
       # properties job draws new ones (see tests/conftest.py). A copy of the
-      # repository with flights of its own skips the tests written against
-      # these (see doc/hosting.md)
+      # repository whose data/ holds flights of its own, as before
+      # FLOWN_INPUT_DIR, skips the tests written against these (see
+      # doc/hosting.md)
       - name: Run Python tests with coverage
         run: pytest -n auto --durations=15 --cov --cov-report=xml:coverage/coverage.xml --cov-report=term
         env:
@@ -327,6 +333,11 @@ jobs:
   # site has a tile API key and a default build has none, so there are two:
   # one with a dummy key and one without (see the e2e job). The fixture site
   # of the visual job is built here as well, with the same bundles.
+  #
+  # Both are built from data/, not from FLOWN_INPUT_DIR: the specs are
+  # written against the flights of this repository, which a copy keeps in
+  # data/ next to its own (see doc/hosting.md), so its pull requests get the
+  # e2e jobs as well.
   e2e-sites:
     if: *not-weekly
     runs-on: ubuntu-24.04
@@ -337,38 +348,40 @@ jobs:
       - name: Set up the site build
         uses: ./.github/actions/site-build-setup
         with:
-          flights: ${{ env.FLOWN_INPUT_DIR }}
+          flights: data
       # tests/e2e/fixtures.ts answers the tile servers locally, so the dummy
-      # key never leaves the runner. Without the ground of a flight the
-      # deploy fails (the site job), so a pull request that adds one over a
-      # tile that cannot be fetched fails here already, and the e2e jobs
-      # test a site with all of its ground. The build without a key reads
-      # the same tiles from the cache this one filled.
+      # key never leaves the runner. The e2e jobs test a site with all of its
+      # ground. The build without a key reads the same tiles from the cache
+      # this one filled.
       - name: Build the site with a dummy tile API key
-        run: python -m flown "$FLOWN_INPUT_DIR" --output-dir e2e-sites/dummy
+        run: python -m flown data --output-dir e2e-sites/dummy
         env:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
           FLOWN_REQUIRE_TERRAIN: "1"
           CARTO_API_KEY: e2e-carto
       - name: Build the site without a tile API key
-        run: python -m flown "$FLOWN_INPUT_DIR" --output-dir e2e-sites/none
+        run: python -m flown data --output-dir e2e-sites/none
         env:
           FLOWN_REQUIRE_AIRPORT_DB: "1"
           CARTO_API_KEY: ""
+      # Kept for three days, as are the others here: "Re-run failed jobs"
+      # on an e2e or visual job does not run this job again, and with the
+      # site gone that re-run fails at its download, which reads like a new
+      # failure
       - name: Upload the site with a dummy tile API key
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-site-dummy
           path: e2e-sites/dummy
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 3
       - name: Upload the site without a tile API key
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-site-none
           path: e2e-sites/none
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 3
       # The visual job compares this site inside the Playwright image, where
       # the package's own Python is not available (actions/setup-python
       # installs one there that cannot start: its scripts point at the tool
@@ -383,7 +396,7 @@ jobs:
           name: visual-site
           path: visual-site
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 3
 
   # Runs in the Playwright image the visual job uses (see there for how it is
   # pinned and bumped), so the browsers and the libraries they draw with are
@@ -403,8 +416,9 @@ jobs:
     name: e2e (${{ matrix.name }})
     needs: e2e-sites
     # Not for Dependabot's Playwright bumps, see the top, and not in a copy
-    # of the repository with flights of its own: the specs expect these
-    # (FLOWN_OWN_FLIGHTS, see doc/hosting.md)
+    # of the repository whose data/ holds flights of its own, as before
+    # FLOWN_INPUT_DIR: the specs expect these (FLOWN_OWN_FLIGHTS, see
+    # doc/hosting.md)
     if: >- # zizmor: ignore[bot-conditions]
       github.event_name != 'schedule' &&
       vars.FLOWN_OWN_FLIGHTS != '1' &&
@@ -743,9 +757,8 @@ jobs:
       # package uv.lock pins, every extra and the build group among them,
       # exported with their hashes, so it reads the pins as they are, without
       # pip resolving anything: --no-deps warned on every call, and left out
-      # a package (packaging) that the requirements files of pip-compile
-      # pinned. --quiet keeps the export out of the log, as in the packaging
-      # job.
+      # a package (packaging) that the lock pinned. --quiet keeps the export
+      # out of the log, as in the packaging job.
       - name: Audit the Python lock file
         if: steps.deps.outputs.audit == 'true'
         run: |
@@ -850,28 +863,38 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # New examples for the property tests, weekly and in a manual run, ten
-  # times as many for a test that sets no number of its own. The unit job
-  # replays the same ones on every run (see tests/conftest.py), so an
-  # example drawn there by chance cannot fail a pull request it has nothing
-  # to do with. A failure prints the blob that reproduces it, and the
-  # example goes into its test with @example. The tests need neither the
-  # bundles nor a site.
+  # New examples for the property tests, Hypothesis and fast-check, weekly
+  # and in a manual run, ten times as many for a test that sets no number of
+  # its own. The unit job replays the same ones on every run (see
+  # tests/conftest.py and tests/frontend/setup.ts), so an example drawn
+  # there by chance cannot fail a pull request it has nothing to do with. A
+  # failure prints the blob (or the seed and path) that reproduces it, and
+  # the example goes into its test, with @example for Hypothesis. The tests
+  # need neither the bundles nor a site.
   properties:
     if: *weekly-or-manual
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - *checkout
-      - name: Set up Python and uv
+      - name: Set up Python, uv and Node.js
         uses: ./.github/actions/setup-toolchain
         with:
           python: "true"
-          npm-cache: "false"
       - name: Install Python dependencies
         run: uv sync --locked --extra test
+      - name: Install npm dependencies
+        run: npm ci
       - name: Run the property tests with new examples
         run: pytest -n auto -m hypothesis
+        env:
+          FLOWN_HYPOTHESIS_EXPLORE: "1"
+      # The fast-check tests likewise (see tests/frontend/setup.ts): every
+      # test file that imports it, so a new one is drawn for as well. A
+      # failure prints the seed and path that replay it.
+      - name: Run the JavaScript property tests with new examples
+        if: ${{ !cancelled() }}
+        run: git grep -lz -e "from \"fast-check\"" -- 'tests/frontend/**/*.test.ts' | xargs -0 -r npx vitest run
         env:
           FLOWN_HYPOTHESIS_EXPLORE: "1"
 
@@ -886,8 +909,8 @@ jobs:
   # (below): a new advisory would hold back every pull request, the flights
   # among them. A job may be skipped only where its own
   # condition skips it on purpose, Dependabot's own pushes to a Playwright
-  # branch (see the top), and the e2e jobs in a copy of the
-  # repository with flights of its own (FLOWN_OWN_FLIGHTS); anywhere
+  # branch (see the top), and the e2e jobs in a copy of the repository
+  # whose data/ holds flights of its own (FLOWN_OWN_FLIGHTS); anywhere
   # else a skip, a failure or a cancellation fails this job. The weekly run
   # has none of these jobs.
   checks:

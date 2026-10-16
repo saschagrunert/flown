@@ -321,6 +321,12 @@ class TestTripWarning:
         assert run_check(repo, push_of(sha)) == 0
         assert capsys.readouterr().err == ""
 
+    def test_warns_for_the_flights_of_a_copy_outside_data(self, repo, capsys):
+        """A copy keeps its flights where FLOWN_INPUT_DIR says (doc/hosting.md)."""
+        sha = commit(repo, {"flights/2025/2.KML": CLEAN_KML})
+        assert run_check(repo, push_of(sha)) == 0
+        assert "flights of one trip (flights/2025/2.KML)" in capsys.readouterr().err
+
     def test_a_kmz_is_checked_and_refused(self, repo, capsys):
         """The check cannot read into the archive, so it cannot pass it."""
         sha = commit(repo, {"data/2.kmz": "PK"})
@@ -563,6 +569,33 @@ class TestCheckRange:
         assert pre_push.check_range(repo, base, sha) == 1
         assert f"{sha[:7]} commit message: 16082026" in capsys.readouterr().err
 
+    def test_lists_possible_dates_apart_after_the_refusal(self, repo, capsys):
+        """A warning is no refusal: its own block, after the refusal, with
+        the commit shortened as the refused files' are."""
+        base = git(repo, "rev-parse", "HEAD")
+        possible = CLEAN_KML.replace(
+            "</kml>", "<name>Flyg 16 augusti 2026</name></kml>"
+        )
+        warned = commit(repo, {"data/3.kml": possible})
+        dated = commit(repo, {"data/2.kml": REAL_KML})
+        assert pre_push.check_range(repo, base, dated) == 1
+        err = capsys.readouterr().err
+        refused = err.index("Push refused")
+        block = err.index("Possible dates to look at (not refused):")
+        assert err.index(f"  {dated[:7]} data/2.kml: ") < refused < block
+        assert err.index(f"  {warned[:7]} data/3.kml: May be a date") > block
+
+    def test_a_possible_date_alone_passes(self, repo, capsys):
+        base = git(repo, "rev-parse", "HEAD")
+        possible = CLEAN_KML.replace(
+            "</kml>", "<name>Flyg 16 augusti 2026</name></kml>"
+        )
+        sha = commit(repo, {"data/3.kml": possible})
+        assert pre_push.check_range(repo, base, sha) == 0
+        err = capsys.readouterr().err
+        assert f"  {sha[:7]} data/3.kml: May be a date" in err
+        assert "refused:" not in err.replace("(not refused):", "")
+
     def test_skips_what_the_base_has(self, repo):
         commit(repo, {"data/2.kml": REAL_KML})
         base = commit(repo, {"data/2.kml": CLEAN_KML})
@@ -593,6 +626,81 @@ class TestCheckRange:
     def test_the_range_needs_both_ends(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["pre_push.py", "--range", "HEAD"])
         assert pre_push.main() == 2
+
+
+class TestCheckFiles:
+    """The pre-commit hook checks the KML files a commit stages, anywhere."""
+
+    def test_passes_clean_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "flights").mkdir()
+        (tmp_path / "flights" / "2.kml").write_text(CLEAN_KML)
+        assert pre_push.check_files(["flights/2.kml"]) == 0
+
+    def test_refuses_a_real_date_outside_data(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "flights" / "2025").mkdir(parents=True)
+        (tmp_path / "flights" / "2025" / "2.KML").write_text(REAL_KML)
+        (tmp_path / "3.kml").write_text(CLEAN_KML)
+        assert pre_push.check_files(["flights/2025/2.KML", "3.kml"]) == 1
+        err = capsys.readouterr().err
+        assert "flights/2025/2.KML: " in err
+        assert "3.kml" not in err
+        assert "Commit refused" in err
+
+    def test_warns_of_a_possible_date_and_passes(self, tmp_path, monkeypatch, capsys):
+        """A day, a word and a year the patterns do not know refuses nothing."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "2.kml").write_text(
+            CLEAN_KML.replace("</kml>", "<name>Flyg 16 augusti 2026</name></kml>")
+        )
+        assert pre_push.check_files(["2.kml"]) == 0
+        err = capsys.readouterr().err
+        assert "not refused" in err
+        assert "2.kml: May be a date in another language" in err
+
+    def test_lists_possible_dates_after_the_refusal(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "2.kml").write_text(REAL_KML)
+        (tmp_path / "3.kml").write_text(
+            CLEAN_KML.replace("</kml>", "<name>Flyg 16 augusti 2026</name></kml>")
+        )
+        assert pre_push.check_files(["2.kml", "3.kml"]) == 1
+        err = capsys.readouterr().err
+        refused = err.index("Commit refused")
+        block = err.index("Possible dates to look at (not refused):")
+        assert err.index("  2.kml: ") < refused < block < err.index("  3.kml: May be")
+
+    def test_refuses_a_kmz(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "2.kmz").write_bytes(b"PK")
+        assert pre_push.check_files(["2.kmz"]) == 1
+        assert "KMZ archive" in capsys.readouterr().err
+
+    def test_the_command_line(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "2.kml").write_text(REAL_KML)
+        (tmp_path / "3.kml").write_text(CLEAN_KML)
+        monkeypatch.setattr(sys, "argv", ["pre_push.py", "--files", "2.kml"])
+        assert pre_push.main() == 1
+        monkeypatch.setattr(sys, "argv", ["pre_push.py", "--files", "3.kml"])
+        assert pre_push.main() == 0
+
+    def test_the_hook_shows_its_warnings_when_it_passes(self):
+        """pre-commit prints a hook's output only when it fails, unless it is
+        verbose: the possible dates fail nothing."""
+        config = (SCRIPT.parent.parent / ".pre-commit-config.yaml").read_text()
+        hook = config.split("- id: check-obfuscation", 1)[1].split("- id:", 1)[0]
+        assert "entry: python scripts/pre_push.py --files" in hook
+        assert "\n        verbose: true\n" in hook
+
+    def test_a_file_it_cannot_read_fails_closed(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "argv", ["pre_push.py", "--files", "gone.kml"])
+        assert pre_push.main() == 1
+        assert "pre-commit: cannot check" in capsys.readouterr().err
 
 
 WRAPPER = SCRIPT.parent / "pre-push-hook"

@@ -41,7 +41,10 @@ from flown.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
 # 40.75 KB to 43.25 KB, and from 7.875 KB to 8.375 KB gzipped, for the
 # airport codes back in the markers: the chip on its arm that glides round
 # the dot, its stem, its home, hover and raised contrast looks (41,677 B
-# and 7,897 B gzipped before, 43,336 B and 8,236 B after).
+# and 7,897 B gzipped before, 43,336 B and 8,236 B after). Lowered to 40 KB,
+# and to 8 KB gzipped, when the phone's sheet moved to extras.css with the
+# code that builds it (44,117 B and 8,381 B gzipped before, 38,689 B and
+# 7,603 B after).
 #
 # features.css and wrapped.css are fetched with their lazy bundles, not by a
 # first visit, so they are the more forgiving. The two were one 28.8 KB sheet
@@ -65,13 +68,15 @@ from flown.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
 # caption, its place over the phone's bar and the toasts above it (18,582 B
 # before, 20,992 B after). search.css, the panel of the search of airports
 # and places, fetched with its bundle, was set at 4,004 B with the same 2 KB
-# of room.
+# of room. extras.css, the phone's sheet, fetched with the extras bundle, was
+# set at 5,651 B.
 STYLESHEET_BUDGET_BYTES = {
-    "styles.css": int(43.25 * 1024),
+    "styles.css": 40 * 1024,
     "features.css": int(21.5 * 1024),
     "wrapped.css": 36 * 1024,
     "search.css": int(5.75 * 1024),
     "local.css": int(6.5 * 1024),
+    "extras.css": 6 * 1024,
 }
 
 # The same sheets gzipped at level 9, as build.js measures the bundles: the
@@ -81,13 +86,14 @@ STYLESHEET_BUDGET_BYTES = {
 # purpose in the change that needs it, with the sizes before and after
 # here. Set at 7,672 B (styles.css), 3,777 B (features.css) and 5,878 B
 # (wrapped.css), with the print styles taken out of the first two, and at
-# 1,192 B for search.css.
+# 1,192 B for search.css and 1,514 B for extras.css.
 STYLESHEET_GZIP_BUDGET_BYTES = {
-    "styles.css": int(8.375 * 1024),
+    "styles.css": 8 * 1024,
     "features.css": int(3.875 * 1024),
     "wrapped.css": int(6.125 * 1024),
     "search.css": int(1.25 * 1024),
     "local.css": int(1.5 * 1024),
+    "extras.css": int(1.625 * 1024),
 }
 
 

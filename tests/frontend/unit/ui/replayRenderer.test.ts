@@ -1643,11 +1643,17 @@ describe("ReplayRenderer", () => {
         const state = mockReplayManager.state;
         state.layerActive = true;
         const ribbons = (): unknown[] =>
-          (
-            (map.source(MAP_SOURCES.replayTrailRibbons).data ?? {
-              features: [],
-            }) as { features: unknown[] }
-          ).features;
+          [
+            MAP_SOURCES.replayTrailRibbons,
+            MAP_SOURCES.replayTrailTipRibbons,
+          ].flatMap(
+            (id) =>
+              (
+                (map.source(id).data ?? { features: [] }) as {
+                  features: unknown[];
+                }
+              ).features,
+          );
         const lines = (): unknown[] =>
           ((trailSource().data ?? { features: [] }) as { features: unknown[] })
             .features;
@@ -1665,6 +1671,168 @@ describe("ReplayRenderer", () => {
         expect(ribbons()).toEqual([]);
         expect(lines().length).toBeGreaterThan(0);
         expect(lift()).toBe(0);
+      });
+
+      it("writes the runs of the trail behind the airplane as they change, and the one it is on in every frame", () => {
+        const state = mockReplayManager.state;
+        state.layerActive = true;
+        // A colour of its own for each of the first segments
+        state.segments = makeChain([1000, 3000, 5000, 7000, 7000, 7000]);
+        state.segments.at(-1)!.groundspeed_knots = 0;
+        lifted(true);
+        state.maxTime = 60;
+        map.jumpTo({ zoom: 13, pitch: 60 });
+        const done = map.source(MAP_SOURCES.replayTrailRibbons);
+        const tip = map.source(MAP_SOURCES.replayTrailTipRibbons);
+        const colours = (source: typeof done): unknown[] => [
+          ...new Set(
+            (
+              (source.data ?? { features: [] }) as {
+                features: { properties: { color: string } }[];
+              }
+            ).features.map((feature) => feature.properties.color),
+          ),
+        ];
+        const at = (time: number): void => {
+          state.currentTime = time;
+          callUpdateDisplay(true);
+          runFrame();
+        };
+
+        at(35);
+        const writes = done.setData.mock.calls.length;
+        expect(colours(done)).toHaveLength(3);
+        expect(colours(tip)).toHaveLength(1);
+        expect(colours(done)).not.toContain(colours(tip)[0]);
+
+        // On along the run of one colour, only the run it is on is written
+        const tipWrites = tip.setData.mock.calls.length;
+        at(45);
+        at(48);
+        expect(done.setData.mock.calls.length).toBe(writes);
+        expect(tip.setData.mock.calls.length).toBe(tipWrites + 2);
+
+        // Back into a run behind it, those behind it are written again
+        renderer.removeSegmentsAfter(state, 15);
+        at(15);
+        expect(done.setData.mock.calls.length).toBe(writes + 1);
+        expect(colours(done)).toHaveLength(1);
+        expect(colours(tip)).toHaveLength(1);
+
+        // And so they are for another relief level
+        mockApp.reliefLevel = 12;
+        at(16);
+        expect(done.setData.mock.calls.length).toBe(writes + 2);
+      });
+
+      it("keeps a run it has just finished in the tip until the tiles of the runs behind show it", async () => {
+        const state = mockReplayManager.state;
+        state.layerActive = true;
+        state.segments = makeChain([1000, 3000, 5000, 7000, 7000, 7000]);
+        state.segments.at(-1)!.groundspeed_knots = 0;
+        lifted(true);
+        state.maxTime = 60;
+        map.jumpTo({ zoom: 13, pitch: 60 });
+        const done = map.source(MAP_SOURCES.replayTrailRibbons);
+        const tip = map.source(MAP_SOURCES.replayTrailTipRibbons);
+        const colours = (source: typeof done): number =>
+          new Set(
+            (
+              (source.data ?? { features: [] }) as {
+                features: { properties: { color: string } }[];
+              }
+            ).features.map((feature) => feature.properties.color),
+          ).size;
+        const at = (time: number): void => {
+          state.currentTime = time;
+          callUpdateDisplay(true);
+          runFrame();
+        };
+        // Each write of the runs behind well apart from the last
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => (now += 1000));
+        at(15);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Into the next colour: the worker has the runs behind, their tiles
+        // are still being cut
+        let landed!: () => void;
+        done.setData.mockImplementationOnce((data: unknown) => {
+          done.data = data;
+          return new Promise<void>((resolve) => (landed = resolve));
+        });
+        map.isSourceLoaded.mockImplementation(
+          (id: string) => id !== MAP_SOURCES.replayTrailRibbons,
+        );
+        at(25);
+        const behind = colours(done);
+        expect(colours(tip)).toBe(2);
+
+        landed();
+        await Promise.resolve();
+        await Promise.resolve();
+        at(26);
+        expect(colours(tip)).toBe(2);
+
+        // Once they are, the tip has the run the airplane is on alone
+        map.isSourceLoaded.mockImplementation(() => true);
+        map.emit("sourcedata", { sourceId: MAP_SOURCES.replayTrailRibbons });
+        await Promise.resolve();
+        await Promise.resolve();
+        runFrame();
+        expect(colours(tip)).toBe(1);
+        expect(colours(done)).toBe(behind);
+      });
+
+      it("writes the runs behind it no more often than every 250 ms while they only grow", () => {
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        const state = mockReplayManager.state;
+        state.layerActive = true;
+        state.segments = makeChain([1000, 3000, 5000, 7000, 7000, 7000]);
+        state.segments.at(-1)!.groundspeed_knots = 0;
+        lifted(true);
+        state.maxTime = 60;
+        map.jumpTo({ zoom: 13, pitch: 60 });
+        const done = map.source(MAP_SOURCES.replayTrailRibbons);
+        const tip = map.source(MAP_SOURCES.replayTrailTipRibbons);
+        const colours = (source: typeof done): number =>
+          new Set(
+            (
+              (source.data ?? { features: [] }) as {
+                features: { properties: { color: string } }[];
+              }
+            ).features.map((feature) => feature.properties.color),
+          ).size;
+        const at = (time: number): void => {
+          state.currentTime = time;
+          callUpdateDisplay(true);
+          runFrame();
+        };
+        now = 1000;
+        at(15);
+        const writes = done.setData.mock.calls.length;
+
+        // Two more colours within the gap: the tip draws them meanwhile
+        now = 1100;
+        at(25);
+        now = 1200;
+        at(35);
+        expect(done.setData.mock.calls.length).toBe(writes);
+        expect(colours(tip)).toBe(3);
+
+        // The first frame after it writes them, once
+        now = 1260;
+        at(36);
+        expect(done.setData.mock.calls.length).toBe(writes + 1);
+        expect(colours(done)).toBe(3);
+
+        // A seek back is written at once, gap or not
+        now = 1300;
+        renderer.removeSegmentsAfter(state, 15);
+        at(15);
+        expect(done.setData.mock.calls.length).toBe(writes + 2);
       });
 
       it("keeps it on the ground while the trail is flat", () => {

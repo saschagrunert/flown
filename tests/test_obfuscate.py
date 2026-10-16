@@ -28,7 +28,9 @@ from flown.obfuscate import (
     NAME_YEAR_DATE_PATTERN,
     _extract_frac,
     _find_stray_dates,
+    check_directory,
     check_directory_obfuscated,
+    check_kml,
     check_kml_obfuscated,
     find_kml_files,
     main,
@@ -1480,6 +1482,94 @@ class TestCheckObfuscated:
             encoding="utf-8",
         )
         assert check_kml_obfuscated(kml_file) == []
+
+    @pytest.mark.parametrize(
+        ("name", "violation"),
+        [
+            (
+                "LKPR - LFPG 16 août 2026",
+                "Date not on Jan 1: 16 août 2026",
+            ),
+            (
+                "Lot 16. srpna 2026",
+                "Date not on Jan 1: 16. srpna 2026",
+            ),
+            (
+                "samedi",
+                "Weekday gives the day of the flight away, remove it: samedi",
+            ),
+        ],
+    )
+    def test_a_date_in_another_language_is_a_violation(self, tmp_path, name, violation):
+        """They passed the check, and the pre-push hook with it (regression)."""
+        kml_file = tmp_path / "1_DEHYL_DA40.kml"
+        kml_file.write_text(
+            f"<kml><Placemark><name>{name}</name>"
+            "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
+            encoding="utf-8",
+        )
+        assert check_kml_obfuscated(kml_file) == [violation]
+
+    def test_a_file_name_in_another_language_is_a_violation(self, tmp_path):
+        kml_file = tmp_path / "3_DEAGJ_DA20 16 sierpnia.kml"
+        kml_file.write_text("<kml/>", encoding="utf-8")
+        assert check_kml_obfuscated(kml_file) == [
+            "File name contains part of a date: 16 sierpnia"
+        ]
+
+    @pytest.mark.parametrize(
+        "name", ["Flyg 16 augusti 2026", "Day 2 Stuttgart 2026", "16-augusti-2026"]
+    )
+    def test_what_may_be_a_date_warns_and_refuses_nothing(self, tmp_path, name):
+        """A day, a word and a year the patterns do not know is as often a
+        count and a place, which the rewrite leaves: a warning."""
+        kml_file = tmp_path / "1_DEHYL_DA40.kml"
+        kml_file.write_text(
+            f"<kml><Placemark><name>{name}</name>"
+            "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
+            encoding="utf-8",
+        )
+        violations, warnings = check_kml(kml_file)
+        assert violations == []
+        assert len(warnings) == 1
+        assert warnings[0].startswith("May be a date in another language")
+        assert check_kml_obfuscated(kml_file) == []
+
+    def test_a_file_name_that_may_hold_a_date_warns(self, tmp_path):
+        kml_file = tmp_path / "3_DEAGJ_DA20 16 augusti 2026.kml"
+        kml_file.write_text("<kml/>", encoding="utf-8")
+        assert check_kml(kml_file) == (
+            [],
+            ["File name may contain a date in another language: 16 augusti 2026"],
+        )
+
+    def test_the_directory_check_keeps_the_warnings_apart(self, tmp_path):
+        (tmp_path / "1_DEHYL_DA40.kml").write_text(
+            "<kml><Placemark><name>Flyg 16 augusti 2026</name>"
+            "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
+            encoding="utf-8",
+        )
+        check = check_directory(tmp_path)
+        assert check.violations == {}
+        assert list(check.warnings) == ["1_DEHYL_DA40.kml"]
+        assert check_directory_obfuscated(tmp_path) == {}
+
+    def test_the_check_prints_the_warnings_and_passes(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        (tmp_path / "1_DEHYL_DA40.kml").write_text(
+            "<kml><Placemark><name>Flyg 16 augusti 2026</name>"
+            "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("sys.argv", ["obfuscate", str(tmp_path), "--check"])
+
+        obfuscate_module.main()
+
+        captured = capsys.readouterr()
+        assert "properly obfuscated" in captured.out
+        assert "not refused" in captured.err
+        assert "1_DEHYL_DA40.kml: May be a date" in captured.err
 
     def test_weekday_in_a_file_is_a_violation(self, tmp_path):
         """The timestamps moved to January 1st, the weekday of the flight

@@ -40,7 +40,8 @@ the flights is in [Rendering](rendering.md) and [Heat](heat.md), the tests in
     the GitHub mark and the top-down aircraft are drawn in `utils/icons.ts`
     because Lucide carries neither
 - **Stylesheets** in `flown/static/` (`styles.css`, `features.css`,
-  `wrapped.css`, `search.css` and `local.css`, see [Stylesheets](#stylesheets))
+  `wrapped.css`, `search.css`, `local.css` and `extras.css`, see
+  [Stylesheets](#stylesheets))
 - **Build output** in `flown/static/` (`mapApp.bundle.js`, `features.bundle.js`,
   `wrapped.bundle.js`, `search.bundle.js`, `extras.bundle.js`,
   `local.bundle.js`, `shared.bundle.js`, `yearWorker.bundle.js`,
@@ -182,14 +183,15 @@ the statistics rail falls back to the ISO country code.
 
 The styles are split the same way as the bundles and travel with them:
 `flown/static/styles.css` is linked in the page, `features.css`, `wrapped.css`,
-`search.css` and `local.css` are fetched alongside their bundles (see
-`services/featureLoader.ts`), and each has its own budget in
+`search.css`, `local.css` and `extras.css` are fetched alongside their bundles
+(see `services/featureLoader.ts`), and each has its own budget in
 `tests/test_asset_budget.py` (see [Size budgets](budgets.md#stylesheets)). A
 rule belongs in `features.css` when its selector names replay, in `wrapped.css`
 when it names Wrapped or what the statistics rail renders, its tabs and the
 flight list included, in `search.css` when it names the search panel or its
-pulse on the map, and in `local.css` when it names the panel of Your flights or
-the sheet over the map while files are dragged; the file headers spell out the
+pulse on the map, in `local.css` when it names the panel of Your flights or the
+sheet over the map while files are dragged, and in `extras.css` when it names
+the phone's sheet (`.mobile-sheet`, `.sheet-*`); the file headers spell out the
 rest, including the one-way dependency on `styles.css`.
 
 A surface across the whole width of the map on a phone (the tab bar, its sheet)
@@ -201,7 +203,7 @@ opaque, since the labels of the map showed through it at 0.99, and its rounded
 top corners keep Chrome from taking it for such an edge.
 
 Whatever has the keyboard's focus is ringed with `--focus-ring`, a token of
-`styles.css` that the other two sheets use as well.
+`styles.css` that the other stylesheets use as well.
 
 ## Build output
 

@@ -13,10 +13,18 @@ import {
   LOCAL_BUTTON_ID,
   LOCAL_DATA_DIR,
   LOCAL_PANEL_ID,
-  MAX_DROP_BYTES,
+  CANCELLED_MESSAGE,
+  CONFIRM_CLEAR_LABEL,
+  CONFIRM_CLEAR_MESSAGE,
+  duplicateMessage,
+  MAX_FILE_BYTES,
+  MAX_KEPT_BYTES,
+  oversizedMessage,
+  STORAGE_FULL_MESSAGE,
   TOO_LARGE_MESSAGE,
   LINK_OPENED_SITE_MESSAGE,
   LocalFlights,
+  NO_FILES_MESSAGE,
   NO_TERRAIN_KEY,
   OWN_TAB_KEY,
   READY_MESSAGE,
@@ -163,13 +171,20 @@ const alert = (): HTMLElement =>
   panel().querySelector<HTMLElement>('.local-flights-status[role="alert"]')!;
 const shown = (): string =>
   panel().querySelector(".local-flights-shown")!.textContent ?? "";
-const action = (name: "show" | "site" | "clear"): HTMLButtonElement =>
+const action = (
+  name: "show" | "cancel" | "site" | "clear",
+): HTMLButtonElement =>
   panel().querySelector<HTMLButtonElement>(`[data-local="${name}"]`)!;
 const names = (): string[] =>
   Array.from(
     panel().querySelectorAll(".local-flights-name"),
     (name) => name.textContent ?? "",
   );
+/** Remove all, pressed twice as it asks (CONFIRM_CLEAR_LABEL) */
+const removeAll = (): void => {
+  action("clear").click();
+  action("clear").click();
+};
 const closeButton = (): HTMLElement =>
   panel().querySelector<HTMLElement>(".local-flights-close")!;
 
@@ -798,7 +813,7 @@ describe("adding files", () => {
     expect(fake.build).toHaveBeenCalledTimes(1);
 
     store.listFiles.mockResolvedValue([]);
-    action("clear").click();
+    removeAll();
     await settle();
     expect(store.clearAll).toHaveBeenCalledTimes(1);
     expect(status().textContent).toBe(REMOVED_MESSAGE);
@@ -824,7 +839,7 @@ describe("adding files", () => {
     await settle();
 
     store.listFiles.mockResolvedValue([]);
-    action("clear").click();
+    removeAll();
     // The worker went with it, and its build with the worker's failure
     expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
     fake.settlers[0]!.reject(new Error("The build could not run"));
@@ -849,7 +864,7 @@ describe("adding files", () => {
     await settle();
 
     store.listFiles.mockResolvedValue([]);
-    action("clear").click();
+    removeAll();
     await settle();
     read(new ArrayBuffer(1));
     await adding;
@@ -872,7 +887,7 @@ describe("adding files", () => {
     );
     const local = await openPanel();
 
-    action("clear").click();
+    removeAll();
     await settle();
     const adding = local.add([file("b.kml")]);
     await settle();
@@ -912,18 +927,235 @@ describe("adding files", () => {
     await adding;
   });
 
-  it("refuses a drop of more than the limit at once", async () => {
-    const local = makePanel();
-    const big = {
-      name: "big.kml",
-      size: MAX_DROP_BYTES + 1,
+  /** A file of `size` bytes, which are never read */
+  const sized = (name: string, size: number): File =>
+    ({
+      name,
+      size,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-    } as unknown as File;
+    }) as unknown as File;
 
-    await local.add([big]);
+  it("refuses files that would take the files kept past the limit in all", async () => {
+    // Every build takes all of them: a drop under the limit on its own
+    store.listFiles.mockResolvedValue([
+      stored("a.kml", MAX_KEPT_BYTES / 2),
+      stored("b.kml", MAX_KEPT_BYTES / 4),
+    ]);
+    const local = makePanel();
+
+    await local.add([sized("c.kml", MAX_KEPT_BYTES / 2)]);
 
     expect(alert().textContent).toBe(TOO_LARGE_MESSAGE);
     expect(store.putFiles).not.toHaveBeenCalled();
+
+    // One dropped again in place of a larger one kept comes to less
+    const adding = local.add([sized("a.kml", MAX_KEPT_BYTES / 4)]);
+    await settle();
+    expect(store.putFiles).toHaveBeenCalledTimes(1);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
+  it("refuses a file larger than the build reads, and keeps the rest", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
+    const local = makePanel();
+
+    const adding = local.add([
+      sized("huge.kml", MAX_FILE_BYTES + 1),
+      file("a.kml"),
+    ]);
+    await settle();
+
+    expect(alert().textContent).toBe(oversizedMessage(["huge.kml"]));
+    expect(oversizedMessage(["a.kml", "b.kml"])).toBe(
+      "a.kml, b.kml are larger than 100 MB, which the build cannot read",
+    );
+    const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
+    expect(kept.map((f) => f.name)).toEqual(["a.kml"]);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
+  it("says the storage is full when the browser's quota is used up", async () => {
+    store.putFiles.mockRejectedValue(
+      new DOMException("full", "QuotaExceededError"),
+    );
+    const local = makePanel();
+
+    await local.add([file("a.kml")]);
+
+    expect(alert().textContent).toBe(STORAGE_FULL_MESSAGE);
+    expect(fake.build).not.toHaveBeenCalled();
+  });
+
+  it("says the storage is full when the dataset does not fit", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    store.putDataset.mockRejectedValue(
+      new DOMException("full", "QuotaExceededError"),
+    );
+    const local = makePanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+
+    expect(alert().textContent).toBe(STORAGE_FULL_MESSAGE);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("takes the files of a folder dropped, and leaves out what else is in it", async () => {
+    const entry = (name: string, content = "<kml/>") => ({
+      name,
+      isDirectory: false,
+      isFile: true,
+      file: (resolve: (file: File) => void) => resolve(file(name, content)),
+    });
+    /** A folder whose reader hands its entries out in parts, as Chrome's */
+    const folder = (name: string, ...parts: unknown[][]) => ({
+      name,
+      isDirectory: true,
+      isFile: false,
+      createReader: () => {
+        const left = [...parts, []];
+        return {
+          readEntries: (resolve: (entries: unknown[]) => void) =>
+            resolve(left.shift()!),
+        };
+      },
+    });
+    const broken = {
+      name: "locked",
+      isDirectory: true,
+      isFile: false,
+      createReader: () => ({
+        readEntries: (_: unknown, reject: (error: Error) => void) =>
+          reject(new Error("NotReadableError")),
+      }),
+    };
+    store.listFiles.mockResolvedValue([stored("1.kml", 6)]);
+    const local = makePanel();
+
+    const adding = local.add([
+      folder(
+        "flights",
+        [entry("1.kml"), entry(".DS_Store")],
+        [folder("2025", [entry("2.KMZ"), entry("notes.txt")]), broken],
+      ),
+      entry("aircraft.json", "{}"),
+    ] as unknown as FileSystemEntry[]);
+    await settle();
+    await settle();
+    await settle();
+
+    const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
+    expect(kept.map((f) => f.name)).toEqual([
+      "1.kml",
+      "2.KMZ",
+      "aircraft.json",
+    ]);
+    // What the folder holds besides is no mistake; what it could not read is
+    expect(alert().textContent).toBe(unreadableMessage(["locked"]));
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
+  it("keeps the first of files of one name in different folders, and says so", async () => {
+    const entry = (name: string, content: string) => ({
+      name,
+      isDirectory: false,
+      isFile: true,
+      file: (resolve: (file: File) => void) => resolve(file(name, content)),
+    });
+    const folder = (name: string, ...entries: unknown[]) => ({
+      name,
+      isDirectory: true,
+      isFile: false,
+      createReader: () => {
+        const left = [entries, []];
+        return {
+          readEntries: (resolve: (entries: unknown[]) => void) =>
+            resolve(left.shift()!),
+        };
+      },
+    });
+    store.listFiles.mockResolvedValue([stored("1.kml", 6)]);
+    const local = makePanel();
+
+    // Numbered names that start again every year
+    const adding = local.add([
+      folder(
+        "logs",
+        folder("2025", entry("1.kml", "<kml/>")),
+        folder("2026", entry("1.kml", "<kml></kml>")),
+      ),
+    ] as unknown as FileSystemEntry[]);
+    await settle();
+    await settle();
+    await settle();
+
+    const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
+    expect(kept.map((f) => [f.name, f.size])).toEqual([["1.kml", 6]]);
+    expect(alert().textContent).toBe(duplicateMessage(["1.kml"]));
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
+  it("says a drop with nothing the build takes in it found nothing", async () => {
+    const local = makePanel();
+    const folder = {
+      name: "igc",
+      isDirectory: true,
+      isFile: false,
+      createReader: () => {
+        const left = [
+          [
+            {
+              name: "flight.igc",
+              isDirectory: false,
+              isFile: true,
+              file: (resolve: (file: File) => void) =>
+                resolve(file("flight.igc")),
+            },
+          ],
+          [],
+        ];
+        return {
+          readEntries: (resolve: (entries: unknown[]) => void) =>
+            resolve(left.shift()!),
+        };
+      },
+    };
+
+    await local.add([folder] as unknown as FileSystemEntry[]);
+
+    expect(alert().textContent).toBe(NO_FILES_MESSAGE);
+    expect(status().textContent).toBe("");
+    expect(store.putFiles).not.toHaveBeenCalled();
+  });
+
+  it("checks two drops at once against the limit one after the other", async () => {
+    // What is kept grows with each drop kept
+    const kept: StoredFile[] = [stored("z.kml", MAX_KEPT_BYTES * 0.3)];
+    store.listFiles.mockImplementation(() => Promise.resolve([...kept]));
+    store.putFiles.mockImplementation((files: StoredFileWithBytes[]) => {
+      kept.push(
+        ...files.map(({ name, size, added }) => ({ name, size, added })),
+      );
+      return Promise.resolve();
+    });
+    const local = makePanel();
+
+    const first = local.add([sized("a.kml", MAX_KEPT_BYTES * 0.4)]);
+    const second = local.add([sized("b.kml", MAX_KEPT_BYTES * 0.4)]);
+    await settle();
+    await settle();
+
+    expect(store.putFiles).toHaveBeenCalledTimes(1);
+    expect(kept.map((f) => f.name)).toEqual(["z.kml", "a.kml"]);
+    expect(alert().textContent).toBe(TOO_LARGE_MESSAGE);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await Promise.all([first, second]);
   });
 
   it("builds again after a failure that files arrived during", async () => {
@@ -1018,6 +1250,9 @@ describe("adding files", () => {
       OUTCOME.files,
       expect.objectContaining({ terrain: false }),
     );
+    // A setting does not take the page to flights it did not show
+    expect(reload).not.toHaveBeenCalled();
+    expect(status().textContent).toBe(READY_MESSAGE);
     // And the next panel starts with it
     makePanel();
     expect(
@@ -1094,7 +1329,101 @@ describe("removing a file", () => {
     expect(fake.build).toHaveBeenCalledTimes(1);
     fake.settlers[0]!.resolve(OUTCOME);
     await settle();
+    // The site's flights are shown: they stay, and the panel says the
+    // visitor's are ready, with the way to them
+    expect(store.putDataset).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+    expect(status().textContent).toBe(READY_MESSAGE);
+    expect(action("show").hidden).toBe(false);
+  });
+
+  it("still shows the flights a drop asked for when a file goes while it is built", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    let read!: (bytes: ArrayBuffer) => void;
+    store.readFileBytes.mockReturnValueOnce(
+      new Promise<ArrayBuffer>((resolve) => {
+        read = resolve;
+      }),
+    );
+    let removed!: () => void;
+    store.removeFile.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        removed = resolve;
+      }),
+    );
+    const local = await openPanel();
+    const adding = local.add([file("b.kml")]);
+    await settle();
+
+    // The build lets go of the files read as b.kml goes, before the
+    // removal builds the rest
+    panel().querySelector<HTMLElement>('[data-remove="b.kml"]')!.click();
+    read(new ArrayBuffer(1));
+    await adding;
+    await settle();
+    expect(fake.build).not.toHaveBeenCalled();
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    removed();
+    await settle();
+
+    expect(fake.build).toHaveBeenCalledTimes(1);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the rest built again where the visitor's flights are shown", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    const local = makePanel({ config: { localFlights: INFO } });
+    local.open();
+    await settle();
+    store.listFiles.mockResolvedValue([stored("b.kml")]);
+
+    panel().querySelector<HTMLElement>('[data-remove="a.kml"]')!.click();
+    await settle();
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
+  });
+
+  it("keeps the focus on the next Remove, or on the file field after the last", async () => {
+    store.listFiles.mockResolvedValue([
+      stored("a.kml"),
+      stored("b.kml"),
+      stored("c.kml"),
+    ]);
+    const local = makePanel();
+    local.open();
+    await settle();
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("c.kml")]);
+
+    const second = panel().querySelector<HTMLElement>('[data-remove="b.kml"]')!;
+    second.focus();
+    second.click();
+    await settle();
+
+    expect(document.activeElement).toBe(
+      panel().querySelector('[data-remove="c.kml"]'),
+    );
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
+
+    // The last one goes with everything else
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const last = panel().querySelector<HTMLElement>('[data-remove="c.kml"]')!;
+    last.click();
+    await settle();
+    expect(document.activeElement).toBe(
+      panel().querySelector('[data-remove="a.kml"]'),
+    );
+    fake.settlers[1]!.resolve(OUTCOME);
+    await settle();
+    store.listFiles.mockResolvedValue([]);
+    panel().querySelector<HTMLElement>('[data-remove="a.kml"]')!.click();
+    await settle();
+    expect(document.activeElement).toBe(panel().querySelector("input"));
   });
 
   it("the last one clears everything and says so", async () => {
@@ -1128,6 +1457,29 @@ describe("removing a file", () => {
     expect(fake.build).not.toHaveBeenCalled();
   });
 
+  it("builds the files again when a removal during a build fails", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(1);
+
+    // The build is dropped for the file going, which then stays
+    store.removeFile.mockRejectedValueOnce(new Error("locked"));
+    panel().querySelector<HTMLElement>('[data-remove="b.kml"]')!.click();
+    await settle();
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
+
+    expect(alert().textContent).toBe(STORAGE_FAILED_MESSAGE);
+    expect(fake.build).toHaveBeenCalledTimes(2);
+    // And it still shows them, as the drop asked
+    fake.settlers[1]!.resolve(OUTCOME);
+    await adding;
+    await settle();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores a click in the list that is on no Remove", async () => {
     store.listFiles.mockResolvedValue([stored("a.kml")]);
     const local = makePanel();
@@ -1138,6 +1490,384 @@ describe("removing a file", () => {
     await settle();
 
     expect(store.removeFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("a build on its way", () => {
+  it("is stopped on asking, the files kept, and Show my flights back", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
+    const local = await openPanel();
+    expect(action("cancel").hidden).toBe(true);
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    expect(action("cancel").hidden).toBe(false);
+    expect(action("show").hidden).toBe(true);
+
+    action("cancel").focus();
+    action("cancel").click();
+
+    // The worker goes with it, and its build with the worker's failure
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    expect(status().textContent).toBe(CANCELLED_MESSAGE);
+    expect(action("cancel").hidden).toBe(true);
+    expect(action("show").hidden).toBe(false);
+    expect(document.activeElement).toBe(action("show"));
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await adding;
+    expect(alert().textContent).toBe("");
+    expect(status().textContent).toBe(CANCELLED_MESSAGE);
+    expect(store.putDataset).not.toHaveBeenCalled();
+    expect(store.clearAll).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("offers Show my flights after a stop where the visitor's flights are shown", async () => {
+    // The dataset shown is of a.kml and b.kml, and c.kml was dropped
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue(INFO);
+    const local = await openPanel({ config: { localFlights: INFO } });
+    expect(action("show").hidden).toBe(true);
+    store.listFiles.mockResolvedValue([
+      stored("a.kml"),
+      stored("b.kml"),
+      stored("c.kml", 6),
+    ]);
+    const adding = local.add([file("c.kml")]);
+    await settle();
+
+    action("cancel").click();
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await adding;
+
+    // The flights shown are not of the files kept: Show builds them
+    expect(action("show").hidden).toBe(false);
+    action("show").click();
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers Show my flights for a dataset newer than the one shown", async () => {
+    // Of the same files, built while the panel was closed: only a toast
+    // said it was ready
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue({ ...INFO, builtAt: 2 });
+    await openPanel({ config: { localFlights: INFO } });
+
+    expect(action("show").hidden).toBe(false);
+    action("show").click();
+    await settle();
+    expect(fake.build).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("is let go of as the panel is torn down, with none after it", async () => {
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = await openPanel();
+    const rebuilding = local.rebuild();
+    await settle();
+    // A drop meanwhile asks for another build after it
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    const adding = local.add([file("b.kml")]);
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(1);
+
+    local.destroy();
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await Promise.all([rebuilding, adding]);
+    await settle();
+
+    expect(fake.build).toHaveBeenCalledTimes(1);
+    expect(logError).not.toHaveBeenCalledWith(
+      "The build of the flights failed:",
+      expect.anything(),
+    );
+    expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("builds no drop it was keeping as the panel was torn down", async () => {
+    let stored_!: () => void;
+    store.putFiles.mockReturnValue(
+      new Promise<void>((resolve) => {
+        stored_ = resolve;
+      }),
+    );
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    local.destroy();
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    stored_();
+    await adding;
+    await settle();
+
+    expect(fake.build).not.toHaveBeenCalled();
+  });
+
+  it("cannot be stopped once its dataset is being kept", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    let kept!: () => void;
+    store.putDataset.mockReturnValue(
+      new Promise<void>((resolve) => {
+        kept = resolve;
+      }),
+    );
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    expect(action("cancel").hidden).toBe(false);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
+
+    expect(action("cancel").hidden).toBe(true);
+    action("cancel").click();
+    expect(fake.builder.destroy).not.toHaveBeenCalled();
+    kept();
+    await adding;
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts no worker when stopped while the files are read", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    let read!: (bytes: ArrayBuffer) => void;
+    store.readFileBytes.mockReturnValue(
+      new Promise<ArrayBuffer>((resolve) => {
+        read = resolve;
+      }),
+    );
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    action("cancel").click();
+    read(new ArrayBuffer(1));
+    await adding;
+
+    expect(fake.build).not.toHaveBeenCalled();
+    expect(status().textContent).toBe(CANCELLED_MESSAGE);
+  });
+
+  it("moves the focus to Stop the build as Show my flights hides", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    await openPanel();
+    action("show").focus();
+
+    action("show").click();
+    await settle();
+
+    expect(fake.build).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(action("cancel"));
+  });
+
+  it("does not come back as the flights a Remove all made while it was kept", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    let kept!: () => void;
+    store.putDataset.mockReturnValue(
+      new Promise<void>((resolve) => {
+        kept = resolve;
+      }),
+    );
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
+    expect(store.putDataset).toHaveBeenCalledTimes(1);
+
+    store.listFiles.mockResolvedValue([]);
+    removeAll();
+    await settle();
+    kept();
+    await adding;
+    await settle();
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBeNull();
+    expect(status().textContent).toBe(REMOVED_MESSAGE);
+  });
+
+  it("builds again rather than show a dataset of a file removed while it was kept", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    let kept!: () => void;
+    store.putDataset.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        kept = resolve;
+      }),
+    );
+    const local = await openPanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
+
+    store.listFiles.mockResolvedValue([stored("b.kml")]);
+    panel().querySelector<HTMLElement>('[data-remove="a.kml"]')!.click();
+    await settle();
+    kept();
+    await settle();
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(fake.build).toHaveBeenCalledTimes(2);
+    // The drop asked for the flights to be shown, which the build of the
+    // rest still does
+    fake.settlers[1]!.resolve(OUTCOME);
+    await adding;
+    await settle();
+    expect(store.putDataset).toHaveBeenLastCalledWith(
+      OUTCOME.files,
+      expect.objectContaining({ files: ["b.kml"] }),
+    );
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Remove all", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks to be pressed again, and lets go of the ask after a while", async () => {
+    vi.useFakeTimers();
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    local.open();
+    await settle();
+
+    action("clear").click();
+    await settle();
+    expect(action("clear").textContent).toBe(CONFIRM_CLEAR_LABEL);
+    expect(store.deleteCache).not.toHaveBeenCalled();
+    expect(store.clearAll).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(action("clear").textContent).toBe("Remove all");
+    action("clear").click();
+    await settle();
+    expect(store.clearAll).not.toHaveBeenCalled();
+
+    action("clear").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.clearAll).toHaveBeenCalledTimes(1);
+    expect(action("clear").textContent).toBe("Remove all");
+  });
+});
+
+describe("Remove all, asking", () => {
+  it("lets go of the ask as the panel closes", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = await openPanel();
+
+    action("clear").click();
+    expect(action("clear").textContent).toBe(CONFIRM_CLEAR_LABEL);
+    local.close();
+    local.open();
+    await settle();
+
+    expect(action("clear").textContent).toBe("Remove all");
+    action("clear").click();
+    await settle();
+    expect(store.clearAll).not.toHaveBeenCalled();
+  });
+
+  it("says what it asks in the status, and lets go of it", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = await openPanel();
+
+    action("clear").click();
+    expect(status().textContent).toBe(CONFIRM_CLEAR_MESSAGE);
+    local.close();
+    expect(status().textContent).toBe("");
+  });
+
+  it("hides Stop the build at once, and offers Show my flights when the files stay", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    let cleared!: (error: Error) => void;
+    store.deleteCache.mockReturnValueOnce(
+      new Promise<void>((_resolve, reject) => {
+        cleared = reject;
+      }),
+    );
+    const local = await openPanel();
+    void local.add([file("a.kml")]);
+    await settle();
+    expect(action("cancel").hidden).toBe(false);
+
+    removeAll();
+    // Another tab holds the cache: it waits
+    expect(action("cancel").hidden).toBe(true);
+    cleared(new Error(CACHE_BUSY_MESSAGE));
+    await settle();
+
+    expect(alert().textContent).toBe(CACHE_BUSY_MESSAGE);
+    expect(action("cancel").hidden).toBe(true);
+    expect(action("show").hidden).toBe(false);
+  });
+
+  it("takes a double-click for one press", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    await openPanel();
+
+    action("clear").dispatchEvent(new MouseEvent("click", { detail: 1 }));
+    action("clear").dispatchEvent(new MouseEvent("click", { detail: 2 }));
+    await settle();
+
+    expect(action("clear").textContent).toBe(CONFIRM_CLEAR_LABEL);
+    expect(store.clearAll).not.toHaveBeenCalled();
+  });
+
+  it("takes a slow double-click for one press too", async () => {
+    vi.useFakeTimers();
+    try {
+      store.listFiles.mockResolvedValue([stored("a.kml")]);
+      const local = makePanel();
+      local.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      action("clear").dispatchEvent(new MouseEvent("click", { detail: 1 }));
+      // Within the 500 ms of the systems' double-click time, past 400
+      await vi.advanceTimersByTimeAsync(450);
+      action("clear").dispatchEvent(new MouseEvent("click", { detail: 2 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(store.clearAll).not.toHaveBeenCalled();
+      expect(action("clear").textContent).toBe(CONFIRM_CLEAR_LABEL);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("takes a triple-click for one press", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    await openPanel();
+
+    for (const detail of [1, 2, 3]) {
+      action("clear").dispatchEvent(new MouseEvent("click", { detail }));
+    }
+    await settle();
+
+    expect(store.clearAll).not.toHaveBeenCalled();
+  });
+
+  it("takes a press after it, however quick the clicks", async () => {
+    vi.useFakeTimers();
+    try {
+      store.listFiles.mockResolvedValue([stored("a.kml")]);
+      const local = makePanel();
+      local.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      action("clear").dispatchEvent(new MouseEvent("click", { detail: 1 }));
+      await vi.advanceTimersByTimeAsync(600);
+      // The third of quick clicks, one press of its own
+      action("clear").dispatchEvent(new MouseEvent("click", { detail: 3 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(store.clearAll).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -1272,7 +2002,7 @@ describe("while the page shows the visitor's flights", () => {
     local.open();
     await settle();
 
-    action("clear").click();
+    removeAll();
     await settle();
 
     expect(store.clearAll).toHaveBeenCalledTimes(1);
@@ -1292,7 +2022,7 @@ describe("while the page shows the visitor's flights", () => {
     local.open();
     await settle();
 
-    action("clear").click();
+    removeAll();
     await settle();
 
     // The cache goes first: the files are kept, to try again with
@@ -1307,7 +2037,7 @@ describe("while the page shows the visitor's flights", () => {
     local.open();
     await settle();
 
-    action("clear").click();
+    removeAll();
     await settle();
 
     expect(store.clearAll).toHaveBeenCalledTimes(1);
@@ -1321,7 +2051,7 @@ describe("while the page shows the visitor's flights", () => {
     store.deleteCache.mockRejectedValue(new Error(CACHE_BUSY_MESSAGE));
     const local = await openPanel({ config: { localFlights: INFO } });
 
-    action("clear").click();
+    removeAll();
     await settle();
 
     expect(alert().textContent).toBe(CACHE_BUSY_MESSAGE);
@@ -1336,7 +2066,7 @@ describe("while the page shows the visitor's flights", () => {
     local.open();
     await settle();
 
-    action("clear").click();
+    removeAll();
     await settle();
 
     expect(alert().textContent).toBe(STORAGE_FAILED_MESSAGE);
@@ -1554,6 +2284,28 @@ describe("localStartConfig", () => {
     // Taken by the next start, which does not build again
     reopenAfterSwitch(asMapApp(createMockApp()));
     document.getElementById(LOCAL_PANEL_ID)?.remove();
+  });
+
+  it("says the files are built again, not the site updated, for other files of this build", async () => {
+    // A build of a drop that was stopped
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    store.readInfo.mockResolvedValue(INFO);
+    vi.stubGlobal(
+      "Worker",
+      class {
+        onmessage = null;
+        onerror = null;
+        postMessage(): void {}
+        terminate(): void {}
+      },
+    );
+
+    await expect(localStartConfig(config)).resolves.toBeNull();
+    reopenAfterSwitch(asMapApp(createMockApp()));
+    await settle();
+
+    expect(status().textContent).toBe(BUILDING_MESSAGE);
   });
 
   it("goes to a dataset built since the page started, rather than mix the two", async () => {

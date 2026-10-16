@@ -284,6 +284,38 @@ describe("MapOrientation", () => {
       expect(app.uiToggles.toggleAltitude).not.toHaveBeenCalled();
     });
 
+    it("takes back the tilt and the altitude colours of a press whose code cannot come", () => {
+      app.heatmapVisible = false;
+      app.altitudeVisible = false;
+      app.airspeedVisible = false;
+      vi.mocked(app.uiToggles.toggleAltitude).mockImplementation(() => {
+        app.altitudeVisible = !app.altitudeVisible;
+      });
+      orientation.toggleThreeD();
+      expect(app.altitudeVisible).toBe(true);
+
+      orientation.undoThreeD();
+
+      expect(app.altitudeVisible).toBe(false);
+      expect(app.map!.easeTo).toHaveBeenLastCalledWith({ pitch: 0 });
+      // Once: nothing is left to take back
+      vi.mocked(app.map!.easeTo).mockClear();
+      orientation.undoThreeD();
+      expect(app.map!.easeTo).not.toHaveBeenCalled();
+      expect(app.uiToggles.toggleAltitude).toHaveBeenCalledTimes(2);
+    });
+
+    it("takes back nothing the press did not change", () => {
+      app.map!.jumpTo({ zoom: 12, pitch: 40 });
+      app.airspeedVisible = true;
+      orientation.toggleThreeD();
+
+      orientation.undoThreeD();
+
+      expect(app.map!.easeTo).not.toHaveBeenCalled();
+      expect(app.uiToggles.toggleAltitude).not.toHaveBeenCalled();
+    });
+
     it("puts the flights back on the ground and leaves the map be", () => {
       orientation.toggleThreeD();
       vi.mocked(app.map!.easeTo).mockClear();

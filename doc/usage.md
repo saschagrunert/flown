@@ -195,6 +195,8 @@ Variables:
 - `HOST_BIND` - Address `make serve` binds on the host (default: `127.0.0.1`;
   use `0.0.0.0` for the local network)
 - `PORT` - Host port for `make serve` (default: `8000`)
+- `LINT_BASE` - The branch `make lint` checks the commits since, as the CI lint
+  job does (default: `origin/main`)
 - `CARTO_API_KEY` - Tile API key (passed by name, never printed)
 - `FLOWN_SITE_URL` - The address the site is published at, for the link preview
   images (see `--site-url`)
@@ -212,8 +214,9 @@ Targets (`make help` prints this list with the current variable values):
 - `serve-build` - Run `build`, then `serve`
 - `test` - Build the frontend bundles and the site in docs/, then run the
   JavaScript and Python test suites with coverage
-- `lint` - Run the linters, formatters (check only), type checkers and typos of
-  the CI lint job
+- `lint` - Run the linters, formatters (check only), type checkers, file checks
+  and typos of the CI lint job; the end-of-file and whitespace checks fix what
+  they find in place, as the pre-commit hooks do
 - `format` - Run formatters
 - `lock` - Regenerate `uv.lock` from `pyproject.toml`, moving every package to
   its newest release
@@ -390,13 +393,21 @@ Privacy:
   address. The tool writes no `robots.txt`; see
   [Hosting](hosting.md#keeping-it-out-of-search-engines) for keeping crawlers
   out entirely.
-- `--trim-ends METRES` - Leave out the points of every flight within `METRES` of
-  where it starts and ends, so the taxiing and the spot the aircraft is parked
-  on are not published (default: 0, keep them; 300 covers most fields). A
-  recording that never leaves that distance is left out. The KML files keep
-  their ends, so this hides nothing while they are public, as those in `data/`
-  of a repository on GitHub are, and the deploy job does not use it. See
-  [Privacy](privacy.md#what-reaches-the-site).
+- `--trim-ends METRES` - Leave out the ground at both ends of every flight, so
+  the taxiing and the spot the aircraft is parked on are not published (default:
+  0, keep them; 300 covers most fields). Where the times show the takeoff and
+  the landing roll, everything before the one and after the other goes first (a
+  stale fix, a drive to or from the field); then the points within `METRES` of
+  where the rest starts and ends. A recording that never leaves that distance is
+  left out. The times show the takeoff only after a wait on level ground no
+  higher than the lowest the recording was before it, so a drive is left out
+  from a home at the height of the field or up to 300 ft above it: a recording
+  that starts or ends on the move, or at a home 30 m or more below the field or
+  300 ft or more above it, keeps its drive but for the `METRES` around where it
+  starts or ends. Switch the logger on and off at the field to keep a drive out.
+  The KML files keep their ends, so this hides nothing while they are public, as
+  those in `data/` of a repository on GitHub are, and the deploy job does not
+  use it. See [Privacy](privacy.md#what-reaches-the-site).
 
 Network and cache:
 

@@ -126,6 +126,7 @@ import {
 } from "./baseStyle";
 import {
   CROSS_SECTION_UNAVAILABLE_MESSAGE,
+  featurePart,
   followSearchKey,
   loadLazyBundle,
   LOCAL_UNAVAILABLE_MESSAGE,
@@ -309,7 +310,7 @@ export class MapApp {
     FeatureToggle | "toggleSearch" | "toggleLocalFlights"
   >();
   /** Files dropped on the page before the bundle of Your flights arrived */
-  private readonly pendingDrops: File[] = [];
+  private readonly pendingDrops: (File | FileSystemEntry)[] = [];
   /**
    * Where the last fit to the start view takes the camera: the one of a
    * first visit, measured as the map opens, then that of every Reset view.
@@ -553,6 +554,10 @@ export class MapApp {
         signal: input.signal,
       });
     }
+    // The year the page ships with (see the preload below), before a year
+    // of the link or the last visit takes the dropdown over
+    const yearSelect = domCache.get("year-select", HTMLSelectElement);
+    const shipped = yearSelect?.value;
     restoreState(this);
     if (intro) {
       // The sender's flights, not the visitor's: their next visit without a
@@ -569,7 +574,14 @@ export class MapApp {
 
     // The data goes into sources that only exist once the style has loaded.
     // The files are preloaded by the template, so waiting here does not hold
-    // their download back.
+    // their download back, and the year the page ships with is decoded
+    // meanwhile if it is still the one to show: it waited for the style and
+    // the metadata, while its file had long arrived. Not another year, which
+    // the metadata may not have, nor over the flights a visitor dropped
+    // (dataSource), which have years of their own.
+    if (shipped && yearSelect.value === shipped && !this.config.dataSource) {
+      this.dataManager.preloadYear(shipped);
+    }
     try {
       await this.mapReady;
     } catch (error) {
@@ -607,10 +619,17 @@ export class MapApp {
     // over a load that failed, where they would show nothing but zeros, and
     // the line goes with it as Wrapped's flag does below: the saves and
     // Copy link would hand on a cross-section nobody sees.
+    // Opened only if the line is still wanted once the bundle has come: a
+    // Reset view meanwhile let go of it.
     const loaded = this.currentData !== null;
     if (this.crossSectionLine) {
-      if (loaded) this.toggleCrossSection();
-      else this.crossSectionLine = "";
+      if (loaded) {
+        this.toggleFeature(
+          "toggleCrossSection",
+          CROSS_SECTION_UNAVAILABLE_MESSAGE,
+          () => !!this.crossSectionLine,
+        );
+      } else this.crossSectionLine = "";
     }
 
     // A link to shared flights draws them in (ui/shareIntro.ts), with the
@@ -944,6 +963,7 @@ export class MapApp {
         "selectedPathIds",
         "currentData",
         "replayActive",
+        "crossSectionLine",
       ],
       this.syncResetButton,
     );
@@ -994,12 +1014,13 @@ export class MapApp {
 
   /**
    * Go back to what a first visit shows: the newest year, every aircraft,
-   * the heatmap and the airports, nothing selected or shared, flat and
-   * north up over all the flights. It goes through the year filter, so the
-   * dropdowns, the loaded data and the store change together in one batch;
-   * the saved state and the link follow the store and the camera as ever.
-   * Out of reach during a replay, like the filters: the button is held
-   * (ONE_REPLAY_HELD_CONTROL_IDS) and the phone's bar steps aside.
+   * the heatmap and the airports, nothing selected or shared, no
+   * cross-section, flat and north up over all the flights. It goes through
+   * the year filter, so the dropdowns, the loaded data and the store change
+   * together in one batch; the saved state and the link follow the store
+   * and the camera as ever. Out of reach during a replay, like the
+   * filters: the button is held (ONE_REPLAY_HELD_CONTROL_IDS) and the
+   * phone's bar steps aside.
    */
   async resetView(): Promise<void> {
     // Like Share mode with nothing selected: unavailable, and a press says why
@@ -1029,6 +1050,9 @@ export class MapApp {
     // had nor the one asked for, while leaving it all as it was keeps the
     // button available to try again.
     if (!applied) return;
+    const section = featurePart(this, "crossSection");
+    if (section?.isOpen()) section.toggle();
+    else this.crossSectionLine = "";
     // Measured first, as the fit itself does, and compared once it is over:
     // the moves of its animation end in the camera it aims at.
     const map = this.map;
@@ -1084,6 +1108,8 @@ export class MapApp {
       this.selectedYear === this.defaultYear &&
       this.selectedAircraft === "all" &&
       this.selectedPathIds.size === 0 &&
+      !this.crossSectionLine &&
+      !featurePart(this, "crossSection")?.isOpen() &&
       TOGGLE_KEYS.every((key) => this[key] === defaults[key]) &&
       Math.abs(center.lng - target.lng) + Math.abs(center.lat - target.lat) <
         2e-6 &&
@@ -1184,11 +1210,16 @@ export class MapApp {
     this.toggleFeature("toggleHotspotTour", TOUR_UNAVAILABLE_MESSAGE);
   }
 
-  private toggleFeature(name: FeatureToggle, unavailable: string): void {
+  /** As toggleLazily, the feature bundle's `name`, if `still` says so then */
+  private toggleFeature(
+    name: FeatureToggle,
+    unavailable: string,
+    still?: () => boolean,
+  ): void {
     this.toggleLazily(
       name,
       () => loadLazyBundle(loadFeatures, unavailable),
-      (features) => features[name](this),
+      (features) => (still?.() ?? true) && features[name](this),
     );
   }
 
@@ -1247,7 +1278,7 @@ export class MapApp {
    * its own bundle (ui/localFlights.ts). With `dropped`, the files dragged
    * onto the page, the panel opens and takes them.
    */
-  toggleLocalFlights(dropped?: FileList | File[]): void {
+  toggleLocalFlights(dropped?: FileList | (File | FileSystemEntry)[]): void {
     if (this.mapHeld && !dropped) return;
     // Files dropped while the bundle is on its way wait for it: a second
     // call while the first is pending is not made again (toggleLazily)
@@ -1311,10 +1342,11 @@ export class MapApp {
    * Reset view sets, the data (a first visit's year is only known with it),
    * the end of the first load and the end of every camera move, the fit's
    * own included (see initializeManagers). A replay holds the button (see
-   * holdControls), and closing it runs this again. The phone's open sheet
-   * reads its Reset view row again at the same moments.
+   * holdControls), and closing it runs this again, as the cross-section
+   * does as it opens and closes (it may be open without a line). The
+   * phone's open sheet reads its Reset view row again at the same moments.
    */
-  private readonly syncResetButton = (): void => {
+  readonly syncResetButton = (): void => {
     if (this.replayActive) return;
     const button = domCache.get("reset-view-btn");
     if (button) {

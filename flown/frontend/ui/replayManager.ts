@@ -322,6 +322,7 @@ export class ReplayManager {
           return;
         }
         this.writeRoute();
+        this.state.trailDone = null;
         this.state.trailDirty = true;
         this.renderer.scheduleTrailFlush(this.state);
       });
@@ -831,6 +832,7 @@ export class ReplayManager {
     this.writeRoute();
     this.setReplaySource(MAP_SOURCES.replayTrail, []);
     this.setReplaySource(MAP_SOURCES.replayTrailRibbons, []);
+    this.setReplaySource(MAP_SOURCES.replayTrailTipRibbons, []);
     this.state.trailWrittenTo = null;
     this.state.trailRuns = [];
     this.state.trailDirty = false;
@@ -878,13 +880,15 @@ export class ReplayManager {
     this.setReplaySource(MAP_SOURCES.replayRoute, []);
     this.setReplaySource(MAP_SOURCES.replayTrail, []);
     this.setReplaySource(MAP_SOURCES.replayTrailRibbons, []);
+    this.setReplaySource(MAP_SOURCES.replayTrailTipRibbons, []);
   }
 
   private setReplaySource(
     id:
       | typeof MAP_SOURCES.replayRoute
       | typeof MAP_SOURCES.replayTrail
-      | typeof MAP_SOURCES.replayTrailRibbons,
+      | typeof MAP_SOURCES.replayTrailRibbons
+      | typeof MAP_SOURCES.replayTrailTipRibbons,
     features: Feature[],
   ): void {
     void this.app.map

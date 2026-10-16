@@ -1,9 +1,13 @@
 # The flights are committed in data/ and its subdirectories (doc/usage.md
-# shows data/2025/ as an example), every other KML file stays local
-*.kml
-!data/**/*.kml
+# shows data/2025/ as an example), or in flights/, where doc/hosting.md has
+# a copy of the repository keep its own; every other KML file stays local,
+# whatever the case of its extension (the generator reads any), and every
+# KMZ archive, which the obfuscation check cannot read into
+*.[kK][mM][lLzZ]
+!/data/**/*.[kK][mM][lL]
+!/flights/**/*.[kK][mM][lL]
 # The flights the visual snapshots are taken with (scripts/build_visual_site.py)
-!tests/fixtures/visual/*.kml
+!/tests/fixtures/visual/*.[kK][mM][lL]
 # Temp files of an interrupted obfuscation run hold the original dates
 data/**/.*.tmp
 /index.html

@@ -7,6 +7,7 @@ ground under the flights from them.
 
 import base64
 import contextlib
+import re
 import ssl
 import threading
 import time
@@ -102,6 +103,8 @@ class _RefusedURLError(ValueError):
 
 # A tile is about 100 KB; anything far larger is not a tile
 MAX_TILE_BYTES = 4 * 1024 * 1024
+# A tile as it is kept (see TerrariumTiles.path), and its pixels next to it
+_TILE_FILE = re.compile(r"\d+-\d+-\d+\.(?:png|pixels)")
 USER_AGENT = f"flown/{__version__} (+https://github.com/saschagrunert/flown)"
 # Below this many tiles decoding them in this process beats starting a pool
 DECODE_POOL_MIN_TILES = 8
@@ -153,6 +156,8 @@ class TerrariumTiles:
         # closed when the downloads are done (see fetch)
         self._opened: list[HTTPSConnection] = []
         self._opened_lock = threading.Lock()
+        # Every tile asked for since the instance was made (see prune_except)
+        self.asked: set[TileKey] = set()
 
     def path(self, tile: TileKey) -> Path:
         """Where a tile is kept."""
@@ -163,7 +168,8 @@ class TerrariumTiles:
 
         A tile and its pixels are written through a temp file next to them
         (see ``cache.atomic_bytes_write``), which a build killed on the way
-        leaves in the cache for good: the tiles themselves are never pruned.
+        leaves in the cache for good: the tiles themselves are never pruned,
+        except by the build in the page (see ``prune_except``).
         One older than ``STALE_TEMP_SECONDS`` is no write still going on.
         Returns how many went.
         """
@@ -175,6 +181,31 @@ class TerrariumTiles:
                 if entry.stat().st_mtime < oldest:
                     entry.unlink()
                     removed += 1
+        return removed
+
+    def prune_except(self, tiles: Iterable[TileKey]) -> int:
+        """Remove every tile but ``tiles``, its pixels and stale temp files.
+
+        For a cache of one person's flights alone, the build in the page
+        (see ``flown.browser``): the tiles under a flight they removed show
+        roughly where it went, and every tile kept is read into the page's
+        memory at each start. Returns how many files went.
+        """
+        kept = {self.path(tile).stem for tile in tiles}
+        try:
+            entries = list(self.cache_dir.iterdir())
+        except OSError:
+            return 0
+        removed = 0
+        for entry in entries:
+            if entry.stem in kept or not (
+                _TILE_FILE.fullmatch(entry.name)
+                or (entry.name.startswith(".") and entry.name.endswith(".tmp"))
+            ):
+                continue
+            with contextlib.suppress(OSError):
+                entry.unlink()
+                removed += 1
         return removed
 
     def _connection(self, host: str) -> HTTPSConnection:
@@ -382,6 +413,7 @@ class TerrariumTiles:
         self, wanted: Mapping[TileKey, Sequence[int]]
     ) -> dict[TileKey, Sequence[float]]:
         """Fetch what is missing, then decode the pixels of every tile."""
+        self.asked.update(wanted)
         self.remove_stale_temp_files()
         self.fetch(wanted)
         cached = [

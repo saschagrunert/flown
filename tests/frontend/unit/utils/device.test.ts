@@ -57,7 +57,7 @@ describe("device", () => {
     it("is the one the stylesheets give the phone, and leave the columns", () => {
       // A phone held sideways (844 by 390) is wide enough for the columns
       // but too short for them: every width rule says so too
-      for (const name of ["styles", "features", "wrapped"]) {
+      for (const name of ["styles", "features", "wrapped", "extras"]) {
         const css = readFileSync(
           resolve(__dirname, `../../../../flown/static/${name}.css`),
           "utf8",

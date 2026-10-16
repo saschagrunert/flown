@@ -1226,6 +1226,22 @@ describe("MapApp controls and map", () => {
       );
     });
 
+    it("leaves the cross-section of a link closed once a reset let go of its line", async () => {
+      mockStateManagerInstance.loadState.mockReturnValue({
+        crossSectionLine: "51.5,12.1,51.6,12.3",
+      });
+      m.toggleCrossSection.mockClear();
+      const { deliver } = await holdNextLoad(loadFeatures);
+
+      await initializeApp(app);
+      // What Reset view does to a line whose tool has not opened
+      app.crossSectionLine = "";
+      deliver();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(m.toggleCrossSection).not.toHaveBeenCalled();
+    });
+
     it("leaves the cross-section of a link closed over a load that failed", async () => {
       mockStateManagerInstance.loadState.mockReturnValue({
         crossSectionLine: "51.5,12.1,51.6,12.3",
@@ -2088,6 +2104,7 @@ describe("MapApp controls and map", () => {
         "paths-airspeed-selected-3d",
         "selection-highlight-3d",
         "replay-trail-3d",
+        "replay-trail-tip-3d",
         "airport-labels",
         "airport-dots",
       ]);
@@ -2325,6 +2342,7 @@ describe("MapApp controls and map", () => {
           "paths-airspeed-selected-3d",
           "selection-highlight-3d",
           "replay-trail-3d",
+          "replay-trail-tip-3d",
           "place-labels",
           // Labels themselves, on top of the base style's, and the
           // stand-ins of the dots they keep clear of

@@ -4,6 +4,7 @@
 import type { Marker, Popup } from "maplibre-gl";
 import type { MapApp } from "../mapApp";
 import type { PathSegment, PopupHost, TrailRun } from "../types";
+import type { TrailDone } from "./replayTrail";
 import type { GroundedHeight } from "../calculations/airplaneLift";
 import type { RibbonPiece } from "../calculations/ribbons";
 import type { ReplayCurve } from "../features/replay";
@@ -141,6 +142,18 @@ export class ReplayState {
   trailWidthZoom: number | null = null;
   /** The source the trail was last written to, its line's or its ribbons' */
   trailWrittenTo: string | null = null;
+  /**
+   * What the runs of the trail's ribbons the airplane has left behind were
+   * last written as (see trailDone), null for not written
+   */
+  trailDone: TrailDone | null = null;
+  /**
+   * How many of the runs the tiles of the source of those behind the
+   * airplane are known to show; the tip's source draws the rest
+   */
+  trailShown = 0;
+  /** Counts the writes of those runs that were not only more of them */
+  trailEra = 0;
   /**
    * The airplane's height above the flight's ground where it is now, null
    * while it is not lifted; the camera follows it up there

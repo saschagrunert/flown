@@ -1,5 +1,6 @@
 """Tests for the build in the browser (flown.browser)."""
 
+import ast
 import json
 import os
 import subprocess
@@ -15,6 +16,7 @@ import flown.airport_lookup as lookup_module
 from flown import browser
 from flown.exceptions import InvalidInputError
 from flown.logger import logger
+from tests.tiles import terrarium_png
 
 KML = """<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
@@ -237,7 +239,7 @@ class TestBuild:
         assert all(url.startswith("https://s3.amazonaws.com/") for url in js.sent)
         assert set(js.timeouts) == {int(browser.TILE_TIMEOUT_SECONDS * 1000)}
         data = json.loads((tmp_path / "site" / "2025" / "data.json").read_text())
-        assert all("ground" not in path for path in data["segments"].values())
+        assert data["segments"]["ground"] == [None]
 
     def test_an_empty_directory_is_refused(self, tmp_path, js):
         (tmp_path / "input").mkdir()
@@ -374,3 +376,82 @@ class TestBuild:
         browser.build(str(inputs), str(tmp_path / "two"), terrain=False)
 
         assert len(list(cache.iterdir())) == 1
+
+    def test_the_parses_of_removed_files_leave_the_cache_of_a_failed_build(
+        self, tmp_path, js, monkeypatch
+    ):
+        """No file left makes a flight: the removed one's parse goes still."""
+        cache = tmp_path / "cache" / "kml"
+        cache.mkdir(parents=True, mode=0o700)
+        monkeypatch.setattr("flown.parser_cache.KML_CACHE_DIR", cache)
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        kml = inputs / "1_DEAGJ_DA20.kml"
+        kml.write_text(KML, encoding="utf-8")
+        browser.build(str(inputs), str(tmp_path / "one"), terrain=False)
+        assert len(list(cache.iterdir())) == 1
+
+        kml.unlink()
+        (inputs / "2_DEAGJ_DA20.kml").write_text("not a KML", encoding="utf-8")
+        with pytest.raises(InvalidInputError):
+            browser.build(str(inputs), str(tmp_path / "two"), terrain=False)
+
+        assert list(cache.iterdir()) == []
+
+    def test_the_tiles_no_flight_asks_for_leave_the_cache(
+        self, tmp_path, js, monkeypatch
+    ):
+        """They show roughly where a removed flight went."""
+        terrain = tmp_path / "cache" / "terrain"
+        terrain.mkdir(parents=True)
+        monkeypatch.setattr("flown.terrain_fetch.TERRAIN_CACHE_DIR", terrain)
+        monkeypatch.setattr("flown.terrain_fetch.time.sleep", lambda _: None)
+        far = terrain / "10-1-1.png"
+        far.write_bytes(terrarium_png(lambda x, y: 250.0))
+        # The one under the departure, EDAQ
+        under = terrain / "10-546-340.png"
+        under.write_bytes(terrarium_png(lambda x, y: 250.0))
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+
+        browser.build(str(inputs), str(tmp_path / "one"), terrain=True)
+        assert not far.exists()
+        assert under.exists()
+        assert (terrain / "10-546-340.pixels").exists()
+
+        # A build that fails before the ground keeps them for the next
+        (inputs / "1_DEAGJ_DA20.kml").write_text("not a KML", encoding="utf-8")
+        with pytest.raises(InvalidInputError):
+            browser.build(str(inputs), str(tmp_path / "bad"), terrain=True)
+        assert under.exists()
+
+        # Without the ground no flight asks for any
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+        browser.build(str(inputs), str(tmp_path / "two"), terrain=False)
+        assert list(terrain.iterdir()) == []
+
+    def test_every_phase_is_a_line_the_build_logs(self):
+        """A line reworded would drop its step from the panel without a word."""
+        logged = set()
+        for source in Path(browser.__file__).parent.glob("*.py"):
+            for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "info"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "logger"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                ):
+                    logged.add(node.args[0].value)
+
+        assert set(browser.PHASES) <= logged
+        # In the order a build takes them
+        assert list(browser.PHASES.values()) == [
+            "Reading your files…",
+            "Fetching the airport names…",
+            "Finding the airports…",
+            "Writing your flights…",
+        ]

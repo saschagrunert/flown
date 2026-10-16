@@ -11,6 +11,7 @@ import {
   vi,
 } from "vitest";
 import {
+  COPY_FAILED_MESSAGE,
   EXPORT_FAILED_MESSAGE,
   EXPORT_UNAVAILABLE_MESSAGE,
   UIToggles,
@@ -102,6 +103,11 @@ function deleteNavigatorProperty(name: string): void {
 vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logDebug: vi.fn(),
   logError: vi.fn(),
+}));
+
+// The extras bundle's stylesheet, the phone's sheet's, which jsdom never loads
+vi.mock("../../../../flown/frontend/services/stylesheet", () => ({
+  loadStylesheet: vi.fn(() => Promise.resolve()),
 }));
 
 /** The import of the extras bundle, as the app makes it */
@@ -1191,11 +1197,96 @@ describe("UIToggles export and share", () => {
       expect(resolvedLink(url).get("i")).toBe("1");
     });
 
-    it("shows an error toast when the clipboard is unavailable", async () => {
+    it("shows an error toast with the link to copy by hand when the clipboard is unavailable", async () => {
       await uiToggles.shareLink();
 
-      expect(toast()?.textContent).toBe("Could not copy link");
+      expect(toast()?.dataset["message"]).toBe(COPY_FAILED_MESSAGE);
+      const link = toast()?.querySelector<HTMLInputElement>(".toast-link");
+      expect(link?.value).toBe(window.location.href);
+      expect(link?.readOnly).toBe(true);
+      expect(link?.getAttribute("aria-label")).toBe("Link");
       expect(toast()?.classList.contains("toast-error")).toBe(true);
+      // After the message and Dismiss, so it wraps onto a line of its own
+      expect(toast()?.lastElementChild).toBe(link);
+    });
+
+    it("selects the whole link when its field takes the focus", async () => {
+      await uiToggles.shareLink();
+
+      const link = toast()!.querySelector<HTMLInputElement>(".toast-link")!;
+      link.focus();
+
+      expect(document.activeElement).toBe(link);
+      expect(link.selectionStart).toBe(0);
+      expect(link.selectionEnd).toBe(link.value.length);
+    });
+
+    it("selects the whole link again as a click or a tap lets go", async () => {
+      await uiToggles.shareLink();
+
+      const link = toast()!.querySelector<HTMLInputElement>(".toast-link")!;
+      link.focus();
+      // The caret a click places, which undoes the selection of the focus
+      link.setSelectionRange(3, 3);
+      const up = new Event("pointerup", { cancelable: true });
+      link.dispatchEvent(up);
+
+      expect(up.defaultPrevented).toBe(true);
+      expect(link.selectionStart).toBe(0);
+      expect(link.selectionEnd).toBe(link.value.length);
+    });
+
+    it("replaces the toast of an earlier failure, and reads out no link", async () => {
+      vi.useFakeTimers();
+      try {
+        await uiToggles.shareLink();
+        window.history.replaceState(null, "", "/?y=2024");
+        await uiToggles.shareLink();
+        vi.advanceTimersByTime(1000);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const toasts = document.querySelectorAll(".toast-notification");
+      expect(toasts).toHaveLength(1);
+      expect(
+        toasts[0]!.querySelector<HTMLInputElement>(".toast-link")?.value,
+      ).toBe(window.location.href);
+      const alert = document.body.querySelector("[role=alert]");
+      expect(alert).not.toBeNull();
+      expect(alert!.textContent).not.toContain("http");
+    });
+
+    it("hands the long link to copy by hand when the clipboard refuses the one to come", async () => {
+      // The token's code still on its way, which may never come
+      resetExtrasLoader(() => new Promise<never>(() => {}));
+      vi.stubGlobal(
+        "ClipboardItem",
+        class {
+          constructor(readonly data: Record<string, Promise<Blob>>) {}
+        },
+      );
+      const write = vi.fn().mockRejectedValue(new Error("denied"));
+      defineNavigatorProperty("clipboard", { write });
+      window.history.replaceState(null, "", "/?y=2025");
+      app.isolateSelection = false;
+      app.stateManager.flush.mockReturnValue({
+        schemaVersion: 4,
+        selectedYear: "2025",
+      });
+
+      try {
+        await uiToggles.shareLink();
+
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(
+          toast()?.querySelector<HTMLInputElement>(".toast-link")?.value,
+        ).toBe(window.location.href);
+      } finally {
+        vi.unstubAllGlobals();
+        resetExtrasLoader(importExtras);
+        await loadExtras();
+      }
     });
   });
 });

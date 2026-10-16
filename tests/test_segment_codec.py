@@ -19,6 +19,7 @@ from flown.segment_codec import (
     encode_ground,
     encode_rows,
     encode_start,
+    split_segments,
 )
 from flown.types import COORDINATE_DECIMALS
 
@@ -178,7 +179,47 @@ class TestEncoding:
 
 def test_the_format_version_is_pinned():
     """Bumping it is a deliberate act; the frontend checks the same number."""
-    assert FORMAT_VERSION == 7
+    assert FORMAT_VERSION == 8
+
+
+class TestSplitSegments:
+    def test_regroups_the_columns_by_path(self):
+        timed = encode_rows([50.0, 8.0], [[50.1, 8.1, 500.0, 90.0, 1.5]])
+        untimed = encode_rows([51.0, 9.0], [[51.1, 9.1, 700.0, 80.0]])
+        year_file = {
+            "path_info": [{"id": 7}, {"id": 3}],
+            "segments": {
+                "start": [encode_start([50.0, 8.0]), encode_start([51.0, 9.0])],
+                "columns": [
+                    [timed[column], untimed[column] if column < 4 else None]
+                    for column in range(5)
+                ],
+                "ground": [encode_ground([330.0]), None],
+            },
+        }
+
+        paths = split_segments(year_file)
+
+        # In the order of path_info, whatever the ids
+        assert list(paths) == [7, 3]
+        assert paths[7] == {
+            "start": encode_start([50.0, 8.0]),
+            "columns": timed,
+            "ground": encode_ground([330.0]),
+        }
+        # Without relative times or ground, neither is there
+        assert paths[3] == {"start": encode_start([51.0, 9.0]), "columns": untimed}
+        assert decode_rows(paths[3]["start"], paths[3]["columns"]) == [
+            [51.1, 9.1, 700.0, 80.0]
+        ]
+
+    def test_a_year_without_paths_has_none(self):
+        year_file = {
+            "path_info": [],
+            "segments": {"start": [], "columns": [[]] * 5, "ground": []},
+        }
+
+        assert split_segments(year_file) == {}
 
 
 grounds = st.lists(

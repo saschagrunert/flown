@@ -22,7 +22,10 @@ import {
   loadFeatures,
   loadWrapped,
 } from "../../../../flown/frontend/services/featureLoader";
-import { MOBILE_BAR_UNAVAILABLE_MESSAGE } from "../../../../flown/frontend/ui/lazyBundles";
+import {
+  featurePart,
+  MOBILE_BAR_UNAVAILABLE_MESSAGE,
+} from "../../../../flown/frontend/ui/lazyBundles";
 import * as motion from "../../../../flown/frontend/utils/motion";
 import { INPUT_EVENTS } from "../../../../flown/frontend/utils/constants";
 import * as toast from "../../../../flown/frontend/utils/toast";
@@ -334,6 +337,25 @@ describe("MapApp.initialize", () => {
       expect(app.fullPathInfo).toBe(defaultData.path_info);
       expect(app.fullPathSegments).toBe(defaultData.path_segments);
       expect(app.isInitializing).toBe(false);
+    });
+
+    it("loads the year the page ships with while the map loads its style", async () => {
+      yearSelect().add(new Option("2025", "2025", true, true));
+      await initializeApp(app);
+
+      expect(
+        mockDataManagerInstance.preloadYear,
+      ).toHaveBeenCalledExactlyOnceWith("2025");
+    });
+
+    it("loads no year ahead that the link or the last visit picked instead", async () => {
+      yearSelect().add(new Option("2025", "2025", true, true));
+      mockStateManagerInstance.loadState.mockReturnValue({
+        selectedYear: "2019",
+      });
+      await initializeApp(app);
+
+      expect(mockDataManagerInstance.preloadYear).not.toHaveBeenCalled();
     });
 
     it("leaves persistence to the store subscription and the map events", async () => {
@@ -704,6 +726,36 @@ describe("MapApp.initialize", () => {
       expect(app.map!.getPitch()).toBe(60);
     });
 
+    it("closes the cross-section, which a first visit does not show", async () => {
+      await initializeApp(app);
+      let open = true;
+      const tool = {
+        isOpen: () => open,
+        toggle: vi.fn(() => {
+          open = false;
+          app.crossSectionLine = "";
+        }),
+      };
+      featurePart(app, "crossSection", () => tool);
+      app.crossSectionLine = "50,8,51,9";
+      expect(app.isReset()).toBe(false);
+
+      await app.resetView();
+
+      expect(tool.toggle).toHaveBeenCalledTimes(1);
+      expect(app.crossSectionLine).toBe("");
+    });
+
+    it("lets go of the line of a cross-section that has not opened yet", async () => {
+      await initializeApp(app);
+      // The line of a link, its tool still on its way with the bundle
+      app.crossSectionLine = "50,8,51,9";
+
+      await app.resetView();
+
+      expect(app.crossSectionLine).toBe("");
+    });
+
     it('opens on "all" years when there is no list of years', async () => {
       await initializeApp(app, defaultAirports, null);
       switchYearsInOneBatch();
@@ -767,12 +819,30 @@ describe("MapApp.initialize", () => {
       ["a zoom", () => moveCamera({ zoom: 3 })],
       ["a rotation", () => moveCamera({ bearing: 30 })],
       ["a tilt", () => moveCamera({ pitch: 40 })],
+      ["a cross-section", () => (app.crossSectionLine = "50,8,51,9")],
     ])("is available after %s", async (_change, change) => {
       await initializeApp(app);
 
       change();
 
       expectAvailable(true);
+    });
+
+    it("is available while the cross-section is open without a line", async () => {
+      await initializeApp(app);
+      let open = false;
+      featurePart(app, "crossSection", () => ({
+        isOpen: () => open,
+        toggle: vi.fn(),
+      }));
+      expectAvailable(false);
+
+      // As the tool says when it opens
+      open = true;
+      app.syncResetButton();
+
+      expectAvailable(true);
+      expect(app.isReset()).toBe(false);
     });
 
     it("asks for the phone's bar again once its code could not be loaded", async () => {

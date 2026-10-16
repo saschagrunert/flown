@@ -67,6 +67,8 @@ import {
   whenContextRestored,
 } from "../utils/mapHelpers";
 import { loadedFeatures, loadFeatures } from "../services/featureLoader";
+import { TRY_AGAIN } from "../services/lazyImport";
+import { dismissToast, showToast } from "../utils/toast";
 import {
   isLiftedAt,
   reliefLevel,
@@ -97,6 +99,10 @@ import {
   resolveColorRange,
   updateLegend,
 } from "./pathLook";
+
+/** Said when the 3D view's code, in the feature bundle, cannot be fetched */
+export const THREE_D_UNAVAILABLE_MESSAGE =
+  "The 3D view is unavailable: its code could not be loaded" + TRY_AGAIN;
 
 /** What a source is given that has no runs to show */
 const NO_FEATURES: GeoJSON.FeatureCollection = {
@@ -149,6 +155,26 @@ export class LayerManager implements PathHitTester {
     const changed = this.syncTerrain();
     if (changed === null) return;
     if (changed || this.cutAwaited) this.redrawVisibleModes();
+    // In a task of its own, with what the end of the move asks (see
+    // handleMoveEnd): the heat cloud has just been cut for the new level
+    // (ui/heatCloud.ts), and the two in one task took 100 to 150 ms. The
+    // ribbons stand on the neighbouring level until then.
+    clearTimeout(this.zoomEnded);
+    this.zoomEnded = setTimeout(() => {
+      this.zoomEnded = undefined;
+      // A zoom under way ends in another call
+      if (this.listeningTo !== map || map.isZooming()) return;
+      this.recutForZoom(map);
+      this.handleMoveEnd({});
+    }, 0);
+  };
+
+  /** Pending while the end of a zoom waits for its own task, see above */
+  private zoomEnded: ReturnType<typeof setTimeout> | undefined;
+
+  /** Cut the ribbons again as wide as the level the zoom ended on asks */
+  private recutForZoom(map: MapLibreMap): void {
+    if (!this.app.threeDVisible) return;
     const zoom = map.getZoom();
     const level = ribbonWidthZoom(zoom);
     for (const mode of MODES) {
@@ -170,7 +196,7 @@ export class LayerManager implements PathHitTester {
         }
       }
     }
-  };
+  }
 
   /**
    * Ribbons written around the view (see ribbonBox) are written again, as
@@ -182,6 +208,7 @@ export class LayerManager implements PathHitTester {
       !map ||
       !this.app.threeDVisible ||
       this.cutAwaited ||
+      this.zoomEnded !== undefined ||
       isReplayCameraMove(event)
     ) {
       return;
@@ -226,6 +253,18 @@ export class LayerManager implements PathHitTester {
       ["selectedPathIds", "isolateSelection", "replayActive", "tourView"],
       () => this.pathHover.refreshTapped(),
     );
+    // The values of a tap are of a flight of this dataset and filter, in a
+    // colour that shows: its button would select a flight not drawn
+    app.store.subscribeKeys(
+      [
+        "currentData",
+        "selectedYear",
+        "selectedAircraft",
+        "altitudeVisible",
+        "airspeedVisible",
+      ],
+      () => this.pathHover.closeTapped(),
+    );
     // Out of sight while they settle on another ground (ui/terrain.ts)
     // Without its WebGL context the map has no style to write to: the
     // restore styles the modes as they are then (see restoreModes)
@@ -266,6 +305,7 @@ export class LayerManager implements PathHitTester {
   /** Stop following the pointer; the drawn layers stay on the map */
   destroy(): void {
     this.destroyed = true;
+    clearTimeout(this.zoomEnded);
     this.unfollowRibbons();
     this.pathHover.destroy();
     this.listeningTo?.off("zoomend", this.handleZoomEnd);
@@ -632,20 +672,49 @@ export class LayerManager implements PathHitTester {
       land({ type: "FeatureCollection", features });
       return;
     }
-    this.app.dataManager.askWorker(
-      (decoder) => decoder.runsSource(segments, runs, g),
-      land,
-      // Without the worker the lines are written here, as they were before
-      // it wrote them: the source never keeps the lines of runs gone by
-      () => {
-        if (table.writes !== write) return;
-        land({
-          type: "FeatureCollection",
-          features: runLines(segments, runs, g),
-        });
-      },
-      "the lines of the flights",
-    );
+    // One set of runs at a time, and the latest of those asked for while
+    // it is written: a walk through the years with the arrow keys had the
+    // worker write the lines of each year on the way
+    const askNext = (): void => {
+      table.asking = false;
+      const next = table.next;
+      table.next = null;
+      next?.();
+    };
+    const ask = (): void => {
+      if (table.writes !== write) return;
+      table.asking = true;
+      this.app.dataManager.askWorker(
+        (decoder) => decoder.runsSource(segments, runs, g),
+        // The next is asked for even when this one throws, or the lines
+        // of the mode waited for good
+        (content) => {
+          try {
+            land(content);
+          } finally {
+            askNext();
+          }
+        },
+        // Without the worker the lines are written here, as they were
+        // before it wrote them: the source never keeps the lines of runs
+        // gone by
+        () => {
+          try {
+            if (table.writes === write) {
+              land({
+                type: "FeatureCollection",
+                features: runLines(segments, runs, g),
+              });
+            }
+          } finally {
+            askNext();
+          }
+        },
+        "the lines of the flights",
+      );
+    };
+    if (table.asking) table.next = ask;
+    else ask();
   }
 
   /** Draw every flight of a mode, and the selection on top of them */
@@ -764,12 +833,21 @@ export class LayerManager implements PathHitTester {
       void loadFeatures().then((features) => {
         if (this.destroyed || this.features) return;
         if (features) {
+          // A failure of an earlier try stays until dismissed
+          dismissToast(THREE_D_UNAVAILABLE_MESSAGE);
           features.followTerrain(this.app);
           features.followHeatCloud(this.app);
           features.followSelectionRibbons(this.app);
           this.features = features;
+        } else if (this.app.threeDVisible) {
+          // As Satellite: the switch claims no 3D view the map does not
+          // draw, and the next press asks again. Turned off, it draws the
+          // flights flat, which the cut awaited by now was, with the tilt
+          // and the altitude colours of the press taken back.
+          this.app.threeDVisible = false;
+          this.app.mapOrientation?.undoThreeD();
+          showToast(THREE_D_UNAVAILABLE_MESSAGE, "error");
         }
-        // A failure is tried again by the next zoom, not from here
         if ((features && this.syncTerrain()) || this.cutAwaited) {
           this.redrawVisibleModes();
         }

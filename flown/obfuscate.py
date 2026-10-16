@@ -59,6 +59,7 @@ from .date_tokens import (
     find_date_tokens,
     find_holiday_tokens,
     find_partial_date_tokens,
+    find_possible_date_tokens,
     find_time_tokens,
     find_weekday_tokens,
     month_number,
@@ -73,7 +74,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
 __all__ = [
+    "ObfuscationCheck",
+    "check_directory",
     "check_directory_obfuscated",
+    "check_kml",
     "check_kml_obfuscated",
     "find_kml_files",
     "obfuscate_kml_content",
@@ -1245,16 +1249,29 @@ def check_kml_obfuscated(filepath: Path) -> list[str]:
 
     Returns a list of violation descriptions (empty means the file is clean).
     """
+    return check_kml(filepath)[0]
+
+
+def check_kml(filepath: Path) -> tuple[list[str], list[str]]:
+    """The violations of a KML file (``check_kml_obfuscated``), and what
+    may be a date for a person to look at, which fails nothing.
+
+    A day, a word and a year in a language the patterns do not know
+    (``find_possible_date_tokens``) is as often a count and a place ("Day 2
+    Stuttgart 2026"): the rewrite leaves it, so refusing it would leave the
+    file to be renamed by hand for nothing.
+    """
     violations: list[str] = []
+    warnings: list[str] = []
     if _is_kmz(filepath):
         # Its dates are inside a compressed member, which neither the
         # rewrite nor this check reads
-        return [f"KMZ archive: {KMZ_REFUSAL}"]
+        return [f"KMZ archive: {KMZ_REFUSAL}"], []
     try:
         content = filepath.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError) as e:
         # A file that cannot be read cannot be certified as obfuscated
-        return [f"Cannot read file: {e}"]
+        return [f"Cannot read file: {e}"], []
 
     # rename_charterware_files puts the date exactly on January 1st
     charterware_name = _charterware_name(filepath)
@@ -1284,6 +1301,10 @@ def check_kml_obfuscated(filepath: Path) -> list[str]:
         violations.extend(
             f"File name contains part of a date: {text}"
             for text in find_partial_date_tokens(stem)
+        )
+        warnings.extend(
+            f"File name may contain a date in another language: {text}"
+            for text in find_possible_date_tokens(stem)
         )
 
     violations.extend(
@@ -1345,9 +1366,15 @@ def check_kml_obfuscated(filepath: Path) -> list[str]:
         f"Time of day gives the flight away, remove it: {text}"
         for text in _find_stray_times(without_coordinates, stray_dates)
     )
+    # A date in a language the patterns do not know, which the rewrite
+    # leaves: a person has to tell
+    warnings.extend(
+        f"May be a date in another language, remove it if it is: {text}"
+        for text in find_possible_date_tokens(unescaped)
+    )
 
     # A track repeats its date in every timestamp; one line per date is enough
-    return list(dict.fromkeys(violations))
+    return list(dict.fromkeys(violations)), list(dict.fromkeys(warnings))
 
 
 def _relative_name(path: Path, directory: Path) -> str:
@@ -1355,10 +1382,19 @@ def _relative_name(path: Path, directory: Path) -> str:
     return path.relative_to(directory).as_posix()
 
 
+class ObfuscationCheck(NamedTuple):
+    """The violations and the warnings of the files of a directory, by the
+    name below it; only files with any are included."""
+
+    violations: dict[str, list[str]]
+    warnings: dict[str, list[str]]
+
+
 def _check_listed_files(
     kml_files: list[Path], unlisted: Iterable[Path], directory: Path
-) -> dict[str, list[str]]:
+) -> ObfuscationCheck:
     results: dict[str, list[str]] = {}
+    warned: dict[str, list[str]] = {}
     for path in unlisted:
         # Its files are neither checked nor certified
         results[_relative_name(path, directory) + "/"] = [
@@ -1368,9 +1404,11 @@ def _check_listed_files(
             )
         ]
     for kml_file in kml_files:
-        violations = check_kml_obfuscated(kml_file)
+        violations, warnings = check_kml(kml_file)
         if violations:
             results[_relative_name(kml_file, directory)] = violations
+        if warnings:
+            warned[_relative_name(kml_file, directory)] = warnings
     for leftover in _leftover_temp_files(directory):
         results[_relative_name(leftover, directory)] = [
             (
@@ -1378,7 +1416,7 @@ def _check_listed_files(
                 "original dates: remove it"
             )
         ]
-    return results
+    return ObfuscationCheck(results, warned)
 
 
 def check_directory_obfuscated(directory: Path) -> dict[str, list[str]]:
@@ -1389,7 +1427,22 @@ def check_directory_obfuscated(directory: Path) -> dict[str, list[str]]:
     an interrupted rewrite is a violation as well, and so is a directory
     that cannot be listed.
     """
+    return check_directory(directory).violations
+
+
+def check_directory(directory: Path) -> ObfuscationCheck:
+    """``check_directory_obfuscated``, with the warnings of ``check_kml``."""
     return _check_listed_files(*_list_kml_files(directory), directory)
+
+
+def print_warnings(warnings: dict[str, list[str]], indent: str = "  ") -> None:
+    """The warnings of a check, which refuse nothing, on stderr."""
+    if not warnings:
+        return
+    print("Possible dates to look at (not refused):", file=sys.stderr)
+    for filename, issues in warnings.items():
+        for issue in issues:
+            print(f"{indent}{filename}: {issue}", file=sys.stderr)
 
 
 def main() -> None:
@@ -1422,7 +1475,8 @@ def main() -> None:
         # (read-only, or a date in a place the tool does not touch) fails below
         listing = _list_kml_files(args.directory)
 
-    violations = _check_listed_files(*listing, args.directory)
+    violations, warnings = _check_listed_files(*listing, args.directory)
+    print_warnings(warnings)
     if violations:
         print("Obfuscation violations found:")
         for filename, issues in violations.items():

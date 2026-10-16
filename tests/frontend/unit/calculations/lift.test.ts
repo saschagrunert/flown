@@ -75,7 +75,10 @@ describe("lift", () => {
   afterEach(() => resetMapLibreMock());
 
   describe("groundProfileFt", () => {
-    /** A segment of path 1 heading east from `lng`, 0.01 degrees long */
+    /**
+     * A segment of path 1 heading east from `lng`, 0.01 degrees long, timed
+     * as a recording with timestamps is
+     */
     const at = (
       lng: number,
       altitude_ft: number,
@@ -85,6 +88,7 @@ describe("lift", () => {
       path_id,
       altitude_ft,
       groundspeed_knots,
+      time: Math.round((lng - 8) * 10000),
       coords: [
         [50, lng],
         [50, lng + 0.01],
@@ -143,6 +147,19 @@ describe("lift", () => {
       expect([...groundProfileFt(segments)]).toEqual([800, 800, 800, 800]);
     });
 
+    it("tells no field from a line without times, as the build does", () => {
+      // A flight of circuits at 1,310 ft over a field at 330 ft, drawn as
+      // a line with a TimeSpan: every segment has the average speed, below
+      // that of taxiing, and no time. Counted as taxiing, the field was
+      // the middle of the altitudes, the circuit height (regression)
+      const segments = [330, 1310, 1310, 1310, 1310, 330].map((altitude, i) => {
+        const { time: _, ...untimed } = at(8 + i / 100, altitude, 30);
+        return untimed;
+      });
+
+      expect([...groundProfileFt(segments)]).toEqual(segments.map(() => 330));
+    });
+
     it("ends the taxiing at a speed of 0, as the build does", () => {
       // Taxiing at the start, then no speed: the start field only
       const segments = [
@@ -170,6 +187,7 @@ describe("lift", () => {
         path_id: 1,
         altitude_ft,
         groundspeed_knots,
+        time: 0,
         coords: [
           [50, from],
           [50, to],

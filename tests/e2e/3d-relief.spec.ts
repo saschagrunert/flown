@@ -443,7 +443,7 @@ test.describe("Map orientation on the relief", HEAVY, () => {
           page.evaluate(
             () =>
               window.mapApp!.map!.queryRenderedFeatures({
-                layers: ["replay-trail-3d"],
+                layers: ["replay-trail-3d", "replay-trail-tip-3d"],
               }).length,
           ),
         )

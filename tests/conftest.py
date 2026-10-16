@@ -327,6 +327,17 @@ def parse_data_fixture():
     return parse_data
 
 
+def segments_by_id(year_file):
+    """The segments of a parsed year file, one entry per path id as a string.
+
+    The file lays them out column by column across its paths (see
+    ``flown.segment_codec.split_segments``); a test reads one path at a time.
+    """
+    from flown.segment_codec import split_segments
+
+    return {str(path_id): entry for path_id, entry in split_segments(year_file).items()}
+
+
 def decoded_segments(entry):
     """A segments entry of a year file as the frontend reads it.
 

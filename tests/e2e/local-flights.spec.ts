@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { test, expect, type Page } from "./fixtures";
 import {
   attachErrorCollectors,
+  expectNoA11yViolations,
   gotoApp,
   relevantConsoleErrors,
   toastMessage,
@@ -148,6 +149,7 @@ test.describe("Your flights", () => {
       page.getByRole("button", { name: "Show my flights" }),
     ).toBeHidden();
     await expect(page.getByRole("button", { name: "Remove all" })).toBeHidden();
+    await expectNoA11yViolations(page, "Your flights, empty");
 
     await page.keyboard.press("Escape");
     await expect(panel(page)).toBeHidden();
@@ -178,6 +180,7 @@ test.describe("Your flights", () => {
     await expect(
       page.getByRole("button", { name: "Show the site’s flights" }),
     ).toBeVisible();
+    await expectNoA11yViolations(page, "Your flights with files");
     expect(await page.evaluate(() => window.mapApp!.config.dataDir)).toBe(
       "local",
     );
@@ -241,9 +244,17 @@ test.describe("Your flights", () => {
     await expect(shown(page)).toHaveText("Showing your 2 flights from 2 files");
     expect(fetched).toEqual([]);
 
-    // Remove all: the site's flights, nothing kept
+    // Remove all, pressed again as it asks: the site's flights, nothing kept
+    const removeAll = page.getByRole("button", { name: "Remove all" });
+    await removeAll.click();
+    await expect(removeAll).toHaveText("Remove all files?");
+    // The ask lasts 4 s, which a slow phone's run can take to get to the
+    // second press: in the page, asked again first where it ran out
     await switched(page, () =>
-      page.getByRole("button", { name: "Remove all" }).click(),
+      removeAll.evaluate((button: HTMLElement) => {
+        if (button.textContent !== "Remove all files?") button.click();
+        button.click();
+      }),
     );
     await expect(shown(page)).toHaveText("Showing the site's flights");
     await expect(panel(page).locator(".local-flights-files li")).toHaveCount(0);

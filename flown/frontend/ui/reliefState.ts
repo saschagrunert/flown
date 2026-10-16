@@ -34,6 +34,7 @@ export const RIBBON_SOURCES: readonly string[] = [
   ...PATH_RIBBON_SOURCES,
   MAP_SOURCES.selectionHighlightRibbons,
   MAP_SOURCES.replayTrailRibbons,
+  MAP_SOURCES.replayTrailTipRibbons,
 ];
 
 export class ReliefState {

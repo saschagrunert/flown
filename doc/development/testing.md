@@ -55,7 +55,10 @@ every time; CI replays the same ones on every run, so an example found by chance
 cannot fail an unrelated pull request, and the weekly `properties` job draws new
 ones, more of them (`FLOWN_HYPOTHESIS_EXPLORE=1`, see `tests/conftest.py`). A
 failure there prints the blob that reproduces it; pin the example with
-`@example` in the test.
+`@example` in the test. The property tests of the frontend use
+[fast-check](https://fast-check.dev/) the same way: CI runs them from a fixed
+seed, and the `properties` job draws new examples for them as well (see
+`tests/frontend/setup.ts`); a failure prints the seed and path that replay it.
 
 The tests run in another order every time (pytest-randomly), so a test that only
 passes after another one fails sooner or later rather than never. The header of
@@ -64,8 +67,9 @@ a run names its seed; `pytest --randomly-seed=<seed>` repeats that order, and
 well (`--sequence.shuffle`; repeat an order with `--sequence.seed=<seed>`).
 
 A test that reads named flights of `data/` is marked `repo_data`, and
-`FLOWN_OWN_FLIGHTS=1` skips it, for a copy of the repository with flights of its
-own (see [Hosting](../hosting.md#your-own-site-on-github-pages)).
+`FLOWN_OWN_FLIGHTS=1` skips it, for a copy of the repository whose `data/` holds
+flights of its own, as before `FLOWN_INPUT_DIR` (see
+[Hosting](../hosting.md#your-own-site-on-github-pages)).
 
 No test touches the network: `tests/conftest.py` fails any download of a tile
 loudly, the pipeline tests pass a tile source of their own
@@ -85,15 +89,23 @@ are located in `tests/e2e/` and configured via `playwright.config.ts`.
 ### Projects
 
 The `desktop` project runs every spec but `mobile.spec.ts` and `visual.spec.ts`
-in Chromium. The `mobile` project runs `mobile.spec.ts` and the viewport
-independent specs (`core`, `layers`, `state`) on a phone viewport. The `webkit`
-project runs the same specs as `mobile` on an emulated iPhone, and
-`webkit-desktop` runs `3d-relief`, `error-free`, `orientation` and `replay`,
-which drive the desktop controls, in a desktop Safari viewport. The `visual`
-project compares screenshots of a fixture site and only exists inside the
-Playwright image (or with `VISUAL_SNAPSHOTS=1`), so a plain run leaves it out
-(see [Visual snapshots](../../CONTRIBUTING.md#visual-snapshots)). Every page is
-scanned for accessibility violations with axe.
+in Chromium. The `mobile` project runs `mobile.spec.ts` and the specs that are
+not tied to a viewport (`core`, `layers`, `local-flights`, `state`) on a phone
+viewport. The `webkit` project runs `core`, `layers`, `mobile`, `search` and
+`state` on an emulated iPhone (not `local-flights`, whose stub of the worker
+WebKit does not route), and `webkit-desktop` runs `3d-relief`, `error-free`,
+`orientation` and `replay`, which drive the desktop controls, in a desktop
+Safari viewport. The `visual` project compares screenshots of a fixture site and
+only exists inside the Playwright image (or with `VISUAL_SNAPSHOTS=1`), so a
+plain run leaves it out (see
+[Visual snapshots](../../CONTRIBUTING.md#visual-snapshots)).
+
+The specs scan the page with axe for WCAG A and AA violations
+(`expectNoA11yViolations` in `tests/e2e/helpers.ts`) in the states a visitor
+sees most: the first load and a load without flights, the panels, sheets and
+dialogs, the search with its results, Your flights, an airport popup, a toast
+with buttons, the replays and the hotspot tour. A state without a scan is not
+checked, so a new panel or dialog gets one in its spec.
 
 ### No network
 
@@ -201,14 +213,19 @@ share of their timeout they took (see
 
 ## CI and deployment
 
-The published site is built on every push to `main` by the `site` and `deploy`
-jobs of the `test` workflow, which wait for every test job but `security` to
-pass (a new advisory for a test dependency must not hold back new flights, and
-the weekly run reports it anyway) and skip a commit that is no longer the head
-of `main`: they run the same steps as `make build` (frontend bundle, then
-`python -m flown data`) and upload the result to GitHub Pages (see
+The published site is built on every push to `main` by the `site` job of the
+`test` workflow, alongside the tests, and published to GitHub Pages by the
+`deploy` job, which waits for every test job but `security` to pass (a new
+advisory for a test dependency must not hold back new flights, and the weekly
+run reports it anyway) and skips a commit that is no longer the head of `main`.
+The `site` job runs the same steps as `make build`: the frontend bundle, then
+`python -m flown "$FLOWN_INPUT_DIR"` (`data/` unless the repository variable
+names another directory), with the airport database and the ground of every
+flight required (`FLOWN_REQUIRE_AIRPORT_DB`, `FLOWN_REQUIRE_TERRAIN`), stable
+modification times (`FLOWN_STABLE_MTIMES`) and the site's address for the link
+previews (`FLOWN_SITE_URL`). See
 [Repository rules](../../CONTRIBUTING.md#repository-rules) for what is not
-committed). The `checks` job is the one status a merge needs (the ruleset on
+committed. The `checks` job is the one status a merge needs (the ruleset on
 `main` requires it, see
 [Repository rules](../../CONTRIBUTING.md#repository-rules)), because it needs
 every job a pull request runs and fails when any of them failed, was cancelled

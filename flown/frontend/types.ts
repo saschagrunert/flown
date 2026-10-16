@@ -76,32 +76,31 @@ export interface PathSegment {
 }
 
 /**
- * Encoded columns of one path, as written by the exporter
- * (flown/segment_codec.py): latitude, longitude, altitude in steps of
- * 20 ft and groundspeed in whole knots, then the relative time in
- * tenths of a second when any row has one (null for a row without). Each
- * entry is the difference to the row before, as a scaled integer.
+ * Exported segments of a year, column by column across its paths
+ * (flown/segment_codec.py, format 8). Every array holds one entry per path,
+ * in the order of `path_info`.
  *
- * Row i is the segment that ENDS at the i-th coordinate. Its start is the
- * end of the row before, and the first row continues from
- * `RawPathSegments.start`.
+ * `columns` are latitude, longitude, altitude in steps of 20 ft,
+ * groundspeed in whole knots and the relative time in tenths of a second.
+ * A path's entry in each is its rows, every value the difference to the
+ * row before as a scaled integer; its time entry is null when no row has a
+ * time, and a null in it marks a row without one. Row i is the segment that
+ * ENDS at the i-th coordinate. Its start is the end of the row before, and
+ * the first row continues from the path's `start`, its scaled first point.
+ *
+ * `ground` is the ground under every row in tens of feet, as differences
+ * like the columns; null for a path whose ground the build does not know.
  */
-export type RawColumns =
-  | [number[], number[], number[], number[]]
-  | [number[], number[], number[], number[], (number | null)[]];
-
-/**
- * Exported segments of one path: the scaled first point and the columns of
- * the rows after it.
- */
-export interface RawPathSegments {
-  start: number[];
-  columns: RawColumns;
-  /**
-   * Ground under every row in tens of feet, as differences like the
-   * columns; left out for a path whose ground the build does not know
-   */
-  ground?: number[];
+export interface RawSegments {
+  start: (number[] | null)[];
+  columns: [
+    number[][],
+    number[][],
+    number[][],
+    number[][],
+    ((number | null)[] | null)[],
+  ];
+  ground: (number[] | null)[];
 }
 
 /**
@@ -113,7 +112,7 @@ export interface RawYearData {
   year: number;
   original_points: number;
   path_info: PathInfo[];
-  segments: Record<string, RawPathSegments>;
+  segments: RawSegments;
 }
 
 /**

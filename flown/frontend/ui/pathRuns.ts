@@ -167,6 +167,13 @@ interface RunTable {
    */
   writes: number;
   /**
+   * The year worker writes the lines of one set of runs at a time: set
+   * while it does, with the request for the latest runs that waits for it
+   * in `next` (see LayerManager.setRuns)
+   */
+  asking: boolean;
+  next: (() => void) | null;
+  /**
    * The source that holds the runs' features, null while none does, which
    * is how they are created: the lines' source, or in the 3D view the
    * ribbons' source
@@ -230,6 +237,8 @@ export function emptyModeState(): ModeState {
     runs: [],
     g: 0,
     writes: 0,
+    asking: false,
+    next: null,
     written: null,
     landing: null,
     widthZoom: null,

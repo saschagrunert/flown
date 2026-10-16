@@ -376,3 +376,16 @@ export function teardownLayerManager(layerManager: LayerManager): void {
   layerManager.destroy();
   document.body.innerHTML = "";
 }
+
+/**
+ * End a zoom of `map`, and the task after it the layer manager cuts the
+ * ribbons again in (see LayerManager.handleZoomEnd)
+ */
+export async function endZoom(
+  map: { emit: (type: string, data?: object) => void },
+  event?: object,
+): Promise<void> {
+  map.emit("zoomend", event);
+  if (vi.isFakeTimers()) vi.advanceTimersByTime(0);
+  else await new Promise((resolve) => setTimeout(resolve, 0));
+}

@@ -495,6 +495,39 @@ describe("airport labels", () => {
       }
     });
 
+    it("places them again when a panel comes in the <main> of the map, as the cross-section does", async () => {
+      const home = document.createElement("main");
+      const mapElement = document.createElement("div");
+      mapElement.id = "map";
+      home.append(mapElement);
+      document.body.append(home);
+      const panel = document.createElement("div");
+      panel.id = "cross-section";
+      panel.getBoundingClientRect = () =>
+        ({
+          left: 250,
+          top: 250,
+          right: 350,
+          bottom: 295,
+          width: 100,
+          height: 45,
+        }) as DOMRect;
+      try {
+        const placer = codes();
+        placer.update();
+        expect(placer.placeOf("EDDF Frankfurt")!.angle).toBe(-90);
+
+        // Ahead of the map, not in the <body> itself
+        mapElement.before(panel);
+        await Promise.resolve();
+        vi.advanceTimersToNextFrame();
+
+        expect(placer.placeOf("EDDF Frankfurt")!.angle).not.toBe(-90);
+      } finally {
+        home.remove();
+      }
+    });
+
     const dotButton = (at: CodeMarker): HTMLElement =>
       at.element.querySelector<HTMLElement>(".airport-marker-container")!;
     const chip = (at: CodeMarker): HTMLElement =>

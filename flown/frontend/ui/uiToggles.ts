@@ -41,6 +41,12 @@ export const EXPORT_FAILED_MESSAGE = "Could not export the image. Try again.";
 export const EXPORT_UNAVAILABLE_MESSAGE =
   "Export is unavailable: its code could not be loaded" + TRY_AGAIN;
 
+/**
+ * Said when the link cannot be put on the clipboard, which the toast then
+ * shows under the message to copy by hand
+ */
+export const COPY_FAILED_MESSAGE = "Could not copy link. Copy it from here:";
+
 /** Whether a share sheet, or a download, was cancelled rather than failed */
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -249,7 +255,27 @@ export class UIToggles {
       }
       showToast("Link copied", "info");
     } catch (_error) {
-      showToast("Could not copy link", "error");
+      // No clipboard over plain HTTP, in a frame or where it is refused:
+      // the link to copy by hand from a field under the message
+      // (styles.css), which a tap or Tab selects whole; the long one where
+      // the token's code has not come, whose fetch may never end. Not in
+      // the message, which is read out and replaces the toast of the last
+      // failure; the link changes with every move of the map.
+      const toast = showToast(COPY_FAILED_MESSAGE, "error");
+      const link = document.createElement("input");
+      link.className = "toast-link";
+      link.readOnly = true;
+      link.value = url;
+      link.setAttribute("aria-label", "Link");
+      // On focus by Tab, and again on a click or a tap, whose caret
+      // undoes a selection made as it focused
+      const all = () => link.setSelectionRange(0, link.value.length);
+      link.onfocus = all;
+      link.onpointerup = (event) => {
+        event.preventDefault();
+        all();
+      };
+      toast.append(link);
     }
   }
 }

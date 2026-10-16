@@ -7,9 +7,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from flown.date_tokens import (
+    any_month_number,
     find_date_tokens,
     find_holiday_tokens,
     find_partial_date_tokens,
+    find_possible_date_tokens,
     find_time_tokens,
     find_weekday_tokens,
     month_number,
@@ -1658,3 +1660,215 @@ class TestCompactDatesAndSeparators:
 def test_strip_dates_is_idempotent(words, separator):
     once = strip_dates(separator.join(words))
     assert once is None or strip_dates(once) == once
+
+
+class TestOtherLanguages:
+    """Dates of the languages of the countries the flights reach passed the
+    check, the rewrite and the names the site publishes (regression)."""
+
+    @pytest.mark.parametrize(
+        ("text", "date"),
+        [
+            ("LKPR - LFPG 16 août 2026", "16 août 2026"),
+            ("le 1er aout 2026", "1er aout 2026"),
+            ("Lot 16. srpna 2026", "16. srpna 2026"),
+            ("16. září 2026", "16. září 2026"),
+            ("lot 16 sierpnia 2026", "16 sierpnia 2026"),
+            ("16 października 2026", "16 października 2026"),
+            ("let 16. avgusta 2026", "16. avgusta 2026"),
+            ("16. augusta 2026", "16. augusta 2026"),
+            ("2026. augusztus 16.", "2026. augusztus 16."),
+            ("vuelo 16 de agosto de 2026", "16 de agosto de 2026"),
+            ("voo 16 de dezembro de 2026", "16 de dezembro de 2026"),
+            ("volo 16 agosto 2026", "16 agosto 2026"),
+            ("vlucht 16 augustus 2026", "16 augustus 2026"),
+            ("agosto 2026", "agosto 2026"),
+            ("16 mei 26", "16 mei 26"),
+        ],
+    )
+    def test_the_check_reports_them(self, text, date):
+        assert find_date_tokens(text, skip_near_jan_first=True) == [date]
+        assert [text[a:b] for a, b in stray_date_spans(text)] == [date]
+
+    @pytest.mark.parametrize(
+        ("text", "kept"),
+        [
+            ("LKPR - LFPG 16 août 2026", "LKPR - LFPG"),
+            ("3_DEAGJ_DA20 16 sierpnia", "3_DEAGJ_DA20"),
+            ("Lot 16. srpna", "Lot"),
+            ("vuelo 16 de agosto", "vuelo"),
+        ],
+    )
+    def test_names_lose_them(self, text, kept):
+        assert strip_dates(text) == kept
+
+    @pytest.mark.parametrize(
+        ("name", "number"),
+        [
+            ("janvier", 1),
+            ("Février", 2),
+            ("marzo", 3),
+            ("kwiecień", 4),
+            ("května", 5),
+            ("giugno", 6),
+            ("lipca", 7),
+            ("srpna", 8),
+            ("września", 9),
+            ("októbra", 10),
+            ("listopadu", 11),
+            ("grudnia", 12),
+            ("december", 12),
+        ],
+    )
+    def test_their_month_numbers(self, name, number):
+        assert any_month_number(name) == number
+
+    def test_first_names_are_no_months(self):
+        assert any_month_number("Marc") is None
+        assert any_month_number("Julius") is None
+
+    def test_january_first_passes_the_check(self):
+        assert find_date_tokens("1 janvier 2026", skip_near_jan_first=True) == []
+        assert find_date_tokens("1. ledna 2026", skip_near_jan_first=True) == []
+
+    @pytest.mark.parametrize(
+        "weekday", ["samedi", "Sobota", "domingo", "zaterdag", "szombat", "nedeľa"]
+    )
+    def test_their_weekdays(self, weekday):
+        assert find_weekday_tokens(f"Lot {weekday} EDDS") == [weekday]
+        assert strip_dates(f"EDDS {weekday}") == "EDDS"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "LJMS Murska Sobota",
+            "Rimavska Sobota",
+            "MDSD Santo Domingo",
+            "Sroda Slaska",
+            "Środa Wielkopolska",
+            # Regression: the obfuscation check refused these
+            "EDAQ Halle-Oppin - LZDS Dunajská Streda",
+            "Dunajska Streda-Male Blahovo Airfield",
+            "Streda nad Bodrogom Airstrip",
+            "Sto. Domingo Zanatepec",
+            "SANU Domingo Faustino Sarmiento Airport",
+            "YMDZ Mardi Station Airport",
+        ],
+    )
+    def test_towns_named_after_a_weekday_keep_it(self, text):
+        assert find_weekday_tokens(text) == []
+        assert strip_dates(text) == text
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # A month name of those languages alone is a word or a name
+            "Mars mission",
+            "Maja Novak",
+            "Agosto",
+            # As the German ones: a number before one is no day
+            "Gate 16 mars",
+        ],
+    )
+    def test_words_alone_stay(self, text):
+        assert find_date_tokens(text) == []
+
+
+class TestPossibleDates:
+    @pytest.mark.parametrize(
+        ("text", "found"),
+        [
+            ("Flug 16 setyembre 2026", ["16 setyembre 2026"]),
+            ("16. augusti 2026", ["16. augusti 2026"]),
+            ("16_kesäkuuta_2026", ["16_kesäkuuta_2026"]),
+            ("16 SETYEMBRE 2026", ["16 SETYEMBRE 2026"]),
+            # With hyphens, dots or nothing between, as file names have them
+            ("16-augusti-2026", ["16-augusti-2026"]),
+            ("16.augusti.2026", ["16.augusti.2026"]),
+            ("16augusti2026", ["16augusti2026"]),
+        ],
+    )
+    def test_a_day_a_word_and_a_year(self, text, found):
+        assert find_possible_date_tokens(text) == found
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Flight 3 from 2019",
+            "2 Platzrunden 2026",
+            "4 landings 2026",
+            # The singular forms and words of a flight log (regression)
+            "1 flight 2026",
+            "1 landing 2026",
+            "1 Flug 2026",
+            "1 Platzrunde 2026",
+            "1 hour 2026",
+            "Day 3 Tour 2026",
+            # An airport code, a height
+            "Fly-in 3 EDNY 2025",
+            "Rwy 25 elevation 1950 ft",
+            "Platz 12 Elev 1950 m",
+            # Month names the patterns know report their own date
+            "16 August 2026",
+            "16 août 2026",
+            "16 VII 2026",
+            "16 août",
+        ],
+    )
+    def test_what_is_none(self, text):
+        assert find_possible_date_tokens(text) == []
+
+
+class TestHolidayGaps:
+    @pytest.mark.parametrize(
+        "holiday",
+        [
+            "July Fourth",
+            "July 4th",
+            "Nikolausflug",
+            "3. Advent",
+            "zweiter Advent",
+            "Adventssonntag",
+            "Walpurgisnacht",
+            "Walpurgis Night",
+            "Groundhog Day",
+        ],
+    )
+    def test_found_and_stripped(self, holiday):
+        assert find_holiday_tokens(f"Flight {holiday} EDDS") == [holiday]
+        assert strip_dates(f"EDDS {holiday}") == "EDDS"
+
+    def test_nikolaus_alone_is_a_name(self):
+        assert find_holiday_tokens("Flight with Nikolaus") == []
+
+
+class TestUnicodeForms:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "2026\u221208\u221216",  # minus signs
+            "2026\uff0f08\uff0f16",  # fullwidth slashes
+            "\uff12\uff10\uff12\uff16-08-16",  # fullwidth digits
+            "2026\u204408\u204416",  # fraction slashes
+        ],
+    )
+    def test_the_check_reports_them(self, text):
+        assert find_date_tokens(text, skip_near_jan_first=True) == [text]
+
+    def test_a_character_that_shows_nothing_splits_no_date(self):
+        """A zero-width space left "16." of the date behind (regression)."""
+        text = "Flight 16.\u200b08.2026 EDDS"
+
+        assert find_date_tokens(text, skip_near_jan_first=True) == ["16.08.2026"]
+        spans = stray_date_spans(text)
+        assert [text[a:b] for a, b in spans] == ["16.\u200b08.2026"]
+        assert strip_dates(text) == "Flight EDDS"
+        assert find_partial_date_tokens("Flight 16.\u00ad08.") == ["16.08."]
+        assert find_time_tokens("Flight 14:\u200b30") == ["14:30"]
+
+    def test_a_roman_month_with_a_hyphen_or_a_slash(self):
+        assert find_partial_date_tokens("Flug 16-VIII") == ["16-VIII"]
+        assert strip_dates("EDDS 16/VIII") == "EDDS"
+        # After a hyphen it is part of a type
+        assert strip_dates("Mk-16-II") == "Mk-16-II"

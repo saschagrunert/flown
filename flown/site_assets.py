@@ -117,6 +117,7 @@ BUILD_HASH_FILES = (
     "flown/static/wrapped.css",
     "flown/static/search.css",
     "flown/static/local.css",
+    "flown/static/extras.css",
 )
 # Packages whose pinned version changes a built site (the bundler, what it
 # bundles and what is vendored as it is), hashed after the files and in this
@@ -152,11 +153,19 @@ VENDOR_FILES = (
 # The stylesheets, in the order the page applies them: styles.css is linked in
 # the head, features.css is fetched with the feature bundle the first time
 # replay is opened, wrapped.css with the Wrapped bundle the first time
-# Wrapped is, search.css with the search bundle the first time the search is
-# and local.css with Your flights (see services/featureLoader.ts). The order
-# matters to the cascade, so it is the order they are written in; the lazy
-# ones style different elements, so which of them lands first does not.
-CSS_FILES = ("styles.css", "features.css", "wrapped.css", "search.css", "local.css")
+# Wrapped is, search.css with the search bundle the first time the search is,
+# local.css with Your flights and extras.css with the extras bundle, which
+# brings the phone's sheet (see services/featureLoader.ts). The order matters
+# to the cascade, so it is the order they are written in; the lazy ones style
+# different elements, so which of them lands first does not.
+CSS_FILES = (
+    "styles.css",
+    "features.css",
+    "wrapped.css",
+    "search.css",
+    "local.css",
+    "extras.css",
+)
 # The Python of this package, zipped, which the page fetches when a visitor
 # drops flights on it and runs with Pyodide in a worker (see browser.py and
 # frontend/services/localWorker.ts): the build of their flights in their

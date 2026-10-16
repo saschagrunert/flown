@@ -165,3 +165,72 @@ class TestProcessStandardCoordinates:
     def test_negative_altitude_kept(self):
         _, path_groups, _ = _run([_elem("8.5,50.0,-50 8.6,50.1,150.0")])
         assert path_groups[0][0].alt == -50.0
+
+
+class TestPositionSpikes:
+    """A point far off a line without times (see spikes.distance_spikes)."""
+
+    def _line(self, count=600):
+        return [f"{8.0 + 0.0007 * i:.5f},50.0,500" for i in range(count)]
+
+    def test_a_spike_leaves_the_path_and_the_heat(self):
+        """It stretched the map to the equator, and made the average speed of
+        the line so fast that every groundspeed came out unknown
+        (regression)."""
+        points = self._line()
+        points[300] = "8.21,0.0,500"
+        points[301] = "8.2107,0.0001,500"
+
+        coordinates, path_groups, _ = _run([_elem(" ".join(points))])
+
+        assert len(coordinates) == len(path_groups[0]) == 598
+        assert min(point.lat for point in coordinates) == 50.0
+
+    def test_zeroed_points_at_the_start(self):
+        points = self._line()
+        points[0] = points[1] = "13.0,0.0,500"
+
+        coordinates, _, _ = _run([_elem(" ".join(points))])
+
+        assert len(coordinates) == 598
+        assert min(point.lat for point in coordinates) == 50.0
+
+    def test_points_far_off_at_an_end_stay(self):
+        """Without times, a far end is no stale fix: the line may start
+        there, or go on there after an outage (regression)."""
+        points = self._line()
+        points[0] = points[1] = "13.0,52.0,500"
+        points[-8:] = [f"{9.0 + 0.0007 * i:.5f},51.0,500" for i in range(8)]
+
+        coordinates, _, _ = _run([_elem(" ".join(points))])
+
+        assert len(coordinates) == 600
+
+    def test_the_far_fixes_of_an_out_and_back_with_an_outage_stay(self):
+        """Dense near the field, a few fixes 120 km out after an outage, and
+        back: without times no glitch can be told from it (regression: the
+        turning point was dropped)."""
+        points = self._line()
+        points[300:305] = [f"{9.7 + 0.0007 * i:.5f},50.0,500" for i in range(5)]
+
+        coordinates, _, _ = _run([_elem(" ".join(points))])
+
+        assert len(coordinates) == 600
+
+    def test_the_long_last_leg_of_a_route_stays(self):
+        """Forty points a kilometre apart, then 120 km straight to the
+        destination (regression: the destination was dropped)."""
+        route = [f"{8.0 + 0.014 * i:.4f},50.0,500" for i in range(40)]
+        route.append("10.2,50.9,500")
+
+        coordinates, _, _ = _run([_elem(" ".join(route))])
+
+        assert len(coordinates) == 41
+
+    def test_a_route_of_long_legs_stays(self):
+        """A route plan: few points, each tens of kilometres from the last."""
+        route = "8.0,50.0,500 8.5,50.4,500 9.3,50.1,500 10.0,51.0,500 8.0,50.0,500"
+
+        coordinates, _, _ = _run([_elem(route)])
+
+        assert len(coordinates) == 5

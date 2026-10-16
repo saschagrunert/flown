@@ -65,6 +65,9 @@ const NO_LINES: GeoJSON.FeatureCollection = {
 /** Stand-in for `--heatmap-dimmed-opacity` when the stylesheet has none */
 const HEATMAP_DIMMED_OPACITY_FALLBACK = 0.35;
 
+/** How many filters keep their heat, see DataManager.heatOfFilter */
+const HEATS_HELD = 3;
+
 /**
  * How many levels short of the hand-over to the heat lines a zoom may end
  * for them to be worked out (see writeHeatLines)
@@ -167,8 +170,16 @@ export class DataManager {
   private heatLinesFor: Heat | null = null;
   /** Counts the requests for heat lines: only the last one is written */
   private linesRequest = 0;
-  /** The heats the year worker is working out, see drawHeat */
-  private readonly drawing = new WeakSet<Heat>();
+  /** The heat the year worker is working out, see drawHeat */
+  private drawing: Heat | null = null;
+  /** The heats the year worker failed to draw since they were last wanted */
+  private failedHeats = new WeakSet<Heat>();
+  /**
+   * The heats of the filters drawn last, the latest last (see
+   * drawHeatmap): a switch back to one of them draws it as it was
+   */
+  private readonly heats: { data: KMLDataset; filter: string; heat: Heat }[] =
+    [];
   /** The Blob URL each source was given last, see writeSource */
   private readonly sourceUrls = new Map<string, string>();
   /**
@@ -279,6 +290,7 @@ export class DataManager {
     this.hideLoading();
     for (const url of this.sourceUrls.values()) URL.revokeObjectURL(url);
     this.sourceUrls.clear();
+    this.heats.length = 0;
   }
 
   private drawLoading(state: LoadingState): void {
@@ -432,6 +444,9 @@ export class DataManager {
       this.heat = heat;
     }
     this.isolated = isolated;
+    // Wanted anew: one that failed is asked for again
+    this.failedHeats.delete(this.heat ?? heat);
+    if (isolated) this.failedHeats.delete(isolated);
     this.drawHeat(this.heat ?? heat);
     if (isolated) this.drawHeat(isolated);
     this.followExposure();
@@ -457,21 +472,42 @@ export class DataManager {
    * meanwhile keeps it, for an isolated selection that is isolated again.
    */
   private drawHeat(heat: Heat): void {
-    if (heat.drawn || this.drawing.has(heat)) return;
-    this.drawing.add(heat);
+    // One at a time: a walk through the years with the arrow keys asked
+    // for the heat of each year on the way, which the worker drew in turn
+    // before the last. What is wanted once it answers is asked for then.
+    if (heat.drawn || this.drawing) return;
+    this.drawing = heat;
     this.askWorker(
-      (decoder) =>
-        decoder
-          .drawHeat(heat.points, heat.weights)
-          .finally(() => this.drawing.delete(heat)),
+      (decoder) => decoder.drawHeat(heat.points, heat.weights),
       (drawn) => {
         heat.drawn = drawn;
-        if (heat === this.heat || heat === this.isolated) {
-          this.followExposure();
-          this.writeHeat();
+        this.drawing = null;
+        // A write that throws leaves the heat waiting behind it asked for
+        try {
+          if (heat === this.heat || heat === this.isolated) {
+            this.followExposure();
+            this.writeHeat();
+          }
+        } finally {
+          this.drawWanted();
         }
       },
+      // Not asked for again until it is wanted anew (see
+      // setHeatmapPoints): the heat and the isolated one failing in turn
+      // asked for each other for good
+      () => {
+        this.drawing = null;
+        this.failedHeats.add(heat);
+        this.drawWanted();
+      },
     );
+  }
+
+  /** Ask for the heats to show that are not drawn and have not failed */
+  private drawWanted(): void {
+    for (const heat of [this.heat, this.isolated]) {
+      if (heat && !this.failedHeats.has(heat)) this.drawHeat(heat);
+    }
   }
 
   /**
@@ -499,6 +535,8 @@ export class DataManager {
           failed?.();
         },
       )
+      // An answer that could not be written, which is no news to the page
+      .catch((error: unknown) => logError(`Could not write ${what}:`, error))
       .finally(() => {
         // An answer that is not written (one for a heat let go of) gives
         // the map nothing to draw, and so no `idle` to whoever waits for
@@ -628,6 +666,11 @@ export class DataManager {
     this.paintHeatmap();
     this.app.heatmapLayer.setVisible(true);
     this.writeHeatLines();
+  }
+
+  /** Start loading `year` ahead of the first load (DataLoader.preload) */
+  preloadYear(year: string): void {
+    this.dataLoader.preload(year);
   }
 
   /**
@@ -761,16 +804,12 @@ export class DataManager {
 
   /**
    * Give the heatmap the points of what the filter and isolation keep. The
-   * heat of the filter is worked out again only for another dataset or
-   * filter: a change of the selection or of isolation keeps it.
+   * heat of the filter is worked out again only for a dataset or filter
+   * none of the last few were: a change of the selection or of isolation
+   * keeps it, and so does a switch back to the year before.
    */
   private drawHeatmap(data: KMLDataset): void {
     const { selectedYear: year, selectedAircraft: aircraft } = this.app;
-    const drawn = this.drawn;
-    const same =
-      drawn?.data === data &&
-      drawn.year === year &&
-      drawn.aircraft === aircraft;
     this.drawn = { data, year, aircraft, isolate: this.app.isolateSelection };
 
     // What the year/aircraft filter keeps: a year filter over that year's
@@ -778,12 +817,34 @@ export class DataManager {
     const view = datasetIndex(data).filter(year, aircraft);
     const segments = data.path_segments;
     const kept = view.keepsAll ? null : view.pathIds;
-    const heat =
-      same && this.heat ? this.heat : heatOf(segments, segments, kept);
+    const heat = this.heatOfFilter(data, year + "/" + aircraft, () =>
+      heatOf(segments, segments, kept),
+    );
     this.setHeatmapPoints(
       heat,
       this.app.isolateSelection ? this.isolatedHeat(data, kept) : null,
     );
+  }
+
+  /**
+   * The heat of `filter` over `data`, drawn as it was if it is one of the
+   * last HEATS_HELD, or else `make`'s. Each holds the content of its
+   * source, megabytes of it, so only a few are.
+   */
+  private heatOfFilter(
+    data: KMLDataset,
+    filter: string,
+    make: () => Heat,
+  ): Heat {
+    const heats = this.heats;
+    const at = heats.findIndex(
+      (held) => held.data === data && held.filter === filter,
+    );
+    const held =
+      at < 0 ? { data, filter, heat: make() } : heats.splice(at, 1)[0]!;
+    heats.push(held);
+    if (heats.length > HEATS_HELD) heats.shift();
+    return held.heat;
   }
 
   /**

@@ -221,7 +221,9 @@ updates:
       # The Python and Node.js versions follow .python-version and .nvmrc,
       # which CI uses and Dependabot does not bump; move all of them together
       # by hand (scripts/check_pins.py fails the lint job until every place
-      # agrees). Digest updates of the current tags still come through.
+      # agrees). Node.js down to the patch release: .nvmrc names an exact
+      # one, since the gzipped size budgets depend on the zlib it bundles.
+      # Digest updates of the current tags still come through.
       - dependency-name: "library/python"
         update-types:
           - "version-update:semver-major"
@@ -230,6 +232,7 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
+          - "version-update:semver-patch"
       # uv is the release the setup-toolchain action installs in CI as well,
       # which Dependabot does not bump; move both by hand
       # (scripts/check_pins.py fails the lint job until they agree).

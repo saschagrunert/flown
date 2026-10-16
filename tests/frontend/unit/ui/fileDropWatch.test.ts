@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { MapApp } from "../../../../flown/frontend/mapApp";
 import {
   carriesFiles,
+  droppedOf,
   watchFileDrops,
 } from "../../../../flown/frontend/ui/fileDropWatch";
 import { logError } from "../../../../flown/frontend/utils/logger";
@@ -45,6 +46,34 @@ beforeEach(() => {
 // The watch of the test before goes with its app, or its listeners would
 // take the drags of the next
 afterEach(() => controller.abort());
+
+describe("droppedOf", () => {
+  const entry = (name: string, isDirectory = false) => ({
+    name,
+    isDirectory,
+  });
+  const transfer = (...entries: (object | null)[]) =>
+    ({
+      files: FILES.files,
+      items: entries.map((value) => ({ webkitGetAsEntry: () => value })),
+    }) as unknown as DataTransfer;
+
+  it("is the files of a drop without a folder", () => {
+    expect(droppedOf(transfer(entry("a.kml")))).toBe(FILES.files);
+    // A browser without entries, or a drop made by a script, has none
+    expect(droppedOf(transfer(null))).toBe(FILES.files);
+    expect(droppedOf({ files: FILES.files } as unknown as DataTransfer)).toBe(
+      FILES.files,
+    );
+  });
+
+  it("is the entries of a drop with a folder among them", () => {
+    const folder = entry("flights", true);
+    const file = entry("aircraft.json");
+
+    expect(droppedOf(transfer(folder, null, file))).toEqual([folder, file]);
+  });
+});
 
 describe("carriesFiles", () => {
   it("is true for a drag of files only", () => {

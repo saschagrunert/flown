@@ -31,6 +31,7 @@ from flown.segment_codec import (
 from flown.site_assets import CARTO_STYLE_URL, CARTO_TILEJSON_URL
 from flown.terrain import TILE_SIZE
 from tests.conftest import parse_data as _load_js
+from tests.conftest import segments_by_id
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 pytestmark = pytest.mark.repo_data
@@ -193,7 +194,7 @@ def _observed_values(data_dir):
             for airport, runway in info.get("touchdowns", []):
                 key = f"{airport} {runway}"
                 touchdowns[key] = touchdowns.get(key, 0) + 1
-        entries = data["segments"].values()
+        entries = segments_by_id(data).values()
         segment_rows[year] = sum(len(entry["columns"][0]) for entry in entries)
         # The rows are scaled integers stored as differences; decoding them
         # here is a second implementation of what the frontend does, so the
@@ -355,7 +356,13 @@ def test_year_data_shape_and_unique_ids(golden_output):
         assert data["year"] == year
 
         ids = [info["id"] for info in data["path_info"]]
-        assert set(data["segments"]) == {str(i) for i in ids}
+        # Column by column across the paths: every array has one entry per
+        # path, in the order of path_info
+        segments = data["segments"]
+        assert list(segments) == ["start", "columns", "ground"]
+        assert len(segments["columns"]) == SEGMENT_MAX_COLUMNS
+        for array in [segments["start"], *segments["columns"], segments["ground"]]:
+            assert len(array) == len(ids)
         all_ids.extend(ids)
 
         for info in data["path_info"]:
@@ -387,7 +394,7 @@ def test_year_data_shape_and_unique_ids(golden_output):
             assert info["year"] == year
             registrations.add(info.get("aircraft_registration"))
 
-        for entry in data["segments"].values():
+        for entry in segments_by_id(data).values():
             encoded = entry["columns"]
             assert encoded[0]
             assert len(entry["start"]) == 2

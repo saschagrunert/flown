@@ -39,6 +39,9 @@ const TAXI_MIN_FIXES = 3;
  * ends the taxiing like a fast one, as it does in the build
  * (_field_offset_ft in flown/terrain.py): counted as taxiing, every
  * fix of such a flight would be, and its field the middle of its altitudes.
+ * So does a segment without a time: its speed is the average of a line
+ * without times, the same for every segment, and one below the taxiing
+ * speed lifted the field of a flight of circuits to its circuit height.
  */
 function fieldFt(
   segments: readonly PathSegment[],
@@ -48,7 +51,7 @@ function fieldFt(
   for (const index of indices) {
     const segment = segments[index]!;
     const speed = segment.groundspeed_knots;
-    if (!(speed > 0 && speed < TAXI_KNOTS)) break;
+    if (segment.time === undefined || !(speed > 0 && speed < TAXI_KNOTS)) break;
     altitudes.push(segment.altitude_ft);
   }
   if (altitudes.length < TAXI_MIN_FIXES) return null;

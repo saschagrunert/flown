@@ -40,12 +40,22 @@ out larger), so they stay first differences. The relative times stay in
 tenths: in whole seconds, a segment shorter than the rounding would take
 no time, and the heat it carries would change.
 
-``flown/frontend/services/yearDecode.ts`` mirrors ``decode_rows`` and
-``decode_ground``; the year file carries ``FORMAT_VERSION`` so the two cannot
-be mismatched silently.
+Format 8 lays the year file out column by column across all of its paths
+instead of path by path. ``segments`` holds ``start``, the start point of
+every path, ``columns``, five arrays (one per column above) of every path's
+encoded column, and ``ground``, every path's ground column; all of them in
+the order of ``path_info``, which carries the ids. A path without relative
+times or without ground has null in that array. Written path by path, the
+file made gzip switch between five unrelated number streams every few
+hundred values; one stream at a time it compresses 7 to 8 % better.
+:func:`split_segments` turns the layout back into one entry per path.
+
+``flown/frontend/services/yearDecode.ts`` mirrors ``decode_rows``,
+``decode_ground`` and the layout ``split_segments`` reads; the year file
+carries ``FORMAT_VERSION`` so the two cannot be mismatched silently.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from .types import COORDINATE_DECIMALS
 
@@ -62,16 +72,18 @@ __all__ = [
     "SPEED_SCALE",
     "TIME_SCALE",
     "EncodedColumns",
+    "PathEntry",
     "decode_ground",
     "decode_rows",
     "encode_ground",
     "encode_rows",
     "encode_start",
+    "split_segments",
 ]
 
 # Bumped whenever the layout below changes, so a page never reads a year
 # file written by another release's exporter as if it were its own
-FORMAT_VERSION = 7
+FORMAT_VERSION = 8
 
 # How each column becomes an integer: the step the exporter rounds it to.
 # process_path_segments rounds coordinates to COORDINATE_DECIMALS ...
@@ -96,6 +108,14 @@ _SECOND_ORDER = (LAT, LON)
 # The encoded columns of a path: lat, lon, altitude and speed, then the
 # relative time when any row has one. A row without a time has None there.
 EncodedColumns = list[list[int | None]]
+
+
+class PathEntry(TypedDict):
+    """One path of a year file's ``segments``, see :func:`split_segments`."""
+
+    start: list[int]
+    columns: EncodedColumns
+    ground: NotRequired[list[int]]
 
 
 def encode_start(start: Sequence[float]) -> list[int]:
@@ -212,3 +232,25 @@ def decode_ground(column: Sequence[int]) -> list[float]:
         value += difference
         ground.append(float(value * GROUND_STEP))
     return ground
+
+
+def split_segments(year_file: dict[str, Any]) -> dict[int, PathEntry]:
+    """The ``segments`` of a parsed year file, one entry per path id.
+
+    Undoes the layout of format 8: the arrays of ``segments`` hold one
+    entry per path in the order of ``path_info``. A path's columns are what
+    :func:`encode_rows` returned for it, without the time column when it has
+    no relative times, and its ground is left out when it has none.
+    """
+    segments = year_file["segments"]
+    paths: dict[int, PathEntry] = {}
+    for index, info in enumerate(year_file["path_info"]):
+        columns = [column[index] for column in segments["columns"]]
+        entry: PathEntry = {
+            "start": segments["start"][index],
+            "columns": columns if columns[TIME] is not None else columns[:TIME],
+        }
+        if segments["ground"][index] is not None:
+            entry["ground"] = segments["ground"][index]
+        paths[info["id"]] = entry
+    return paths

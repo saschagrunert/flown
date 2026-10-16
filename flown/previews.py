@@ -741,14 +741,14 @@ def _flight_texts(info: PathInfo, year: int) -> tuple[str, str]:
     description = f"Flown in {year}"
     if aircraft:
         description += f" in {aircraft}"
-    return f"{title} · {_SITE_NAME}", f"{description}, on the flight heatmap"
+    return f"{title} · {_SITE_NAME}", f"{description}, on the map"
 
 
 def _year_texts(year: int, flights: int) -> tuple[str, str]:
     plural = "flight" if flights == 1 else "flights"
     return (
         f"{year} · {_SITE_NAME}",
-        f"{flights} {plural} of {year} on the flight heatmap",
+        f"{flights} {plural} of {year} on the map",
     )
 
 

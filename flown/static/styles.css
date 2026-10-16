@@ -2,21 +2,22 @@
 
    Everything replay and the flight profile need is in features.css
    instead, everything Wrapped and the content of the statistics panel
-   need in wrapped.css, and the panel of the search in search.css, which
-   services/featureLoader.ts fetches next to features.bundle.js,
-   wrapped.bundle.js and search.bundle.js the first time one of them is
-   opened. Most visits open none of them, and together they are more than
-   a third of the styles; keeping them out of the critical path is the same
-   trade the lazy bundles make for the JavaScript.
+   need in wrapped.css, the panel of the search in search.css, the panel
+   of Your flights in local.css and the phone's sheet in extras.css, which
+   services/featureLoader.ts fetches next to their bundles the first time
+   one of them is wanted. Most visits open none of them, and together they
+   are more than a third of the styles; keeping them out of the critical
+   path is the same trade the lazy bundles make for the JavaScript.
 
    A rule belongs in features.css when its selector names replay or the
    flight profile, in wrapped.css when it names Wrapped or what the
    statistics panel renders (.stats-*, bar the rail's title and loading
    state), in search.css when it names the search panel or its pulse on
-   the map, and here otherwise; a selector list that names more than one is
-   written out in each file, with the selectors that belong there. Design
-   tokens, the control surfaces the feature panels reuse (.btn-surface and
-   friends) and every shared media query stay here. */
+   the map, in extras.css when it names the phone's sheet (.mobile-sheet
+   and .sheet-*), and here otherwise; a selector list that names more than
+   one is written out in each file, with the selectors that belong there.
+   Design tokens, the control surfaces the feature panels reuse
+   (.btn-surface and friends) and every shared media query stay here. */
 
 /* ==========================================================================
    Design tokens
@@ -1675,6 +1676,28 @@ main > #map .maplibregl-ctrl-bottom-right {
 .toast-notification.toast-error {
   border-color: var(--color-error);
 }
+/* The link Copy link could not put on the clipboard, in a field on a line
+   of its own under the message and Dismiss, however long it is: one line
+   that scrolls, selected whole by a tap or Tab (ui/uiToggles.ts) */
+.toast-notification:has(.toast-link) {
+  flex-wrap: wrap;
+}
+.toast-link {
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-primary);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.toast-link:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
 /* An error, or a hint with an action, stays until it is dismissed, and
    carries the buttons to do it */
 .toast-notification:has(.toast-button) {
@@ -1747,15 +1770,13 @@ main > #map .maplibregl-ctrl-bottom-right {
 }
 
 /* ==========================================================================
-   Mobile bottom bar and sheet
+   Mobile bottom bar
 
    The wrapped rows of buttons are replaced by a bar of tabs plus a sheet
-   that holds the rest. Both stay out of the way until the mobile
-   breakpoint applies.
+   that holds the rest, which extras.css draws. Both stay out of the way
+   until the mobile breakpoint applies.
    ========================================================================== */
-.mobile-bar,
-.mobile-sheet,
-.sheet-scrim {
+.mobile-bar {
   display: none;
 }
 
@@ -1858,277 +1879,6 @@ main > #map .maplibregl-ctrl-bottom-right {
   .mobile-tab[aria-disabled="true"] {
     opacity: 0.5;
     color: var(--color-text-dim);
-  }
-
-  /* Scrim behind the sheet; both sit below the bar so the tabs stay tappable */
-  .sheet-scrim {
-    position: fixed;
-    inset: 0;
-    display: block;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: calc(var(--z-controls) - 2);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--duration-base) ease;
-  }
-  .sheet-scrim.is-open {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  /* Sheet: slides up above the bar so tabs stay reachable */
-  .mobile-sheet {
-    position: fixed;
-    left: 0;
-    right: 0;
-    padding-inline: var(--safe-left) var(--safe-right);
-    bottom: calc(var(--mobile-bar-h) + var(--safe-bottom));
-    display: flex;
-    flex-direction: column;
-    max-height: calc(80dvh - var(--mobile-bar-h) - var(--safe-bottom));
-    /* The whole width (see --color-bg-edge) */
-    background-color: var(--color-bg-edge);
-    border: 1px solid var(--color-border);
-    border-bottom: none;
-    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-    box-shadow: var(--shadow-panel);
-    z-index: calc(var(--z-controls) - 1);
-    box-sizing: border-box;
-    transform: translateY(100%);
-    visibility: hidden;
-    transition:
-      transform var(--duration-base) ease,
-      visibility 0s linear var(--duration-base);
-  }
-  /* The layers are switched to be seen: their sheet takes half the height,
-     and the map above it shows what a switch did */
-  .mobile-sheet:has([data-row="heatmap"]) {
-    max-height: calc(50dvh - var(--mobile-bar-h) - var(--safe-bottom));
-  }
-  /* The grabber every bottom sheet on both platforms has. It says the sheet
-     is a sheet, and that the edge it hangs from is the way out: a drag down
-     on the title row closes it (see MobileSheet.handleDrag). The pill is
-     the row's own, so a press on it is one on the row; the row is not
-     positioned, so the pill is placed on the sheet as before. */
-  .sheet-title::before {
-    content: "";
-    position: absolute;
-    top: var(--space-sm);
-    left: 50%;
-    transform: translateX(-50%);
-    width: 36px;
-    height: 4px;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-bg-active);
-  }
-  .mobile-sheet.is-open {
-    transform: translateY(0);
-    visibility: visible;
-    transition:
-      transform var(--duration-base) ease,
-      visibility 0s linear 0s;
-  }
-  .sheet-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    margin: 0;
-    /* The extra step at the top is the room the grabber sits in */
-    padding: calc(var(--space-base) + var(--space-xs)) var(--space-base)
-      var(--space-md);
-    /* The size of the statistics sheet's title, which opens from the same
-       bar; 17px, between two steps, was off the type scale */
-    font-size: var(--text-base);
-    font-weight: 600;
-    line-height: 1.2;
-    color: var(--color-text);
-    /* The row is the grabber's hit area: a drag on it moves the sheet, and
-       the browser is not to pan or zoom with it instead */
-    touch-action: none;
-  }
-  .sheet-body {
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  /* The last row used to end level with the bar's top edge, which left it
-     partially obscured and under the 24px touch target minimum. */
-  .mobile-sheet .sheet-body {
-    padding-bottom: var(--space-sm);
-  }
-  .sheet-row {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    width: 100%;
-    min-height: var(--sheet-row-h);
-    padding: 0 var(--space-base);
-    background: transparent;
-    border: none;
-    -webkit-appearance: none;
-    appearance: none;
-    box-shadow: none;
-    color: var(--color-text);
-    font-size: var(--text-base);
-    font-weight: 500;
-    text-align: left;
-    cursor: pointer;
-    touch-action: manipulation;
-    box-sizing: border-box;
-  }
-  .sheet-row .icon {
-    width: var(--icon-lg);
-    height: var(--icon-lg);
-    color: var(--color-text-secondary);
-  }
-  /* The chevron is drawn at 20, whose paired stroke is 1.8. Scaling it to 24
-     here left it optically heavier than the 24/1.7 icon beside it. */
-  .sheet-row .sheet-row-chevron .icon {
-    width: var(--icon-md);
-    height: var(--icon-md);
-  }
-  .sheet-row:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: -2px;
-  }
-  /* Inset and rounded so two active rows next to each other stay two
-     switches: a full-bleed tint merged them into one selected group. The
-     highlight is always in the tree and fades, because a pseudo-element that
-     only exists while .active cannot transition in. */
-  .sheet-row::before {
-    content: "";
-    position: absolute;
-    inset: var(--space-xs) var(--space-sm);
-    border-radius: var(--radius-panel);
-    background-color: rgba(var(--color-accent-blue-rgb), 0.14);
-    box-shadow: inset 2px 0 0 0 var(--color-accent-blue);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity var(--duration-fast) ease;
-  }
-  .sheet-row.active::before {
-    opacity: 1;
-  }
-  .sheet-row.active .icon {
-    color: var(--color-accent-blue);
-  }
-  /* The label, the icon and the control dim; the hint that says why the
-     row is unavailable is the one thing in it to read, and at half strength
-     on the sheet it fell to 2.4:1 */
-  .sheet-row[aria-disabled="true"],
-  .sheet-row:has(select:disabled) {
-    cursor: not-allowed;
-  }
-  .sheet-row[aria-disabled="true"] > .icon,
-  .sheet-row[aria-disabled="true"] .sheet-row-label,
-  .sheet-row[aria-disabled="true"] .gradient-chip,
-  .sheet-row[aria-disabled="true"] .sheet-row-control,
-  .sheet-row:has(select:disabled) {
-    opacity: 0.5;
-  }
-  .sheet-row:has(select:focus-visible) {
-    outline: var(--focus-ring);
-    outline-offset: -2px;
-  }
-  /* Right-aligned control at the end of a row */
-  .sheet-row-control {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    font-weight: 400;
-  }
-  /* Label column: the label, its colour chip, and a hint on its own line */
-  .sheet-row-text {
-    flex: 1 1 auto;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-    min-width: 0;
-    padding: var(--space-sm) 0;
-  }
-  .sheet-row-label {
-    min-width: 0;
-  }
-  .sheet-row-hint {
-    flex-basis: 100%;
-    font-size: var(--text-sm);
-    font-weight: 400;
-    color: var(--color-text-muted);
-  }
-  .sheet-row-value {
-    color: var(--color-text-secondary);
-  }
-  .sheet-row-chevron {
-    display: flex;
-    line-height: 0;
-  }
-  /* Filter rows stretch the native picker over the whole row so the entire
-     row is the tap target. (position: relative is on the main .sheet-row rule)
-     Unseen, it still needs 16 px: under that iOS zooms the page into it. */
-  .sheet-row-select {
-    font-size: 16px;
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    -webkit-appearance: none;
-    appearance: none;
-    border: none;
-    cursor: pointer;
-  }
-
-  /* Layer rows carry a switch */
-  .sheet-switch {
-    display: block;
-    width: 44px;
-    height: 26px;
-    padding: 2px;
-    box-sizing: border-box;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-bg-active);
-    transition: background-color var(--duration-fast) ease;
-  }
-  .sheet-switch-thumb {
-    display: block;
-    width: 22px;
-    height: 22px;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-text-muted);
-    transition: transform var(--duration-fast) ease;
-  }
-  .sheet-row.active .sheet-switch {
-    background-color: var(--color-accent-blue);
-  }
-  .sheet-row.active .sheet-switch-thumb {
-    background-color: var(--color-text);
-    transform: translateX(18px);
-  }
-
-  /* Close control in the sheet title row */
-  .sheet-title-text {
-    min-width: 0;
-  }
-  .sheet-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: auto;
-    width: 44px;
-    height: 44px;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-  }
-  .sheet-close:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: -2px;
   }
 
   .mobile-tab-label {
@@ -2238,8 +1988,7 @@ main > #map .maplibregl-ctrl-bottom-right {
      and the credit sits above every panel so that it cannot be hidden
      behind one. While one of them is open there is no map under it to
      credit, so it stands down until it closes. */
-  body:has(.mobile-bar):has(#stats-rail:not([hidden])) .maplibregl-ctrl-attrib,
-  body:has(.mobile-bar):has(.mobile-sheet.is-open) .maplibregl-ctrl-attrib {
+  body:has(.mobile-bar):has(#stats-rail:not([hidden])) .maplibregl-ctrl-attrib {
     display: none;
   }
   /* Only while the map is on the page: in Wrapped's dialog it ends above
@@ -2502,6 +2251,10 @@ main > #map .maplibregl-ctrl-bottom-right {
     width: var(--btn-min-height);
     height: var(--btn-min-height);
   }
+  /* Under 16 px iOS zooms the page into the field once it takes focus */
+  .toast-link {
+    font-size: 16px;
+  }
   .popup-header {
     padding-right: calc(var(--btn-min-height) - var(--space-md));
   }
@@ -2550,8 +2303,9 @@ main > #map .maplibregl-ctrl-bottom-right {
    Last in the file on purpose: `.initially-hidden` has to beat the display
    of `.control-row` and `.btn-surface`, which it ties with on specificity.
 
-   features.css, wrapped.css and search.css are appended after this file,
-   so a `display` on a bare class there would outrank this one.
+   The lazily fetched sheets (features.css and the others) are appended
+   after this file, so a `display` on a bare class there would outrank this
+   one.
    #replay-pause-btn carries both classes; no rule in features.css may set
    its display (`.replay-btn[hidden]` is fine, it outranks this on
    specificity rather than on order).
@@ -2596,12 +2350,6 @@ main > #map .maplibregl-ctrl-bottom-right {
   #github-footer .github-icon,
   .toast-notification,
   .mobile-tab,
-  .sheet-scrim,
-  .sheet-row,
-  .sheet-switch,
-  .sheet-switch-thumb,
-  .mobile-sheet,
-  .mobile-sheet.is-open,
   #stats-rail,
   #compass-float-btn {
     transition: none;
@@ -2633,7 +2381,6 @@ main > #map .maplibregl-ctrl-bottom-right {
   .color-legend,
   #selection-chip,
   #stats-rail,
-  .mobile-sheet,
   .mobile-bar,
   .toast-notification,
   .maplibregl-popup-content,
@@ -2642,12 +2389,7 @@ main > #map .maplibregl-ctrl-bottom-right {
   }
   /* Unavailable controls are still told apart, at more strength */
   .control-btn[aria-disabled="true"],
-  .filter-dropdown:has(select:disabled),
-  .sheet-row[aria-disabled="true"] > .icon,
-  .sheet-row[aria-disabled="true"] .sheet-row-label,
-  .sheet-row[aria-disabled="true"] .gradient-chip,
-  .sheet-row[aria-disabled="true"] .sheet-row-control,
-  .sheet-row:has(select:disabled) {
+  .filter-dropdown:has(select:disabled) {
     opacity: 0.75;
   }
   .airport-marker-root:not(.is-home, :hover) {
@@ -2708,27 +2450,6 @@ main > #map .maplibregl-ctrl-bottom-right {
     background-color: Canvas;
     color: GrayText;
     box-shadow: inset 2px 0 0 0 GrayText;
-  }
-  /* The phone's switches are drawn with background colours alone, which
-     forced colours turn into the page colour: track and thumb vanished and
-     every row looked the same. They get an outline and a thumb of the text
-     colour, and the system's highlight when on. */
-  .sheet-switch {
-    forced-color-adjust: none;
-    padding: 1px;
-    border: 1px solid CanvasText;
-    background-color: Canvas;
-  }
-  .sheet-switch-thumb {
-    forced-color-adjust: none;
-    background-color: CanvasText;
-  }
-  .sheet-row.active .sheet-switch {
-    border-color: Highlight;
-    background-color: Highlight;
-  }
-  .sheet-row.active .sheet-switch-thumb {
-    background-color: HighlightText;
   }
   .mobile-tab.active {
     color: Highlight;

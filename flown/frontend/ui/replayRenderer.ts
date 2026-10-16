@@ -43,8 +43,11 @@ import { prefersReducedMotion } from "../utils/motion";
 import { ReplayCamera } from "./replayCamera";
 import {
   appendTrailSegment,
+  sameTrailDone,
+  trailDoneGrew,
   speedColouredTrail,
   truncateTrail,
+  trailDone,
   trailFeatureCollection,
 } from "./replayTrail";
 import { trustedHtml } from "../utils/trustedHtml";
@@ -91,8 +94,33 @@ function liftedPopupOffset(
   return sides;
 }
 
+/**
+ * Resolve once the tiles of source `id` show what it was last given, or
+ * the source is gone: its `setData` settles once the worker has the data,
+ * and the tiles in view are cut from it after that
+ */
+function whenSourceLoaded(map: MapLibreMap, id: string): Promise<void> {
+  return new Promise((resolve) => {
+    const check = (): void => {
+      if (map.getSource(id) && !map.isSourceLoaded(id)) return;
+      map.off("sourcedata", check);
+      resolve();
+    };
+    map.on("sourcedata", check);
+    check();
+  });
+}
+
 /** Shown in the readout while no segment has been reached */
 const READOUT_PLACEHOLDER = "—";
+
+/**
+ * The least time between two writes of the runs the airplane has left
+ * behind, while they only grow: at 1000x a run ends in nearly every frame,
+ * and each write is the whole of them (see flushTrail). The runs that wait
+ * are drawn by the tip's source meanwhile.
+ */
+const TRAIL_DONE_GAP_MS = 250;
 
 /** Cells of the readout strip, in display order */
 const READOUT_CELLS: [id: string, label: string][] = [
@@ -301,6 +329,8 @@ export class ReplayRenderer {
   };
   /** Segment index the airplane popup content was last built for */
   private popupIndex = -1;
+  /** When the runs behind the airplane were last written (performance.now) */
+  private trailDoneAt = -Infinity;
   /** The frame the trail is written to the map in, while one is pending */
   private readonly trailFrame = frameCoalescer<ReplayState>((state) =>
     this.flushTrail(state),
@@ -475,38 +505,104 @@ export class ReplayRenderer {
     state.trailDirty = false;
     // A replay that has ended meanwhile has emptied the source itself
     if (!state.layerActive) return;
-    // The whole trail on every write, which measured cheap enough to keep:
-    // the longest flight of the sample data (2800 segments) replayed at 500x
-    // in Chrome grew from 90 runs and 1000 vertices a third of the way in to
-    // 250 runs and 3000 vertices (87 KB) at the end, and the write went from
-    // 0.5 to 0.9 ms of main thread, with no dropped frames. Sending only
-    // the changed runs through `updateData` measured worse on the same
-    // replay: more main thread per frame, and dropped frames.
+    // The whole line of the trail on every write, which measured cheap
+    // enough to keep: the longest flight of the sample data (2800 segments)
+    // replayed at 500x in Chrome grew from 90 runs and 1000 vertices a third
+    // of the way in to 250 runs and 3000 vertices (87 KB) at the end, and
+    // the write went from 0.5 to 0.9 ms of main thread, with no dropped
+    // frames. Sending only the changed runs through `updateData` measured
+    // worse on the same replay: more main thread per frame, and dropped
+    // frames.
     const map = this.app.map;
     if (!map) return;
     const widthZoom = ribbonWidthZoom(map.getZoom());
     state.trailWidthZoom = state.lifted ? widthZoom : null;
-    const id =
-      state.lifted && isLiftedAt(widthZoom)
-        ? MAP_SOURCES.replayTrailRibbons
-        : MAP_SOURCES.replayTrail;
-    // Lifted or flat, the trail is in one source, and leaves the other
-    if (state.trailWrittenTo !== null && state.trailWrittenTo !== id) {
-      void map
-        .getSource<GeoJSONSource>(state.trailWrittenTo)
-        ?.setData({ type: "FeatureCollection", features: [] });
+    const lifted = state.lifted && isLiftedAt(widthZoom);
+    const id = lifted
+      ? MAP_SOURCES.replayTrailRibbons
+      : MAP_SOURCES.replayTrail;
+    const write = (source: string, data: GeoJSON.FeatureCollection): void =>
+      void map.getSource<GeoJSONSource>(source)?.setData(data);
+    // Lifted or flat, the trail is in one place, and leaves the other
+    if (state.trailWrittenTo !== id) {
+      if (state.trailWrittenTo !== null) {
+        for (const left of state.trailWrittenTo === MAP_SOURCES.replayTrail
+          ? [MAP_SOURCES.replayTrail]
+          : [
+              MAP_SOURCES.replayTrailRibbons,
+              MAP_SOURCES.replayTrailTipRibbons,
+            ]) {
+          write(left, { type: "FeatureCollection", features: [] });
+        }
+      }
+      state.trailDone = null;
     }
     state.trailWrittenTo = id;
-    void map
-      .getSource<GeoJSONSource>(id)
-      ?.setData(
-        trailFeatureCollection(
-          state,
-          widthZoom,
-          this.app.reliefLevel,
-          this.app.relief.epoch,
-        ),
-      );
+    const level = this.app.reliefLevel;
+    const epoch = this.app.relief.epoch;
+    if (!lifted) {
+      write(id, trailFeatureCollection(state, widthZoom, level, epoch));
+      return;
+    }
+    // As ribbons the trail is a hundred times that: on the longest flight
+    // of 2025 at 100x, 3600 pieces and 1.4 MB, 6 to 13 ms of main thread
+    // and as much again in the map's worker for every write. The runs the
+    // airplane has left behind are written as they change, but while they
+    // only grow no more often than TRAIL_DONE_GAP_MS, and only the one it
+    // is on in every frame.
+    // A run the airplane has just finished goes on in the tip's source
+    // until the tiles of the other one show it: the two are cut apart, and
+    // the run was in neither for a frame or more at every change of colour.
+    // For the frame or two between the other source's tiles and the tip's
+    // next ones it is in both, drawn a little brighter: filtering the tip
+    // instead would recut its tiles as well. Anything else changed there is
+    // written over at once.
+    const runs = state.trailRuns;
+    const finished = Math.max(0, runs.length - 1);
+    const done = trailDone(state, widthZoom, level, epoch);
+    const grew = trailDoneGrew(state.trailDone, done);
+    if (
+      !sameTrailDone(state.trailDone, done) &&
+      // Waiting, they stay in the tip, until a frame after the gap; a
+      // replay that stands still meanwhile shows them there
+      !(grew && performance.now() - this.trailDoneAt < TRAIL_DONE_GAP_MS)
+    ) {
+      this.trailDoneAt = performance.now();
+      if (!grew) {
+        state.trailShown = finished;
+        state.trailEra++;
+      }
+      state.trailDone = done;
+      const era = state.trailEra;
+      void map
+        .getSource<GeoJSONSource>(id)
+        ?.setData(
+          trailFeatureCollection(
+            state,
+            widthZoom,
+            level,
+            epoch,
+            runs.slice(0, -1),
+          ),
+        )
+        .then(() => whenSourceLoaded(map, id))
+        .then(() => {
+          if (state.trailEra !== era || finished <= state.trailShown) return;
+          state.trailShown = finished;
+          state.trailDirty = true;
+          this.scheduleTrailFlush(state);
+        });
+    }
+    write(
+      MAP_SOURCES.replayTrailTipRibbons,
+      trailFeatureCollection(
+        state,
+        widthZoom,
+        level,
+        epoch,
+        runs.slice(Math.min(state.trailShown, finished)),
+      ),
+    );
   }
 
   /** Drop a write that is still pending; the replay layer is going away */

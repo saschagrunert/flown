@@ -16,6 +16,7 @@ import {
 import {
   activateReplay,
   attachErrorCollectors,
+  expectNoA11yViolations,
   findSegmentFarFromAirports,
   firstPathId,
   gotoApp,
@@ -55,6 +56,7 @@ const FLIGHT_LAYERS = [
   "paths-airspeed-selected-3d",
   "selection-highlight-3d",
   "replay-trail-3d",
+  "replay-trail-tip-3d",
 ];
 
 /**
@@ -192,6 +194,8 @@ test.describe("Base style", () => {
     const toast = toastMessage(page, BASE_STYLE_UNAVAILABLE_MESSAGE);
     await expect(toast).toHaveCount(1);
     await expect(toast.getByRole("button", { name: "Retry" })).toBeVisible();
+    // A toast with buttons of its own, over the map
+    await expectNoA11yViolations(page, "toast with buttons");
     await toast.getByRole("button", { name: "Dismiss" }).click();
     await expect(toast).toHaveCount(0);
     await expectSegmentUnderPointer(page);

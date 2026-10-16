@@ -16,6 +16,21 @@ export function carriesFiles(transfer: DataTransfer | null): boolean {
   return !!transfer && Array.from(transfer.types).includes("Files");
 }
 
+/**
+ * What a drop carries: its files, or its entries where a folder is among
+ * them, which Your flights reads the files out of (filesOf in
+ * ui/localFlights.ts). Asked for while the drop is handled, after which
+ * the browser lets go of them.
+ */
+export function droppedOf(
+  transfer: DataTransfer,
+): FileList | FileSystemEntry[] {
+  const entries = Array.from(transfer.items ?? [], (item) =>
+    item.webkitGetAsEntry?.(),
+  ).filter((entry) => !!entry);
+  return entries.some((entry) => entry.isDirectory) ? entries : transfer.files;
+}
+
 export interface DropSheetModule {
   showDropSheet(app: Pick<MapApp, "signal" | "toggleLocalFlights">): unknown;
 }
@@ -59,7 +74,7 @@ export function watchFileDrops(
       // The panel's own zone takes its drops (ui/localFlights.ts)
       if (!carriesFiles(event.dataTransfer) || event.defaultPrevented) return;
       event.preventDefault();
-      const files = event.dataTransfer?.files;
+      const files = event.dataTransfer && droppedOf(event.dataTransfer);
       if (files?.length) app.toggleLocalFlights(files);
     },
     { signal },

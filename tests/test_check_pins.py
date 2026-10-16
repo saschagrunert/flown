@@ -37,7 +37,8 @@ PLAYWRIGHT = "1.63.0"
 DIGEST = "sha256:" + "ab" * 32
 IMAGE = f"mcr.microsoft.com/playwright:v{PLAYWRIGHT}-noble@{DIGEST}"
 PYTHON = "3.14"
-NODE = "26"
+NODE = "26.12.0"
+NODE_MAJOR = "26"
 # The steps of the setup-toolchain action around its setup-uv step
 ACTION = """runs:
   steps:
@@ -99,7 +100,7 @@ def repo(tmp_path, monkeypatch):
             {
                 "name": "flown",
                 "version": VERSION,
-                "engines": {"node": f">={NODE}"},
+                "engines": {"node": f">={NODE_MAJOR}"},
             }
         ),
         encoding="utf-8",
@@ -439,13 +440,34 @@ class TestToolchainVersions:
         assert "builds on python:3.13" in capsys.readouterr().err
 
     def test_a_node_image_behind_nvmrc_fails(self, repo, capsys):
-        (repo / ".nvmrc").write_text("27\n", encoding="utf-8")
+        (repo / ".nvmrc").write_text("27.0.0\n", encoding="utf-8")
 
         assert check_pins.main() == 1
 
         err = capsys.readouterr().err
-        assert "builds on node:26, the version file asks for 27" in err
+        assert "builds on node:26.12.0, the version file asks for 27.0.0" in err
         assert 'package.json engines "node" is ">=26"' in err
+        assert 'ask for ">=27"' in err
+
+    def test_a_new_patch_release_moves_the_image_alone(self, repo, capsys):
+        (repo / ".nvmrc").write_text("26.12.1\n", encoding="utf-8")
+
+        assert check_pins.main() == 1
+
+        err = capsys.readouterr().err
+        assert "builds on node:26.12.0, the version file asks for 26.12.1" in err
+        assert "engines" not in err.split("Move ")[0]
+
+    @pytest.mark.parametrize("version", ["26", "26.12", "lts/*"])
+    def test_a_node_version_that_is_no_exact_release_fails(self, repo, capsys, version):
+        """The gzipped size budgets depend on the zlib of the release."""
+        (repo / ".nvmrc").write_text(f"{version}\n", encoding="utf-8")
+
+        assert check_pins.main() == 1
+
+        assert f".nvmrc names Node.js {version}, not an exact release" in (
+            capsys.readouterr().err
+        )
 
     def test_a_dockerfile_without_a_node_image_fails(self, repo, capsys):
         dockerfile = repo / "Dockerfile"

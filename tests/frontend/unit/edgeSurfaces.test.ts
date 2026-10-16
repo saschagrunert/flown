@@ -26,10 +26,12 @@ describe("the surfaces across the map's edges on a phone", () => {
 
   beforeAll(() => {
     style = document.createElement("style");
-    style.textContent = readFileSync(
-      resolve(__dirname, "../../../flown/static/styles.css"),
-      "utf8",
-    );
+    // The sheet's rules come with the extras bundle, after styles.css
+    style.textContent = ["styles.css", "extras.css"]
+      .map((name) =>
+        readFileSync(resolve(__dirname, "../../../flown/static", name), "utf8"),
+      )
+      .join("\n");
     document.head.append(style);
     rules = [...style.sheet!.cssRules];
   });

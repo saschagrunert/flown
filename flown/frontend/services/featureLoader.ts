@@ -15,9 +15,10 @@
  * others. Each gets one shared promise, and a failure that resolves rather
  * than throws so the caller can say something useful.
  *
- * Their styles ride along in features.css, wrapped.css and search.css for
- * the same reason (see the header of static/styles.css); the extras come
- * without, as styles.css draws the phone's bar and its sheet. A bundle
+ * Their styles ride along in features.css, wrapped.css, search.css and
+ * extras.css for the same reason (see the header of static/styles.css);
+ * the phone's bar is drawn by styles.css, as the columns give way to it
+ * there, and its sheet by extras.css. A bundle
  * and its stylesheet have to arrive before a panel is shown, so they are
  * fetched together and a failure of either is a failure of the load: a
  * Wrapped panel without its stylesheet is worse than the toast.
@@ -47,6 +48,7 @@ export const FEATURES_CSS_URL = "./features.css";
 export const WRAPPED_CSS_URL = "./wrapped.css";
 export const SEARCH_CSS_URL = "./search.css";
 export const LOCAL_CSS_URL = "./local.css";
+export const EXTRAS_CSS_URL = "./extras.css";
 
 /** A lazy bundle is a fraction of a year file, so it gets less time */
 const LAZY_LOAD_TIMEOUT_MS = 30_000;
@@ -197,7 +199,7 @@ function lazyBundle<T extends { BUILD?: string | undefined }>(
 const features = lazyBundle("feature", FEATURES_CSS_URL, importFeatures);
 const wrapped = lazyBundle("Wrapped", WRAPPED_CSS_URL, importWrapped);
 const search = lazyBundle("search", SEARCH_CSS_URL, importSearch);
-const extras = lazyBundle("extras", null, importExtras);
+const extras = lazyBundle("extras", EXTRAS_CSS_URL, importExtras);
 const local = lazyBundle("Your flights", LOCAL_CSS_URL, importLocal);
 
 /** The feature bundle's exports, or null when it could not be loaded */

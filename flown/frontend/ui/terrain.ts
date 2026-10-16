@@ -364,6 +364,7 @@ function settleRibbons(
   // Each layer with the opacity the map was made with
   const own = [
     MAP_LAYERS.replayTrailRibbons,
+    MAP_LAYERS.replayTrailTipRibbons,
     MAP_LAYERS.selectionHighlightRibbons,
   ].map((id) => ({
     id,
@@ -446,8 +447,19 @@ function thinFarLabels(
   app: MapApp,
   map: MapLibreMap,
 ): { thin: () => void; follow: () => void } {
-  /** The start of every label layer as the style has it */
-  const own = new WeakMap<object, number>();
+  /**
+   * The start of every label layer as the style has it, and the one the
+   * last walk gave it, by its id: a layer that starts elsewhere comes from a
+   * new style. After a lost WebGL context MapLibre builds new layers from
+   * the style it kept, which start where the last walk had them; taken for
+   * the style's own, they kept the far labels out for good. Left as it
+   * is: a new base style whose layer of the same id starts just where the
+   * last walk had it is taken for the old one, and its labels show below
+   * its own start once the map lies flat. The restore and the swap both
+   * arrive through `setStyle`, and nothing cheaper than the whole style
+   * tells them apart.
+   */
+  const own = new Map<string, [style: number, given: number]>();
   /** The start the last walk gave the layers, undefined before the first */
   let given: number | null | undefined;
   const wanted = (): number | null =>
@@ -461,9 +473,12 @@ function thinFarLabels(
       if (APP_LAYERS.has(id)) continue;
       const layer = map.getLayer(id);
       if (layer?.type !== "symbol") continue;
-      if (!own.has(layer)) own.set(layer, layer.minzoom ?? 0);
-      const minzoom = Math.max(own.get(layer)!, start ?? 0);
-      if ((layer.minzoom ?? 0) === minzoom) continue;
+      const now = layer.minzoom ?? 0;
+      const known = own.get(id);
+      const style = known?.[1] === now ? known[0] : now;
+      const minzoom = Math.max(style, start ?? 0);
+      own.set(id, [style, minzoom]);
+      if (now === minzoom) continue;
       map.setLayerZoomRange(id, minzoom, layer.maxzoom ?? 24);
     }
   };

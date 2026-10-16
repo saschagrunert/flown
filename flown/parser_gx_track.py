@@ -30,6 +30,7 @@ from .parser_common import (
     local_name,
     validate_and_normalize_coordinate,
 )
+from .spikes import distance_spikes, run_spikes
 from .types import TrackPoint
 
 if TYPE_CHECKING:
@@ -48,6 +49,11 @@ if TYPE_CHECKING:
 # neither stretches the map nor costs the duplicate check anything
 _MAX_KM_PER_SECOND = MAX_GROUNDSPEED_KNOTS / KM_TO_NAUTICAL_MILES / SECONDS_PER_HOUR
 _SPIKE_SLACK_KM = 1.0
+# More than one fix in a row is a spike only this far from the flight (see
+# spikes.run_spikes): a lagging clock puts a few kilometres of the real
+# flight into a second or two, a zeroed coordinate or a stale fix is
+# hundreds of kilometres off
+_SPIKE_FAR_KM = 10.0
 
 type _TimedFix = tuple[float, float, float]
 
@@ -59,39 +65,22 @@ def _too_fast(first: _TimedFix, second: _TimedFix) -> bool:
 
 
 def _position_spikes(fixes: Sequence[_TimedFix]) -> set[int]:
-    """The indices of the fixes that leap away from both their neighbours.
+    """The indices of the (lat, lon, time) fixes that are position spikes.
 
-    Some loggers write a position that is far off for a single fix: one
-    coordinate zeroed (latitude 0, 5,000 km south of the flight), a sign
-    flipped, a stale fix of the last flight. Kept, one such fix stretched
-    the map to the equator, and the duplicate check indexed its lines into
-    tens of thousands of cells. A fix is one when the flight would have to
-    go faster than ``MAX_GROUNDSPEED_KNOTS`` to it from the fix before and
-    from it to the fix after, while the two around it are no such jump
-    apart: the recording goes on where it was. A real fast stretch, or a
-    gap in the recording after which the track goes on elsewhere, has no
-    neighbours that agree, and stays. The first and the last fix have one
-    neighbour: one is a spike when the jump to it is too fast and the next
-    step on is not.
+    A fix follows another when the flight need not go faster than
+    ``MAX_GROUNDSPEED_KNOTS`` to get from the one to the other; see
+    ``spikes.run_spikes`` for which of those that cannot are spikes: a fix
+    or a short run of them far off between two that agree (one coordinate
+    zeroed, a sign flipped), and a few stale fixes at either end, more than
+    one of them only ``_SPIKE_FAR_KM`` off. A real fast stretch, a stretch
+    with a lagging clock, or a gap in the recording after which the track
+    goes on elsewhere, stays.
     """
-    count = len(fixes)
-    if count < 3:
-        return set()
-    # Whether the step from each fix to the next one is too fast
-    jumps = [_too_fast(a, b) for a, b in pairwise(fixes)]
-    spikes: set[int] = set()
-    if jumps[0] and not jumps[1]:
-        spikes.add(0)
-    for index in range(1, count - 1):
-        if (
-            jumps[index - 1]
-            and jumps[index]
-            and not _too_fast(fixes[index - 1], fixes[index + 1])
-        ):
-            spikes.add(index)
-    if jumps[-1] and not jumps[-2]:
-        spikes.add(count - 1)
-    return spikes
+    return run_spikes(
+        len(fixes),
+        lambda a, b: not _too_fast(fixes[a], fixes[b]),
+        lambda a, b: haversine_distance(*fixes[a][:2], *fixes[b][:2]) > _SPIKE_FAR_KM,
+    )
 
 
 def _spiking_points(
@@ -102,8 +91,11 @@ def _spiking_points(
 ) -> set[int]:
     """The indices of the ``points`` that are position spikes.
 
-    See ``_position_spikes``, of the points whose timestamp is kept: only
-    those with a time can be told. ``source`` names the track in the log.
+    See ``_position_spikes``, of the points whose timestamp is kept. A
+    point without one (an unparsable <when>, a record zeroed whole, whose
+    time of 1980 is dropped as well) is told by its distance from the rest
+    alone (``spikes.distance_spikes``). ``source`` names the track in the
+    log.
     """
     timed = [
         (index, ts)
@@ -112,6 +104,13 @@ def _spiking_points(
     ]
     fixes = [(points[index][0], points[index][1], ts) for index, ts in timed]
     spikes = {timed[index][0] for index in _position_spikes(fixes)}
+    if len(timed) < len(points):
+        timed_indices = {index for index, _ in timed}
+        rest = [index for index in range(len(points)) if index not in spikes]
+        far = distance_spikes([(points[index][0], points[index][1]) for index in rest])
+        spikes.update(
+            rest[position] for position in far if rest[position] not in timed_indices
+        )
     if spikes:
         logger.debug("Dropped %d position spike(s) in %s", len(spikes), source)
     return spikes

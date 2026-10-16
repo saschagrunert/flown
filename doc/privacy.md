@@ -51,11 +51,14 @@ the repository and in the Pages deployment that follows. So are the title and
 the description of a pull request, and the name of the branch it comes from. The
 pre-push hook (`make hooks`) warns when a push adds the flights of one trip: up
 to three flights, or legs that each start where the one before ended and come
-back to the field of the first only at the end. It refuses a push to a branch
-whose name holds a date, a weekday or a holiday when the commits pushed to that
-branch add or change a flight (`flights-2026-08-16`); a branch of code pushed
-along with them passes. To a remote never fetched from it only warns: it cannot
-tell new flights from those the remote already has.
+back to the field of the first only at the end. It counts every KML file a push
+adds outside `tests/`, in `data/` or in the directory a copy of the repository
+keeps its own flights in (`FLOWN_INPUT_DIR`, see
+[Hosting](hosting.md#your-own-site-on-github-pages)). It refuses a push to a
+branch whose name holds a date, a weekday or a holiday when the commits pushed
+to that branch add or change a flight (`flights-2026-08-16`); a branch of code
+pushed along with them passes. To a remote never fetched from it only warns: it
+cannot tell new flights from those the remote already has.
 
 ## Your input files
 
@@ -169,9 +172,11 @@ rewritten. Obfuscated KML files still contain:
 timestamp of every flight must be 00:00:00 on January 1st (a fraction of a
 second may follow), and no other date may appear anywhere in a file or its name
 (numeric, also with the year first and spaces such as `2026 08 16` or with en
-dashes, with an English or German month name such as `16 Aug 2026` or
-`16. Mai 2026`, or with the month in Roman numerals such as `16.VII.2026` or
-`2026. VII. 16.`), except the two days after January 1st that a flight past
+dashes, with a month name in English, German, French, Spanish, Portuguese,
+Italian, Dutch, Czech, Slovak, Polish, Slovenian or Hungarian such as
+`16 Aug 2026`, `16. Mai 2026`, `16 août 2026`, `16. srpna 2026` or
+`2026. augusztus 16.`, or with the month in Roman numerals such as `16.VII.2026`
+or `2026. VII. 16.`), except the two days after January 1st that a flight past
 midnight runs into. The text of an element and the name of the file hold no part
 of a date either, which the year of the flight completes (`16 Aug`, `16.08.`,
 `16/08`, `16.VII.`, `KW33`, `CW33`, `260816`, `log_260816`, `03/2026`,
@@ -179,19 +184,28 @@ of a date either, which the year of the flight completes (`16 Aug`, `16.08.`,
 date); a number alone outside a name or a description is a number
 (`<value>16.8</value>`, the `<heading>` of a view), and the rewrite only takes a
 part of a date out of the elements of free text, so one anywhere else has to go
-by hand. Nor may a weekday named in full (`Saturday`, `Samstag`, `sonntags`):
-the timestamps no longer fall on it. Nor may a holiday, in English or German
+by hand. Nor may a weekday named in full, in those languages (`Saturday`,
+`Samstag`, `sonntags`, `samedi`, `sobota`): the timestamps no longer fall on it;
+the places named after one keep it (`Friday Harbor`, `Murska Sobota`,
+`Santo Domingo`, `Dunajská Streda`). Nor may a holiday, in English or German
 (`Christmas Eve`, `Easter Monday`, `Thanksgiving`, `Columbus Day`, `May Day`,
-`Heiligabend`, `Ostermontag`, `Pfingsten`, `Nikolaustag`,
-`Tag der Deutschen Einheit`), which names the day as well; the places named
-after one keep it (`Christmas Island`, `Easter Island`, `Pentecost Airport`,
-`Whitsunday Coast`). The name of a file carries no time of day either (`1513h`,
-`1513H`, `15h13`, `0930Z`, `0930z`, `0930UTC`, `15:13`, `3pm`, `10 AM`,
-`1430 GMT`, `1430 Zulu`, `14:30 EST`, `1430 local`, `0930 hours`, `14.30Z`,
-`0930Z-1045Z`, `14.30-15.45 Uhr`, `14.30 bis 15.45 Uhr`, `14:30 +02:00`,
-`1430+0200`), except for the sequence number in the time slot of an obfuscated
-Charterware name, and neither do its names and descriptions, nor a Unix time of
-a past day in the text of an element (see
+`July Fourth`, `Groundhog Day`, `Heiligabend`, `Ostermontag`, `Pfingsten`,
+`Nikolaustag`, `Walpurgisnacht`, `3. Advent`, `Tag der Deutschen Einheit`),
+which names the day as well; the places named after one keep it
+(`Christmas Island`, `Easter Island`, `Pentecost Airport`, `Whitsunday Coast`).
+A day, a word and a year in a language the check does not know
+(`16 setyembre 2026`, `16-augusti-2026`) is printed as a possible date for a
+person to look at, without failing the check or a hook, as it is as often a
+count and a place (`Day 2 Stuttgart 2026`); the rewrite leaves it, so one that
+is a date has to go by hand. The words of a log that stand there as often
+(`1 flight 2026`, `2 Platzrunden 2026`), an airport code (`3 EDNY 2025`) and a
+height (`1950 ft`) are not even printed. The name of a file carries no time of
+day either (`1513h`, `1513H`, `15h13`, `0930Z`, `0930z`, `0930UTC`, `15:13`,
+`3pm`, `10 AM`, `1430 GMT`, `1430 Zulu`, `14:30 EST`, `1430 local`,
+`0930 hours`, `14.30Z`, `0930Z-1045Z`, `14.30-15.45 Uhr`, `14.30 bis 15.45 Uhr`,
+`14:30 +02:00`, `1430+0200`), except for the sequence number in the time slot of
+an obfuscated Charterware name, and neither do its names and descriptions, nor a
+Unix time of a past day in the text of an element (see
 [Troubleshooting](usage.md#make-check-obfuscation-or-the-commit-hook-fails)). An
 `AM` in capitals after a number is a time, even where it is German written in
 capitals (`2 AM RHEIN`), which cannot be told from one; `3 am` stays. A comment,
@@ -212,10 +226,12 @@ file into one per day of flying. When a date cannot be removed (in an element
 the tool does not rewrite, say, or a file name that is taken without it), the
 rewrite lists it and stops rather than leaving a file half scrubbed.
 
-The pre-push hook (`make hooks`) runs the check before every push, and refuses a
-commit message that names a date, a weekday or a holiday when its commit adds or
-changes a flight in `data/` (`Add flight 16 Aug 2026`): the history of the
-repository is as public as the files.
+The pre-commit hook runs the check on every KML file a commit stages, wherever
+it is, and the pre-push hook (`make hooks`) on every one the commits being
+pushed add or change. The pre-push hook also refuses a commit message that names
+a date, a weekday or a holiday when its commit adds or changes a KML file
+(`Add flight 16 Aug 2026`): the history of the repository is as public as the
+files.
 
 ## What reaches the site
 
@@ -225,18 +241,26 @@ Kept in the site:
   metre), from the start of a recording to its end: the taxiing as well, so the
   spot the flights from a home field start and end at, where the aircraft is
   parked, can be read off to within a few metres, unless the build is told to
-  leave the ends out with `--trim-ends METRES`: every flight then loses its
-  points within that distance of where it starts and ends, the taxiing and the
-  parking spot with them (300 covers the apron and the taxiway of most fields; a
-  recording that never leaves that distance is left out). The extent of the map
-  and the airports are worked out from what is left, and the landings counted
-  before, so they stay as they were. That hides the ends only while the KML
-  files stay private: the files in `data/` of a repository on GitHub are as
-  public as the site (see [Hosting](hosting.md#your-own-site-on-github-pages)),
-  and an obfuscated file keeps every point of the taxiing at full precision, so
-  the parking spot can be read off the repository whatever the site leaves out.
-  The deploy job of the `test` workflow builds without it as well. To keep the
-  ends private, build the site with it from files that are not committed
+  leave the ends out with `--trim-ends METRES`: every flight then loses what
+  comes before its takeoff roll and after its landing roll where the times show
+  them (a stale first fix or a drive home with it), and then its points within
+  that distance of where the rest starts and ends, the taxiing and the parking
+  spot with them (300 covers the apron and the taxiway of most fields; a
+  recording that never leaves that distance is left out). A drive goes only from
+  a home at the height of the field or up to 300 ft above it, as the takeoff
+  counts only from a wait no higher than the lowest the recording was before it:
+  a recording that starts or ends on the move, or at a home 30 m or more below
+  the field or 300 ft or more above it, publishes the drive but for that
+  distance around its first or last fix, so switch the logger on and off at the
+  field. The extent of the map and the airports are worked out from what is
+  left, and the landings counted before, so they stay as they were. That hides
+  the ends only while the KML files stay private: the files in `data/` of a
+  repository on GitHub are as public as the site (see
+  [Hosting](hosting.md#your-own-site-on-github-pages)), and an obfuscated file
+  keeps every point of the taxiing at full precision, so the parking spot can be
+  read off the repository whatever the site leaves out. The deploy job of the
+  `test` workflow builds without it as well. To keep the ends private, build the
+  site with it from files that are not committed
 - Airport visit counts
 - Per flight, the number of full-stop landings, touch-and-goes and go-arounds,
   and the field and runway of each touchdown, without a time
@@ -292,26 +316,31 @@ Removed from the site:
   that follows a time (`1430 GMT`, `1430 Zulu`, `09:30 EDT`, `14:30 AEST`,
   `1430 local`, `0930 hours`, `14:30:00.5Z`, `14:30 +02:00`, `1430+0200`; the
   common zones, not every one there is), also with German month names written
-  day first (`16. Mai 2026`, `16. März`, `16MAI26`, `Mai 2026`); a month name
-  alone (`Flugplatz Juli`) stays, and so do runway designators in a name that
-  speaks of a runway (`RWY 08/26`, `07L/25R`) and a version after a word or an
-  app that says so (`firmware 12.10`, `ForeFlight 2026.03`), and a season, a
-  quarter or a half without its year (`Summer camp`), a decade (`Dec '80s`;
-  `May '68` goes, as `Aug '98` could be a flight), and the number of a type
-  before a date (`PA-28-16 Aug 2026` keeps `PA-28`: a range only counts with
-  days that go up), while a bare `26/08` is August 26th and `EDDS 07/25` July
-  25th (or July 2025): where a name could hold a date, the date goes. A
-  registration that looks like a time keeps it (`N1513H`, `RA-1430L`), and `W33`
-  alone is the code of an airport in the US as often. A time written with a dot
-  and nothing else (`Aunt farm 14.30`) stays, since it cannot be told from a
-  decimal (`Fuel 14.30`); with a zone, the local time, the hours or `Uhr` it
-  goes (`14.30Z`, `14.30 UTC`, `14.30L`, `14.30 hrs`, `15.13h`, `14.30 Uhr`).
-  Four digits before `hours` go even where they count the hours of an engine
+  day first (`16. Mai 2026`, `16. März`, `16MAI26`, `Mai 2026`) and those of the
+  other languages the check knows (`16 août 2026`, `16 de agosto`,
+  `16. srpna 2026`, `16 sierpnia`); a month name alone (`Flugplatz Juli`) stays,
+  and so do runway designators in a name that speaks of a runway (`RWY 08/26`,
+  `07L/25R`) and a version after a word or an app that says so
+  (`firmware 12.10`, `ForeFlight 2026.03`), and a season, a quarter or a half
+  without its year (`Summer camp`), a decade (`Dec '80s`; `May '68` goes, as
+  `Aug '98` could be a flight), and the number of a type before a date
+  (`PA-28-16 Aug 2026` keeps `PA-28`: a range only counts with days that go up),
+  while a bare `26/08` is August 26th and `EDDS 07/25` July 25th (or July 2025):
+  where a name could hold a date, the date goes, also from a place named after
+  one (`28 de Noviembre Airport` keeps only `Airport`, as
+  `Zemun Polje 13 May Airfield` loses `13 May`). A registration that looks like
+  a time keeps it (`N1513H`, `RA-1430L`), and `W33` alone is the code of an
+  airport in the US as often. A time written with a dot and nothing else
+  (`Aunt farm 14.30`) stays, since it cannot be told from a decimal
+  (`Fuel 14.30`); with a zone, the local time, the hours or `Uhr` it goes
+  (`14.30Z`, `14.30 UTC`, `14.30L`, `14.30 hrs`, `15.13h`, `14.30 Uhr`). Four
+  digits before `hours` go even where they count the hours of an engine
   (`Engine 1500 hours`)
-- Weekdays in placemark and file names: named in full in English or German
-  wherever they stand (`Saturday`, `Sundays`, `Samstag`, `sonntags`,
-  `Sonntagsflug`, `Samstagnachmittag`), and abbreviated only right next to a
-  date or a time (`Sat 16 Aug 2026`, `Sa., 16.08.2026`, `16.08.2026 (Sa)`,
+- Weekdays in placemark and file names: named in full in English, German or the
+  other languages the check knows wherever they stand (`Saturday`, `Sundays`,
+  `Samstag`, `sonntags`, `Sonntagsflug`, `Samstagnachmittag`, `samedi`,
+  `sobota`), and abbreviated only right next to a date or a time
+  (`Sat 16 Aug 2026`, `Sa., 16.08.2026`, `16.08.2026 (Sa)`,
   `Sat 14:30 16 Aug 2026`, `Sat 14:30`). An abbreviation on its own stays, since
   it is as often something else: `Sun` and `Sat` are words, `SAT` and `THU`
   airport codes (though `SAT` right before a time goes as a weekday:

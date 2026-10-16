@@ -46,7 +46,7 @@ from flown.segment_codec import FORMAT_VERSION, decode_ground
 from flown.site_output import STAGING_PREFIX, SiteOutput, day_start
 from flown.types import PathMetadata, TrackPoint
 from flown.validation import protected_directories
-from tests.conftest import FlatTiles, decoded_segments
+from tests.conftest import FlatTiles, decoded_segments, segments_by_id
 
 
 def path_content_id(path):
@@ -104,7 +104,7 @@ def _ids_by_start(output_dir, parse_data):
     """Path id by the start point of its segments, over every year file."""
     ids = {}
     for data_file in sorted(output_dir.glob("*/data.json")):
-        for path_id, entry in parse_data(data_file)["segments"].items():
+        for path_id, entry in segments_by_id(parse_data(data_file)).items():
             start, _ = decoded_segments(entry)
             ids[tuple(start)] = int(path_id)
     return ids
@@ -161,10 +161,12 @@ class TestYearFile:
             "max_altitude_ft",
         ]
         assert data["format"] == FORMAT_VERSION
-        assert list(data["segments"]) == ["7"]
-        entry = data["segments"]["7"]
-        # On disk: scaled integers, each row the difference to the one
-        # before, written column by column
+        # On disk: one array per column across the paths, in the order of
+        # path_info, of scaled integers, each the difference to the row before
+        assert list(data["segments"]) == ["start", "columns", "ground"]
+        assert data["segments"]["ground"] == [None]
+        assert list(segments_by_id(data)) == ["7"]
+        entry = segments_by_id(data)["7"]
         assert entry["start"] == [5000000, 800000]
         lats, lons, altitudes, _, times = entry["columns"]
         assert (lats[0], lons[0]) == (10000, 10000)
@@ -197,8 +199,9 @@ class TestYearFile:
         assert "start_airport" not in info
         assert "aircraft_registration" not in info
         assert None not in info.values()
-        # Without relative times there is no time column at all
-        assert len(data["segments"]["0"]["columns"]) == 4
+        # Without relative times the path has no time column at all
+        assert data["segments"]["columns"][4] == [None]
+        assert len(segments_by_id(data)["0"]["columns"]) == 4
 
     def test_paths_without_an_id_are_skipped_but_counted(self, tmp_path, parse_data):
         paths = [
@@ -222,7 +225,7 @@ class TestYearFile:
             "year": 2025,
             "original_points": 0,
             "path_info": [],
-            "segments": {},
+            "segments": {"start": [], "columns": [[], [], [], [], []], "ground": []},
         }
         assert result.groundspeed == GroundspeedRange()
 
@@ -239,7 +242,7 @@ class TestYearFile:
         )
         _write_year(2025, [path], metadata, [0], tmp_path)
 
-        entry = parse_data(tmp_path / "2025" / "data.json")["segments"]["0"]
+        entry = segments_by_id(parse_data(tmp_path / "2025" / "data.json"))["0"]
         _, rows = decoded_segments(entry)
         assert all(row[3] > 0 for row in rows)
         assert all(len(row) == 4 for row in rows)
@@ -248,7 +251,7 @@ class TestYearFile:
         path = _path((50.0, 8.0, 100.0), (50.0, 8.0, 100.0), (50.1, 8.1, 200.0))
         _write_year(2025, [path], [{"year": 2025}], [0], tmp_path)
         data = parse_data(tmp_path / "2025" / "data.json")
-        entry = data["segments"]["0"]
+        entry = segments_by_id(data)["0"]
         assert len(entry["columns"][0]) == 1
         # Dropping a zero-length segment keeps the chain contiguous
         start, rows = decoded_segments(entry)
@@ -261,7 +264,7 @@ class TestYearFile:
             (51.0, 9.0, 100.0, "2025-01-01T10:00:01.000Z"),
         )
         result = _write_year(2025, [path], [{"year": 2025}], [0], tmp_path)
-        entry = parse_data(tmp_path / "2025" / "data.json")["segments"]["0"]
+        entry = segments_by_id(parse_data(tmp_path / "2025" / "data.json"))["0"]
         _, rows = decoded_segments(entry)
         assert rows[0][3] == 0.0
         # A row without a speed does not pull the range down to zero
@@ -275,7 +278,7 @@ class TestYearFile:
         ]
         result = _write_year(2025, [path], [{"year": 2025}], [0], tmp_path)
         assert result.original_points == count
-        entry = parse_data(tmp_path / "2025" / "data.json")["segments"]["0"]
+        entry = segments_by_id(parse_data(tmp_path / "2025" / "data.json"))["0"]
         assert len(entry["columns"][0]) == count - 1
 
 
@@ -509,16 +512,20 @@ class TestProcessYearChunk:
             2025, paths, metadata, [5, None, 6], str(tmp_path), index=2
         )
 
-        info_part, segments_part = _part_paths(str(tmp_path), 2025, 2)
-        assert info_part.name == ".data.2.info.part"
-        assert segments_part.name == ".data.2.segments.part"
-        info = info_part.read_text()
-        segments = segments_part.read_text()
+        parts = _part_paths(str(tmp_path), 2025, 2)
+        names = ("info", "start", "lat", "lon", "altitude", "speed", "time", "ground")
+        assert [part.name for part in parts] == [f".data.2.{n}.part" for n in names]
+        info, start, *columns, ground = (part.read_text() for part in parts)
         assert info.startswith('{"id":5,')
         assert '},{"id":6,' in info
-        assert segments.startswith('"5":{"start":[')
-        assert ',"6":{"start":[' in segments
         assert not info.endswith(",")
+        # One entry per exported path in every other fragment
+        for fragment in [start, *columns[:4]]:
+            assert fragment.startswith("[")
+            assert fragment.endswith("]")
+            assert fragment.count("],[") == 1
+        # Neither path has relative times or ground
+        assert columns[4] == ground == "null,null"
         assert result == ChunkResult(
             year=2025,
             index=2,
@@ -532,11 +539,10 @@ class TestProcessYearChunk:
         process_year_chunk(
             2025, paths, _metadata([{"year": 2025}] * 2), [9, 2], str(tmp_path)
         )
-        info_part, segments_part = _part_paths(str(tmp_path), 2025, 0)
+        info_part = _part_paths(str(tmp_path), 2025, 0)[0]
         assert info_part.read_text().index('"id":9') < info_part.read_text().index(
             '"id":2'
         )
-        assert segments_part.read_text().startswith('"9":')
 
     def test_empty_chunk_writes_empty_fragments(self, tmp_path):
         result = process_year_chunk(2025, [], _metadata([]), [], str(tmp_path))
@@ -576,7 +582,7 @@ class TestAssembleYearFile:
             "segments",
         ]
         assert [info["id"] for info in data["path_info"]] == [0, 1]
-        assert list(data["segments"]) == ["0", "1"]
+        assert list(segments_by_id(data)) == ["0", "1"]
         assert data["original_points"] == 4
         assert result.path_count == 2
         assert _leftover_parts(tmp_path) == []
@@ -1528,7 +1534,7 @@ class TestExportAllData:
         data_2025 = parse_data(tmp_path / "2025" / "data.json")
         data_2026 = parse_data(tmp_path / "2026" / "data.json")
         _, rows_2026 = decoded_segments(
-            data_2026["segments"][str(path_content_id(paths[0]))]
+            segments_by_id(data_2026)[str(path_content_id(paths[0]))]
         )
         speeds = [row[3] for row in rows_2026]
         assert meta == {
@@ -1689,7 +1695,7 @@ class TestGround:
             available_flags=[],
         )
 
-        entries = parse_data(tmp_path / "2025" / "data.json")["segments"].values()
+        entries = segments_by_id(parse_data(tmp_path / "2025" / "data.json")).values()
         assert all("ground" not in entry for entry in entries)
 
     def test_every_row_of_a_path_gets_its_ground(self, tmp_path, parse_data):
@@ -1703,7 +1709,7 @@ class TestGround:
         )
 
         data = parse_data(tmp_path / "2025" / "data.json")
-        (entry,) = data["segments"].values()
+        (entry,) = segments_by_id(data).values()
         # The path neither starts nor ends taxiing, so the model is the ground
         assert decode_ground(entry["ground"]) == [330.0, 330.0]
 
@@ -1719,7 +1725,7 @@ class TestGround:
             available_flags=[],
         )
 
-        segments = parse_data(tmp_path / "2025" / "data.json")["segments"]
+        segments = segments_by_id(parse_data(tmp_path / "2025" / "data.json"))
         assert "ground" in segments[str(path_content_id(paths[0]))]
         assert "ground" not in segments[str(path_content_id(paths[1]))]
 
@@ -1735,5 +1741,5 @@ class TestGround:
             [None],
         )
 
-        _, segments_part = _part_paths(str(tmp_path), 2025, 0)
-        assert '"ground"' not in segments_part.read_text()
+        ground_part = _part_paths(str(tmp_path), 2025, 0)[-1]
+        assert ground_part.read_text() == "null"

@@ -754,9 +754,10 @@ def _plan(
     The countries get a flag where ``flags`` has one: the page's, for the
     build in it, which has none of its own to look at; those of this
     checkout by default (see ``available_country_flags``). With
-    ``trim_metres``, every path loses its points within that distance of
-    where it starts and ends (see ``trim_path_ends``) before anything else
-    looks at it: the extent and the airports are of what is published.
+    ``trim_metres``, every path loses its ground at both ends and its points
+    within that distance of where the rest starts and ends (see
+    ``trim_path_ends``) before anything else looks at it: the extent and
+    the airports are of what is published.
     """
     all_path_groups, all_path_metadata = trim_paths(
         all_path_groups, all_path_metadata, trim_metres
@@ -802,7 +803,7 @@ def trim_paths(
     all_path_metadata: list[PathMetadata],
     trim_metres: float,
 ) -> tuple[FlightPathGroup, list[PathMetadata]]:
-    """Every path without its points within ``trim_metres`` of its ends.
+    """Every path without its ground at its ends and what is near it.
 
     See ``trim_path_ends``; the paths as they are for 0. For the build
     (``_plan``) and ``--list`` (``listing.list_flights``) alike, so that the
@@ -1120,8 +1121,9 @@ def build_site(
     images are named by (see ``previews``); None takes it from
     ``FLOWN_SITE_URL``, and without either the pages go without
     images. ``private`` asks search engines not to index the site (a robots
-    meta tag in the page). ``trim_ends`` leaves out the points of every
-    flight within that many metres of where it starts and ends (see
+    meta tag in the page). ``trim_ends`` leaves out the ground of every
+    flight before its takeoff and after its landing, and its points within
+    that many metres of where the rest starts and ends (see
     ``geometry.trim_path_ends``): the taxiing, and the spot the aircraft is
     parked on.
     """
