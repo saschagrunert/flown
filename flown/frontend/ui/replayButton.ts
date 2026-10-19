@@ -13,7 +13,7 @@ import { domCache } from "../utils/domCache";
 /** Several selected flights play one after another (ui/replayManager.ts) */
 export const REPLAY_BUTTON_LABEL = "Replay selected flights";
 export const REPLAY_PRECONDITION_MESSAGE =
-  "Pick flights with timing data to replay, under Statistics, Flights";
+  "Pick flights with timing data to replay, under Flights in the statistics";
 /**
  * Shared flights a filter hides, every one of them: share mode keeps them,
  * and the chip says "all hidden by the filter"

@@ -95,9 +95,10 @@ viewport. The `webkit` project runs `core`, `layers`, `mobile`, `search` and
 `state` on an emulated iPhone (not `local-flights`, whose stub of the worker
 WebKit does not route), and `webkit-desktop` runs `3d-relief`, `error-free`,
 `orientation` and `replay`, which drive the desktop controls, in a desktop
-Safari viewport. The `visual` project compares screenshots of a fixture site and
-only exists inside the Playwright image (or with `VISUAL_SNAPSHOTS=1`), so a
-plain run leaves it out (see
+Safari viewport. The `visual` project compares screenshots of a fixture site in
+Chromium, and `visual-phone` those of the bottom bar and its sheet on the phone
+of the `mobile` project. Both only exist inside the Playwright image (or with
+`VISUAL_SNAPSHOTS=1`), so a plain run leaves them out (see
 [Visual snapshots](../../CONTRIBUTING.md#visual-snapshots)).
 
 The specs scan the page with axe for WCAG A and AA violations
@@ -113,8 +114,13 @@ The suite does not reach the network: the page carries its own JavaScript and
 CSS, CARTO's base style is answered with a stub that draws a background and asks
 for no glyphs or sprite, every map tile with a transparent pixel, and any other
 cross-origin request fails the test that made it (see `tests/e2e/fixtures.ts`,
-which every spec imports `test` and `expect` from). What the specs know about
-the map library is in `tests/e2e/map.ts`: a spec asks it for the map's locators,
+which every spec imports `test` and `expect` from). So does an uncaught error of
+the page, an exception or a rejected promise nothing handled (`pageErrors` in
+the same file; a test that raises one on purpose sets `uncaughtErrors` to
+`"allow"` with `test.use`). Console errors are checked by the specs that collect
+them (`attachErrorCollectors` in `tests/e2e/helpers.ts`), since the page logs
+the failures it handles, which many specs provoke. What the specs know about the
+map library is in `tests/e2e/map.ts`: a spec asks it for the map's locators,
 zoom, layers and popups instead of naming a `.maplibregl-*` class or reaching
 into `window.mapApp.map`. Its zoom levels are the ones of shared links, one
 higher than MapLibre's own (see `ZOOM_OFFSET` in `utils/constants.ts`).
@@ -128,27 +134,30 @@ new one that depends on the key the same way) on the desktop, one without. It
 builds both once, in the `e2e-sites` job, and runs every e2e job in the
 Playwright image the visual job uses (pulled by a step with a time limit and run
 with `docker run`), with a browser per core of the runner. The `desktop` project
-is split into three shards (`--shard`), the `mobile` and `webkit` projects into
-two each; Playwright splits by the number of tests, not their time, so the
-`desktop` and `mobile` shards are weighted (`PWTEST_SHARD_WEIGHTS` in the
-workflow), since the slow specs sort last. The tests without a key run after the
-others in the `webkit-heavy` job, the shortest. The tests tagged `@heavy`
-(`HEAVY` in `tests/e2e/fixtures.ts`: the 3D view with its relief, heat cloud or
-chase view, and the globe turned with the flights loaded) of the `desktop` and
-`webkit-desktop` projects run in jobs of their own with two browsers
-(`--grep @heavy --workers=2`), since software WebGL takes seconds per frame of
-them; the other jobs of those projects leave them out (`--grep-invert @heavy`).
-Tag a new spec that waits on frames of either, a describe with `HEAVY` and a
-single test with `@heavy` at the end of its title. The relief tests run one
-after the other in one browser and take the longest, so they are in
-`3d-relief.spec.ts`, which sorts first and starts them at once, and in the
-`desktop` project the last two of them (`HEAVY_SECOND`, tagged `@heavy-2`) run
-in a second heavy job. The real build of Your flights with Pyodide
-(`local-flights-pyodide.spec.ts`, `FLOWN_E2E_PYODIDE=1`) runs in the weekly run
-only. In CI a failed test of the `desktop` project is retried once, which only
-tells a flaky failure from a steady one: `failOnFlakyTests` fails the run either
-way. The `mobile`, `visual`, `webkit` and `webkit-desktop` projects do not
-retry, and neither do the heavy tests, where one attempt takes minutes.
+is split into three shards (`--shard`) and the `mobile` project into two, while
+the `webkit` project runs in one job; Playwright splits by the number of tests,
+not their time, so the `desktop` and `mobile` shards are weighted
+(`PWTEST_SHARD_WEIGHTS` in the workflow), since the slow specs sort last. The
+tests without a key run after the others in the `webkit-heavy` job, the
+shortest. The tests tagged `@heavy` (`HEAVY` in `tests/e2e/fixtures.ts`: the 3D
+view with its relief, heat cloud or chase view, and the globe turned with the
+flights loaded) of the `desktop` and `webkit-desktop` projects run in jobs of
+their own with two browsers (`--grep @heavy --workers=2`), since software WebGL
+takes seconds per frame of them; the other jobs of those projects leave them out
+(`--grep-invert @heavy`). Tag a new spec that waits on frames of either, a
+describe with `HEAVY` and a single test with `@heavy` at the end of its title.
+The relief tests run one after the other in one browser and take the longest, so
+they are in `3d-relief.spec.ts`, which sorts first and starts them at once, and
+in the `desktop` project the last two of them (`HEAVY_SECOND`, tagged
+`@heavy-2`) run in a second heavy job. The real build of Your flights with
+Pyodide (`local-flights-pyodide.spec.ts`, `FLOWN_E2E_PYODIDE=1`) runs in the
+`pyodide` job: on every push to main, weekly, and in a pull request that changes
+the Python of the package, `services/local*.ts`, `state/localFlags.ts`, the
+template or the spec. It needs Pyodide's CDN, so it gates nothing. In CI a
+failed test of the `desktop` project is retried once, which only tells a flaky
+failure from a steady one: `failOnFlakyTests` fails the run either way. The
+`mobile`, `visual`, `visual-phone`, `webkit` and `webkit-desktop` projects do
+not retry, and neither do the heavy tests, where one attempt takes minutes.
 
 ### The site under test
 

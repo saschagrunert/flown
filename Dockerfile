@@ -7,7 +7,7 @@
 # uv, which installs the Python dependencies from uv.lock below. Only its
 # binary is used, mounted into the step that runs it, so it never becomes a
 # layer of the image. The same release as CI (scripts/check_pins.py).
-FROM ghcr.io/astral-sh/uv:0.12.24@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a AS uv
+FROM ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 AS uv
 
 # Stage 1: build the JavaScript bundles
 FROM docker.io/library/node:26.12.0-slim@sha256:0d1e33586362bb9e608c4e751e7a9e7edb55c9ac11461ed5666af696cc461dd4 AS js-builder

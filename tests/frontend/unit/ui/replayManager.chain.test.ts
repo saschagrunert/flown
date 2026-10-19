@@ -379,6 +379,41 @@ describe("ReplayManager with several flights", () => {
     );
   });
 
+  it("measures the time at the end of the longest flight, where it has the most digits", () => {
+    mockApp.currentData = day();
+    // The third flight a quarter of an hour long: "15:00" against "0:00"
+    for (const segment of mockApp.currentData.path_segments) {
+      if (segment.path_id === 3) segment.time = segment.time! * 10;
+    }
+    open(1, 2, 3);
+    const third = legs()[2]!;
+    expect(third.finish - third.start).toBeGreaterThanOrEqual(600);
+    expect(third.finish - third.start).toBeLessThan(3600);
+
+    replayManager.seekReplay(String(third.finish));
+    expect(el("replay-time-display").style.width).toBe(
+      `${time().length + 1}ch`,
+    );
+  });
+
+  it("leaves the camera to the chase when auto-zoom goes on", () => {
+    open(1, 2);
+    const map = mockApp.map!;
+    replayManager.state.chase = true;
+    map.easeTo.mockClear();
+
+    replayManager.toggleAutoZoom();
+
+    expect(replayManager.state.autoZoom).toBe(true);
+    expect(map.easeTo).not.toHaveBeenCalled();
+
+    // Without the chase it goes to the airplane
+    replayManager.state.chase = false;
+    replayManager.toggleAutoZoom();
+    replayManager.toggleAutoZoom();
+    expect(map.easeTo).toHaveBeenCalled();
+  });
+
   it("leaves the chase to fly over to the next flight", () => {
     vi.spyOn(motion, "prefersReducedMotion").mockReturnValue(false);
     open(1, 2);

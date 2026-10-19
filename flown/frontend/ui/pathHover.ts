@@ -54,6 +54,12 @@ const TOUCH_HIT_PADDING_PX = 12;
 /** Distance of the tooltip from the pointer, in pixels */
 const TOOLTIP_OFFSET_PX = 10;
 
+/**
+ * How long a pointer rests on one flight before it counts as about to pick
+ * it: a pointer on its way across the map passes over flights for less
+ */
+const PICK_INTENT_MS = 300;
+
 /** A run of segments of one path, which a feature of a layer stands for */
 export interface HoverRun {
   /** Half-open index range of the run within its segment array */
@@ -119,6 +125,14 @@ export interface HoverPaths {
   drawnRuns(map: MapLibreMap): DrawnRuns;
   /** The popup of a segment's values, coloured as its runs */
   describe(segment: PathSegment): string;
+  /**
+   * Get ready for a flight about to be picked, once a pointer has rested
+   * on it for PICK_INTENT_MS or a tap shows its values: the page fetches
+   * the feature bundle then, which draws the profile of a picked flight
+   * (MapApp.followFlightProfile), rather than with the click. Once it has
+   * come, being told again costs nothing.
+   */
+  prepare?(): unknown;
 }
 
 /** The parts of the app the hover reads */
@@ -189,6 +203,8 @@ export class PathHover {
   /** The button under its values and what it does, if it has one */
   private tapButton: { button: HTMLButtonElement; action: TapAction } | null =
     null;
+  /** The wait of a pointer resting on a flight, see HoverPaths.prepare */
+  private intentTimer: ReturnType<typeof setTimeout> | undefined;
   /**
    * Told the segment the tooltip comes to describe, and null as it closes:
    * the flight profile moves its cursor along (ui/flightProfile.ts)
@@ -290,6 +306,7 @@ export class PathHover {
     if (!map) return;
     this.closeTapped();
     if (this.hovered?.path_id === hit.pathId) this.hideTooltip();
+    this.paths.prepare?.();
     const popup = (this.touchPopup = new Popup({
       // Not the tooltip's class: that one takes no pointer events, and
       // this popup has a close button to press
@@ -558,6 +575,15 @@ export class PathHover {
       offset: TOOLTIP_OFFSET_PX,
     }));
     if (segment !== this.hovered) {
+      // The wait starts over on another flight, not on another segment.
+      // Leaving the flight ends it (hideTooltip), and so does destroy.
+      if (segment.path_id !== this.hovered?.path_id) {
+        clearTimeout(this.intentTimer);
+        this.intentTimer = setTimeout(
+          () => this.paths.prepare?.(),
+          PICK_INTENT_MS,
+        );
+      }
       this.hovered = segment;
       tooltip.setHTML(trustedHtml(this.paths.describe(segment)));
       this.onHover?.(segment);
@@ -572,6 +598,7 @@ export class PathHover {
   }
 
   private hideTooltip(): void {
+    clearTimeout(this.intentTimer);
     this.hovered = null;
     if (!this.tooltip?.isOpen()) return;
     this.tooltip.remove();

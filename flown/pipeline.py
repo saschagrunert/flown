@@ -93,6 +93,7 @@ __all__ = [
     "parse_inline",
     "preflight",
     "trim_paths",
+    "trimmed_away_files",
 ]
 
 # Files that are not in the parse cache are parsed in this process up to
@@ -111,6 +112,12 @@ POOLED_CACHE_MIN_WORKERS = 8
 
 # Why a file the parse failed on with a bug failed, as a build names it
 UNEXPECTED_PARSE_ERROR = "an unexpected error while reading it"
+# Why a file with a flight holds none once --trim-ends took out its ends
+TRIMMED_AWAY_REASON = (
+    "no track is left once --trim-ends takes out its ends (taxiing alone?)"
+)
+# Why a file the parse ran out of memory on in this process failed
+OUT_OF_MEMORY_PARSE_ERROR = "too large for the memory available"
 
 
 @dataclass
@@ -233,6 +240,11 @@ def parse_inline(
         return (parse or _parse_with_error_handling)(kml_file, cache_path)
     except FlownError:
         raise
+    # No bug: the file is too large for this process (the browser's, whose
+    # memory is small), and the others may well fit
+    except MemoryError:
+        logger.error("Out of memory processing %s", kml_file)
+        return ParsedFile(kml_file, error=OUT_OF_MEMORY_PARSE_ERROR)
     # A bug in the parser shows on this one file, with its traceback, and
     # the run reports the file as failed instead of dying without a name
     except Exception:  # noqa: BLE001
@@ -361,6 +373,12 @@ def _parse_in_pool(
                         f"A parser worker process crashed on {kml_file}, possibly "
                         "out of memory; run with --debug for details"
                     ) from None
+                except FlownError:
+                    raise
+                # As in the pool above: one file's bug, named with its traceback
+                except Exception:  # noqa: BLE001
+                    logger.exception("Unexpected error processing %s", kml_file)
+                    parsed = ParsedFile(kml_file, error=UNEXPECTED_PARSE_ERROR)
                 record(parsed)
 
 
@@ -557,7 +575,7 @@ def _usable_results(
     for kml_file in valid_files:
         parsed = by_file.get(kml_file)
         # A file without a result at all failed as well
-        if parsed is None or not parsed.point_count:
+        if parsed is None or parsed.error is not None:
             error = parsed.error if parsed is not None else None
             failed.append(SkippedFile(kml_file, error or "could not be read"))
             continue
@@ -617,15 +635,18 @@ def _unusable_message(left_out: Sequence[SkippedFile]) -> str:
 
 
 def no_flight_reason(parsed: ParsedFile) -> str | None:
-    """Why a file with coordinates gives the export no path, None if it does.
+    """Why a file that parsed gives the export no path, None if it does.
 
-    Such a file fails the run like one without coordinates: its points
-    count, but the site would be published without its flight. A path
-    without a year or one that never moves is only left out while another
-    path of the file is exported. A path that the export drops as a
-    recording of a flight another file holds as well (see ``duplicates``)
-    counts: the flight is on the site.
+    Such a file fails the run like one that does not parse: the site would
+    be published without its flight. A path without a year or one that
+    never moves is only left out while another path of the file is
+    exported. A path that the export drops as a recording of a flight
+    another file holds as well (see ``duplicates``) counts: the flight is
+    on the site.
     """
+    if not parsed.point_count:
+        # A well-formed document without a single valid point
+        return "no valid coordinates (no LineString, gx:Track or Point with one)"
     if not parsed.path_groups:
         if not parsed.altitudes_missing:
             # Every point has an altitude, so none of them was on a line of
@@ -759,9 +780,23 @@ def _plan(
     ``trim_path_ends``) before anything else looks at it: the extent and
     the airports are of what is published.
     """
-    all_path_groups, all_path_metadata = trim_paths(
+    trimmed_groups, trimmed_metadata = trim_paths(
         all_path_groups, all_path_metadata, trim_metres
     )
+    trimmed_away = trimmed_away_files(
+        all_path_groups, trimmed_groups, all_path_metadata
+    )
+    if trimmed_away:
+        # As for a file that holds no flight (see _usable_results), which
+        # the trim made it
+        for kml_file in trimmed_away:
+            logger.error("%s: %s", kml_file, TRIMMED_AWAY_REASON)
+        raise InvalidInputError(
+            f"{len(trimmed_away)} file(s) hold no flight once --trim-ends takes "
+            f"out their ends ({_some_names(trimmed_away)}, see above); lower "
+            "--trim-ends or remove them"
+        )
+    all_path_groups, all_path_metadata = trimmed_groups, trimmed_metadata
     path_groups, path_metadata, dated_landings = _drop_paths_without_year(
         all_path_groups, all_path_metadata, landings
     )
@@ -821,6 +856,35 @@ def trim_paths(
         for metadata, path in zip(all_path_metadata, path_groups, strict=True)
     ]
     return path_groups, path_metadata
+
+
+def trimmed_away_files(
+    all_path_groups: FlightPathGroup,
+    trimmed_groups: FlightPathGroup,
+    all_path_metadata: list[PathMetadata],
+) -> list[str]:
+    """The files whose flight the trim (``trim_paths``) took out entirely.
+
+    A file that had a dated path to export before the trim and has none
+    after it: a recording of taxiing alone, say. The parse found a flight
+    in it (see ``no_flight_reason``), so the site would be published
+    without one. Named by their paths' ``source`` (see ``_mark_source``).
+    """
+    if trimmed_groups is all_path_groups:
+        # Nothing trimmed (see trim_paths)
+        return []
+    lost: dict[str, bool] = {}
+    for before, after, metadata in zip(
+        all_path_groups, trimmed_groups, all_path_metadata, strict=True
+    ):
+        if metadata.get("year") is None:
+            continue
+        source = metadata.get("source") or metadata.get("filename") or ""
+        if is_exportable_path(after):
+            lost[source] = False
+        elif source not in lost and is_exportable_path(before):
+            lost[source] = True
+    return [source for source, gone in lost.items() if gone]
 
 
 def _started_at(metadata: PathMetadata, path: FlightPath) -> PathMetadata:

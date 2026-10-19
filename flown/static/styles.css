@@ -3,7 +3,8 @@
    Everything replay and the flight profile need is in features.css
    instead, everything Wrapped and the content of the statistics panel
    need in wrapped.css, the panel of the search in search.css, the panel
-   of Your flights in local.css and the phone's sheet in extras.css, which
+   of Your flights in local.css, the phone's sheet in phone.css and the
+   list of flights of an airport's popup in extras.css, which
    services/featureLoader.ts fetches next to their bundles the first time
    one of them is wanted. Most visits open none of them, and together they
    are more than a third of the styles; keeping them out of the critical
@@ -13,9 +14,11 @@
    flight profile, in wrapped.css when it names Wrapped or what the
    statistics panel renders (.stats-*, bar the rail's title and loading
    state), in search.css when it names the search panel or its pulse on
-   the map, in extras.css when it names the phone's sheet (.mobile-sheet
-   and .sheet-*), and here otherwise; a selector list that names more than
-   one is written out in each file, with the selectors that belong there.
+   the map, in phone.css when it names the phone's sheet (.mobile-sheet,
+   .sheet-* and its .gradient-chip), in extras.css when it names the
+   popup's list of flights (.popup-flight*, .popup-runways), and here
+   otherwise; a selector list that names more than one is written out in
+   each file, with the selectors that belong there.
    Design tokens, the control surfaces the feature panels reuse
    (.btn-surface and friends) and every shared media query stay here. */
 
@@ -425,10 +428,9 @@ main {
   );
 }
 /* Every fade of a scrolled panel goes at its end, the statistics panel's
-   and the popup's list of flights below too: one rule */
+   too: one rule (the popup's list of flights has its own, extras.css) */
 .control-column.is-at-end,
-#stats-panel.is-at-end,
-.popup-flights.is-at-end {
+#stats-panel.is-at-end {
   mask-image: none;
 }
 #left-buttons {
@@ -654,8 +656,8 @@ main {
 
 /* Ramp chips: a miniature of the data gradient the row switches on. These
    carry the app's real stops, so they are spelled out rather than tokenised.
-   `.ramp-chip` is the desktop row chip, `.gradient-chip` the sheet-row one;
-   both share a single definition of each ramp. */
+   `.ramp-chip` is the desktop row chip; the sheet-row one, `.gradient-chip`,
+   is phone.css's and paints the same ramps (--gradient-*). */
 .ramp-chip {
   flex-shrink: 0;
   width: var(--space-lg);
@@ -663,21 +665,11 @@ main {
   border-radius: var(--radius-bar);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
-.gradient-chip {
-  flex-shrink: 0;
-  display: inline-block;
-  width: 40px;
-  height: var(--space-sm);
-  border-radius: var(--radius-pill);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
-}
 .ramp-chip-altitude,
-.gradient-chip-altitude,
 #altitude-legend .gradient-bar {
   background: var(--gradient-altitude);
 }
 .ramp-chip-speed,
-.gradient-chip-speed,
 #airspeed-legend .gradient-bar {
   background: var(--gradient-speed);
 }
@@ -1765,7 +1757,8 @@ main > #map .maplibregl-ctrl-bottom-right {
   font-size: var(--text-base);
   text-align: center;
 }
-#map-empty p {
+#map-empty p,
+.init-error p {
   margin: 0;
 }
 
@@ -1773,7 +1766,7 @@ main > #map .maplibregl-ctrl-bottom-right {
    Mobile bottom bar
 
    The wrapped rows of buttons are replaced by a bar of tabs plus a sheet
-   that holds the rest, which extras.css draws. Both stay out of the way
+   that holds the rest, which phone.css draws. Both stay out of the way
    until the mobile breakpoint applies.
    ========================================================================== */
 .mobile-bar {
@@ -2113,57 +2106,6 @@ main > #map .maplibregl-ctrl-bottom-right {
   justify-content: space-between;
   align-items: center;
 }
-/* One button per flight, the keyboard's way to a single flight. A busy
-   airport lists hundreds, so the list scrolls instead of the popup
-   growing past the map. */
-.popup-flights-label {
-  margin-top: var(--space-sm);
-}
-/* The runways the flights used, above the list, in the type of its rows */
-.popup-runways {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-.popup-flights {
-  display: grid;
-  gap: 2px;
-  max-height: 9.5rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  /* The fade of the statistics panel, for a list cut off mid-row; the
-     popup drops `is-at-end` once there is no more (utils/scrollFade.ts,
-     `.control-column.is-at-end`) */
-  mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - var(--space-lg)),
-    transparent 100%
-  );
-}
-.popup-flight {
-  font: inherit;
-  font-size: var(--text-sm);
-  text-align: left;
-  color: var(--color-text-secondary);
-  background: none;
-  border: none;
-  border-radius: var(--radius-control);
-  padding: 3px var(--space-xs);
-  cursor: pointer;
-  flex: 1;
-}
-/* A row: the checkbox that adds the flight to the selection, and the
-   button that picks it alone (ui/airportFlights.ts) */
-.popup-flights > * {
-  display: flex;
-  align-items: center;
-  min-height: 24px;
-}
-/* A rule in the gap between two rows (the list holds nothing else): bare
-   lines of text did not read as something to pick. A shadow, so the rows
-   keep their height. */
-.popup-flights > * + * {
-  box-shadow: 0 -1px var(--color-divider);
-}
 /* The checkbox of a flight in a list, in the colour of a selection; the
    flight list of the statistics rail has them too (ui/flightList.ts). In
    proportion to the text of the row: at 24 px it dwarfed it. A target of
@@ -2178,23 +2120,6 @@ main > #map .maplibregl-ctrl-bottom-right {
   accent-color: var(--color-accent-blue);
   cursor: pointer;
 }
-.popup-flight:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-}
-.popup-flight[aria-pressed="true"] {
-  background: rgba(var(--color-accent-blue-rgb), 0.15);
-  color: var(--color-accent-blue);
-}
-/* Opening the popup selects all of the airport's flights, which pressed
-   every row, and the list looked like a choice already made. While every
-   row is pressed that says nothing, and they are drawn as rows to pick
-   from; they stay pressed for a screen reader (ui/airportFlights.ts). */
-.popup-flights.is-all-pressed .popup-flight[aria-pressed="true"]:not(:hover) {
-  background: none;
-  color: var(--color-text-secondary);
-}
-.popup-flight:focus-visible,
 .popup-airport:focus-visible {
   outline: var(--focus-ring);
   outline-offset: -2px;
@@ -2258,9 +2183,6 @@ main > #map .maplibregl-ctrl-bottom-right {
   .popup-header {
     padding-right: calc(var(--btn-min-height) - var(--space-md));
   }
-  .popup-flight {
-    min-height: var(--btn-min-height);
-  }
 }
 /* --------------------------------------------------------------------------
    Statistics rail title and loading state
@@ -2288,6 +2210,8 @@ main > #map .maplibregl-ctrl-bottom-right {
 }
 .init-error {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
   align-items: center;
   justify-content: center;
   height: 100%;
@@ -2411,8 +2335,7 @@ main > #map .maplibregl-ctrl-bottom-right {
      and the ramp chips as empty outlines: they are the colour key, so they
      keep their own colours, framed by the system's text colour. */
   .color-legend .gradient-bar,
-  .ramp-chip,
-  .gradient-chip {
+  .ramp-chip {
     forced-color-adjust: none;
     border: 1px solid CanvasText;
   }

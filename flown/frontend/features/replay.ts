@@ -222,15 +222,14 @@ export function replayCurve(
         : joined(last)
           ? speed(last - 1)
           : 0;
-    if (length[last]! > 0 && metresPerSecond) {
-      const flown = Math.min(
-        length[last]! / metresPerSecond,
-        LAST_SEGMENT_MAX_S,
-      );
-      // Up to a whole second, a step of the timeline's slider: one between
-      // two could not be reached by dragging to its end
-      seconds[last] = Math.ceil(times[last]! + flown) - times[last]!;
-    }
+    const flown =
+      length[last]! > 0 && metresPerSecond
+        ? Math.min(length[last]! / metresPerSecond, LAST_SEGMENT_MAX_S)
+        : 0;
+    // Up to a whole second, a step of the timeline's slider: one between
+    // two could not be reached by dragging to its end. A last fix parked
+    // where the one before is gets the rest of its second too.
+    seconds[last] = Math.ceil(times[last]! + flown) - times[last]!;
     end = times[last]! + seconds[last]!;
     legs.push({ first, end: last + 1, start, finish: end });
     first = last + 1;

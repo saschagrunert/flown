@@ -1,5 +1,6 @@
 """Tests for validation module."""
 
+import json
 import os
 import zipfile
 from pathlib import Path, PureWindowsPath
@@ -228,12 +229,58 @@ class TestForeignSiteFiles:
             tmp_path / "index.html"
         ]
 
-    @pytest.mark.parametrize("marker", ["map_config.js", "data/metadata.json"])
-    def test_an_earlier_run_is_no_foreign_site(self, tmp_path, marker):
+    @pytest.mark.parametrize(
+        ("marker", "content"),
+        [
+            ("map_config.js", 'window.MAP_CONFIG={"dataDir":"data"};'),
+            # As the template of the builds before 2026-10-02 wrote it
+            (
+                "map_config.js",
+                (
+                    "// The configuration of the map application\n"
+                    "// one JSON object\n"
+                    'window.MAP_CONFIG = {"dataDir": "data"};\n'
+                ),
+            ),
+            ("data/metadata.json", '{"available_years":[2025],"year_file_bytes":{}}'),
+        ],
+    )
+    def test_an_earlier_run_is_no_foreign_site(self, tmp_path, marker, content):
         (tmp_path / "index.html").write_text("")
         (tmp_path / marker).parent.mkdir(exist_ok=True)
-        (tmp_path / marker).write_text("")
+        (tmp_path / marker).write_text(content)
         assert foreign_site_files(tmp_path, tmp_path / "data", self.OWNED) == []
+
+    def test_a_marker_too_large_for_one_of_ours(self, tmp_path):
+        (tmp_path / "index.html").write_text("")
+        (tmp_path / "data").mkdir()
+        metadata = {"available_years": [], "year_file_bytes": {}, "x": "x" * 2**20}
+        (tmp_path / "data" / "metadata.json").write_text(json.dumps(metadata))
+        assert tmp_path / "index.html" in foreign_site_files(
+            tmp_path, tmp_path / "data", self.OWNED
+        )
+
+    @pytest.mark.parametrize(
+        ("marker", "content"),
+        [
+            ("map_config.js", "var config = {};"),
+            ("map_config.js", "// window.MAP_CONFIG = {};\nvar config = {};"),
+            ("map_config.js", ""),
+            ("data/metadata.json", '{"title": "My site"}'),
+            ("data/metadata.json", "[2025]"),
+            ("data/metadata.json", "not json"),
+        ],
+    )
+    def test_a_file_of_another_site_by_a_marker_name(self, tmp_path, marker, content):
+        """Another tool's metadata.json does not hand its site over."""
+        (tmp_path / "index.html").write_text("")
+        (tmp_path / marker).parent.mkdir(exist_ok=True)
+        (tmp_path / marker).write_text(content)
+        assert foreign_site_files(tmp_path, tmp_path / "data", self.OWNED) == [
+            tmp_path / "index.html",
+            # Its own, which a run would replace as well
+            *([tmp_path / marker] if marker.startswith("data/") else []),
+        ]
 
 
 class TestFindKmlFiles:

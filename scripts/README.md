@@ -110,11 +110,11 @@ else reads together:
   base image is the same, and `engines` in `package.json` asks for its major
   version or newer. Dependabot bumps none of them, so they move together by
   hand.
-- The gitleaks image of the security job names in its comment the release the
+- The gitleaks image of the secrets job names in its comment the release the
   gitleaks hook of `.pre-commit-config.yaml` pins. Dependabot bumps the hook and
-  not the image, and the security job, which compares the release the pulled
-  image reports, gates nothing: such a bump would merge on green and turn main
-  red.
+  not the image. The secrets job compares the release the pulled image reports
+  as well, but only once the image is pulled; this check names the image to
+  update in the lint job, next to the other pins.
 
 The other pre-commit hooks are not checked: the linters, formatters and file
 checks run from the project environment, so they have no revision of their own

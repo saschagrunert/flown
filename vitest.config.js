@@ -50,7 +50,7 @@ export default defineConfig({
       // whose runs upload nothing).
       thresholds: {
         lines: 98,
-        branches: 91,
+        branches: 92,
         functions: 97,
         statements: 97,
       },

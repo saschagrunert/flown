@@ -47,8 +47,8 @@ BOUNDS = CoordinateExtent(49.0, 51.0, 7.0, 9.0)
 def bundle(tmp_path_factory, monkeypatch):
     """Stand-ins for the built JavaScript bundles.
 
-    Returns the main one; the feature, Wrapped, search and extras bundles
-    sit next to it, the way `npm run build` leaves them.
+    Returns the main one; the feature, Wrapped, search, phone and extras
+    bundles sit next to it, the way `npm run build` leaves them.
     """
     static = tmp_path_factory.mktemp("static")
     bundle = static / "mapApp.bundle.js"
@@ -59,16 +59,19 @@ def bundle(tmp_path_factory, monkeypatch):
     wrapped.write_text("// wrapped\n")
     search = static / "search.bundle.js"
     search.write_text("// search\n")
+    phone = static / "phone.bundle.js"
+    phone.write_text("// phone\n")
     extras = static / "extras.bundle.js"
     extras.write_text("// extras\n")
     monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", bundle)
     monkeypatch.setattr("flown.site_assets.FEATURES_BUNDLE_FILE", features)
     monkeypatch.setattr("flown.site_assets.WRAPPED_BUNDLE_FILE", wrapped)
     monkeypatch.setattr("flown.site_assets.SEARCH_BUNDLE_FILE", search)
+    monkeypatch.setattr("flown.site_assets.PHONE_BUNDLE_FILE", phone)
     monkeypatch.setattr("flown.site_assets.EXTRAS_BUNDLE_FILE", extras)
     monkeypatch.setattr(
         "flown.site_assets.BUNDLE_FILES",
-        (bundle, features, wrapped, search, extras),
+        (bundle, features, wrapped, search, phone, extras),
     )
     return bundle
 
@@ -106,7 +109,6 @@ class TestMapConfig:
 
         config = _map_config(tmp_path / "map_config.js")
         assert set(config) == {
-            "center",
             "bounds",
             "cartoApiKey",
             "dataDir",
@@ -115,7 +117,6 @@ class TestMapConfig:
             "commitUrl",
             "generator",
         }
-        assert config["center"] == [50.0, 8.0]
         assert config["bounds"] == [[49.0, 7.0], [51.0, 9.0]]
         assert config["dataDir"] == 'da"ta'
 
@@ -374,7 +375,7 @@ class TestPackageAssets:
             package_assets(tmp_path, BOUNDS, "data")
 
         config = _map_config(tmp_path / "map_config.js")
-        assert config["center"][0] == BOUNDS.center_lat
+        assert config["bounds"][0] == [BOUNDS.min_lat, BOUNDS.min_lon]
         assert config["cartoApiKey"] == "test-carto's"
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", config["builtOn"])
         assert re.fullmatch(r"([0-9a-f]{7})?", config["commit"])
@@ -382,16 +383,19 @@ class TestPackageAssets:
         assert (tmp_path / "styles.css").stat().st_size > 0
         assert (tmp_path / "mapApp.bundle.js").read_text() == bundle.read_text()
         assert not (tmp_path / "mapApp.bundle.js.map").exists()
-        # Replay, Wrapped, the search and the extras are fetched on demand,
-        # each from a bundle (and all but the extras a stylesheet) of its
-        # own, so the page needs them next to it as well
+        # Replay, Wrapped, the search, the phone's bar and the extras are
+        # fetched on demand, each from a bundle and a stylesheet of its own,
+        # so the page needs them next to it as well
         assert (tmp_path / "features.bundle.js").read_text() == "// features\n"
         assert (tmp_path / "wrapped.bundle.js").read_text() == "// wrapped\n"
         assert (tmp_path / "search.bundle.js").read_text() == "// search\n"
+        assert (tmp_path / "phone.bundle.js").read_text() == "// phone\n"
         assert (tmp_path / "extras.bundle.js").read_text() == "// extras\n"
         assert (tmp_path / "features.css").stat().st_size > 0
         assert (tmp_path / "wrapped.css").stat().st_size > 0
         assert (tmp_path / "search.css").stat().st_size > 0
+        assert (tmp_path / "phone.css").stat().st_size > 0
+        assert (tmp_path / "extras.css").stat().st_size > 0
         for fname in ("favicon.svg", "manifest.json"):
             assert (tmp_path / fname).exists()
         # The package's Python, for the build in the browser
@@ -447,6 +451,50 @@ class TestPackageAssets:
         assert "flown/browser.py" in names
         assert "flown/pipeline.py" in names
         assert not any(name.startswith("flown/frontend") for name in names)
+        assert "flown/cli.py" not in names
+        assert "flown/obfuscate.py" not in names
+
+    def test_the_build_in_the_page_imports_only_what_is_zipped(self, tmp_path):
+        """Every module flown.browser imports, at the top or in a function."""
+        import ast
+
+        assets_module._write_python_sources(tmp_path)
+        with zipfile.ZipFile(tmp_path / "flown-src.zip") as archive:
+            zipped = {Path(name).stem for name in archive.namelist()}
+        package = Path(assets_module.__file__).parent
+        seen: set[str] = set()
+        pending = ["__init__", "browser"]
+        while pending:
+            module = pending.pop()
+            if module in seen:
+                continue
+            seen.add(module)
+            tree = ast.parse((package / f"{module}.py").read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.level == 1:
+                    names = (
+                        [node.module.split(".")[0]]
+                        if node.module
+                        else [alias.name for alias in node.names]
+                    )
+                    pending.extend(
+                        name for name in names if (package / f"{name}.py").is_file()
+                    )
+                elif isinstance(node, ast.ImportFrom | ast.Import):
+                    modules = (
+                        [node.module or ""]
+                        if isinstance(node, ast.ImportFrom)
+                        else [alias.name for alias in node.names]
+                    )
+                    pending.extend(
+                        name.split(".")[1]
+                        for name in modules
+                        if name.startswith("flown.")
+                    )
+
+        assert "pipeline" in seen
+        assert seen <= zipped
+        assert not seen & assets_module.NOT_IN_THE_PAGE
 
     def test_bundle_and_source_map_are_copied(self, tmp_path):
         static_dir = tmp_path / "static"

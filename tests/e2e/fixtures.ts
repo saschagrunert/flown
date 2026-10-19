@@ -18,7 +18,8 @@
  *
  * Every spec imports `test` and `expect` from here instead of
  * "@playwright/test" so the fixture is active everywhere. For the same
- * reason this is where a stale site is refused (see site-check.ts).
+ * reason this is where a stale site is refused (see site-check.ts), and
+ * where an uncaught error of the page fails the test (`pageErrors`).
  */
 import { crc32, deflateSync } from "node:zlib";
 import { test as base, expect } from "@playwright/test";
@@ -329,12 +330,21 @@ export const THREE_D_TIP_KEY = "flown-3d-tip";
  */
 export type ThreeDTip = "shown" | "fresh";
 
+/**
+ * What the `pageErrors` fixture does with an uncaught error of the page, an
+ * exception or a rejected promise nothing handled: "fail" the test, the
+ * default, or "allow" it, for a test that raises one on purpose
+ */
+export type UncaughtErrors = "fail" | "allow";
+
 export const test = base.extend<
   {
     hermetic: void;
+    pageErrors: void;
     terrain: TerrainFixture;
     threeDTip: ThreeDTip;
     threeDTipState: void;
+    uncaughtErrors: UncaughtErrors;
   },
   SiteOptions & { currentSite: void }
 >({
@@ -359,6 +369,30 @@ export const test = base.extend<
         "the page requested a third-party URL; it is meant to carry its " +
           "own assets and work offline",
       ).toEqual([]);
+    },
+    { auto: true },
+  ],
+  // An uncaught error fails the test it happened in, in every spec: most
+  // only wait for the state they look for, which the page can reach with a
+  // frame callback or a listener throwing on the way. Not the console
+  // errors, which the specs that collect them (attachErrorCollectors in
+  // helpers.ts) check for themselves: the page logs every failure it
+  // handles, which many specs provoke, and WebKit logs the tile requests a
+  // page left open as failed when a spec loads the next one. A test that
+  // failed already is left alone, so its report shows its own failure.
+  uncaughtErrors: ["fail", { option: true }],
+  pageErrors: [
+    async ({ page, uncaughtErrors }, use, testInfo) => {
+      const errors: string[] = [];
+      page.on("pageerror", (error) =>
+        errors.push(error.stack ?? `${error.name}: ${error.message}`),
+      );
+      await use();
+      if (uncaughtErrors === "fail" && testInfo.status === "passed") {
+        expect(errors, "the page threw an error that nothing caught").toEqual(
+          [],
+        );
+      }
     },
     { auto: true },
   ],

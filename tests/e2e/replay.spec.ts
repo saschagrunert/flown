@@ -27,7 +27,7 @@ test.describe("Replay", () => {
     const replayBtn = page.locator("#replay-btn");
     await expect(replayBtn).toHaveAttribute(
       "title",
-      "Pick flights with timing data to replay, under Statistics, Flights",
+      "Pick flights with timing data to replay, under Flights in the statistics",
     );
 
     // The button is actionable even when replay is unavailable
@@ -36,12 +36,12 @@ test.describe("Replay", () => {
     await expect(
       toastMessage(
         page,
-        "Pick flights with timing data to replay, under Statistics, Flights",
+        "Pick flights with timing data to replay, under Flights in the statistics",
       ),
     ).toBeVisible();
     // Screen readers hear it through the persistent status region
     await expect(page.locator("#toast-status")).toHaveText(
-      "Pick flights with timing data to replay, under Statistics, Flights",
+      "Pick flights with timing data to replay, under Flights in the statistics",
     );
     await expect(page.locator("#replay-controls")).toBeHidden();
     // With nothing selected, the list to pick a flight from opens with it

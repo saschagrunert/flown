@@ -263,7 +263,7 @@ lock: ## Regenerate uv.lock from pyproject.toml, moving every package to its new
 
 clean: ## Remove the container image (when a runtime is available) and local build artifacts, including the frontend build output in flown/static/ and the fixture site of the visual snapshots
 	-@test -z "$(CONTAINER_RUNTIME)" || $(CONTAINER_RUNTIME) rmi $(IMAGE_NAME) 2>/dev/null
-	rm -rf htmlcov coverage coverage.xml .coverage .coverage.* test-results playwright-report \
+	rm -rf htmlcov coverage coverage.xml .coverage .coverage.* test-results* playwright-report* \
 	  visual-site e2e-sites bundle-meta.json \
 	  dist build *.egg-info .mypy_cache .ruff_cache .pytest_cache .hypothesis \
 	  .playwright-mcp \

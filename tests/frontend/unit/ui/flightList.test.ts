@@ -186,6 +186,8 @@ describe("FlightList", () => {
     expect(
       header("landings").querySelector("button")!.getAttribute("title"),
     ).toBe("Full-stop landings");
+    // What a screen reader names the column's cells by, not "Ldg"
+    expect(header("landings").getAttribute("abbr")).toBe("Full-stop landings");
   });
 
   it("sorts by the landings, the flights without them last", () => {

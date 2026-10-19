@@ -103,6 +103,15 @@ export interface ToastAction {
   run: () => boolean | void;
 }
 
+/**
+ * The reload a message asks for, as a button: a site added to the home
+ * screen has no control of its own for it
+ */
+export const RELOAD_ACTION: ToastAction = {
+  label: "Reload",
+  run: () => location.reload(),
+};
+
 /** How long an info toast stays on screen at least (ms) */
 export const TOAST_DURATION_MS = 4000;
 

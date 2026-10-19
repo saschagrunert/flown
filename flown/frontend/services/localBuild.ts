@@ -11,10 +11,11 @@ import type {
   BuildOptions,
   BuildOutcome,
   BuildRequest,
-  BuildResponse,
   InputFile,
+  WorkerMessage,
 } from "./localWorker";
 import { versioned } from "./lazyImport";
+import { CACHE_GONE_MESSAGE } from "./localStore";
 
 export type { BuildOptions, BuildOutcome, InputFile };
 
@@ -23,12 +24,31 @@ const LOCAL_WORKER_BUNDLE = "localWorker.bundle.js";
 
 /** Said when the worker cannot be started or dies on the way */
 export const WORKER_FAILED_MESSAGE = "The build could not run in this browser";
+/**
+ * Said when the worker's bundle did not load, offline most often: the
+ * browser's error then has no message of a script that ran
+ */
+export const WORKER_LOAD_FAILED_MESSAGE =
+  "Could not load the build. Check the connection and try again.";
 
 export interface LocalWorkerLike {
   postMessage(message: BuildRequest, transfer: Transferable[]): void;
-  onmessage: ((event: MessageEvent<BuildResponse>) => void) | null;
+  onmessage: ((event: MessageEvent<WorkerMessage>) => void) | null;
+  // A plain Event in fact for a load that failed, which has no message
   onerror: ((event: ErrorEvent) => void) | null;
   terminate(): void;
+}
+
+/**
+ * What a worker's error event says went wrong: one of its script carries
+ * the message of what was thrown, one of its load (offline, a bundle the
+ * server has not) none
+ */
+function workerFailure(event: ErrorEvent | Event): string {
+  const ran = "message" in event && !!event.message;
+  return navigator.onLine === false || !ran
+    ? WORKER_LOAD_FAILED_MESSAGE
+    : WORKER_FAILED_MESSAGE;
 }
 
 const startWorker = (): LocalWorkerLike =>
@@ -89,12 +109,18 @@ export class LocalBuilder {
     if (this.worker) return this.worker;
     const worker = this.start();
     worker.onmessage = (event) => this.answer(event.data);
-    worker.onerror = () => this.fail(new Error(WORKER_FAILED_MESSAGE));
+    worker.onerror = (event) => this.fail(new Error(workerFailure(event)));
     this.worker = worker;
     return worker;
   }
 
-  private answer(response: BuildResponse): void {
+  private answer(response: WorkerMessage): void {
+    // Another tab's Remove all deleted the cache, which the worker let go
+    // of and does not build with again: the next build starts another
+    if ("cacheGone" in response) {
+      this.fail(new Error(CACHE_GONE_MESSAGE));
+      return;
+    }
     const pending = this.pending.get(response.id);
     if (!pending) return;
     if ("progress" in response) {

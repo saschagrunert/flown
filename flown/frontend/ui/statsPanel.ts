@@ -87,11 +87,15 @@ export function followStatsPanel(app: MapApp): void {
   // a popup, a marker or the readout of the cloud, which close first, nor
   // one that empties the search of the flights. Nor while a sheet of the
   // bar is open over it, which Escape closes alone: one press closed both.
+  // Nor one in Your flights or the search over it, which close first.
   document.addEventListener(
     "keydown",
     (event) => {
       if (
-        isPageEscape(event, ",input[type=search]") &&
+        isPageEscape(
+          event,
+          ",input[type=search],#local-flights,#location-search",
+        ) &&
         app.statsPanelVisible &&
         !app.wrappedVisible &&
         app.mobileBar?.isVisible() &&

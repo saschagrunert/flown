@@ -456,6 +456,20 @@ describe("wrapped feature", () => {
       ]);
     });
 
+    it("leaves out a runway whose share rounds to all of them", () => {
+      const facts = generateFunFacts(yearStats, {
+        landings: {
+          landings: 251,
+          touchAndGoes: 0,
+          goArounds: 0,
+          mostTouchAndGoes: 0,
+          busiestRunway: { airport: "EDAQ", runway: "27", share: 250 / 251 },
+        },
+      });
+
+      expect(facts.some((f) => f.category === "landings")).toBe(false);
+    });
+
     it("tells nothing of landings the flights do not carry", () => {
       const facts = generateFunFacts(yearStats, { landings: undefined });
 
@@ -663,6 +677,27 @@ describe("wrapped feature", () => {
       const loyal = facts.find((f) => f.category === "aircraft");
       expect(loyal?.text.html).toBe(
         "Loyal to <strong>D-EAGJ</strong>, all 10 flights in this DA40!",
+      );
+    });
+
+    it("claims no loyalty for the one aircraft a filter picked", () => {
+      const singleAircraftStats: YearStats = {
+        ...yearStats,
+        total_flights: 10,
+        aircraft_list: [{ registration: "D-EAGJ", type: "DA40", flights: 10 }],
+      };
+
+      const facts = generateFunFacts(
+        singleAircraftStats,
+        null,
+        "2025",
+        null,
+        "D-EAGJ",
+      );
+
+      const fact = facts.find((f) => f.category === "aircraft");
+      expect(fact?.text.html).toBe(
+        "<strong>D-EAGJ</strong> took you on 10 flights in this DA40.",
       );
     });
 

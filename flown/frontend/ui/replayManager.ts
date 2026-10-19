@@ -360,9 +360,10 @@ export class ReplayManager {
       this.deactivateReplay(panel);
       return;
     }
-    // The hotspot tour holds the map, and the control with it; this covers
-    // a click whose bundle came late
-    if (this.app.tourView) return;
+    // The hotspot tour holds the map, and the control with it, and Wrapped
+    // covers it; this covers a click whose bundle came late (a click on the
+    // flight profile, say, before Wrapped opened)
+    if (this.app.tourView || this.app.wrappedVisible) return;
 
     if (!this.app.canReplay()) {
       // Paths are picked on the map only in a colour layer: with nothing
@@ -794,7 +795,7 @@ export class ReplayManager {
         legs.length > 1
           ? Math.max(
               ...legs.map(
-                (_, k) => this.renderer.legClock(this.state, k)!.length,
+                (_, k) => this.renderer.legClock(this.state, k, true)!.length,
               ),
             ) +
             1 +
@@ -1149,7 +1150,8 @@ export class ReplayManager {
   private zoomToAircraft(): void {
     const position = this.state.airplaneMarker?.position();
     const map = this.app.map;
-    if (!position || !map) return;
+    // The chase view has the camera, and would take it straight back
+    if (!position || !map || this.state.chase) return;
     // Without auto-zoom, to the next of several flights (see movesToLeg)
     const zoom = this.state.autoZoom ? AUTO_ZOOM_FOLLOW : map.getZoom();
     // In the 3D view the airplane is drawn up at its height: the ground

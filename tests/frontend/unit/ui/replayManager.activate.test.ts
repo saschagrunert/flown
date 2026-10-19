@@ -223,6 +223,17 @@ describe("ReplayManager activation", () => {
       expect(el("replay-controls").style.display).not.toBe("block");
     });
 
+    it("stays shut under Wrapped, which opened while its bundle came", () => {
+      // A press on the flight profile, then Wrapped before the bundle
+      mockApp.selectedPathIds = new Set([1]);
+      mockApp.wrappedVisible = true;
+
+      replayManager.toggleReplay(false);
+
+      expect(mockApp.replayActive).toBe(false);
+      expect(el("replay-controls").style.display).not.toBe("block");
+    });
+
     it("goes to the start of the flight, unless asked to stay", () => {
       mockApp.selectedPathIds = new Set([1]);
       const easeTo = vi.mocked(mockApp.map!.easeTo);

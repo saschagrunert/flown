@@ -144,19 +144,19 @@ git commit -s -m "chore: add a flight"
 
 `git add data/` picks up renamed files and `aircraft.json` as well, and the
 originals the renames removed. Write the commit message, and the name of a
-branch you push it to, without a date or a weekday: the pre-push hook refuses
-one that dates the flights it adds (a branch name only when the commits pushed
-to that branch add flights), and warns when a push adds the flights of one trip,
-which it dates (see [Privacy](privacy.md#what-the-site-carries)). Install the
-hooks once: with the pre-commit hooks (see
-[CONTRIBUTING.md](../CONTRIBUTING.md)) the commit fails while a KML file it
-stages is not obfuscated, in `data/` or anywhere else, and the pre-push hook
-(`make hooks`) refuses to push a commit that carries one. The hook needs nothing
-but Python 3.14 or newer: it runs with the first of the worktree's `.venv`,
-`python3.14`, `python3` and `python` that is new enough, so it works from a Git
-GUI as well, and refuses the push where there is none (macOS ships an older
-`python3`). The CI lint job catches the same mistake only after the push, when
-the real dates are already public.
+branch you push it to, without a date, a time of day or a weekday: the pre-push
+hook refuses one that dates the flights it adds (a branch name only when the
+commits pushed to that branch add flights), and warns when a push adds the
+flights of one trip, which it dates (see
+[Privacy](privacy.md#what-the-site-carries)). Install the hooks once: with the
+pre-commit hooks (see [CONTRIBUTING.md](../CONTRIBUTING.md)) the commit fails
+while a KML file it stages is not obfuscated, in `data/` or anywhere else, and
+the pre-push hook (`make hooks`) refuses to push a commit that carries one. The
+hook needs nothing but Python 3.14 or newer: it runs with the first of the
+worktree's `.venv`, `python3.14`, `python3` and `python` that is new enough, so
+it works from a Git GUI as well, and refuses the push where there is none (macOS
+ships an older `python3`). The CI lint job catches the same mistake only after
+the push, when the real dates are already public.
 
 Open a pull request or push to `main`. On `main`, the `test` workflow runs every
 test job against the new data, including the obfuscation check; once they pass,

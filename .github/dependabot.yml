@@ -246,10 +246,10 @@ updates:
   # pre-commit hook revisions. Only gitleaks is left as a pinned repo in
   # .pre-commit-config.yaml; the linters, formatters and file checks run
   # from the project environment, so nothing here can drift from what CI
-  # installs. The CI security job runs the gitleaks image test.yml pins by
+  # installs. The CI secrets job runs the gitleaks image test.yml pins by
   # digest, with its release in a comment, so a bump of the gitleaks rev
   # fails the lint job (scripts/check_pins.py compares the comment with the
-  # rev) and the security job (which compares the release the image
+  # rev) and the secrets job (which compares the release the image
   # reports) until the image is updated by hand on the same branch (the
   # comment of that step says how to look up the digest).
   - package-ecosystem: "pre-commit"

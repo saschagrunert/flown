@@ -230,6 +230,11 @@ class TestAircraftType:
             "LS8-18",
             "DG-808C",
             "DA40-NG",
+            "SR22",
+            # Do and Mi are German weekdays as well (see _DATED_TYPE)
+            "DO27",
+            "MI8",
+            "MI24",
             # The designators without a digit
             "GLID",
             "ULAC",
@@ -285,6 +290,16 @@ class TestAircraftType:
     def test_a_date_alone_is_no_type(self, caplog):
         assert _parsed("1_DEHYL_16AUG26.kml").type is None
         assert "no type designator" not in caplog.text
+
+    @pytest.mark.parametrize(
+        "raw",
+        ["SAT16", "sun16", "MO16", "SA16", "FRI13", "W33", "Q3", "H2", "PM3", "AM10"],
+    )
+    def test_a_day_week_or_hour_is_no_type(self, raw, caplog):
+        """These passed as types and were published with every path (regression)."""
+        assert _parsed(f"1_DEAGJ_{raw}.kml").type is None
+        assert f"Ignoring the aircraft type {raw!r}" in caplog.text
+        assert "names a day, a week or an hour" in caplog.text
 
 
 class TestParseAircraftFromFilenameCharterware:

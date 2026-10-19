@@ -35,6 +35,7 @@ from flown.landings import FlightLandings
 from flown.listing import list_flights
 from flown.parser import parse_and_cache
 from flown.pipeline import (
+    TRIMMED_AWAY_REASON,
     UNEXPECTED_PARSE_ERROR,
     FlightDataExport,
     ParsedFile,
@@ -49,6 +50,7 @@ from flown.pipeline import (
     load_cached,
     no_flight_reason,
     parse_files,
+    trimmed_away_files,
 )
 from flown.previews import encode_path_id
 from flown.site_output import STABLE_MTIMES_ENV, STAGING_PREFIX
@@ -181,16 +183,19 @@ def bundle(tmp_path_factory, monkeypatch):
     wrapped.write_text("/* test wrapped */", encoding="utf-8")
     search = static / "search.bundle.js"
     search.write_text("/* test search */", encoding="utf-8")
+    phone = static / "phone.bundle.js"
+    phone.write_text("/* test phone */", encoding="utf-8")
     extras = static / "extras.bundle.js"
     extras.write_text("/* test extras */", encoding="utf-8")
     monkeypatch.setattr("flown.site_assets.BUNDLE_FILE", bundle)
     monkeypatch.setattr("flown.site_assets.FEATURES_BUNDLE_FILE", features)
     monkeypatch.setattr("flown.site_assets.WRAPPED_BUNDLE_FILE", wrapped)
     monkeypatch.setattr("flown.site_assets.SEARCH_BUNDLE_FILE", search)
+    monkeypatch.setattr("flown.site_assets.PHONE_BUNDLE_FILE", phone)
     monkeypatch.setattr("flown.site_assets.EXTRAS_BUNDLE_FILE", extras)
     monkeypatch.setattr(
         "flown.site_assets.BUNDLE_FILES",
-        (bundle, features, wrapped, search, extras),
+        (bundle, features, wrapped, search, phone, extras),
     )
     return bundle
 
@@ -214,11 +219,6 @@ class TestCoordinateExtent:
         )
         assert extent == CoordinateExtent(-18.0, -16.0, -179.0, 179.0)
         assert -180 <= extent.min_lon < extent.max_lon <= 180
-        assert extent.center_lon == pytest.approx(0.0)
-
-    def test_center(self):
-        extent = CoordinateExtent(48.0, 54.0, 9.0, 17.0)
-        assert (extent.center_lat, extent.center_lon) == (51.0, 13.0)
 
 
 class TestMapExtent:
@@ -486,6 +486,14 @@ class TestParseWithErrorHandling:
         assert "Traceback" in err
         assert "landing bug" in err
 
+    def test_a_file_too_large_for_the_memory_here_is_named_so(self, tmp_path):
+        """In the browser's one process: the others may still fit."""
+        kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
+        with patch("flown.pipeline.parse_and_cache", side_effect=MemoryError):
+            assert pipeline_module.parse_inline(kml_file, None) == ParsedFile(
+                kml_file, error=pipeline_module.OUT_OF_MEMORY_PARSE_ERROR
+            )
+
     def test_reduces_coordinates_to_count(self, tmp_path):
         kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
         parsed = _parse_with_error_handling(kml_file)
@@ -576,7 +584,7 @@ class TestParseKmlFiles:
     def test_no_coordinates_raises(self, tmp_path):
         empty = tmp_path / "empty.kml"
         empty.write_text("<kml><Document/></kml>")
-        with pytest.raises(FlownError, match=r"1 of 1 file\(s\) failed to parse"):
+        with pytest.raises(FlownError, match=r"1 of 1 file\(s\) hold no flight"):
             _parse_kml_files([str(empty)])
 
     def test_a_file_without_a_flight_fails_the_run(self, tmp_path, capsys):
@@ -686,6 +694,32 @@ class TestParseKmlFiles:
             paths, _, _ = _parse_kml_files([kml_file])
 
         assert len(paths) == 1
+
+    def test_a_bug_in_the_retry_fails_that_file_only(self, tmp_path, capsys):
+        """After a crash, one file's bug is named as in the first pass."""
+        kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
+        pools = [
+            _FakeExecutor(BrokenProcessPool("crashed")),
+            _FakeExecutor(IndexError("a bug")),
+        ]
+        with (
+            patch("flown.workers.ProcessPoolExecutor", MagicMock(side_effect=pools)),
+            pytest.raises(FlownError, match=r"1 of 1 file\(s\) failed to parse"),
+        ):
+            _parse_kml_files([kml_file])
+        assert "Unexpected error processing" in capsys.readouterr().err
+
+    def test_a_pipeline_error_in_the_retry_stops_the_run(self, tmp_path):
+        kml_file = _write_kml(tmp_path / "1_DEAGJ_DA20.kml")
+        pools = [
+            _FakeExecutor(BrokenProcessPool("crashed")),
+            _FakeExecutor(FlownError("Airport database unavailable")),
+        ]
+        with (
+            patch("flown.workers.ProcessPoolExecutor", MagicMock(side_effect=pools)),
+            pytest.raises(FlownError, match="Airport database unavailable"),
+        ):
+            _parse_kml_files([kml_file])
 
     def test_a_file_out_of_memory_costs_no_other_parse(self, tmp_path):
         """f1 to f9 are parsed once; only f0 goes again, on its own."""
@@ -974,6 +1008,50 @@ class TestExportSite:
 
         # The first and the last fix within 600 m of either end are gone
         assert _map_bounds(out) == [[50.0, 8.014], [50.0, 10.506]]
+
+    def test_a_flight_the_trim_takes_out_fails_the_run(self, tmp_path, capsys):
+        """A recording of taxiing alone would leave the site without it."""
+        start = 1748736000.0
+        # 15 m a fix, 300 m in all: shorter than the two trimmed ends
+        taxi = [
+            TrackPoint(50.0, 8.0 + 0.0002 * i, 100.0, start + i * 10) for i in range(21)
+        ]
+        flight = [
+            TrackPoint(50.0, 8.0 + 0.007 * i, 500.0, start + i * 10) for i in range(361)
+        ]
+        metadata: list[PathMetadata] = [
+            {
+                "year": 2025,
+                "start_point": [50.0, 8.0, 100.0],
+                "airport_name": "",
+                "source": source,
+                "filename": Path(source).name,
+            }
+            for source in ("in/1_DEAGJ_DA20.kml", "in/2_DEAGJ_DA20.kml")
+        ]
+        out = tmp_path / "out"
+
+        with pytest.raises(InvalidInputError, match=r"1 file\(s\) hold no flight once"):
+            _export_site(
+                [taxi, flight],
+                metadata,
+                out / "index.html",
+                out / "data",
+                trim_metres=600,
+            )
+        assert f"in/1_DEAGJ_DA20.kml: {TRIMMED_AWAY_REASON}" in capsys.readouterr().err
+        # Without the trim it is a flight
+        assert trimmed_away_files([taxi, flight], [taxi, flight], metadata) == []
+        # Another path of the file that is left keeps it
+        both = [metadata[0], metadata[0]]
+        trimmed = [taxi[:1], flight]
+        assert trimmed_away_files([taxi, flight], trimmed, both) == []
+        assert trimmed_away_files([taxi, flight], trimmed, metadata) == [
+            "in/1_DEAGJ_DA20.kml"
+        ]
+        # A path without a year is left out anyway
+        undated: PathMetadata = {**metadata[0], "year": None}
+        assert trimmed_away_files([taxi], [taxi[:1]], [undated]) == []
 
     def test_trimmed_ends_place_no_airport_at_the_parking_spot(
         self, tmp_path, parse_data
@@ -1327,7 +1405,8 @@ class TestCreateProgressiveHeatmap:
                 str(out / "data"),
             )
         assert str(failure.value) == (
-            "1 of 1 file(s) failed to parse (empty.kml, see above); fix or remove them"
+            "1 of 1 file(s) hold no flight to export (empty.kml, see above); fix or "
+            "remove them"
         )
 
     @pytest.mark.usefixtures("bundle")
@@ -1493,7 +1572,7 @@ class TestCreateProgressiveHeatmap:
         victim = tmp_path / "victim.txt"
         victim.write_text("precious")
         # A site of an earlier run, or the run stops before the symlink
-        (out / "map_config.js").write_text("")
+        (out / "map_config.js").write_text("window.MAP_CONFIG={};")
         (out / "manifest.json").symlink_to(victim)
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
@@ -1536,7 +1615,12 @@ class TestCreateProgressiveHeatmap:
     def test_a_site_of_an_earlier_run_is_replaced(self, tmp_path, marker):
         out = tmp_path / "out"
         (out / marker).parent.mkdir(parents=True)
-        (out / marker).write_text("")
+        (out / marker).write_text(
+            {
+                "map_config.js": "window.MAP_CONFIG={};",
+                "data/metadata.json": '{"available_years": [], "year_file_bytes": {}}',
+            }.get(marker, "")
+        )
         if marker == "unrelated.txt":
             # Nothing a run would replace is there
             (out / "CNAME").write_text("maps.example.org")
@@ -1562,7 +1646,7 @@ class TestCreateProgressiveHeatmap:
     def test_stale_bundle_source_map_is_removed(self, tmp_path):
         out = tmp_path / "out"
         out.mkdir()
-        (out / "map_config.js").write_text("")
+        (out / "map_config.js").write_text("window.MAP_CONFIG={};")
         (out / "mapApp.bundle.js.map").write_text("{}")
         (out / "CNAME").write_text("maps.example.org")
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
@@ -1574,6 +1658,7 @@ class TestCreateProgressiveHeatmap:
         assert (out / "features.bundle.js").exists()
         assert (out / "wrapped.bundle.js").exists()
         assert (out / "search.bundle.js").exists()
+        assert (out / "phone.bundle.js").exists()
         assert (out / "extras.bundle.js").exists()
         assert (out / "CNAME").read_text() == "maps.example.org"
 
@@ -1584,7 +1669,7 @@ class TestCreateProgressiveHeatmap:
         the meta tag to the page."""
         out = tmp_path / "out"
         out.mkdir()
-        (out / "map_config.js").write_text("")
+        (out / "map_config.js").write_text("window.MAP_CONFIG={};")
         (out / "robots.txt").write_text("User-agent: *\nAllow: /\n")
         kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
 
@@ -1872,6 +1957,7 @@ class TestListFlights:
             _write_kml(tmp_path / "3_DEAGJ_DA20.kml", template=PARKED_KML),
             _write_kml(tmp_path / "4_DEAGJ_DA20.kml", template=CLAMPED_KML),
             _write_kml(tmp_path / "5.kml", template="not valid xml <"),
+            _write_kml(tmp_path / "6.kml", template="<kml><Document/></kml>"),
         ]
 
         rows = list_flights(files).rows
@@ -1889,9 +1975,13 @@ class TestListFlights:
                 ),
             ),
             ("5.kml", "failed to parse"),
+            (
+                "6.kml",
+                "no valid coordinates (no LineString, gx:Track or Point with one)",
+            ),
         ]
         # A build of them fails on every file but the first
-        assert [row.fails_build for row in rows] == [False, True, True, True, True]
+        assert [row.fails_build for row in rows] == [False] + [True] * 5
         assert list_flights(files).failing_files == files[1:]
         first = rows[0]
         assert (first.year, first.aircraft, first.timed) == (2025, "D-EAGJ", True)
@@ -1899,6 +1989,28 @@ class TestListFlights:
         # A name that is no route
         assert rows[1].airports == "somewhere"
         assert rows[2].airports == "EDAQ Halle-Oppin"
+
+    def test_a_flight_the_trim_takes_out_fails_the_build(self, tmp_path):
+        """As the build refuses it (see pipeline.trimmed_away_files)."""
+        # About 200 m from end to end
+        taxi = TRACK_KML.replace("12.5 51.4", "12.0515 51.5505").replace(
+            "13.76 51.13", "12.053 51.551"
+        )
+        # Four points: the trim keeps the two in the middle
+        flight = TRACK_KML.replace(
+            "<gx:coord>12.5 51.4 800</gx:coord>",
+            "<gx:coord>12.5 51.4 800</gx:coord>"
+            "<when>{year}-03-15T10:15:00Z</when><gx:coord>13.0 51.3 800</gx:coord>",
+        )
+        files = [
+            _write_kml(tmp_path / "1_DEAGJ_DA20.kml", template=flight),
+            _write_kml(tmp_path / "2_DEAGJ_DA20.kml", template=taxi),
+        ]
+
+        assert list_flights(files).failing_files == []
+        listing = list_flights(files, trim_ends=600)
+        assert listing.failing_files == files[1:]
+        assert listing.rows[1].skipped == "stays on one spot"
 
     def test_names_the_airports_without_a_code(self, tmp_path):
         """The airports the build would publish, of the published paths only."""

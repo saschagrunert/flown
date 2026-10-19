@@ -164,6 +164,82 @@ describe("PathHover", () => {
     map.renderedFeatures.reverse();
     expect(segmentHit()).toBe(copies[1]);
   });
+
+  describe("a flight about to be picked", () => {
+    const prepare = vi.fn();
+
+    beforeEach(() => {
+      prepare.mockClear();
+      vi.useFakeTimers({
+        toFake: [
+          "setTimeout",
+          "clearTimeout",
+          "requestAnimationFrame",
+          "cancelAnimationFrame",
+        ],
+      });
+    });
+    afterEach(() => vi.useRealTimers());
+
+    /** A hover whose paths are told a pick is near */
+    function preparing(): {
+      hover: PathHover;
+      map: ReturnType<typeof createMapLibreMock>;
+      moveTo: (lng: number) => void;
+    } {
+      const { hover, map } = setup({ lines: onLayer() });
+      (hover as unknown as { paths: { prepare: () => void } }).paths.prepare =
+        prepare;
+      hover.listen(map as unknown as MapLibreMap);
+      const moveTo = (lng: number): void => {
+        map.renderedFeatures = [
+          rendered("lines", { r: lng < 16.02 ? 0 : 1, g: 1 }),
+        ];
+        map.emit("mousemove", { point: pointAt(map, 48, lng) });
+        vi.advanceTimersToNextFrame();
+      };
+      return { hover, map, moveTo };
+    }
+
+    it("is told once a pointer has rested on one flight", () => {
+      const { moveTo } = preparing();
+
+      // Each move waits for a frame of 16 ms
+      moveTo(16.005);
+      vi.advanceTimersByTime(200);
+      // Another segment of the same flight: the wait goes on
+      moveTo(16.015);
+      vi.advanceTimersByTime(80);
+      expect(prepare).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(20);
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("is not told by a pointer that passes over flights", () => {
+      const { map, moveTo } = preparing();
+
+      moveTo(16.005);
+      vi.advanceTimersByTime(250);
+      // On to the next flight: its wait starts over
+      moveTo(16.025);
+      vi.advanceTimersByTime(250);
+      map.emit("mouseout");
+      vi.advanceTimersByTime(1000);
+
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it("is told as a tap shows a flight's values", () => {
+      const { hover, map } = preparing();
+
+      hover.showTapped(
+        { pathId: 1, segment: segments[0]! },
+        map.unproject(pointAt(map, 48, 16.005)) as unknown as LngLat,
+      );
+
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 const popups = vi.hoisted((): unknown[] => []);
@@ -178,6 +254,19 @@ vi.mock("maplibre-gl", async (importOriginal) => {
   }
   return { ...actual, Popup, default: { ...actual.default, Popup } };
 });
+
+// A tap, or a pointer that rests on a flight, fetches the feature bundle
+// ahead of a pick (HoverPaths.prepare): not the real one here
+const loadFeatures = vi.hoisted(() => vi.fn(() => Promise.resolve(null)));
+vi.mock(
+  "../../../../flown/frontend/services/featureLoader",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../../flown/frontend/services/featureLoader")
+    >()),
+    loadFeatures,
+  }),
+);
 
 describe("PathHover through the LayerManager", () => {
   let layerManager: LayerManager;

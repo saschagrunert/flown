@@ -156,6 +156,16 @@ _TYPE_MAX_GROUPS = 2
 _SPECIAL_TYPES = frozenset(
     {"BALL", "GLID", "GYRO", "PARA", "SHIP", "UHEL", "ULAC", "ZZZZ"}
 )
+# What has the shape of a type designator but names a day, a week, a part of
+# the year or an hour, which every path would publish: a weekday with the
+# day ("SAT16", "SA16", "FRI13"), a calendar week ("W33"), a quarter or a
+# half ("Q3", "H2") and an hour of the clock ("PM3", "AM10"). Not the German
+# Do and Mi, which start the Dornier and Mil types (DO27, MI8).
+_DATED_TYPE = re.compile(
+    r"(?:MON|TUES?|WED|THU(?:RS?)?|FRI|SAT|SUN|MO|DI|FR|SA|SO)"
+    r"(?:0?[1-9]|[12]\d|3[01])|"
+    r"W(?:0?[1-9]|[1-4]\d|5[0-3])|Q[1-4]|H[12]|[AP]M(?:0?[1-9]|1[0-2])"
+)
 
 
 def load_aircraft_data(aircraft_file: Path) -> dict[str, str]:
@@ -342,12 +352,21 @@ def _aircraft_type(text: str, filename: str) -> str | None:
     """The aircraft type of a numbered file name, None where it has none.
 
     A date is taken out of it, as everywhere a name is published (a type
-    that is only a date is none); what is left must be a type designator in
+    that is only a date is none, and so is one that names a day, a week or
+    an hour, see ``_DATED_TYPE``); what is left must be a type designator in
     any case (see ``_is_type_designator``), which is published in capitals,
     else it is dropped with a warning.
     """
     aircraft_type = strip_dates(text)
     if not aircraft_type:
+        return None
+    if aircraft_type.isascii() and _DATED_TYPE.fullmatch(aircraft_type.upper()):
+        logger.warning(
+            "Ignoring the aircraft type %r in %s: it names a day, a week or an "
+            "hour, which the site would publish",
+            aircraft_type,
+            filename,
+        )
         return None
     if aircraft_type.isascii() and _is_type_designator(aircraft_type.upper()):
         return aircraft_type.upper()

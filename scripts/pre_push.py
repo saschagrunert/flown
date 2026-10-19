@@ -298,12 +298,13 @@ def trip_of(repo: Path, pushed: list[str], added: list[str]) -> bool:
 
 
 def dated_refs(lines: list[str]) -> list[str]:
-    """The dates, weekdays and holidays in the names of the refs pushed to."""
+    """The dates, times of day, weekdays and holidays in the names of the refs."""
     # Imported here: main() puts the checkout on the path first
     from flown.date_tokens import (  # noqa: PLC0415
         find_date_tokens,
         find_holiday_tokens,
         find_partial_date_tokens,
+        find_time_tokens,
         find_weekday_tokens,
     )
 
@@ -319,6 +320,7 @@ def dated_refs(lines: list[str]) -> list[str]:
             + find_partial_date_tokens(name)
             + find_weekday_tokens(name)
             + find_holiday_tokens(name)
+            + find_time_tokens(name)
         )
     return list(dict.fromkeys(found))
 
@@ -343,10 +345,11 @@ def touches_flights(repo: Path, exclude: list[str], pushed_shas: list[str]) -> b
 def dated_messages(
     repo: Path, exclude: list[str], pushed_shas: list[str]
 ) -> list[tuple[str, str]]:
-    """The dates, weekdays and holidays in the messages of commits to KML files.
+    """The dates and times of day in the messages of commits to KML files.
 
-    Each with the commit it is in, oldest commit first: a message is
-    published with the flight its commit adds ("Add flight 16 Aug 2026").
+    The weekdays and holidays as well, each with the commit it is in, oldest
+    commit first: a message is published with the flight its commit adds
+    ("Add flight 16 Aug 2026", "Add flight EDDS-EDDF 1430Z").
     """
     if not pushed_shas:
         return []
@@ -355,6 +358,7 @@ def dated_messages(
         find_date_tokens,
         find_holiday_tokens,
         find_partial_date_tokens,
+        find_time_tokens,
         find_weekday_tokens,
     )
 
@@ -379,6 +383,7 @@ def dated_messages(
             + find_partial_date_tokens(message)
             + find_weekday_tokens(message)
             + find_holiday_tokens(message)
+            + find_time_tokens(message)
         )
     return found
 

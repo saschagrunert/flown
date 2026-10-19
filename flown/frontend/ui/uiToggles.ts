@@ -52,6 +52,17 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+/**
+ * A link to hand on: without `debug`, as the token leaves it out, and
+ * without a fragment the page writes no state to
+ */
+function shareable(href: string): string {
+  const url = new URL(href);
+  url.searchParams.delete("debug");
+  url.hash = "";
+  return url.href;
+}
+
 export class UIToggles {
   private app: MapApp;
 
@@ -198,7 +209,7 @@ export class UIToggles {
     // takeShareIntro), over the map: not under the statistics the sender
     // has open, which on a phone are a sheet over all of it. Share mode has
     // flights, so the link has a query.
-    let url = location.href;
+    let url = shareable(location.href);
     /** The link with its token, once the code that packs it has come */
     let packed: Promise<string> | null = null;
     if (state) {
@@ -219,7 +230,7 @@ export class UIToggles {
       // takes one only in the moment of the press, which a fetch would
       // outlast in Safari; the share sheet takes the long link.
       const page = `${location.origin}${location.pathname}`;
-      const long = shared ? `${page}?${query}` : location.href;
+      const long = shareable(shared ? `${page}?${query}` : location.href);
       const linkOf = (token: string | null | undefined): string =>
         token ? `${page}?${SHARE_TOKEN_PARAM}=${token}` : long;
       const extras = loadedExtras();

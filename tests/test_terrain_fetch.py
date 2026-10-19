@@ -229,6 +229,11 @@ class TestHttpsProxy:
 
 
 class TestTerrariumTiles:
+    def test_keeps_the_ground_next_to_the_tiles(self, tmp_path):
+        """Not in the page, which prunes the tiles of flights it no longer has."""
+        assert TerrariumTiles(tmp_path).ground_dir == tmp_path / "ground"
+        assert TerrariumTiles(tmp_path, keep_ground=False).ground_dir is None
+
     def test_a_getter_of_its_own_replaces_the_connection(self, tmp_path, connections):
         """The browser build fetches with the worker's XMLHttpRequest."""
         asked = []

@@ -76,6 +76,17 @@ describe("WrappedManager content", () => {
     expect(el("wrapped-year").textContent).toBe("All years");
   });
 
+  it("hides the facts card when there is no fact to tell", async () => {
+    // An aircraft that flew nothing in the year: no flight, no fact
+    mockApp.selectedAircraft = "D-NONE";
+
+    wrappedManager.showWrapped();
+    await vi.runAllTimersAsync();
+
+    expect(el("wrapped-fun-facts").querySelector(".fun-fact")).toBeNull();
+    expect(el("wrapped-card-facts").hidden).toBe(true);
+  });
+
   it("counts the flights and airports of the selected year", () => {
     wrappedManager.showWrapped();
 

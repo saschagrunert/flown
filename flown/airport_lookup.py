@@ -48,8 +48,14 @@ if TYPE_CHECKING:
 # which would make a route name with a date look like one with a code.
 _ICAO_PATTERN = re.compile(r"\b(?!VIII\b)([A-Z]{4})\b")
 
-# Route names: "EDDS Stuttgart - EDDP Leipzig" or "EDDS to EDDP - 16 Aug 2026"
-_ROUTE_SEPARATOR = re.compile(r"\s+(?:-|to)\s+")
+# Route names: "EDDS Stuttgart - EDDP Leipzig" or "EDDS to EDDP - 16 Aug 2026",
+# with a dash, an arrow or a "to" in any case between spaces
+_ROUTE_SEPARATOR = re.compile(r"\s+(?:->|[-\u2013\u2014>]|(?i:to))\s+")
+# Between two codes the spaces may be left out, and a slash separates them
+# too: "EDDF-EDDM", "EDDF->EDDM", "EDDF/EDDM"
+_CODE_SEPARATOR = re.compile(
+    r"(?<=\b[A-Z]{4})(?:\s*(?:->|[-\u2013\u2014>/])\s*|\s+(?i:to)\s+)(?=[A-Z]{4}\b)"
+)
 _ROUTE_DATE_SUFFIX = re.compile(rf"\s+-\s+{DATE_PATTERN.pattern}\s*$")
 
 __all__ = [
@@ -68,6 +74,7 @@ __all__ = [
     "lookup_airport_country",
     "lookup_airport_elevation",
     "refresh_airport_databases",
+    "retry_missing_databases",
     "split_route_name",
     "standardize_airport_names",
     "standardize_route",
@@ -105,8 +112,34 @@ RUNWAYS_DOWNLOAD_FAILED_MARKER = CACHE_DIR / "runways.download-failed"
 # The list has about 48,000 rows
 MIN_RUNWAY_ROWS = 20_000
 RUNWAY_COLUMNS = ("airport_ident", "le_ident", "he_ident", "closed")
-# A runway designator: a number from 01 to 36, and a letter for parallels
-_DESIGNATOR = re.compile(r"^(0?[1-9]|[12][0-9]|3[0-6])([LCR]?)$")
+# A runway designator: a number from 01 to 36, and a letter for parallels,
+# or one that says the number is a true heading (T, in the far north) or
+# that the strip is for gliders, ultralights, arrivals or departures (G, U,
+# A, D). A W is a water lane and an H a helipad: no flight here lands there
+_DESIGNATOR = re.compile(r"^(0?[1-9]|[12][0-9]|3[0-6])([LCR]|[TGUAD])?$")
+# Many small strips name their ends by the compass point they face, N, NE
+# or SSW, with a letter for parallels (NEL), and a few by a bearing from
+# north or south: N75E
+_COMPASS_POINTS = (
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+)
+_COMPASS_DESIGNATOR = re.compile(r"^([NESW]{1,3})([LCR]?)$")
+_BEARING_DESIGNATOR = re.compile(r"^([NS])([0-8]?[0-9])([EW])$")
 
 # The databases as this module reads them, kept by the digest of the file
 # they were read from (see _read_database): reading the CSV files took
@@ -555,12 +588,27 @@ def _database_required() -> bool:
     return os.environ.get(REQUIRE_DATABASE_ENV) == "1"
 
 
-def _designator(ident: str | None) -> str | None:
-    """A runway end's designator with two digits ("08L"), None for a pad."""
-    match = _DESIGNATOR.match((ident or "").strip().upper())
-    if match is None:
-        return None
-    return f"{int(match.group(1)):02d}{match.group(2)}"
+def _designator(ident: str | None) -> tuple[str, float] | None:
+    """A runway end's designator ("08L", "NE") and the heading it names.
+
+    A number with two digits. Its heading is magnetic, but for a T, and off
+    by the variation, which still tells the ends of most fields apart.
+    None for a pad, a water lane and anything else.
+    """
+    text = (ident or "").strip().upper()
+    match = _DESIGNATOR.match(text)
+    if match is not None:
+        number = int(match.group(1))
+        return f"{number:02d}{match.group(2) or ''}", number * 10.0
+    match = _COMPASS_DESIGNATOR.match(text)
+    if match is not None and match.group(1) in _COMPASS_POINTS:
+        return text, _COMPASS_POINTS.index(match.group(1)) * 22.5
+    match = _BEARING_DESIGNATOR.match(text)
+    if match is not None:
+        degrees = float(match.group(2))
+        from_north = degrees if match.group(1) == "N" else 180 - degrees
+        return text, from_north if match.group(3) == "E" else -from_north % 360
+    return None
 
 
 def _float(text: str | None) -> float | None:
@@ -575,15 +623,18 @@ def _runway_ends(row: dict[str, str]) -> list[RunwayEnd]:
     """The two ends of a runway row with their true headings.
 
     The heading of an end is the one the list gives, else the bearing from
-    its threshold to the other one, else its designator: that one is
-    magnetic, off by the variation, which still tells the ends of most
-    fields apart.
+    its threshold to the other one, else the one its designator names (see
+    ``_designator``).
     """
-    low = _designator(row.get("le_ident"))
-    high = _designator(row.get("he_ident"))
-    designated = low or high
-    if designated is None:
+    low_end = _designator(row.get("le_ident"))
+    high_end = _designator(row.get("he_ident"))
+    if low_end is not None:
+        low, named = low_end
+    elif high_end is not None:
+        low, named = None, high_end[1] + 180
+    else:
         return []
+    high = high_end[0] if high_end is not None else None
     low_heading = _float(row.get("le_heading_degT"))
     high_heading = _float(row.get("he_heading_degT"))
     coordinates = [
@@ -602,7 +653,7 @@ def _runway_ends(row: dict[str, str]) -> list[RunwayEnd]:
     if low_heading is None and high_heading is not None:
         low_heading = high_heading + 180
     if low_heading is None:
-        low_heading = int(designated[:2]) * 10 + (0 if low else 180)
+        low_heading = named
     if high_heading is None:
         high_heading = low_heading + 180
     return [
@@ -901,6 +952,27 @@ def refresh_airport_databases() -> None:
     databases.reset()
 
 
+def retry_missing_databases(download: bool = True) -> None:
+    """Let the next lookup load again a database the last one went without.
+
+    For a process that builds more than once, the worker of the build in
+    the browser, whose cache outlives it: a database loaded empty stays
+    empty in the process, and the next build would not say again that it
+    goes without it. ``download`` also lets it download again at once: the
+    marker of the failed download holds the next try back for
+    DOWNLOAD_RETRY_SECONDS, though the connection may be back by then, and
+    is kept where not asked (a slow line would wait for the timeout at
+    every build). Databases that loaded are kept as they are.
+    """
+    if databases.airports and databases.runways:
+        return
+    if download:
+        for database in (_airports_csv(), _runways_csv()):
+            with contextlib.suppress(OSError):
+                database.failed_marker.unlink()
+    databases.reset()
+
+
 def lookup_airport_coordinates(icao_code: str) -> tuple[float, float, str] | None:
     """Look up airport coordinates from ICAO code using OurAirports."""
     if not icao_code or len(icao_code) != 4:
@@ -1012,9 +1084,11 @@ def split_route_name(name: str | None) -> tuple[str, str] | None:
 
     A trailing date ("EDDS to EDDP - 16 Aug 2026") is not part of the route.
     Airport names may contain " - " themselves (LFBN "Niort - Marais
-    Poitevin"), so in a name with ICAO codes only a separator (" - " or
-    " to ") followed by a code can split it, and exactly one such separator
-    must exist. A standardized single airport name is never a route. A name
+    Poitevin"), so in a name with ICAO codes only a separator (" - ", " to ",
+    " > ", see ``_ROUTE_SEPARATOR``) followed by a code can split it, and
+    exactly one such separator must exist; without one, a separator between
+    two codes ("EDDF-EDDM", see ``_CODE_SEPARATOR``) can, exactly one as
+    well. A standardized single airport name is never a route. A name
     without any code splits at its only " - ".
     """
     if not name:
@@ -1036,10 +1110,19 @@ def split_route_name(name: str | None) -> tuple[str, str] | None:
         for match in _ROUTE_SEPARATOR.finditer(name)
         if _starts_with_icao_code(name[match.end() :])
     ]
+    # One between two codes only where no separator with spaces is: in
+    # "EDDS - EDDF/EDDM" the arrival is "EDDF/EDDM", as it always was
+    if not separators:
+        separators = [
+            match
+            for match in _CODE_SEPARATOR.finditer(name)
+            if _starts_with_icao_code(name[match.start() - 4 :])
+            and _starts_with_icao_code(name[match.end() :])
+        ]
     if len(separators) != 1:
         return None
-    # The name is stripped and a separator starts with whitespace, so neither
-    # side can be empty
+    # The name is stripped, and a separator starts with whitespace or after
+    # a code, so neither side can be empty
     return name[: separators[0].start()], name[separators[0].end() :]
 
 

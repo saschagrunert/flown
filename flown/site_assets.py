@@ -42,6 +42,7 @@ __all__ = [
     "FLAGS_DIR_NAME",
     "LOCAL_BUNDLE_FILE",
     "LOCAL_WORKER_BUNDLE_FILE",
+    "PHONE_BUNDLE_FILE",
     "PYTHON_SOURCES_FILE",
     "SEARCH_BUNDLE_FILE",
     "SHARED_BUNDLE_FILE",
@@ -73,12 +74,14 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 # Built by `npm run build` and not committed
 BUNDLE_FILE = STATIC_DIR / "mapApp.bundle.js"
 # Replay, imported by the page the first time it is opened, and Wrapped, the
-# search, the extras (the phone's sheet and the export) and Your flights,
-# likewise (frontend/services/featureLoader.ts). Built by the same `npm run
-# build`, so a site without them is a site built wrong rather than a choice.
+# search, the phone's bar and sheet, the extras (share tokens, the export
+# and the popup's list of flights) and Your flights, likewise
+# (frontend/services/featureLoader.ts). Built by the same `npm run build`, so
+# a site without them is a site built wrong rather than a choice.
 FEATURES_BUNDLE_FILE = STATIC_DIR / "features.bundle.js"
 WRAPPED_BUNDLE_FILE = STATIC_DIR / "wrapped.bundle.js"
 SEARCH_BUNDLE_FILE = STATIC_DIR / "search.bundle.js"
+PHONE_BUNDLE_FILE = STATIC_DIR / "phone.bundle.js"
 EXTRAS_BUNDLE_FILE = STATIC_DIR / "extras.bundle.js"
 LOCAL_BUNDLE_FILE = STATIC_DIR / "local.bundle.js"
 # The app and every module the lazy bundles above use of it, which every
@@ -94,6 +97,7 @@ BUNDLE_FILES = (
     FEATURES_BUNDLE_FILE,
     WRAPPED_BUNDLE_FILE,
     SEARCH_BUNDLE_FILE,
+    PHONE_BUNDLE_FILE,
     EXTRAS_BUNDLE_FILE,
     LOCAL_BUNDLE_FILE,
     SHARED_BUNDLE_FILE,
@@ -117,6 +121,7 @@ BUILD_HASH_FILES = (
     "flown/static/wrapped.css",
     "flown/static/search.css",
     "flown/static/local.css",
+    "flown/static/phone.css",
     "flown/static/extras.css",
 )
 # Packages whose pinned version changes a built site (the bundler, what it
@@ -154,8 +159,9 @@ VENDOR_FILES = (
 # the head, features.css is fetched with the feature bundle the first time
 # replay is opened, wrapped.css with the Wrapped bundle the first time
 # Wrapped is, search.css with the search bundle the first time the search is,
-# local.css with Your flights and extras.css with the extras bundle, which
-# brings the phone's sheet (see services/featureLoader.ts). The order matters
+# local.css with Your flights, phone.css with the phone bundle, which brings
+# the phone's sheet, and extras.css with the extras bundle, which brings the
+# popup's list of flights (see services/featureLoader.ts). The order matters
 # to the cascade, so it is the order they are written in; the lazy ones style
 # different elements, so which of them lands first does not.
 CSS_FILES = (
@@ -164,6 +170,7 @@ CSS_FILES = (
     "wrapped.css",
     "search.css",
     "local.css",
+    "phone.css",
     "extras.css",
 )
 # The Python of this package, zipped, which the page fetches when a visitor
@@ -171,6 +178,11 @@ CSS_FILES = (
 # frontend/services/localWorker.ts): the build of their flights in their
 # browser is the one the site was built with
 PYTHON_SOURCES_FILE = "flown-src.zip"
+# The modules of the command line, which the build in the page never imports:
+# left out of PYTHON_SOURCES_FILE, which every visitor who builds their own
+# flights downloads (obfuscate alone takes 18 KB of it). Every other module
+# goes in, a new one too
+NOT_IN_THE_PAGE = frozenset({"__main__", "cli", "listing", "obfuscate"})
 # Written with --private only. No robots.txt: crawlers read it only at the
 # origin root, and its Disallow would keep them from fetching the page and
 # ever seeing this noindex.
@@ -608,7 +620,6 @@ def _generate_map_config(
     commit = build_commit()
     # The fields MapConfig in the frontend's mapApp.ts reads
     config = {
-        "center": [extent.center_lat, extent.center_lon],
         "bounds": [
             [extent.min_lat, extent.min_lon],
             [extent.max_lat, extent.max_lon],
@@ -692,7 +703,8 @@ def _write_python_sources(output_dir: Path, package: Path | None = None) -> None
     Written the same for the same sources: the entries in name order, with
     one fixed time stamp, so the file keeps its day in the site while the
     package does not change (see CODE_FILES). The frontend, the template and
-    the static files are not in it: the page has them already.
+    the static files are not in it: the page has them already. Nor are the
+    modules of the command line (``NOT_IN_THE_PAGE``).
     """
     package = package if package is not None else Path(__file__).parent
     target = output_dir / PYTHON_SOURCES_FILE
@@ -701,6 +713,8 @@ def _write_python_sources(output_dir: Path, package: Path | None = None) -> None
         archive_bytes, "w", zipfile.ZIP_DEFLATED, compresslevel=9
     ) as archive:
         for source in sorted(package.glob("*.py")):
+            if source.stem in NOT_IN_THE_PAGE:
+                continue
             info = zipfile.ZipInfo(f"{package.name}/{source.name}")
             info.date_time = (1980, 1, 1, 0, 0, 0)
             info.compress_type = zipfile.ZIP_DEFLATED

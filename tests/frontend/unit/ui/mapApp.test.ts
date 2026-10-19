@@ -256,9 +256,18 @@ describe("MapApp", () => {
 
       expect(loggerMock.logError).toHaveBeenCalledWith(error);
       expect(mapEl.innerHTML).toBe(INIT_ERROR_HTML);
-      expect(mapEl.querySelector(".init-error")!.textContent).toBe(
+      expect(mapEl.querySelector(".init-error p")!.textContent).toBe(
         "The map could not start. Reload the page to try again.",
       );
+    });
+
+    it("offers the reload it asks for", () => {
+      reportInitFailure(new Error("no data"));
+
+      // jsdom cannot reload, nor can its reload be watched
+      const reload = mapEl.querySelector(".init-error button");
+      expect(reload?.textContent).toBe("Reload");
+      expect(reload?.getAttribute("type")).toBe("button");
     });
 
     it("has every control say why, instead of that the flights still load", () => {
@@ -308,9 +317,11 @@ describe("MapApp", () => {
       await initMapApp(config).catch(reportInitFailure);
 
       const notice = mapEl.querySelector(".init-error")!;
+      // No reload: the browser lacks it after one too
       expect(notice.textContent).toBe(
         "WebGL 2 is not available. Turn on hardware acceleration or try another browser.",
       );
+      expect(notice.querySelector("button")).toBeNull();
       expect(notice.getAttribute("role")).toBe("alert");
       expect(loggerMock.logError).toHaveBeenCalledWith(
         expect.any(UnsupportedBrowserError),

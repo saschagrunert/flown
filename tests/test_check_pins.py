@@ -32,7 +32,7 @@ check_pins = _load_module()
 
 VERSION = "1.0.0"
 RUFF = "0.16.4"
-UV = "0.12.24"
+UV = "0.13.0"
 PLAYWRIGHT = "1.63.0"
 DIGEST = "sha256:" + "ab" * 32
 IMAGE = f"mcr.microsoft.com/playwright:v{PLAYWRIGHT}-noble@{DIGEST}"
@@ -53,7 +53,7 @@ ACTION = """runs:
       uses: actions/setup-node@ghi # v7.1.0
 """
 GITLEAKS = "v8.30.1"
-# The gitleaks image of the security job and the hook of the same release
+# The gitleaks image of the secrets job and the hook of the same release
 GITLEAKS_STEP = (
     f"          GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks@{DIGEST} # {GITLEAKS}\n"
 )
@@ -167,13 +167,13 @@ class TestUvRelease:
     def test_an_image_on_another_release_fails(self, repo, capsys):
         dockerfile = repo / "Dockerfile"
         text = dockerfile.read_text(encoding="utf-8")
-        dockerfile.write_text(text.replace(f"uv:{UV}@", "uv:0.13.0@"), encoding="utf-8")
+        dockerfile.write_text(text.replace(f"uv:{UV}@", "uv:0.14.0@"), encoding="utf-8")
 
         assert check_pins.main() == 1
 
         err = capsys.readouterr().err
         assert (
-            f"the Dockerfile takes uv 0.13.0, {check_pins.UV_ACTION} installs {UV}"
+            f"the Dockerfile takes uv 0.14.0, {check_pins.UV_ACTION} installs {UV}"
         ) in err
         assert "Set the same uv release" in err
 
@@ -529,7 +529,7 @@ class TestToolchainVersions:
 
 
 class TestGitleaks:
-    """The security job runs the gitleaks release the pre-commit hook pins."""
+    """The secrets job runs the gitleaks release the pre-commit hook pins."""
 
     def test_a_hook_bumped_alone_fails(self, repo, capsys):
         """Dependabot bumps the hook and leaves the image's digest behind."""

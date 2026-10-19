@@ -557,6 +557,37 @@ def _select_line_coordinates(
     return selected, unknown_altitude
 
 
+def _date_lines_by_points(
+    path_metadata: list[PathMetadata],
+    coord_elements: list[etree._Element],
+    coord_to_metadata: dict[int, PlacemarkMetadata],
+) -> None:
+    """Give the lines without a year the one of the file's dated Points.
+
+    Some exports draw the flight as a line without times and put its times
+    on Point placemarks next to it: Flightradar24 a "Trail" of positions,
+    each with a <TimeStamp>, SkyDemon a "Log Start: 03 Mar 2025 08:58 Z"
+    marker. Only when all of those Points fall into one year.
+    """
+    if all(metadata.get("year") is not None for metadata in path_metadata):
+        return
+    years = {
+        placemark["year"]
+        for elem in coord_elements
+        if (parent := elem.getparent()) is not None
+        and local_name(parent.tag) == "Point"
+        and (placemark := coord_to_metadata.get(id(elem))) is not None
+        and placemark["year"] is not None
+    }
+    if len(years) != 1:
+        return
+    (year,) = years
+    for metadata in path_metadata:
+        if metadata.get("year") is None:
+            metadata["year"] = year
+            logger.debug("Dated a line without times by its Points: %d", year)
+
+
 def _log_parse_result(
     kml_file: str,
     coordinates: FlightPath,
@@ -679,6 +710,7 @@ def _parse_kml(kml_file: str) -> ParseResult:
         aircraft_info,
         unknown_altitude,
     )
+    _date_lines_by_points(path_metadata, coord_elements, coord_to_metadata)
 
     coordinates.extend(track_coordinates)
     path_groups.extend(track_paths)

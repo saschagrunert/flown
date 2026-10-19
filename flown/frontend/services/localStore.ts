@@ -44,7 +44,6 @@ export interface LocalInfo {
   years: number[];
   flights: number;
   airports: number;
-  center: [number, number];
   bounds: [[number, number], [number, number]];
   /** The names of the files the dataset was built from */
   files: string[];
@@ -63,6 +62,12 @@ export interface LocalInfo {
   warnings?: string[] | undefined;
   /** Whether the ground under the flights was sampled (absent: it was) */
   terrain?: boolean | undefined;
+  /**
+   * What the build went without for want of a connection, the airport
+   * names or the ground ("airports", "terrain"), which the panel offers to
+   * build again for (absent: nothing)
+   */
+  degraded?: string[] | undefined;
 }
 
 /** A data file of the dataset, by its path in the site's data directory */
@@ -248,6 +253,11 @@ export const CACHE_WAIT_MS = 10_000;
 /** Said when that tab does not let go in time */
 export const CACHE_BUSY_MESSAGE =
   "Another tab of this page holds the files open; close it and try again";
+/**
+ * Said by a build of a tab whose worker let the cache go, which another
+ * tab's Remove all deleted (services/localWorker.ts, watchCache)
+ */
+export const CACHE_GONE_MESSAGE = "Your files were removed in another tab";
 
 /**
  * Delete the worker's cache: the airport database, the elevation tiles

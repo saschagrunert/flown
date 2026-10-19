@@ -178,6 +178,15 @@ describe("replay feature", () => {
       expect(crawl.end - start(crawl)).toBe(120);
     });
 
+    it("ends on a whole second where the last fix is parked", () => {
+      // The last fix where the one before it is: no length to fly
+      const parked = [...turn.slice(0, 6), turn[5]!];
+      const curve = replayCurve(flight(parked, [2.5, 2, 2, 2, 2, 2]), () => 0);
+
+      expect(Number.isInteger(curve.end)).toBe(true);
+      expect(curve.end - curve.times[5]!).toBeLessThan(1);
+    });
+
     it("puts several flights on one clock, each timed as it is alone", () => {
       const one = flight(turn, [2, 3, 2, 2, 4, 2]);
       // A second flight back the other way, logged from 0 as every flight

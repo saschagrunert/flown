@@ -69,6 +69,22 @@ describe("visitedCells", () => {
     expect(cells.has(cellOf([lat, 12 + 5000 * lngPerM(lat)]))).toBe(true);
   });
 
+  it("goes the short way across the antimeridian", () => {
+    const segment = createSegment({
+      coords: [
+        [0, 179.995],
+        [0, -179.995],
+      ],
+    });
+
+    const cells = visitedCells([segment]);
+
+    // About a kilometre, not a sweep round the globe through 0°
+    expect(cells.size).toBeLessThanOrEqual(3);
+    expect(cells.has(cellOf([0, 0]))).toBe(false);
+    expect(cells.has(cellOf([0, 179.999]))).toBe(true);
+  });
+
   it("has no cells without segments", () => {
     expect(visitedCells([]).size).toBe(0);
   });

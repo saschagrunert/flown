@@ -58,11 +58,11 @@ export default defineConfig<object, SiteOptions>({
   // run, so a retry never turns a run green: it only tells a flaky failure
   // (reported as flaky) from one that fails every time; the trace of every
   // failed attempt is kept. That is worth the time of one more attempt in
-  // the desktop project alone. The mobile, visual, webkit and
-  // webkit-desktop projects (below) do not retry, and neither do the heavy
-  // tests in CI (HEAVY in tests/e2e/fixtures.ts), where one attempt takes
-  // minutes: their job passes --retries=0, and the describe of the relief
-  // tests in 3d-relief.spec.ts turns retries off in every project.
+  // the desktop project alone. The mobile, visual, visual-phone, webkit
+  // and webkit-desktop projects (below) do not retry, and neither do the
+  // heavy tests in CI (HEAVY in tests/e2e/fixtures.ts), where one attempt
+  // takes minutes: their job passes --retries=0, and the describe of the
+  // relief tests in 3d-relief.spec.ts turns retries off in every project.
   // failOnFlakyTests is what holds that: a run with a test that passed only
   // on its retry fails all the same, and the retry just labels it flaky.
   retries: isCI ? 1 : 0,
@@ -150,12 +150,27 @@ export default defineConfig<object, SiteOptions>({
           {
             name: "visual",
             testMatch: /visual\.spec\.ts$/,
+            grepInvert: TOUCH_ONLY,
             retries: 0,
             use: {
               ...devices["Desktop Chrome"],
               ...launchOptions,
               // The fixture site: the snapshots allow no differing pixel, so
               // the flights in them must not change with data/
+              baseURL: `http://localhost:${SITES.visual.port}`,
+              site: "visual" as const,
+            },
+          },
+          {
+            // The bottom bar and its sheet, in the phone of the mobile
+            // project, against the same fixture site
+            name: "visual-phone",
+            testMatch: /visual\.spec\.ts$/,
+            grepInvert: DESKTOP_ONLY,
+            retries: 0,
+            use: {
+              ...devices["Pixel 7"],
+              ...launchOptions,
               baseURL: `http://localhost:${SITES.visual.port}`,
               site: "visual" as const,
             },

@@ -31,6 +31,19 @@ vi.mock("maplibre-gl", async (importOriginal) => {
   return { ...actual, Popup, default: { ...actual.default, Popup } };
 });
 
+// A tap, or a pointer that rests on a flight, fetches the feature bundle
+// ahead of a pick (HoverPaths.prepare): not the real one here
+const loadFeatures = vi.hoisted(() => vi.fn(() => Promise.resolve(null)));
+vi.mock(
+  "../../../../flown/frontend/services/featureLoader",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../../flown/frontend/services/featureLoader")
+    >()),
+    loadFeatures,
+  }),
+);
+
 describe("LayerManager pointer", () => {
   let layerManager: LayerManager;
   let mockApp: MockApp;
@@ -102,6 +115,8 @@ describe("LayerManager pointer", () => {
       // Looking at a flight on a phone selected it, and a second look
       // took it out again
       expect(mockApp.pathSelection.togglePathSelection).not.toHaveBeenCalled();
+      // Its button may pick it: the profile's code is on its way
+      expect(loadFeatures).toHaveBeenCalled();
     });
 
     it("selects the flight of a tap with its button, which closes the values", () => {

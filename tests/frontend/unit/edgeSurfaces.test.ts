@@ -26,8 +26,8 @@ describe("the surfaces across the map's edges on a phone", () => {
 
   beforeAll(() => {
     style = document.createElement("style");
-    // The sheet's rules come with the extras bundle, after styles.css
-    style.textContent = ["styles.css", "extras.css"]
+    // The sheet's rules come with the phone bundle, after styles.css
+    style.textContent = ["styles.css", "phone.css"]
       .map((name) =>
         readFileSync(resolve(__dirname, "../../../flown/static", name), "utf8"),
       )

@@ -648,11 +648,17 @@ export class WrappedManager {
     const renderFacts = (newAreaKm2: number | null): void => {
       const funFactsEl = domCache.get("wrapped-fun-facts");
       if (!funFactsEl) return;
-      funFactsEl.innerHTML = trustedHtml(
-        generateFunFactsHtml(
-          generateFunFacts(yearStats, filteredStats, year, newAreaKm2),
-        ),
+      const facts = generateFunFacts(
+        yearStats,
+        filteredStats,
+        year,
+        newAreaKm2,
+        this.app.selectedAircraft,
       );
+      funFactsEl.innerHTML = trustedHtml(generateFunFactsHtml(facts));
+      // Without a fact the card would be a heading over a blank tile
+      const card = domCache.get("wrapped-card-facts");
+      if (card) card.hidden = !facts.length;
     };
     // The airspace new in the year is counted from the earlier years the
     // page holds already (see yearNewAreaKm2), and left out unless it holds
@@ -744,8 +750,7 @@ export class WrappedManager {
     }
 
     // A card left empty is hidden: it would be a blank tile, named by a
-    // heading that is not there. The facts always have theirs.
-    domCache.get("wrapped-card-facts")?.toggleAttribute("hidden", false);
+    // heading that is not there (the facts card is shown by renderFacts)
     const fleetCard = domCache.get("wrapped-card-fleet");
     if (fleetCard) fleetCard.hidden = !fleetEl?.innerHTML;
     const airportsCard = domCache.get("wrapped-card-airports");

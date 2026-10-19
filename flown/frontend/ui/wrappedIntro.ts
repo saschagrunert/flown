@@ -554,9 +554,12 @@ export function followDestinationHover(
     "pointerover",
     (event) => {
       const row = (event.target as Element).closest(".destination");
-      if (!row || row === hovered || event.pointerType === "touch") return;
+      if (row === hovered || event.pointerType === "touch") return;
       hovered = row;
-      const at = airportAt(row);
+      // A heading, or a row without a place, ends the wait for the row the
+      // pointer crossed before it
+      clearTimeout(timer);
+      const at = row && airportAt(row);
       if (at) {
         later((map) => {
           away = true;

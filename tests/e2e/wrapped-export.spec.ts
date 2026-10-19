@@ -392,7 +392,7 @@ test.describe("Wrapped and Export", () => {
     await page.locator("#export-btn").click();
 
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^heatmap_.*\.jpg$/);
+    expect(download.suggestedFilename()).toMatch(/^flown_.*\.jpg$/);
 
     await expect(toastMessage(page, "Map exported")).toBeVisible();
     await expect(page.locator("#export-btn")).toHaveText("Export image");

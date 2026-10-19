@@ -18,11 +18,11 @@ package.json and package-lock.json carry it again for the npm side; nothing
 reads all of them, so they drift apart unnoticed until the two sides name
 two different versions. Of the pre-commit hooks only gitleaks has a
 revision of its own (the linters, formatters and file checks run from the
-project environment): the security job runs the gitleaks image test.yml
-pins, and checks the release it reports against the hook's, but that job
-gates nothing, so a Dependabot bump of the hook alone would go green, merge
-on its own and turn main red. Here the release in the comment of the image
-is compared with the hook's, in the lint job, which gates the merge. Run by
+project environment): the secrets job runs the gitleaks image test.yml
+pins, and checks the release it reports against the hook's, but only once
+it has pulled the image, so a Dependabot bump of the hook alone fails there
+without saying which pin to change. Here the release in the comment of the
+image is compared with the hook's, in the lint job. Run by
 `make lint` and the CI lint job.
 """
 
@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BUILD_GROUP = "build"
 # The composite action that installs uv in CI, and the release it installs:
 # the version input of its setup-uv step, up to the next step, quoted or not
-# (YAML reads a bare 0.12.24 as a string too)
+# (YAML reads a bare 0.13.0 as a string too)
 UV_ACTION = ".github/actions/setup-toolchain/action.yml"
 UV_ACTION_VERSION = re.compile(
     r"uses: astral-sh/setup-uv@.*\n(?:(?![ \t]*- ).*\n)*?"
@@ -71,7 +71,7 @@ PLAYWRIGHT_IMAGE = re.compile(
 PLAYWRIGHT_IMAGE_DOCS = ("CONTRIBUTING.md", "doc/development/testing.md")
 # The workflow whose jobs run the images checked here
 WORKFLOW = ".github/workflows/test.yml"
-# The gitleaks image of the security job, pinned by digest, with its release
+# The gitleaks image of the secrets job, pinned by digest, with its release
 # in the comment after it (`# v8.30.1`)
 GITLEAKS_IMAGE = re.compile(
     r"^[ \t]*GITLEAKS_IMAGE:[ \t]*ghcr\.io/gitleaks/gitleaks@sha256:[0-9a-f]{64}"
@@ -217,14 +217,14 @@ def playwright_image_mismatches() -> list[str]:
 
 
 def gitleaks_mismatches() -> list[str]:
-    """Check the gitleaks image of the security job against the hook's rev.
+    """Check the gitleaks image of the secrets job against the hook's rev.
 
     Dependabot bumps the rev of the pre-commit hook and leaves the image
-    alone, whose digest only a person can look up. The security job finds
-    the two apart only once it has pulled the image, and it gates nothing:
-    such a bump would merge on green and turn main red. The comment that names
-    the image's release is what is compared here, in the lint job; that the
-    digest is that release is still the security job's to tell.
+    alone, whose digest only a person can look up. The secrets job finds
+    the two apart only once it has pulled the image. The comment that names
+    the image's release is what is compared here, in the lint job, beside
+    the other pins; that the digest is that release is still the secrets
+    job's to tell.
     """
     problems = []
     image = GITLEAKS_IMAGE.search((ROOT / WORKFLOW).read_text(encoding="utf-8"))

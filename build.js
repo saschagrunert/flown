@@ -230,8 +230,9 @@ const markupPlugin = {
 // (replay) and wrapped.ts (Wrapped and the statistics panel) are entry
 // points of their own that the app imports the first time each is used
 // (services/featureLoader.ts), and so are search.ts (the search of airports
-// and places), extras.ts (the phone's sheet and the export) and local.ts
-// (Your flights). With
+// and places), phone.ts (the phone's bar and sheet), extras.ts (share
+// tokens, the export and the popup's list of flights) and local.ts (Your
+// flights). With
 // splitting, what the entry points have in common is moved into a chunk that
 // each of them imports, so there is a single instance of every module that
 // holds state (the DOM cache, the toast live region).
@@ -254,6 +255,7 @@ const buildOptions = {
     join(FRONTEND_DIR, "features.ts"),
     join(FRONTEND_DIR, "wrapped.ts"),
     join(FRONTEND_DIR, "search.ts"),
+    join(FRONTEND_DIR, "phone.ts"),
     join(FRONTEND_DIR, "extras.ts"),
     join(FRONTEND_DIR, "local.ts"),
   ],
@@ -513,8 +515,16 @@ function compareBundles(before, after, names) {
 // failed Copy link in a field of its own, bytes of a preload counted before
 // the metadata, a throw while writing a heat, and 3D's tilt taken back when
 // its code cannot come (167.33 KB and 59.02 KB gzipped with CI's Node
-// 26.12.0).
-const BUDGET_APP = { raw: 167.75 * 1024, gzip: 59.25 * 1024 };
+// 26.12.0). Raised by 0.5 KB raw, the gzipped budget kept, for the loader
+// of the phone bundle, which took the phone's bar out of the extras bundle
+// every page fetches, and the fetch of the feature bundle ahead of a press
+// that needs it (prepareOnIntent in ui/lazyBundles.ts, HoverPaths.prepare):
+// 167.98 KB and 59.03 KB gzipped in a local build. Raised to 168.5 KB and
+// 59.5 KB gzipped for the fixes of the 2026-10-19 analysis: Reload on the
+// messages that ask for one, the long fallback of Copy link without debug,
+// and the drop sheet kept away from Wrapped (168.24 KB and 59.34 KB
+// gzipped with CI's Node 26.12.0).
+const BUDGET_APP = { raw: 168.5 * 1024, gzip: 59.5 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section and the
 // hotspot tour. Fetched only when one of them is first used, so no part of
@@ -582,16 +592,21 @@ const BUDGET_FEATURES = { raw: 158.5 * 1024, gzip: 60.5 * 1024 };
 // 43.33 KB and 14.97 KB gzipped in a local build. Raised by 0.25 KB raw
 // for the markers that come while the dialog is open, made inert as they
 // come, and the failure of the cards' statistics said in place of
-// "Preparing": 43.64 KB and 15.07 KB gzipped in a local build.
-const BUDGET_WRAPPED = { raw: 43.75 * 1024, gzip: 15.25 * 1024 };
+// "Preparing": 43.64 KB and 15.07 KB gzipped in a local build. Raised to
+// 44 KB raw for facts that hold under an aircraft filter, a Facts card
+// hidden when it has none, the hover of the intro's list let go of on a
+// heading, and the build line of your flights: 43.85 KB and 15.18 KB
+// gzipped with CI's Node 26.12.0.
+const BUDGET_WRAPPED = { raw: 44 * 1024, gzip: 15.25 * 1024 };
 // The search bundle: the panel of the search of airports and places, the
 // matching of the site's airports and the client of Photon, fetched the
 // first time the search opens. About 5.3 KB gzipped (13.25 KB raw) in a
 // local build when it was set.
 const BUDGET_SEARCH = { raw: 14 * 1024, gzip: 5.75 * 1024 };
-// The extras bundle: the phone's bar and its sheet, the packing of the
-// tokens of shared links and the export of the map as an image, fetched
-// as a phone's page starts and by every page once it has a moment.
+// The extras bundle: the packing of the tokens of shared links, the
+// export of the map as an image and the airport popup's list of flights,
+// fetched by every page once it has a moment. It had the phone's bar and
+// its sheet too, and a phone fetched it as its page started.
 // 8.88 KB and 3.39 KB gzipped in a local build when it was set, for the
 // sheet and the export alone. Raised by 10 KB raw and 3.5 KB gzipped for
 // the phone's bar itself, the packing of the tokens, which Copy link waits
@@ -600,7 +615,16 @@ const BUDGET_SEARCH = { raw: 14 * 1024, gzip: 5.75 * 1024 };
 // room the first visit gave up, for the airport popup's list of flights
 // (ui/airportFlights.ts), loaded when a popup first opens, and the busy
 // state of an export: 21.03 KB and 7.71 KB gzipped in a local build.
-const BUDGET_EXTRAS = { raw: 22 * 1024, gzip: 8 * 1024 };
+// Lowered to 8 KB and 4 KB gzipped as the phone's bar and sheet, two
+// thirds of it, moved to a bundle of their own (BUDGET_PHONE), which a
+// desktop does not fetch: 7.48 KB and 3.66 KB gzipped in a local build.
+const BUDGET_EXTRAS = { raw: 8 * 1024, gzip: 4 * 1024 };
+// The phone bundle: the phone's bar and its sheet, fetched as a phone's
+// page starts and as a window turns into the phone layout, and by no
+// other page. Moved out of the extras bundle, which every page fetches
+// once it has a moment: 13.65 KB and 4.46 KB gzipped in a local build when
+// it was set.
+const BUDGET_PHONE = { raw: 14 * 1024, gzip: 4.75 * 1024 };
 // Your flights: the panel that takes the KML files a visitor drops, the
 // store in the browser and the page's side of the build worker, fetched
 // the first time the panel opens or a file is dragged over the page, and at
@@ -615,7 +639,13 @@ const BUDGET_EXTRAS = { raw: 22 * 1024, gzip: 8 * 1024 };
 // 22.5 KB raw for the second review's: a failed Remove all redrawn, Show my
 // flights for a dataset the page does not show yet, Remove all's question
 // said in the status: 22.06 KB and 7.84 KB gzipped with CI's Node 26.12.0.
-const BUDGET_LOCAL = { raw: 22.5 * 1024, gzip: 8 * 1024 };
+// Raised to 24.25 KB and 8.75 KB gzipped for Build again after a build
+// that could not fetch the airports or the ground, every aircraft.json of
+// a drop, macOS's AppleDouble files left out, a failed build said in a
+// toast while the panel is closed, Remove all waiting longer for its second
+// press and the focus put back where it can be seen: 24.06 KB and 8.51 KB
+// gzipped with CI's Node 26.12.0.
+const BUDGET_LOCAL = { raw: 24.25 * 1024, gzip: 8.75 * 1024 };
 // The worker of Your flights, which runs the site's Python in Pyodide;
 // the runtime itself comes from its CDN and is no part of this. Raised to
 // 7 KB and 3.5 KB gzipped for the check of the runtime's files against
@@ -625,7 +655,10 @@ const BUDGET_LOCAL = { raw: 22.5 * 1024, gzip: 8 * 1024 };
 // 3.75 KB gzipped for the watch on the parser's load and the check that it
 // came, the cache's opening and reading bounded apart, and the files let
 // go of after a build: 7.56 KB and 3.64 KB gzipped in a local build.
-const BUDGET_LOCAL_WORKER = { raw: 7.75 * 1024, gzip: 3.75 * 1024 };
+// Raised to 8.25 KB and 4 KB gzipped for the cache another tab removed,
+// a runtime out of memory taken for lost and Build again's retry of the
+// downloads: 8.07 KB and 3.82 KB gzipped with CI's Node 26.12.0.
+const BUDGET_LOCAL_WORKER = { raw: 8.25 * 1024, gzip: 4 * 1024 };
 // The year worker (services/yearWorker.ts): fetched by every visit, preloaded
 // in the page head beside the app and started with the first year file. It
 // decodes the year files and draws the heat sources off the main thread,
@@ -657,6 +690,7 @@ const APP_BUNDLE = "mapApp.bundle.js";
 const FEATURES_BUNDLE = "features.bundle.js";
 const WRAPPED_BUNDLE = "wrapped.bundle.js";
 const SEARCH_BUNDLE = "search.bundle.js";
+const PHONE_BUNDLE = "phone.bundle.js";
 const EXTRAS_BUNDLE = "extras.bundle.js";
 const LOCAL_BUNDLE = "local.bundle.js";
 const SHARED_BUNDLE = "shared.bundle.js";
@@ -681,6 +715,7 @@ function analyzeBundleSizes() {
     ["✨ Features", [FEATURES_BUNDLE], BUDGET_FEATURES],
     ["🎁 Wrapped", [WRAPPED_BUNDLE], BUDGET_WRAPPED],
     ["🔎 Search", [SEARCH_BUNDLE], BUDGET_SEARCH],
+    ["📱 Phone", [PHONE_BUNDLE], BUDGET_PHONE],
     ["🧰 Extras", [EXTRAS_BUNDLE], BUDGET_EXTRAS],
     ["📂 Your flights", [LOCAL_BUNDLE], BUDGET_LOCAL],
     ["🧵 Year worker", [WORKER_BUNDLE], BUDGET_WORKER],
@@ -785,7 +820,7 @@ async function build() {
         esbuild.build(workerBuildOptions),
         esbuild.build(localWorkerBuildOptions),
       ]);
-      // The site publishes the nine by name (see assertExpectedOutputs)
+      // The site publishes the ten by name (see assertExpectedOutputs)
       assertExpectedOutputs(
         [result.metafile, workerResult.metafile, localWorkerResult.metafile],
         [
@@ -793,6 +828,7 @@ async function build() {
           FEATURES_BUNDLE,
           WRAPPED_BUNDLE,
           SEARCH_BUNDLE,
+          PHONE_BUNDLE,
           EXTRAS_BUNDLE,
           LOCAL_BUNDLE,
           SHARED_BUNDLE,
@@ -811,6 +847,7 @@ async function build() {
         FEATURES_BUNDLE,
         WRAPPED_BUNDLE,
         SEARCH_BUNDLE,
+        PHONE_BUNDLE,
         EXTRAS_BUNDLE,
         LOCAL_BUNDLE,
       ];

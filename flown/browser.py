@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import io
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +36,9 @@ __all__ = ["BuildOutcome", "build", "install_network", "xhr_get"]
 
 #: What ``build`` answers the worker with, as a plain dict for the page
 type BuildOutcome = dict[str, Any]
+
+# The aircraft files of a drop, as the page names them (input_files)
+_AIRCRAFT_FILE = re.compile(r"aircraft(?:-([1-9]\d*))?\.json")
 
 
 # How long a download may take before it counts as failed: the airport
@@ -137,14 +141,51 @@ PHASES = {
 # The most warnings a build hands back, for the panel to show
 MAX_WARNINGS = 10
 
+# The warnings of a build that went on without what it could not fetch,
+# by the line each is logged with: what it went without (``degraded`` of
+# the outcome, which the page offers to build again once the connection is
+# back), and what the page says instead of a line that gives the command
+# line's way out (an environment variable), or None to say the line itself
+DEGRADED: dict[str, tuple[str, str | None]] = {
+    "Airport database unavailable: the airports keep the names the files "
+    "give them (set %s=1 to stop instead)": (
+        "airports",
+        (
+            "The airport names could not be fetched: the airports keep the "
+            "names your files give them, and no landings are counted"
+        ),
+    ),
+    "Runway database unavailable - touchdowns get no runway": (
+        "airports",
+        (
+            "The runways could not be fetched: the landings are counted "
+            "without their runways"
+        ),
+    ),
+    "Terrain: %d of %d elevation tile(s) are unavailable (offline?); "
+    "%d flight(s) keep the ground between their airfields": ("terrain", None),
+}
+# Warnings of the command line's that say nothing in the page: of the names
+# a site would publish, which nothing of a build in the browser is
+UNSAID = frozenset(
+    {
+        (
+            "Cannot check the published airport names for free text: the "
+            "airport database is empty"
+        )
+    }
+)
+
 
 class _Relay(logging.Handler):
     """Tells the page the steps of the build, and keeps its warnings.
 
     A line of ``PHASES`` is reported as its step; a warning is kept, without
     the directory the files were written into, for the page to show once the
-    build is done (``warnings``). Errors are not: a build that fails raises,
-    and a file it skips is named with its reason (see ``build``).
+    build is done (``warnings``), in the page's words where ``DEGRADED`` has
+    them, and what the build went without in ``degraded``. Errors are not: a
+    build that fails raises, and a file it skips is named with its reason
+    (see ``build``).
     """
 
     def __init__(self, report: Callable[[str, str], None], input_dir: str) -> None:
@@ -153,11 +194,18 @@ class _Relay(logging.Handler):
         self._prefix = input_dir.rstrip("/") + "/"
         self._phase: str | None = None
         self.warnings: list[str] = []
+        self.degraded: set[str] = set()
 
     def emit(self, record: logging.LogRecord) -> None:
         with contextlib.suppress(Exception):
             if record.levelno == logging.WARNING:
-                message = record.getMessage().replace(self._prefix, "").strip()
+                template = str(record.msg)
+                if template in UNSAID:
+                    return
+                missing, said = DEGRADED.get(template, (None, None))
+                if missing:
+                    self.degraded.add(missing)
+                message = said or record.getMessage().replace(self._prefix, "").strip()
                 if message not in self.warnings and len(self.warnings) < MAX_WARNINGS:
                     self.warnings.append(message)
                 return
@@ -189,18 +237,31 @@ def input_files(input_dir: str | Path) -> tuple[list[str], list[Path]]:
     in the file), in the order the site build takes them, by the number a
     name starts with (``numeric_filename_key``): the page has no order of
     its own to hand on, and ``10_`` plays after ``2_`` as it does there.
+    The AppleDouble files of a folder from macOS (``._1_x.kml``) are left
+    out, as the site build leaves them out (``validation.list_kml_files``).
+
+    The aircraft files are ``aircraft.json`` and those the page numbers
+    after it, ``aircraft-2.json`` and on, for the folders of one drop that
+    each have one (ui/localFlights.ts): all of them, in that order, which
+    ``merge_aircraft_data`` lets the first win in, as the site build merges
+    those of its directories.
     """
     root = Path(input_dir)
+    files = [path for path in root.iterdir() if path.is_file()]
     kml_files = sorted(
         (
             str(path)
-            for path in root.iterdir()
-            if path.is_file() and path.suffix.lower() in KML_SUFFIXES
+            for path in files
+            if path.suffix.lower() in KML_SUFFIXES and not path.name.startswith("._")
         ),
         key=numeric_filename_key,
     )
-    aircraft = root / "aircraft.json"
-    return kml_files, [aircraft] if aircraft.is_file() else []
+    numbered = {
+        path: int(match[1] or 1)
+        for path in files
+        if (match := _AIRCRAFT_FILE.fullmatch(path.name))
+    }
+    return kml_files, sorted(numbered, key=numbered.__getitem__)
 
 
 def build(
@@ -209,6 +270,7 @@ def build(
     report: Callable[[str, str], None] | None = None,
     terrain: bool = True,
     flags: list[str] | None = None,
+    retry: bool = False,
 ) -> BuildOutcome:
     """Build the data files of the flights in ``input_dir`` into ``output_dir``.
 
@@ -220,9 +282,17 @@ def build(
 
     A file that makes no flight is left out, and named with the reason in
     ``skipped``: the visitor sees the rest, and which file to look at.
-    Answers with the years, the extent the map opens on, what was found
-    and the warnings of the build; raises the errors of
-    ``export_flight_data`` for inputs that make no site at all.
+    Answers with the years, the extent the map opens on, what was found,
+    the warnings of the build and what it went without for want of a
+    connection (``degraded``: "airports", "terrain"); raises the errors of
+    ``export_flight_data`` for inputs that make no site at all, and a
+    ``MemoryError`` for one that ran out of memory on the way, which a
+    failed year says only as its cause.
+
+    A database the last build could not fetch is loaded again, and said
+    again to be missing; ``retry`` downloads it again at once (see
+    ``retry_missing_databases``), for the page's Build again once the
+    connection may be back.
 
     What the cache holds of files no longer among the inputs leaves it:
     their parses, with the real dates and times, whether the build got
@@ -232,16 +302,18 @@ def build(
     it fetches again. A build that failed may not have got to the ground,
     and keeps the tiles for the next.
     """
+    from .airport_lookup import retry_missing_databases  # noqa: PLC0415
     from .parser_cache import prune_cache_entries_except  # noqa: PLC0415
     from .pipeline import export_flight_data  # noqa: PLC0415
     from .terrain_fetch import TerrariumTiles  # noqa: PLC0415
     from .workers import configure_workers  # noqa: PLC0415
 
     install_network()
+    retry_missing_databases(download=retry)
     # No processes in the page: every pool works here, without trying
     configure_workers(1, processes=False)
     kml_files, aircraft_files = input_files(input_dir)
-    tiles = TerrariumTiles(get=_xhr_tile_get, workers=1)
+    tiles = TerrariumTiles(get=_xhr_tile_get, workers=1, keep_ground=False)
     built = False
     try:
         with _relayed(report, input_dir) as relay:
@@ -254,6 +326,11 @@ def build(
                 flags=flags,
             )
         built = True
+    except Exception as e:
+        # Said as what it is, for the page to start a runtime of its own
+        if not isinstance(e, MemoryError) and _out_of_memory(e):
+            raise MemoryError from e
+        raise
     finally:
         prune_cache_entries_except(kml_files)
         if built or not terrain:
@@ -263,7 +340,6 @@ def build(
         "years": list(result.years),
         "flights": result.flights,
         "airports": result.airports,
-        "center": [extent.center_lat, extent.center_lon],
         "bounds": [
             [extent.min_lat, extent.min_lon],
             [extent.max_lat, extent.max_lon],
@@ -273,4 +349,17 @@ def build(
             for entry in result.skipped
         ],
         "warnings": relay.warnings,
+        "degraded": sorted(relay.degraded),
     }
+
+
+def _out_of_memory(error: BaseException) -> bool:
+    """Whether ``error`` is a ``MemoryError``, or was raised for one."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if isinstance(current, MemoryError):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False

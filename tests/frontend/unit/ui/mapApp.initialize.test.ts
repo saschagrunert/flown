@@ -18,8 +18,8 @@ import {
   type Map as MockMap,
 } from "../../../mocks/maplibre-gl";
 import {
-  loadExtras,
   loadFeatures,
+  loadPhone,
   loadWrapped,
 } from "../../../../flown/frontend/services/featureLoader";
 import {
@@ -127,11 +127,13 @@ describe("MapApp.initialize", () => {
       expect(toastMock.showToast).not.toHaveBeenCalledWith(
         MAP_STALL_MESSAGE,
         "error",
+        toast.RELOAD_ACTION,
       );
       vi.advanceTimersByTime(1);
       expect(toastMock.showToast).toHaveBeenCalledWith(
         MAP_STALL_MESSAGE,
         "error",
+        toast.RELOAD_ACTION,
       );
     });
 
@@ -158,6 +160,7 @@ describe("MapApp.initialize", () => {
       expect(toastMock.showToast).not.toHaveBeenCalledWith(
         MAP_STALL_MESSAGE,
         "error",
+        toast.RELOAD_ACTION,
       );
     });
 
@@ -176,6 +179,7 @@ describe("MapApp.initialize", () => {
       expect(toastMock.showToast).not.toHaveBeenCalledWith(
         MAP_STALL_MESSAGE,
         "error",
+        toast.RELOAD_ACTION,
       );
     });
   });
@@ -854,7 +858,7 @@ describe("MapApp.initialize", () => {
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       }));
-      vi.mocked(loadExtras).mockResolvedValueOnce(null);
+      vi.mocked(loadPhone).mockResolvedValueOnce(null);
       await initializeApp(app);
 
       // Said, and the columns show after all (styles.css)
@@ -878,7 +882,7 @@ describe("MapApp.initialize", () => {
     it("has the phone's open sheet read its row again", async () => {
       const bar = { refreshSheet: vi.fn(), destroy: vi.fn() };
       m.mobileBar.mountFor.mockReturnValue(bar);
-      // The bar comes with the extras bundle in the phone layout alone
+      // The bar comes with the phone bundle in the phone layout alone
       vi.stubGlobal("matchMedia", (query: string) => ({
         matches: true,
         query,
@@ -1320,6 +1324,27 @@ describe("MapApp.initialize", () => {
       button.dispatchEvent(new Event("pointerenter"));
       reduced.mockRestore();
       expect(loadWrapped).not.toHaveBeenCalled();
+    });
+
+    it("fetches the feature bundle as a control that needs it, or a flight's row, is pointed at or focused", async () => {
+      const replay = document.createElement("button");
+      replay.id = "replay-btn";
+      const row = document.createElement("button");
+      row.className = "flight-btn";
+      const other = document.createElement("button");
+      other.id = "heatmap-btn";
+      document.body.append(replay, row, other);
+      await initializeApp(app);
+      vi.mocked(loadFeatures).mockClear();
+
+      other.dispatchEvent(new Event("pointerenter"));
+      other.focus();
+      expect(loadFeatures).not.toHaveBeenCalled();
+
+      replay.dispatchEvent(new Event("pointerenter"));
+      expect(loadFeatures).toHaveBeenCalledTimes(1);
+      row.focus();
+      expect(loadFeatures).toHaveBeenCalledTimes(2);
     });
 
     it("restores the map view from saved center and zoom", async () => {

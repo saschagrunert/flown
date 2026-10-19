@@ -82,6 +82,21 @@ class TestInitWorker:
 
 
 class TestParseWorkerCount:
+    @pytest.fixture(autouse=True)
+    def _every_byte_pays_off(self, monkeypatch):
+        """The files here are a few bytes: the size limits are what counts."""
+        monkeypatch.setattr(workers_module, "MIN_PARSE_BYTES_PER_WORKER", 1)
+
+    def test_little_kml_gets_few_workers(self, tmp_path, monkeypatch):
+        """A worker costs a process start and the databases before its file."""
+        monkeypatch.setattr(workers_module, "MIN_PARSE_BYTES_PER_WORKER", 100)
+        files = self._files(tmp_path, *[60] * 10)
+        with (
+            patch("os.process_cpu_count", return_value=16),
+            patch.object(workers_module, "_available_memory_bytes", return_value=None),
+        ):
+            assert parse_worker_count(files) == 6
+
     def _files(self, tmp_path, *sizes):
         paths = []
         for index, size in enumerate(sizes):

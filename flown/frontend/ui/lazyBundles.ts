@@ -4,18 +4,20 @@
  * Replay, the relief, the cross-section and the hotspot tour come with the
  * feature bundle, Wrapped and the statistics panel with the Wrapped bundle,
  * the search of airports and places with the search bundle, the phone's
- * bar and sheet, the export and the packing of share tokens with the
- * extras bundle (services/featureLoader.ts fetches all four). MapApp
- * fetches the first three the first time one of their controls is used
- * (MapApp.loadReplay, loadWrapped, loadStats, toggleFeature and
- * toggleSearch), the extras for the phone layout (MapApp.followMobileBar),
- * once the page has a moment (initMapApp) and for Export
- * (ui/uiToggles.ts); this module holds what those share:
+ * bar and sheet with the phone bundle, the export and the packing of share
+ * tokens with the extras bundle (services/featureLoader.ts fetches all
+ * five). MapApp fetches the first three the first time one of their
+ * controls is used (MapApp.loadReplay, loadWrapped, loadStats,
+ * toggleFeature and toggleSearch), the phone bundle for the phone layout
+ * (MapApp.followMobileBar), the extras once the page has a moment
+ * (initMapApp) and for Export (ui/uiToggles.ts); this module holds what
+ * those share:
  * the message each part of the app shows when its code could not be
  * loaded, `loadLazyBundle`, which shows it and takes back the one of an
  * earlier failure once a later try has worked, the fetch of a bundle ahead
  * of a click on its control (`prepareOnIntent`), so Wrapped's intro is
- * ready to play and Copy link has its token, the key that opens the search
+ * ready to play, Copy link has its token and the feature bundle is on its
+ * way before a press that needs it, the key that opens the search
  * (`followSearchKey`) and the parts of the lazy features each app keeps
  * (`featurePart`). It is part of the first visit, like the app: nothing
  * here may reach into the lazy bundles other than through featureLoader.
@@ -28,6 +30,7 @@ import type { ReplayAllControls } from "./replayAll";
 import type { ReplayAllPlayer } from "./replayAllPlayer";
 import {
   loadExtras,
+  loadFeatures,
   loadWrapped,
   noticeSiteUpdate,
   wasSiteUpdated,
@@ -166,18 +169,37 @@ export async function loadLazyBundle<T>(
 }
 
 /**
+ * What needs the feature bundle (features.ts) when it is pressed: replay,
+ * the tour, the cross-section, the 3D view and the satellite imagery, and
+ * the rows that pick a flight alone, of the flight list (ui/flightList.ts)
+ * and of an airport's popup (ui/airportFlights.ts), whose profile, and the
+ * frame the list moves the map to, come with it (MapApp.followFlightProfile,
+ * PathSelection.bringIntoView)
+ */
+const FEATURE_INTENT =
+  "#replay-btn,#replay-all-btn,#hotspot-tour-btn,#cross-section-btn," +
+  "#three-d-btn,#satellite-btn,#selection-replay-btn,.flight-btn,.popup-flight";
+
+/**
  * Get ready for a control while it is pointed at or focused, on either
  * layout. Wrapped and its intro (see prepareWrappedIntro) once the page has
  * a moment (whenIdle) rather than in the task of the pointer's move, and
  * not under reduced motion, where no intro plays: Wrapped's code comes with
  * the click, as it always has. The code of share tokens for Copy link,
  * which writes the link in the moment of the press and cannot wait for it
- * (UIToggles.shareLink).
+ * (UIToggles.shareLink). The feature bundle for the controls that need it
+ * and for a flight about to be picked, a bundle most visits never fetch:
+ * not ahead of every visit, but ahead of the press that shows the visitor
+ * wants it, so the wait for it starts some hundred milliseconds sooner. A
+ * pointer that rests on a flight on the map does the same (see
+ * HoverPaths.prepare).
  */
 export function prepareOnIntent(app: MapApp): void {
   const prepare = (event: Event): void => {
-    const id = (event.target as Partial<Element>).id;
+    const target = event.target as Partial<Element>;
+    const id = target.id;
     if (id === "share-btn" || id === "selection-link-btn") void loadExtras();
+    if (target.matches?.(FEATURE_INTENT)) void loadFeatures();
     if (
       (id === "wrapped-btn" || id === "mobile-tab-wrapped") &&
       !prefersReducedMotion()

@@ -374,7 +374,7 @@ describe("MobileSheet", () => {
 
       const style = document.createElement("style");
       style.textContent = readFileSync(
-        resolve(__dirname, "../../../../flown/static/extras.css"),
+        resolve(__dirname, "../../../../flown/static/phone.css"),
         "utf8",
       );
       document.head.append(style);

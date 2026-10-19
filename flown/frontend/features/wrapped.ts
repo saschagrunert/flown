@@ -164,12 +164,14 @@ function periodPhrase(year: string): string {
  * @param year - The selected year, or "all"
  * @param newAreaKm2 - The area the year's flights passed over and none of
  * an earlier year did (see yearNewAreaKm2), where known
+ * @param aircraft - The selected aircraft, or "all"
  */
 export function generateFunFacts(
   yearStats: YearStats,
   filteredStats: FunFactStats | null = null,
   year: string = "all",
   newAreaKm2: number | null = null,
+  aircraft: string = "all",
 ): FunFact[] {
   const facts: FunFact[] = [];
   const period = periodPhrase(year);
@@ -210,8 +212,13 @@ export function generateFunFacts(
     const registration = onlyAircraft.registration;
     const flights = onlyAircraft.flights;
     const plural = flights !== 1 ? "s" : "";
-    // "All 1 flight" for a year of one
-    if (flights > 1 && flights === yearStats.total_flights) {
+    // "All 1 flight" for a year of one. With one aircraft picked the list
+    // has only that one, which says nothing about loyalty.
+    if (
+      aircraft === "all" &&
+      flights > 1 &&
+      flights === yearStats.total_flights
+    ) {
       facts.push({
         icon: "aircraft",
         text: markup`Loyal to <strong>${registration}</strong>, all ${flights} flight${plural} in this ${model}!`,
@@ -417,7 +424,8 @@ function landingFacts(
     });
   }
   const busiest = landings.busiestRunway;
-  if (busiest && busiest.share < 1) {
+  // Not a share that rounds to 100%, which reads as the only runway there
+  if (busiest && busiest.share < 0.995) {
     facts.push({
       icon: "compass",
       text: markup`Favourite runway: <strong>RWY ${busiest.runway}</strong> at ${busiest.airport}, ${Math.round(busiest.share * 100)}% of the touchdowns there.`,

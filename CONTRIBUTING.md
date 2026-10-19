@@ -190,19 +190,21 @@ here, not an oversight: adding the parentheses back is undone on the next
 
 ## Visual snapshots
 
-`tests/e2e/visual.spec.ts` compares the page's chrome against committed
-screenshots. Pixel comparisons only mean anything where the rendering is fixed,
-so they run inside the Playwright image rather than against whatever browser is
-on the machine, in CI and locally alike. The project only exists there (or with
-`VISUAL_SNAPSHOTS=1`, for an equivalent setup), so a plain `npm run test:e2e`
-leaves it out instead of failing on font rendering that was never going to
-match:
+`tests/e2e/visual.spec.ts` compares the page's chrome, the flat map and the heat
+cloud of the 3D view against committed screenshots, in a desktop browser (the
+`visual` project) and, for the bottom bar and its sheet, on a phone
+(`visual-phone`). Pixel comparisons only mean anything where the rendering is
+fixed, so they run inside the Playwright image rather than against whatever
+browser is on the machine, in CI and locally alike. The two projects only exist
+there (or with `VISUAL_SNAPSHOTS=1`, for an equivalent setup), so a plain
+`npm run test:e2e` leaves them out instead of failing on font rendering that was
+never going to match:
 
 ```bash
 podman run --rm --ipc=host --network host --userns=keep-id --user "$(id -u):$(id -g)" \
   --security-opt label=disable -v "$PWD:/work" -w /work -e HOME=/tmp \
   mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f \
-  npx playwright test --project=visual
+  npx playwright test --project=visual --project=visual-phone
 ```
 
 The snapshots are not taken of `docs/`. The statistics rail and the Wrapped

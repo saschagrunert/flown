@@ -729,6 +729,48 @@ class TestTimeSpanPlacemark:
 
         assert len(paths) == 2
 
+    @pytest.mark.parametrize(
+        ("second_begin", "second_start", "joined"),
+        [
+            # On from the point of the split, written twice
+            ("10:30:00Z", "8.3 48.6 1500", True),
+            # A few minutes later, a few metres on
+            ("10:32:00Z", "8.3002 48.6001 1500", True),
+            # Back in time: another recording of the same flight
+            ("10:20:00Z", "8.3 48.6 1500", False),
+            # Hours later: another flight of that name
+            ("14:00:00Z", "8.3 48.6 1500", False),
+        ],
+    )
+    def test_a_track_split_into_gx_tracks_is_one_flight(
+        self, tmp_path, second_begin, second_start, joined
+    ):
+        """As LineStrings are: the first half would arrive in mid-air."""
+
+        def placemark(whens, coords):
+            return (
+                "<Placemark><name>EDAQ - EDDC</name><gx:Track>"
+                + "".join(f"<when>2025-06-15T{when}</when>" for when in whens)
+                + "".join(f"<gx:coord>{coord}</gx:coord>" for coord in coords)
+                + "</gx:Track></Placemark>"
+            )
+
+        first = placemark(
+            ["10:00:00Z", "10:15:00Z", "10:30:00Z"],
+            ["8.0 48.5 300", "8.2 48.55 1500", "8.3 48.6 1500"],
+        )
+        hour, minute, _ = second_begin.rstrip("Z").split(":")
+        later = f"{hour}:{int(minute) + 10:02d}:00Z"
+        second = placemark([second_begin, later], [second_start, "8.6 48.7 300"])
+        kml = f"{KML_HEADER}<Document>{first}{second}</Document></kml>"
+
+        _, paths, metadata = parse_kml_coordinates(_write(tmp_path, "g.kml", kml))
+
+        assert len(paths) == (1 if joined else 2)
+        if joined:
+            assert len(paths[0]) == (4 if second_start == "8.3 48.6 1500" else 5)
+            assert metadata[0]["end_timestamp"] == f"2025-06-15T{later}"
+
     def test_a_return_flight_under_one_timespan_stays_apart(self, tmp_path):
         """Out and back in a document of one TimeSpan: two routes, two flights."""
         span = (
@@ -927,6 +969,62 @@ class TestInheritedTime:
         _, paths, metadata = parse_kml_coordinates(_write(tmp_path, "f.kml", kml))
         assert len(paths) == 1
         assert metadata[0]["year"] == 2024
+
+
+class TestLinesDatedByPoints:
+    @staticmethod
+    def _kml(points):
+        trail = "".join(
+            f"<Placemark><name>{name}</name>{time}"
+            f"<Point><coordinates>{coords}</coordinates></Point></Placemark>"
+            for name, time, coords in points
+        )
+        return (
+            f"{KML_HEADER}<Document><Placemark><name>Route</name>"
+            f"{_line_string('8.0,48.5,300 8.2,48.6,1500 8.4,48.7,300')}"
+            f"</Placemark><Folder><name>Trail</name>{trail}</Folder>"
+            "</Document></kml>"
+        )
+
+    def test_a_line_takes_the_year_of_its_timed_points(self, tmp_path):
+        """Flightradar24: an untimed route, its times on a trail of Points."""
+        kml = self._kml(
+            [
+                (
+                    "1",
+                    "<TimeStamp><when>2025-06-15T10:00:00Z</when></TimeStamp>",
+                    "8.0,48.5,300",
+                ),
+                (
+                    "2",
+                    "<TimeStamp><when>2025-06-15T10:30:00Z</when></TimeStamp>",
+                    "8.2,48.6,1500",
+                ),
+            ]
+        )
+        _, paths, metadata = parse_kml_coordinates(_write(tmp_path, "fr.kml", kml))
+        assert len(paths) == 1
+        assert metadata[0]["year"] == 2025
+
+    def test_or_of_a_dated_marker(self, tmp_path):
+        """SkyDemon names a Point after the start of the log."""
+        kml = self._kml([("Log Start: 03 Mar 2025 08:58 Z", "", "8.0,48.5,300")])
+        _, _, metadata = parse_kml_coordinates(_write(tmp_path, "sd.kml", kml))
+        assert metadata[0]["year"] == 2025
+
+    def test_points_of_two_years_date_nothing(self, tmp_path):
+        kml = self._kml(
+            [
+                (
+                    str(year),
+                    f"<TimeStamp><when>{year}-06-15T10:00:00Z</when></TimeStamp>",
+                    "8.0,48.5,300",
+                )
+                for year in (2024, 2025)
+            ]
+        )
+        _, _, metadata = parse_kml_coordinates(_write(tmp_path, "two.kml", kml))
+        assert metadata[0]["year"] is None
 
 
 def _new_year_track():

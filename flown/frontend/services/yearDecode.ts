@@ -11,7 +11,7 @@
 
 import { buildDataset } from "./yearDataset";
 import type { DecodedYear } from "./yearDataset";
-import type { KMLDataset, RawYearData } from "../types";
+import type { KMLDataset, PathInfo, RawYearData } from "../types";
 
 /**
  * Wire format of the year files this build reads (flown/segment_codec.py).
@@ -149,7 +149,7 @@ export function decodeYear(raw: RawYearData): DecodedYear {
     const startLon = lonScaled / COORDINATE_SCALE;
     let row = 0;
     for (; row < latDeltas.length; row++) {
-      latStep += latDeltas[row]!;
+      latStep += latDeltas[row] ?? NaN;
       lonStep += lonDeltas?.[row] ?? NaN;
       latScaled += latStep;
       lonScaled += lonStep;
@@ -203,7 +203,7 @@ export function decodeYear(raw: RawYearData): DecodedYear {
   }
 
   return {
-    path_info: pathInfo,
+    path_info: firstListings(pathInfo),
     original_points:
       typeof raw.original_points === "number" ? raw.original_points : 0,
     pathIds: ids.slice(0, paths),
@@ -217,6 +217,16 @@ export function decodeYear(raw: RawYearData): DecodedYear {
     grounds: trimmed(grounds, rows),
     warnings,
   };
+}
+
+/**
+ * Each path once, where it is first listed: one listed twice is decoded
+ * once (see decodeYear), and counted twice it doubled the flights
+ */
+function firstListings(pathInfo: PathInfo[]): PathInfo[] {
+  const ids = new Set(pathInfo.map((info) => Number(info.id)));
+  if (ids.size === pathInfo.length) return pathInfo;
+  return pathInfo.filter((info) => ids.delete(Number(info.id)));
 }
 
 /** The first `length` values, as an array that owns exactly that much */

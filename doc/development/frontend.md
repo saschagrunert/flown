@@ -17,7 +17,8 @@ the flights is in [Rendering](rendering.md) and [Heat](heat.md), the tests in
     store (`ui/appChrome.ts`) and what the app says when a lazy bundle cannot be
     fetched (`ui/lazyBundles.ts`), with the parts of the lazy features each app
     keeps once made (`featurePart`). `features.ts`, `wrapped.ts`, `search.ts`,
-    `extras.ts` and `local.ts` are the entry points of the lazy bundles
+    `phone.ts`, `extras.ts` and `local.ts` are the entry points of the lazy
+    bundles
   - `calculations/` - Statistics and data processing
   - `features/` - Airports, layers, replay, wrapped
   - `services/` - Data loading and caching
@@ -40,12 +41,13 @@ the flights is in [Rendering](rendering.md) and [Heat](heat.md), the tests in
     the GitHub mark and the top-down aircraft are drawn in `utils/icons.ts`
     because Lucide carries neither
 - **Stylesheets** in `flown/static/` (`styles.css`, `features.css`,
-  `wrapped.css`, `search.css`, `local.css` and `extras.css`, see
+  `wrapped.css`, `search.css`, `local.css`, `phone.css` and `extras.css`, see
   [Stylesheets](#stylesheets))
 - **Build output** in `flown/static/` (`mapApp.bundle.js`, `features.bundle.js`,
-  `wrapped.bundle.js`, `search.bundle.js`, `extras.bundle.js`,
-  `local.bundle.js`, `shared.bundle.js`, `yearWorker.bundle.js`,
-  `localWorker.bundle.js`, their source maps, `vendor/` and `flags/`)
+  `wrapped.bundle.js`, `search.bundle.js`, `phone.bundle.js`,
+  `extras.bundle.js`, `local.bundle.js`, `shared.bundle.js`,
+  `yearWorker.bundle.js`, `localWorker.bundle.js`, their source maps, `vendor/`
+  and `flags/`)
 - **Build scripts** `build.js` and `scripts/*.js`, plain JavaScript with JSDoc
   types that `tsconfig.node.json` checks (`npm run typecheck`). The type checks
   run TypeScript 7 (the `typescript7` alias of `package.json`, called by path
@@ -96,37 +98,44 @@ places (`ui/locationSearch.ts`, with the matching of the site's airports in
 `calculations/airportSearch.ts` and the client of Photon in
 `services/photon.ts`); the first visit carries only its button, its row in the
 phone's More sheet and the `/` key (`followSearchKey` in `ui/lazyBundles.ts`),
-and the page imports it the first time the search opens. `extras.bundle.js`
-holds what no desktop's first visit needs: the phone's bar and its sheet
-(`ui/mobileBar.ts`, `ui/mobileSheet.ts`), which a phone asks for as its page
-starts and mounts once the managers are there (`MapApp.followMobileBar`), the
-columns hidden in the phone layout meanwhile; the packing of the tokens of
+and the page imports it the first time the search opens. `phone.bundle.js` holds
+the phone's bar and its sheet (`ui/mobileBar.ts`, `ui/mobileSheet.ts`), which a
+phone asks for as its page starts and mounts once the managers are there
+(`MapApp.followMobileBar`), the columns hidden in the phone layout meanwhile; a
+desktop fetches it only when its window turns into the phone layout.
+`extras.bundle.js` holds what no first visit needs: the packing of the tokens of
 shared links for Copy link (`state/shareTokenPack.ts`), which every page fetches
 once it has a moment and pointing at a share control fetches ahead (a press
-before it hands the clipboard a promise of the link with its token); and the
-export of the map as an image (`ui/mapExport.ts`), which the first export
-fetches; the Export control's busy state stays in the app. The reading of a
-token (`state/shareToken.ts`) is the first visit's: a link with one is read
-before anything else reads it. `local.bundle.js` holds Your flights
-(`ui/localFlights.ts`): the panel that takes the KML files a visitor drops on
-the page, the store of those files and of what is built from them in the browser
-(`services/localStore.ts`), the page's side of the build
-(`services/localBuild.ts`), the sheet over the map while files are dragged
-across it (`ui/fileDrop.ts`) and the configuration a page that shows those
-flights starts with; the app carries the button, its row in the More sheet, the
-watch for a drag of files (`ui/fileDropWatch.ts`), the start that asks for that
-configuration (`startApp` in `mapApp.ts`) and the flags both share
+before it hands the clipboard a promise of the link with its token); the export
+of the map as an image (`ui/mapExport.ts`), which the first export fetches, the
+Export control's busy state staying in the app; and the list of flights of an
+airport's popup (`ui/airportFlights.ts`). The feature bundle is fetched ahead of
+a press as well, while a control that needs it (Replay, the tour, the
+cross-section, 3D, Satellite) or a row that picks a flight is pointed at or
+focused, and once a pointer rests on a flight on the map or a tap shows one's
+values (`prepareOnIntent` in `ui/lazyBundles.ts`, `PathHover.prepare`), rather
+than ahead of every visit. The reading of a token (`state/shareToken.ts`) is the
+first visit's: a link with one is read before anything else reads it.
+`local.bundle.js` holds Your flights (`ui/localFlights.ts`): the panel that
+takes the KML files a visitor drops on the page, the store of those files and of
+what is built from them in the browser (`services/localStore.ts`), the page's
+side of the build (`services/localBuild.ts`), the sheet over the map while files
+are dragged across it (`ui/fileDrop.ts`) and the configuration a page that shows
+those flights starts with; the app carries the button, its row in the More
+sheet, the watch for a drag of files (`ui/fileDropWatch.ts`), the start that
+asks for that configuration (`startApp` in `mapApp.ts`) and the flags both share
 (`state/localFlags.ts`). `shared.bundle.js` is the app itself and everything the
 lazy bundles use of it. `yearWorker.bundle.js` is a build of its own, which
 decodes the year files and writes the heat sources off the main thread (see
 [The year worker](data.md#the-year-worker)). `localWorker.bundle.js` is another,
 the worker that builds the visitor's flights: it imports Pyodide from its CDN,
 loads lxml and the package's own Python from `flown-src.zip` next to the page
-(`site_assets.py` writes it), and runs `flown.browser.build` on the files, with
-the airport database and the elevation tiles it fetches kept in a directory
-mounted on IndexedDB. The page's Content Security Policy does not reach a worker
-started from a file of the site, which gets the policy of that file's response;
-a host that sends one would have to allow the CDN in it.
+(`site_assets.py` writes it, without the modules of the command line,
+`NOT_IN_THE_PAGE`), and runs `flown.browser.build` on the files, with the
+airport database and the elevation tiles it fetches kept in a directory mounted
+on IndexedDB. The page's Content Security Policy does not reach a worker started
+from a file of the site, which gets the policy of that file's response; a host
+that sends one would have to allow the CDN in it.
 
 ### Shared chunk
 
@@ -183,16 +192,18 @@ the statistics rail falls back to the ISO country code.
 
 The styles are split the same way as the bundles and travel with them:
 `flown/static/styles.css` is linked in the page, `features.css`, `wrapped.css`,
-`search.css`, `local.css` and `extras.css` are fetched alongside their bundles
-(see `services/featureLoader.ts`), and each has its own budget in
+`search.css`, `local.css`, `phone.css` and `extras.css` are fetched alongside
+their bundles (see `services/featureLoader.ts`), and each has its own budget in
 `tests/test_asset_budget.py` (see [Size budgets](budgets.md#stylesheets)). A
 rule belongs in `features.css` when its selector names replay, in `wrapped.css`
 when it names Wrapped or what the statistics rail renders, its tabs and the
 flight list included, in `search.css` when it names the search panel or its
 pulse on the map, in `local.css` when it names the panel of Your flights or the
-sheet over the map while files are dragged, and in `extras.css` when it names
-the phone's sheet (`.mobile-sheet`, `.sheet-*`); the file headers spell out the
-rest, including the one-way dependency on `styles.css`.
+sheet over the map while files are dragged, in `phone.css` when it names the
+phone's sheet (`.mobile-sheet`, `.sheet-*`, the sheet's `.gradient-chip`), and
+in `extras.css` when it names an airport popup's list of flights
+(`.popup-flight*`, `.popup-runways`); the file headers spell out the rest,
+including the one-way dependency on `styles.css`.
 
 A surface across the whole width of the map on a phone (the tab bar, its sheet)
 takes `--color-bg-edge`, the secondary surface at an alpha of 0.99: Chrome

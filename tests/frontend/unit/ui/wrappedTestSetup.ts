@@ -194,7 +194,6 @@ export function createWrappedMockApp(): MockApp {
         [50, 8],
         [52, 10],
       ],
-      center: [51, 9],
       dataDir: "/data",
     },
   });

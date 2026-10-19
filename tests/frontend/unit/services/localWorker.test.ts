@@ -31,8 +31,8 @@ import {
   verifiedFetch,
   type Fetch,
   type BuildRequest,
-  type BuildResponse,
   type LocalWorkerScope,
+  type WorkerMessage,
   type PyodideLike,
   type PyodideLoader,
   RUNTIME_FAILED_MESSAGE,
@@ -40,6 +40,7 @@ import {
 } from "../../../../flown/frontend/services/localWorker";
 import {
   CACHE_BUSY_MESSAGE,
+  CACHE_GONE_MESSAGE,
   CACHE_WAIT_MS,
 } from "../../../../flown/frontend/services/localStore";
 
@@ -47,7 +48,6 @@ const OUTCOME = {
   years: [2025],
   flights: 1,
   airports: 2,
-  center: [51, 12],
   bounds: [
     [50, 11],
     [52, 13],
@@ -55,7 +55,19 @@ const OUTCOME = {
 };
 
 /** What Pyodide throws for an exception of the Python run */
-class PythonError extends Error {}
+class PythonError extends Error {
+  /** The name of the Python exception's class */
+  type = "Exception";
+}
+
+/** The cache's connection as IDBFS opens it on a sync, and keeps */
+class FakeConnection {
+  onversionchange: (() => void) | null = null;
+  closed = 0;
+  close(): void {
+    this.closed++;
+  }
+}
 
 /** A Pyodide whose file system is a map of paths, directories ending in / */
 class FakePyodide implements PyodideLike {
@@ -79,7 +91,13 @@ class FakePyodide implements PyodideLike {
   parserHangs = false;
   /** The files under /input as the Python run saw them */
   inputsAtRun = new Map<string, Uint8Array>();
+  /** What a write of a file fails with, if anything: memory run out */
+  writeError: Error | null = null;
+  /** IDBFS's connections, by the mount's path (watchCache) */
+  readonly idbfs = { dbs: {} as Record<string, FakeConnection | undefined> };
   readonly ffi = { PythonError };
+  /** Where the cache is mounted */
+  mountedAt: string | null = null;
   readonly globals = {
     set: (name: string, value: unknown): void => {
       if (name === "report") {
@@ -88,7 +106,7 @@ class FakePyodide implements PyodideLike {
     },
   };
   readonly FS = {
-    filesystems: { IDBFS: "idbfs" },
+    filesystems: { IDBFS: this.idbfs },
     mkdirTree: (path: string): void => {
       const parts = path.split("/").filter(Boolean);
       for (let i = 1; i <= parts.length; i++) {
@@ -96,13 +114,19 @@ class FakePyodide implements PyodideLike {
       }
     },
     mount: (type: unknown, _options: object, path: string): void => {
-      this.mounted.push(`${String(type)}:${path}`);
+      this.mounted.push(`${type === this.idbfs ? "idbfs" : "?"}:${path}`);
+      this.mountedAt = path;
     },
     syncfs: (populate: boolean, callback: (error: unknown) => void): void => {
       this.synced.push(populate);
+      // Opened by the first sync, and kept, as IDBFS.getDB does
+      if (this.mountedAt) {
+        this.idbfs.dbs[this.mountedAt] ??= new FakeConnection();
+      }
       if (!this.syncHangs) callback(this.syncError);
     },
     writeFile: (path: string, data: Uint8Array): void => {
+      if (this.writeError) throw this.writeError;
       this.files.set(path, data);
     },
     readFile: (path: string): Uint8Array => this.files.get(path)!,
@@ -191,7 +215,8 @@ const bytes = (...values: number[]): ArrayBuffer =>
   new Uint8Array(values).buffer;
 
 /** An exception of the Python run, as Pyodide throws it */
-const pythonError = (message: string): Error => new PythonError(message);
+const pythonError = (message: string, type = "Exception"): Error =>
+  Object.assign(new PythonError(message), { type });
 
 describe("pythonErrorMessage", () => {
   it("takes the message off the last line of a traceback", () => {
@@ -361,7 +386,7 @@ describe("Runtime", () => {
     expect(inputs.map((input) => input.bytes.byteLength)).toEqual([0, 0]);
     const run = pyodide.python.at(-1)!;
     expect(run).toContain(
-      'browser.build("/input", "/site", report, terrain=True, flags=json.loads("null"))',
+      'browser.build("/input", "/site", report, terrain=True, retry=False, flags=json.loads("null"))',
     );
     expect(outcome).toMatchObject(OUTCOME);
     expect(outcome.files.map((f) => f.path).sort()).toEqual([
@@ -402,6 +427,15 @@ describe("Runtime", () => {
     expect(pyodide.python.at(-1)).toContain("terrain=False");
   });
 
+  it("downloads again what the last build could not where asked", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime } = runtimeOf(pyodide);
+
+    await runtime.build([], true, vi.fn(), { retry: true });
+
+    expect(pyodide.python.at(-1)).toContain("retry=True");
+  });
+
   it("answers a Python failure with its message and syncs the cache still", async () => {
     const pyodide = new FakePyodide();
     pyodide.answer = pythonError(
@@ -421,6 +455,58 @@ describe("Runtime", () => {
     expect(pyodide.synced).toEqual([false]);
     // Nor do the files of a build that failed stay
     expect([...pyodide.files.keys()]).toEqual([]);
+  });
+
+  it("lets the runtime go when the Python ran out of memory", async () => {
+    const pyodide = new FakePyodide();
+    pyodide.answer = pythonError("Traceback\nMemoryError", "MemoryError");
+    const { runtime } = runtimeOf(pyodide);
+
+    // A new runtime has all the memory again, which this one keeps taken
+    await expect(runtime.build([], true, vi.fn())).rejects.toThrow(
+      RUNTIME_LOST_MESSAGE,
+    );
+  });
+
+  it("lets the runtime go when the files cannot be written into it", async () => {
+    const pyodide = new FakePyodide();
+    pyodide.writeError = new RangeError("Array buffer allocation failed");
+    const { runtime } = runtimeOf(pyodide);
+
+    await expect(
+      runtime.build([{ name: "a.kml", bytes: bytes(1) }], true, vi.fn()),
+    ).rejects.toThrow(RUNTIME_LOST_MESSAGE);
+  });
+
+  it("lets go of the cache another tab deletes, and writes nothing back into it", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime } = runtimeOf(pyodide);
+    const gone = vi.fn();
+    runtime.onCacheGone = gone;
+    let release!: (answer: string) => void;
+    await runtime.ready(vi.fn());
+    const connection = pyodide.idbfs.dbs["/flown-cache"]!;
+    vi.spyOn(pyodide, "runPythonAsync").mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    pyodide.synced.length = 0;
+
+    const building = runtime.build([], true, vi.fn());
+    await vi.waitFor(() => expect(release).toBeDefined());
+    // That tab's deletion waits on this connection
+    connection.onversionchange!();
+    release(JSON.stringify(OUTCOME));
+    await building;
+
+    expect(gone).toHaveBeenCalledTimes(1);
+    expect(connection.closed).toBe(1);
+    expect(pyodide.idbfs.dbs["/flown-cache"]).toBeUndefined();
+    // A sync would open the database again, with the old cache in it
+    expect(pyodide.synced).toEqual([]);
+    await expect(runtime.build([], true, vi.fn())).rejects.toThrow(
+      CACHE_GONE_MESSAGE,
+    );
+    expect(pyodide.synced).toEqual([]);
   });
 
   it("lets the runtime go when lxml did not come, which its load does not say", async () => {
@@ -444,10 +530,10 @@ describe("Runtime", () => {
 describe("serveBuilds", () => {
   function scopeOf(runtime: Runtime): {
     scope: LocalWorkerScope;
-    posted: [BuildResponse, Transferable[] | undefined][];
+    posted: [WorkerMessage, Transferable[] | undefined][];
     send(request: BuildRequest): void;
   } {
-    const posted: [BuildResponse, Transferable[] | undefined][] = [];
+    const posted: [WorkerMessage, Transferable[] | undefined][] = [];
     const scope: LocalWorkerScope = {
       onmessage: null,
       postMessage: (message, transfer) => {
@@ -516,6 +602,25 @@ describe("serveBuilds", () => {
 
     expect(posted.at(-1)).toEqual([
       { id: 6, error: RUNTIME_LOST_MESSAGE, lost: true },
+      undefined,
+    ]);
+  });
+
+  it("tells the page when another tab deleted the cache, and answers the next build as lost", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime } = runtimeOf(pyodide);
+    const { posted, send } = scopeOf(runtime);
+    await runtime.ready(vi.fn());
+
+    pyodide.idbfs.dbs["/flown-cache"]!.onversionchange!();
+    expect(posted).toEqual([[{ cacheGone: true }, undefined]]);
+
+    send({ id: 8, build: { files: [], terrain: true } });
+    await vi.waitFor(() =>
+      expect(posted.some(([m]) => "error" in m)).toBe(true),
+    );
+    expect(posted.at(-1)).toEqual([
+      { id: 8, error: CACHE_GONE_MESSAGE, lost: true },
       undefined,
     ]);
   });

@@ -15,7 +15,13 @@ from .data_exporter import ExportSelection, select_exported_paths
 from .date_tokens import strip_dates
 from .export_writers import free_text_airport_names
 from .path_content import is_exportable_path
-from .pipeline import ParsedFile, no_flight_reason, parse_files, trim_paths
+from .pipeline import (
+    ParsedFile,
+    no_flight_reason,
+    parse_files,
+    trim_paths,
+    trimmed_away_files,
+)
 from .validation import validate_kml_file
 
 if TYPE_CHECKING:
@@ -149,7 +155,7 @@ def list_flights(kml_files: Sequence[str], trim_ends: float = 0) -> Listing:
     failing: set[str] = set()
     for entry in parse_files(valid_files, airports_database):
         reason = (
-            "failed to parse" if entry.point_count == 0 else no_flight_reason(entry)
+            "failed to parse" if entry.error is not None else no_flight_reason(entry)
         )
         if not entry.path_groups:
             rows.append(
@@ -161,7 +167,10 @@ def list_flights(kml_files: Sequence[str], trim_ends: float = 0) -> Listing:
         parsed.append(entry)
 
     paths, metadata, files = _listed_paths(parsed)
-    paths, metadata = trim_paths(paths, metadata, trim_ends)
+    trimmed, trimmed_metadata = trim_paths(paths, metadata, trim_ends)
+    # A file the trim leaves without a flight fails the build as well
+    failing.update(trimmed_away_files(paths, trimmed, metadata))
+    paths, metadata = trimmed, trimmed_metadata
     exportable = [is_exportable_path(path) for path in paths]
     selection = select_exported_paths(paths, metadata, exportable)
     exported = set(selection.exported())

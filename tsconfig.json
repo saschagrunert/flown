@@ -19,9 +19,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
 
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true
+    "skipLibCheck": true
   },
   "include": ["flown/frontend/**/*"]
 }

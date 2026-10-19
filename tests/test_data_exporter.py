@@ -24,10 +24,12 @@ from flown.data_exporter import (
     YearExportResult,
     _assemble_year_file,
     _chunk_count,
+    _chunk_target,
     _export_chunks,
     _group_paths_by_year,
     _part_paths,
     _plan_chunks,
+    _split_by_weight,
     export_all_data,
     process_year_chunk,
 )
@@ -42,10 +44,11 @@ from flown.path_content import (
     exported_contents,
     is_exportable_path,
 )
-from flown.segment_codec import FORMAT_VERSION, decode_ground
+from flown.segment_codec import FORMAT_VERSION
 from flown.site_output import STAGING_PREFIX, SiteOutput, day_start
 from flown.types import PathMetadata, TrackPoint
 from flown.validation import protected_directories
+from tests.codec import decode_ground
 from tests.conftest import FlatTiles, decoded_segments, segments_by_id
 
 
@@ -668,17 +671,73 @@ class TestGroupPathsByYear:
 
 class TestChunkPlanning:
     @pytest.mark.parametrize(
-        "paths,years,workers,expected",
+        "points,target,paths,expected",
         [
-            (10, 1, 8, 1),  # too few paths to split
-            (100, 1, 8, 2),  # 100 // 50 chunks of at least 50 paths
-            (100_000, 2, 8, 4),  # 8 workers over 2 years
-            (100_000, 16, 8, 1),  # more years than workers
-            (0, 1, 8, 1),
+            (5_000, 10_000, 10, 1),  # too few points to split
+            (25_000, 10_000, 10, 2),  # two chunks of at least 10,000
+            (100_000, 10_000, 3, 3),  # never more chunks than paths
+            (0, 10_000, 0, 1),
         ],
     )
-    def test_chunk_count(self, paths, years, workers, expected):
-        assert _chunk_count(paths, years, workers) == expected
+    def test_chunk_count(self, points, target, paths, expected):
+        assert _chunk_count(points, target, paths) == expected
+
+    @pytest.mark.parametrize(
+        "total,workers,expected",
+        [
+            (160_000, 16, 10_000),  # every worker a share
+            (40_000, 16, 10_000),  # but not less than the minimum per chunk
+            (400_000, 16, 25_000),
+            (400_000, 1, 400_000),  # one worker: one chunk per year
+        ],
+    )
+    def test_chunk_target(self, total, workers, expected):
+        assert _chunk_target(total, workers) == expected
+
+    def test_runs_of_about_the_same_weight_in_order(self):
+        assert _split_by_weight([0, 1, 2, 3, 4, 5], [1, 1, 1, 1, 1, 1], 3) == [
+            [0, 1],
+            [2, 3],
+            [4, 5],
+        ]
+        # A long path fills a run on its own
+        assert _split_by_weight([0, 1, 2, 3], [10, 1, 1, 8], 2) == [[0], [1, 2, 3]]
+        # Every run keeps a path, however the weight falls
+        assert _split_by_weight([0, 1, 2], [100, 1, 1], 3) == [[0], [1], [2]]
+        assert _split_by_weight([0, 1, 2], [1, 1, 100], 3) == [[0], [1], [2]]
+        assert _split_by_weight([7], [5], 4) == [[7]]
+        assert _split_by_weight([], [], 1) == [[]]
+
+    def test_chunks_follow_the_points_not_the_paths(self, monkeypatch):
+        """72 paths in one year left 14 of 16 workers idle at 50 a chunk."""
+        monkeypatch.setattr(exporter_module, "MIN_POINTS_PER_CHUNK", 100)
+        by_year = {2025: [0, 1, 2, 3], 2026: [4, 5]}
+        ids = {index: index for index in range(6)}
+        points = {0: 300, 1: 100, 2: 100, 3: 100, 4: 50, 5: 50}
+
+        plans = _plan_chunks(by_year, ids, 6, point_counts=points)
+
+        # 700 points over 6 workers: chunks of at least 117 points
+        assert [(p.year, p.path_indices) for p in plans] == [
+            (2025, [0]),
+            (2025, [1]),
+            (2025, [2]),
+            (2025, [3]),
+            (2026, [4, 5]),
+        ]
+
+    def test_one_worker_gets_one_chunk_a_year(self, monkeypatch):
+        """The build in the page has a single worker (see flown.browser)."""
+        monkeypatch.setattr(exporter_module, "MIN_POINTS_PER_CHUNK", 1)
+        by_year = {2025: [0, 1, 2], 2026: [3]}
+        points = dict.fromkeys(range(4), 50_000)
+
+        plans = _plan_chunks(by_year, {}, 1, point_counts=points)
+
+        assert [(p.year, p.path_indices) for p in plans] == [
+            (2025, [0, 1, 2]),
+            (2026, [3]),
+        ]
 
     def test_plans_follow_ascending_years_and_carry_the_path_ids(self):
         by_year = {2026: [0], 2025: [1, 2, 3], 2027: [4]}
@@ -694,15 +753,17 @@ class TestChunkPlanning:
         ]
 
     def test_chunks_split_a_year_in_input_order(self, monkeypatch):
-        monkeypatch.setattr(exporter_module, "MIN_PATHS_PER_CHUNK", 1)
+        monkeypatch.setattr(exporter_module, "MIN_POINTS_PER_CHUNK", 1)
         by_year = {2025: [0, 1, 2, 3, 4, 5], 2026: []}
         ids = {index: 100 - index for index in range(5)}
 
         plans = _plan_chunks(by_year, ids, max_workers=4)
 
+        # Six points over four workers: chunks of two
         assert [(p.year, p.index, p.path_indices, p.path_ids) for p in plans] == [
-            (2025, 0, [0, 1, 2], [100, 99, 98]),
-            (2025, 1, [3, 4, 5], [97, 96, None]),
+            (2025, 0, [0, 1], [100, 99]),
+            (2025, 1, [2, 3], [98, 97]),
+            (2025, 2, [4, 5], [96, None]),
             (2026, 0, [], []),
         ]
 
@@ -829,7 +890,7 @@ class TestExportChunks:
             1,
         )
 
-        monkeypatch.setattr(exporter_module, "MIN_PATHS_PER_CHUNK", 1)
+        monkeypatch.setattr(exporter_module, "MIN_POINTS_PER_CHUNK", 1)
         plans = _plan_chunks({2025: list(range(6))}, ids, max_workers=3)
         assert len(plans) == 3
         results = _export_chunks(plans, paths, metadata, str(chunked), 3)
@@ -853,6 +914,21 @@ class TestExportChunks:
             _export_chunks(plans, paths, _metadata([{}]), str(tmp_path), 4)
         # An unexpected error keeps its traceback for the bug report
         assert "Traceback" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        ("error", "reason"),
+        [(MemoryError(), "out of memory"), (KeyError(), "KeyError")],
+    )
+    def test_an_error_without_a_message_is_still_said(self, tmp_path, error, reason):
+        paths = [_two_point_path(0)]
+        plans = _plan_chunks({2025: [0]}, {0: 0}, 4)
+        with (
+            patch("flown.data_exporter.process_year_chunk", side_effect=error),
+            pytest.raises(RuntimeError) as failure,
+        ):
+            _export_chunks(plans, paths, _metadata([{}]), str(tmp_path), 4)
+        assert str(failure.value) == f"Failed to process year 2025: {reason}"
+        assert failure.value.__cause__ is error
 
     def test_processing_error_is_wrapped_multi_chunk(self, tmp_path):
         paths = [_two_point_path(0), _two_point_path(1)]
@@ -929,7 +1005,7 @@ class TestExportChunks:
         years = list(range(2020, 2028))
         paths = [_two_point_path(i) for i in range(len(years))]
         metadata = _metadata([{"year": year} for year in years])
-        monkeypatch.setattr(exporter_module, "MIN_PATHS_PER_CHUNK", 1)
+        monkeypatch.setattr(exporter_module, "MIN_POINTS_PER_CHUNK", 1)
         plans = _plan_chunks(
             {year: [index] for index, year in enumerate(years)},
             {index: index for index in range(len(years))},
@@ -1637,7 +1713,7 @@ class TestExportAllData:
                 for index in range(len(paths))
             ]
         )
-        monkeypatch.setattr(exporter_module, "MIN_PATHS_PER_CHUNK", 1)
+        monkeypatch.setattr(exporter_module, "MIN_POINTS_PER_CHUNK", 1)
 
         trees = []
         for cpu_count in (1, 4):

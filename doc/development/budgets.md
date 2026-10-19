@@ -22,7 +22,8 @@ gzipped sizes CI prints when a budget is close.
 | `BUDGET_FEATURES`      | `features.bundle.js`: replay, the 3D view, the imagery, the profile, the cross-section, the tour |
 | `BUDGET_WRAPPED`       | `wrapped.bundle.js`: Wrapped, the statistics panel and the flight list                           |
 | `BUDGET_SEARCH`        | `search.bundle.js`: the search of airports and places, its panel and the client of Photon        |
-| `BUDGET_EXTRAS`        | `extras.bundle.js`: the phone's bar and sheet, packing share tokens and the export of the map    |
+| `BUDGET_PHONE`         | `phone.bundle.js`: the phone's bar and sheet, which the phone layout alone fetches               |
+| `BUDGET_EXTRAS`        | `extras.bundle.js`: packing share tokens, the export of the map and an airport popup's flights   |
 | `BUDGET_LOCAL`         | `local.bundle.js`: Your flights, its panel, the store in the browser and the build's page side   |
 | `BUDGET_WORKER`        | `yearWorker.bundle.js`, preloaded in the page head and started with the first year file          |
 | `BUDGET_LOCAL_WORKER`  | `localWorker.bundle.js`: the worker that builds the visitor's flights with Pyodide               |
@@ -35,10 +36,11 @@ The stylesheets are minified by the Python side, not by `build.js`, so their
 budgets are a test, `tests/test_asset_budget.py`, which fails in CI on a
 regression and leaves the generator itself alone. `styles.css` is on the
 critical path of every visit; `features.css`, `wrapped.css`, `search.css`,
-`local.css` and `extras.css` are fetched with their lazy bundles (see
-[Stylesheets](frontend.md#stylesheets)), so room taken in them is not the same
-as room taken in `styles.css`, and each has a budget of its own, for its bytes
-as the site serves it and one for them gzipped at level 9, as the bundles have.
+`local.css`, `phone.css` and `extras.css` are fetched with their lazy bundles
+(see [Stylesheets](frontend.md#stylesheets)), so room taken in them is not the
+same as room taken in `styles.css`, and each has a budget of its own, for its
+bytes as the site serves it and one for them gzipped at level 9, as the bundles
+have.
 
 ## Raising a budget
 

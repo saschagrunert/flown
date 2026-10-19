@@ -137,7 +137,7 @@ export async function gotoApp(page: Page, path = "/"): Promise<void> {
 
 /**
  * Wait for the app to finish initializing (also after a reload). In the
- * phone layout that includes the bar, which comes with the extras bundle
+ * phone layout that includes the bar, which comes with the phone bundle
  * (MapApp.followMobileBar) a moment after the app is there.
  */
 export async function waitForAppReady(page: Page): Promise<void> {

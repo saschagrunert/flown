@@ -14,9 +14,9 @@ Encoding therefore scales each column to an integer, stores the difference
 to the previous row, and writes a path column by column rather than row by
 row, which puts the repeating differences next to each other for gzip. The
 format is lossless for the values the exporter produces: every column is
-scaled by exactly the step it was rounded to, so
-``decode_rows(encode_start(start), encode_rows(start, rows)) == rows``,
-which ``tests/test_segment_codec.py`` checks over generated data.
+scaled by exactly the step it was rounded to, so decoding gives back the
+rows exactly, which ``tests/test_segment_codec.py`` checks over generated
+data with the decoder of ``tests/codec.py``.
 
 Format 4 adds the ground under every row (see ``flown.terrain``), in
 feet, as a column of its own beside the others: ``encode_ground``. A path
@@ -48,14 +48,14 @@ the order of ``path_info``, which carries the ids. A path without relative
 times or without ground has null in that array. Written path by path, the
 file made gzip switch between five unrelated number streams every few
 hundred values; one stream at a time it compresses 7 to 8 % better.
-:func:`split_segments` turns the layout back into one entry per path.
 
-``flown/frontend/services/yearDecode.ts`` mirrors ``decode_rows``,
-``decode_ground`` and the layout ``split_segments`` reads; the year file
-carries ``FORMAT_VERSION`` so the two cannot be mismatched silently.
+The package only writes the format. ``flown/frontend/services/yearDecode.ts``
+reads it, and ``tests/codec.py`` mirrors that decoder for the tests; the
+year file carries ``FORMAT_VERSION`` so the two sides cannot be mismatched
+silently.
 """
 
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING
 
 from .types import COORDINATE_DECIMALS
 
@@ -72,13 +72,9 @@ __all__ = [
     "SPEED_SCALE",
     "TIME_SCALE",
     "EncodedColumns",
-    "PathEntry",
-    "decode_ground",
-    "decode_rows",
     "encode_ground",
     "encode_rows",
     "encode_start",
-    "split_segments",
 ]
 
 # Bumped whenever the layout below changes, so a page never reads a year
@@ -100,22 +96,12 @@ GROUND_STEP = 10
 
 # Column order of a decoded row, and of the encoded columns
 LAT, LON, ALTITUDE, SPEED, TIME = range(5)
-# The divisor of each column but the altitude, which is multiplied instead
-_SCALES = (COORDINATE_SCALE, COORDINATE_SCALE, 1, SPEED_SCALE, TIME_SCALE)
 # The columns written as second differences (see format 7 above)
 _SECOND_ORDER = (LAT, LON)
 
 # The encoded columns of a path: lat, lon, altitude and speed, then the
 # relative time when any row has one. A row without a time has None there.
 EncodedColumns = list[list[int | None]]
-
-
-class PathEntry(TypedDict):
-    """One path of a year file's ``segments``, see :func:`split_segments`."""
-
-    start: list[int]
-    columns: EncodedColumns
-    ground: NotRequired[list[int]]
 
 
 def encode_start(start: Sequence[float]) -> list[int]:
@@ -176,36 +162,6 @@ def encode_rows(start: Sequence[float], rows: Sequence[SegmentRow]) -> EncodedCo
     return columns
 
 
-def _unscale(column: int, value: int) -> float:
-    if column == ALTITUDE:
-        return float(value * ALTITUDE_STEP)
-    # Dividing by the scale gives the float nearest to the decimal, exactly
-    # what round() produced on the way in
-    return value / _SCALES[column]
-
-
-def decode_rows(
-    start: Sequence[int], columns: Sequence[Sequence[int | None]]
-) -> list[SegmentRow]:
-    """Undo :func:`encode_rows`. The mirror of the frontend's decoder."""
-    previous = [start[LAT] if start else 0, start[LON] if start else 0, 0, 0, 0]
-    step = [0, 0]
-    rows: list[SegmentRow] = []
-    for deltas in zip(*columns, strict=True):
-        row: SegmentRow = []
-        for column, difference in enumerate(deltas):
-            if difference is None:
-                continue
-            if column in _SECOND_ORDER:
-                step[column] += difference
-                previous[column] += step[column]
-            else:
-                previous[column] += difference
-            row.append(_unscale(column, previous[column]))
-        rows.append(row)
-    return rows
-
-
 def encode_ground(ground: Sequence[float]) -> list[int]:
     """The ground column of a path: feet in ``GROUND_STEP``, as differences.
 
@@ -222,35 +178,3 @@ def encode_ground(ground: Sequence[float]) -> list[int]:
         column.append(value - previous)
         previous = value
     return column
-
-
-def decode_ground(column: Sequence[int]) -> list[float]:
-    """Undo :func:`encode_ground`. The mirror of the frontend's decoder."""
-    ground: list[float] = []
-    value = 0
-    for difference in column:
-        value += difference
-        ground.append(float(value * GROUND_STEP))
-    return ground
-
-
-def split_segments(year_file: dict[str, Any]) -> dict[int, PathEntry]:
-    """The ``segments`` of a parsed year file, one entry per path id.
-
-    Undoes the layout of format 8: the arrays of ``segments`` hold one
-    entry per path in the order of ``path_info``. A path's columns are what
-    :func:`encode_rows` returned for it, without the time column when it has
-    no relative times, and its ground is left out when it has none.
-    """
-    segments = year_file["segments"]
-    paths: dict[int, PathEntry] = {}
-    for index, info in enumerate(year_file["path_info"]):
-        columns = [column[index] for column in segments["columns"]]
-        entry: PathEntry = {
-            "start": segments["start"][index],
-            "columns": columns if columns[TIME] is not None else columns[:TIME],
-        }
-        if segments["ground"][index] is not None:
-            entry["ground"] = segments["ground"][index]
-        paths[info["id"]] = entry
-    return paths

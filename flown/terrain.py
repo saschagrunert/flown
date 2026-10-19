@@ -33,21 +33,25 @@ The tiles are fetched by ``terrain_fetch`` and their pixels kept decoded
 by ``terrain_pixels``; this module samples the ground from them.
 """
 
+import hashlib
 import math
 import os
 import re
+import struct
 import time
 from array import array
 from itertools import pairwise
+from pathlib import Path
 from statistics import median_high
 from typing import TYPE_CHECKING, Protocol
 
+from .cache import load_bytes, prune_entries, source_fingerprint, store_bytes
 from .constants import METERS_TO_FEET
 from .exceptions import TerrainUnavailableError
 from .geometry import TERRAIN_MAX_LATITUDE, planar_metres
 from .logger import logger
 from .segment_codec import ALTITUDE, GROUND_STEP, LAT, LON, SPEED, TIME
-from .terrain_fetch import TERRAIN_CACHE_DIR, TerrariumTiles
+from .terrain_fetch import TERRAIN_CACHE_DIR, TILE_URL, TerrariumTiles
 from .terrain_pixels import TILE_SIZE, DecodeFailedError, TileKey
 from .types import COORDINATE_DECIMALS
 
@@ -94,6 +98,10 @@ class TileSource(Protocol):
     order. A tile that is not available is left out of the answer. An
     ``array("d")`` holds a few million of them in a fraction of the memory
     a list takes.
+
+    A source that also has a ``ground_dir`` (a ``Path``, or None for none)
+    keeps the ground sampled under each path there, which the next build
+    reads rather than sampling it again (see ``sample_path_elevations``).
     """
 
     def pixels(
@@ -301,8 +309,51 @@ def _all_rounded(paths: Iterable[FlightPath]) -> Iterable[Coordinate]:
     )
 
 
+def _content_coordinates(contents: Iterable[bytes]) -> Iterable[Coordinate]:
+    """The rounded coordinates the contents of paths hold, one after the other.
+
+    A content is the coordinates, rounded the way they are exported, and the
+    altitude of every point (see ``path_content.exported_contents``), which
+    the exporter has packed already: unpacking it takes a fraction of the
+    time of rounding every point again.
+    """
+    return (
+        (lat, lon)
+        for content in contents
+        for lat, lon, _ in struct.iter_unpack("<3d", content)
+    )
+
+
+# What the ground kept for a path follows from: the code that samples it, the
+# zoom and the tiles. A change to any of them makes a key no entry has
+_GROUND_MODULES = ("terrain", "terrain_pixels", "png")
+_GROUND_FORMAT = 1
+
+
+def _ground_key_prefix() -> bytes:
+    fingerprint = source_fingerprint(Path(__file__).parent, _GROUND_MODULES)
+    return f"{_GROUND_FORMAT}:{fingerprint}:{TERRAIN_ZOOM}:{TILE_URL}:".encode()
+
+
+def _ground_path(ground_dir: Path, prefix: bytes, content: bytes) -> Path:
+    """Where the ground under a path of ``content`` is kept."""
+    return ground_dir / hashlib.blake2b(prefix + content, digest_size=16).hexdigest()
+
+
+def _load_ground(path: Path, points: int) -> PointElevations | None:
+    """The ground kept at ``path`` for a path of ``points``, None for none."""
+    data = load_bytes(path)
+    elevations = array("d")
+    if data is None or len(data) != points * elevations.itemsize:
+        return None
+    elevations.frombytes(data)
+    return elevations
+
+
 def sample_path_elevations(
-    paths: Mapping[int, FlightPath], source: TileSource
+    paths: Mapping[int, FlightPath],
+    source: TileSource,
+    contents: Mapping[int, bytes] | None = None,
 ) -> dict[int, PointElevations]:
     """The ground under every point of the given paths, keyed like them.
 
@@ -313,12 +364,38 @@ def sample_path_elevations(
     when tiles were missing; never raises for a tile it could not get,
     unless ``FLOWN_REQUIRE_TERRAIN`` is "1": then a missing tile, or
     tiles that cannot be decoded at all, raise ``TerrainUnavailableError``.
+
+    ``contents`` are those of the paths (see
+    ``path_content.exported_contents``), which hold the rounded coordinates.
+    With them, and a source with a ``ground_dir``, the ground of a path
+    whose content was sampled before is read from there: sampling every
+    point of every flight again took a quarter of a build whose flights had
+    not changed. Only a ground the tiles cover at every point is kept, as a
+    point without one gets it once its tile is there.
     """
     started = time.monotonic()
     required = os.environ.get(REQUIRE_TERRAIN_ENV) == "1"
+    ground_dir: Path | None = (
+        getattr(source, "ground_dir", None) if contents is not None else None
+    )
+    prefix = _ground_key_prefix() if ground_dir is not None else b""
+    kept: dict[int, PointElevations] = {}
+    if ground_dir is not None and contents is not None:
+        for index, path in paths.items():
+            found = _load_ground(
+                _ground_path(ground_dir, prefix, contents[index]), len(path)
+            )
+            if found is not None:
+                kept[index] = found
+    wanted = {index: path for index, path in paths.items() if index not in kept}
+    coordinates = (
+        _content_coordinates(contents[index] for index in wanted)
+        if contents is not None
+        else _all_rounded(wanted.values())
+    )
     try:
-        elevations, tiles, missing = sample_elevations(
-            _all_rounded(paths.values()), source
+        elevations, tiles, missing = (
+            sample_elevations(coordinates, source) if wanted else (array("d"), 0, 0)
         )
     except DecodeFailedError as e:
         if required:
@@ -327,15 +404,19 @@ def sample_path_elevations(
                 f"{REQUIRE_TERRAIN_ENV}=1 requires them"
             ) from e
         logger.warning(
-            "Terrain: the elevation tiles could not be decoded (%s); every "
-            "flight keeps the ground between its airfields",
+            "Terrain: the elevation tiles could not be decoded (%s); %d "
+            "flight(s) keep the ground between their airfields",
             e,
+            len(wanted),
         )
-        return {}
+        return kept
     by_path: dict[int, PointElevations] = {}
     uncovered = 0
     offset = 0
     for index, path in paths.items():
+        if index in kept:
+            by_path[index] = kept[index]
+            continue
         own = elevations[offset : offset + len(path)]
         offset += len(path)
         gaps = sum(map(math.isnan, own))
@@ -343,12 +424,32 @@ def sample_path_elevations(
             uncovered += 1
         if gaps < len(own):
             by_path[index] = own
-    logger.info(
-        "  Sampled the ground under %s point(s) from %d elevation tile(s) in %.1f s",
-        f"{len(elevations):,}",
-        tiles,
-        time.monotonic() - started,
+        if not gaps and ground_dir is not None and contents is not None:
+            store_bytes(
+                _ground_path(ground_dir, prefix, contents[index]),
+                own.tobytes(),
+                prune=False,
+            )
+    if ground_dir is not None and wanted:
+        prune_entries(ground_dir)
+    sampled_before = (
+        f", and read that of {len(kept)} flight(s) sampled before" if kept else ""
     )
+    if wanted:
+        logger.info(
+            "  Sampled the ground under %s point(s) from %d elevation tile(s) "
+            "in %.1f s%s",
+            f"{len(elevations):,}",
+            tiles,
+            time.monotonic() - started,
+            sampled_before,
+        )
+    else:
+        logger.info(
+            "  Read the ground of %d flight(s) sampled before in %.1f s",
+            len(kept),
+            time.monotonic() - started,
+        )
     if missing and required:
         raise TerrainUnavailableError(
             f"{missing} of {tiles} elevation tile(s) are unavailable, and "

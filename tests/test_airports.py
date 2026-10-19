@@ -187,7 +187,8 @@ class TestExtractAirportName:
             ("Sunday flight 16 Aug 2026", None),
             ("Samstag EDDS 1513h", "EDDS"),
             ("KFHR Friday Harbor Sa., 16.08.2026", "KFHR Friday Harbor"),
-            ("Flight EDDS-EDDP 2026-08-16", "Flight EDDS-EDDP"),
+            # A route without spaces names its departure here
+            ("Flight EDDS-EDDP 2026-08-16", "Flight EDDS"),
             ("EDXX 16 Aug 2026", "EDXX"),
             ("EDDS Stuttgart (16.08.2026)", "EDDS Stuttgart"),
             ("Sunday 16 Aug 2026", None),

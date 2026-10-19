@@ -28,7 +28,7 @@ function drag(
 const FILES = { types: ["Files"], files: [] };
 
 let controller: AbortController;
-type AppLike = Pick<MapApp, "signal" | "toggleLocalFlights">;
+type AppLike = Pick<MapApp, "signal" | "toggleLocalFlights" | "wrappedVisible">;
 
 let app: AppLike & {
   toggleLocalFlights: ReturnType<typeof vi.fn<MapApp["toggleLocalFlights"]>>;
@@ -43,6 +43,7 @@ beforeEach(() => {
   app = {
     signal: controller.signal,
     toggleLocalFlights: vi.fn<MapApp["toggleLocalFlights"]>(),
+    wrappedVisible: false,
   };
 });
 
@@ -130,6 +131,21 @@ describe("showDropSheet", () => {
     window.dispatchEvent(drag("dragenter", { types: ["text/plain"] }));
     expect(made.hidden).toBe(true);
     window.dispatchEvent(drag("dragenter", FILES));
+    expect(made.hidden).toBe(false);
+    controller.abort();
+  });
+
+  it("stays away while Wrapped is open, which refuses the drop", () => {
+    app.wrappedVisible = true;
+    const made = showDropSheet(app);
+
+    window.dispatchEvent(drag("dragenter", FILES));
+    expect(made.hidden).toBe(true);
+    window.dispatchEvent(drag("dragover", FILES));
+    expect(made.hidden).toBe(true);
+
+    app.wrappedVisible = false;
+    window.dispatchEvent(drag("dragover", FILES));
     expect(made.hidden).toBe(false);
     controller.abort();
   });

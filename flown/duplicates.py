@@ -40,7 +40,7 @@ from datetime import UTC, datetime
 from heapq import merge
 from math import ceil, cos, floor, nan, radians, sqrt
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from .cache import CACHE_DIR, load_entry, source_fingerprint, store_entry
 from .constants import KM_TO_NAUTICAL_MILES, MAX_GROUNDSPEED_KNOTS, SECONDS_PER_HOUR
@@ -129,16 +129,19 @@ _ENDS_SHARE = 0.15
 # digest of everything it reads of its inputs (see _overlaps_key): comparing
 # the 105 flights of data/ took 470 ms, a fifth of a build that found every
 # file in the parse cache, and a build of the same flights finds the same
-# (in 30 ms, mostly for the digest). In a directory of this user's alone,
-# as the parse cache (see cache.store_entry); an entry holds the indices of
-# the paths and nothing of them.
+# (in 30 ms, mostly for the digest). One entry for each year and one for
+# each New Year (see drop_overlapping_paths), so that a flight added to a
+# year compares that year alone again. In a directory of this user's alone,
+# as the parse cache (see cache.store_entry); an entry holds the places of
+# the paths in their year and nothing of them.
 OVERLAPS_CACHE_DIR = CACHE_DIR / "overlaps"
 # Bump whenever what an entry holds changes
-_OVERLAPS_FORMAT = 1
+_OVERLAPS_FORMAT = 2
 # The modules whose code decides which recordings are of one flight
 _OVERLAPS_MODULES = (
     "constants",
     "date_tokens",
+    "date_words",
     "duplicates",
     "geometry",
     "path_content",
@@ -701,146 +704,247 @@ def drop_overlapping_paths(
     than two real clocks are off by are not compared at all: the kept ones
     are gone through in the order they started, and one that ended long
     before a recording on a real clock started did so before every later
-    one. A year left without an exported path is left out.
+    one. Then the recordings around each New Year are compared: two
+    loggers whose clocks are a few seconds apart put a flight that took off
+    at midnight into two years (see ``_around_new_year``). A year left
+    without an exported path is left out.
 
-    What is found is kept for the next build of the same paths (see
-    ``OVERLAPS_CACHE_DIR``), which then only logs it again.
+    What is found is kept for the next build (see ``OVERLAPS_CACHE_DIR``),
+    of each year and of each New Year on its own: a build with a flight
+    added compares its year and the New Years next to it again, and only
+    logs what it finds of the others.
     """
-    key = _overlaps_key(paths_by_year, all_path_groups, all_path_metadata, exported)
-    entry = OVERLAPS_CACHE_DIR / f"{key}.json.zst"
-    pairs = _kept_pairs(load_entry(entry))
-    if pairs is None:
-        pairs = _overlapping_pairs(
-            paths_by_year, all_path_groups, all_path_metadata, exported
+    fingerprint = source_fingerprint(Path(__file__).parent, _OVERLAPS_MODULES)
+    compared = {
+        year: [index for index in indices if index in exported]
+        for year, indices in paths_by_year.items()
+    }
+    digests = {
+        year: _year_key(fingerprint, year, indices, all_path_groups, all_path_metadata)
+        for year, indices in compared.items()
+    }
+    # Made when a year, or a New Year next to it, is compared again
+    timed_by_year: dict[int, dict[int, _Timed]] = {}
+
+    def timed(year: int) -> dict[int, _Timed]:
+        if year not in timed_by_year:
+            timed_by_year[year] = {
+                index: recording
+                for index in compared[year]
+                if (recording := _Timed.of(all_path_groups[index])) is not None
+            }
+        return timed_by_year[year]
+
+    pairs: list[tuple[int, int]] = []
+    dropped: set[int] = set()
+    for year, indices in compared.items():
+        found = _kept_pairs(digests[year], indices)
+        if found is None:
+            found = []
+            _pair_recordings(timed(year), all_path_metadata, found, dropped)
+            _keep_pairs(digests[year], indices, found)
+        dropped.update(drop for drop, _ in found)
+        pairs.extend(found)
+    for year in sorted(compared):
+        if year + 1 not in compared:
+            continue
+        indices = compared[year] + compared[year + 1]
+        key = _new_year_key(
+            year + 1, digests[year], digests[year + 1], indices, dropped
         )
-        store_entry(entry, {"pairs": pairs})
+        found = _kept_pairs(key, indices)
+        if found is None:
+            found = []
+            around = _around_new_year(timed(year), timed(year + 1), year + 1, dropped)
+            if around:
+                _pair_recordings(around, all_path_metadata, found, dropped)
+            _keep_pairs(key, indices, found)
+        dropped.update(drop for drop, _ in found)
+        pairs.extend(found)
     for drop, keep in pairs:
         logger.warning(
             "Skipping a flight in %s: the same flight as in %s, recorded twice",
             *_names(all_path_metadata, drop, keep),
         )
-    return without_paths(paths_by_year, {drop for drop, _ in pairs}, exported)
+    return without_paths(paths_by_year, dropped, exported)
 
 
-def _overlaps_key(
-    paths_by_year: Mapping[int, list[int]],
+def _input_order(indices: Sequence[int]) -> list[int]:
+    """The places in ``indices``, from the first path in input order on.
+
+    The comparison reads the order of the paths in the input (of two alike
+    the first stays) and nothing else of their indices, so an entry kept by
+    the places of its paths holds for the same paths under other indices.
+    """
+    return sorted(range(len(indices)), key=indices.__getitem__)
+
+
+def _year_key(
+    fingerprint: str,
+    year: int,
+    indices: Sequence[int],
     all_path_groups: FlightPathGroup,
     all_path_metadata: Sequence[PathMetadata],
-    exported: Mapping[int, object],
 ) -> str:
-    """A digest of everything ``_overlapping_pairs`` reads of its inputs.
+    """A digest of everything the comparison of a year reads of its inputs.
 
-    The code that compares, the exported paths of every year with the
-    metadata it looks at, and their points with their times to the last
-    bit: two builds that compare the same have the same digest.
+    The code that compares, the exported paths of the year in their order
+    with the metadata it looks at, and their points with their times to the
+    last bit: two builds that compare the same have the same digest.
     """
-    fingerprint = source_fingerprint(Path(__file__).parent, _OVERLAPS_MODULES)
     digest = hashlib.blake2b(
-        f"{_OVERLAPS_FORMAT}:{fingerprint}".encode(), digest_size=16
+        f"{_OVERLAPS_FORMAT}:{fingerprint}:{year}".encode(), digest_size=16
     )
-    for year, indices in paths_by_year.items():
-        compared = [index for index in indices if index in exported]
-        described = [
-            {
-                name: all_path_metadata[index].get(name)
-                for name in _COMPARED_METADATA
-                if name in all_path_metadata[index]
-            }
-            for index in compared
-        ]
-        digest.update(
-            json.dumps([year, compared, described], default=str).encode() + b"\0"
-        )
-        for index in compared:
-            values = array("d")
-            for point in all_path_groups[index]:
-                values.extend(
-                    (point.lat, point.lon, nan if point.ts is None else point.ts)
-                )
-            digest.update(len(values).to_bytes(8, "little"))
-            digest.update(values.tobytes())
+    described = [
+        {
+            name: all_path_metadata[index].get(name)
+            for name in _COMPARED_METADATA
+            if name in all_path_metadata[index]
+        }
+        for index in indices
+    ]
+    digest.update(
+        json.dumps([_input_order(indices), described], default=str).encode() + b"\0"
+    )
+    for index in indices:
+        values = array("d")
+        for point in all_path_groups[index]:
+            values.extend((point.lat, point.lon, nan if point.ts is None else point.ts))
+        digest.update(len(values).to_bytes(8, "little"))
+        digest.update(values.tobytes())
     return digest.hexdigest()
 
 
-def _kept_pairs(entry: Any) -> list[tuple[int, int]] | None:
-    """The pairs a kept entry holds (see ``drop_overlapping_paths``), if any."""
+def _new_year_key(
+    year: int,
+    before: str,
+    after: str,
+    indices: Sequence[int],
+    dropped: set[int],
+) -> str:
+    """A digest of everything the comparison around a New Year reads.
+
+    The digests of the two years (``_year_key``, ``before`` and ``after``),
+    the order of their paths, which of them an earlier comparison left out,
+    and the year that starts.
+    """
+    left_out = [place for place, index in enumerate(indices) if index in dropped]
+    described = [_OVERLAPS_FORMAT, year, before, after, _input_order(indices), left_out]
+    return hashlib.blake2b(json.dumps(described).encode(), digest_size=16).hexdigest()
+
+
+def _kept_pairs(key: str, indices: Sequence[int]) -> list[tuple[int, int]] | None:
+    """The pairs kept under ``key`` (see ``_keep_pairs``), if any."""
+    entry = load_entry(OVERLAPS_CACHE_DIR / f"{key}.json.zst")
     if not isinstance(entry, dict) or not isinstance(entry.get("pairs"), list):
         return None
     pairs = entry["pairs"]
     if not all(
         isinstance(pair, list)
         and len(pair) == 2
-        and all(isinstance(index, int) for index in pair)
+        and all(
+            isinstance(place, int)
+            and not isinstance(place, bool)
+            and 0 <= place < len(indices)
+            for place in pair
+        )
         for pair in pairs
     ):
         return None
-    return [(drop, keep) for drop, keep in pairs]
+    return [(indices[drop], indices[keep]) for drop, keep in pairs]
 
 
-def _overlapping_pairs(
-    paths_by_year: Mapping[int, list[int]],
-    all_path_groups: FlightPathGroup,
-    all_path_metadata: Sequence[PathMetadata],
-    exported: Mapping[int, object],
-) -> list[tuple[int, int]]:
-    """The (dropped, kept) recordings of one flight, as they were found.
+def _keep_pairs(
+    key: str, indices: Sequence[int], pairs: Sequence[tuple[int, int]]
+) -> None:
+    """Keep ``pairs`` under ``key``, by the places of the paths in ``indices``."""
+    place = {index: position for position, index in enumerate(indices)}
+    store_entry(
+        OVERLAPS_CACHE_DIR / f"{key}.json.zst",
+        {"pairs": [[place[drop], place[keep]] for drop, keep in pairs]},
+    )
 
-    See ``drop_overlapping_paths``.
+
+def _around_new_year(
+    before: Mapping[int, _Timed],
+    after: Mapping[int, _Timed],
+    year: int,
+    dropped: set[int],
+) -> dict[int, _Timed]:
+    """The recordings of two years that may be of one flight across them.
+
+    Those of the year before that end, and those of ``year`` that start,
+    within what two real clocks are off by of its first second; empty
+    unless both years have one. An obfuscated recording of ``year`` starts
+    then too, and is compared as it is with those of its own year.
     """
-    pairs: list[tuple[int, int]] = []
-    dropped: set[int] = set()
-    for indices in paths_by_year.values():
-        timed = {
-            index: recording
-            for index in indices
-            if index in exported
-            and (recording := _Timed.of(all_path_groups[index])) is not None
-        }
+    boundary = datetime(year, 1, 1, tzinfo=UTC).timestamp()
+    ending = {
+        index: recording
+        for index, recording in before.items()
+        if index not in dropped
+        and recording.times[-1] >= boundary - _MAX_CLOCK_OFFSET_S
+    }
+    starting = {
+        index: recording
+        for index, recording in after.items()
+        if index not in dropped and recording.times[0] <= boundary + _MAX_CLOCK_OFFSET_S
+    }
+    if not ending or not starting:
+        return {}
+    return ending | starting
 
-        # The order the recordings started in, and a recording's place in it
-        started = {
-            index: (recording.times[0], index) for index, recording in timed.items()
-        }
-        # The kept recordings, each in the order they started: those on
-        # real clocks, of which the first ``open_from`` ended too long ago
-        # for any later one on a real clock, and the others
-        real: list[int] = []
-        open_from = 0
-        other_clocks: list[int] = []
-        for index in sorted(timed, key=started.__getitem__):
-            recording = timed[index]
-            if recording.clock_known:
-                while (
-                    open_from < len(real)
-                    and recording.times[0] - timed[real[open_from]].times[-1]
-                    > _MAX_CLOCK_OFFSET_S
-                ):
-                    open_from += 1
-                candidates = merge(
-                    other_clocks, real[open_from:], key=started.__getitem__
-                )
-            else:
-                candidates = merge(other_clocks, real, key=started.__getitem__)
-            for other in list(candidates):
-                if other in dropped or not _one_flight(
-                    timed[other],
-                    recording,
-                    _one_file(all_path_metadata[other], all_path_metadata[index]),
-                    _two_aircraft(all_path_metadata[other], all_path_metadata[index]),
-                ):
-                    continue
-                keep, drop = sorted(
-                    (other, index),
-                    key=lambda i: (
-                        aircraft_known(all_path_metadata[i]),
-                        -len(timed[i].times),
-                        i,
-                    ),
-                )
-                dropped.add(drop)
-                pairs.append((drop, keep))
-                if drop == index:
-                    break
-            if index not in dropped:
-                (real if recording.clock_known else other_clocks).append(index)
-    return pairs
+
+def _pair_recordings(
+    timed: Mapping[int, _Timed],
+    all_path_metadata: Sequence[PathMetadata],
+    pairs: list[tuple[int, int]],
+    dropped: set[int],
+) -> None:
+    """Add the recordings of one flight among ``timed`` to ``pairs``.
+
+    The one dropped of each pair goes into ``dropped`` as well; no
+    recording is compared with one in it.
+    """
+    # The order the recordings started in, and a recording's place in it
+    started = {index: (recording.times[0], index) for index, recording in timed.items()}
+    # The kept recordings, each in the order they started: those on
+    # real clocks, of which the first ``open_from`` ended too long ago
+    # for any later one on a real clock, and the others
+    real: list[int] = []
+    open_from = 0
+    other_clocks: list[int] = []
+    for index in sorted(timed, key=started.__getitem__):
+        recording = timed[index]
+        if recording.clock_known:
+            while (
+                open_from < len(real)
+                and recording.times[0] - timed[real[open_from]].times[-1]
+                > _MAX_CLOCK_OFFSET_S
+            ):
+                open_from += 1
+            candidates = merge(other_clocks, real[open_from:], key=started.__getitem__)
+        else:
+            candidates = merge(other_clocks, real, key=started.__getitem__)
+        for other in list(candidates):
+            if other in dropped or not _one_flight(
+                timed[other],
+                recording,
+                _one_file(all_path_metadata[other], all_path_metadata[index]),
+                _two_aircraft(all_path_metadata[other], all_path_metadata[index]),
+            ):
+                continue
+            keep, drop = sorted(
+                (other, index),
+                key=lambda i: (
+                    aircraft_known(all_path_metadata[i]),
+                    -len(timed[i].times),
+                    i,
+                ),
+            )
+            dropped.add(drop)
+            pairs.append((drop, keep))
+            if drop == index:
+                break
+        if index not in dropped:
+            (real if recording.clock_known else other_clocks).append(index)

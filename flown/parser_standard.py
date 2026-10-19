@@ -56,7 +56,7 @@ def process_standard_coordinates(
     A flight path needs at least two points: a lone ``<Point>`` (a waypoint,
     a home field) is kept in ``coordinates`` but is no path, so it neither
     gets exported nor registers an airport. Consecutive lines that are one
-    flight in pieces become one path (see ``_join_split_lines``).
+    flight in pieces become one path (see ``join_split_lines``).
 
     ``unknown_altitude`` holds the ids of the elements whose altitudes are to
     be ignored (the caller has said why); they form no path either.
@@ -132,7 +132,7 @@ def process_standard_coordinates(
             )
             logger.debug("Element %d: %s", idx, coord_type)
 
-    joined_paths, joined_metadata = _join_split_lines(
+    joined_paths, joined_metadata = join_split_lines(
         path_groups[first_path:], path_metadata[first_path:]
     )
     path_groups[first_path:] = joined_paths
@@ -176,6 +176,7 @@ def _continues(
     before_meta: PathMetadata,
     after: FlightPath,
     after_meta: PathMetadata,
+    timed: bool = False,
 ) -> bool:
     """Whether a line continues the one before it, as one flight.
 
@@ -188,6 +189,10 @@ def _continues(
     are one, only the point of the split written twice joins them: two
     untimed flights of an aircraft named after its registration may well
     start near where the one before ended.
+
+    ``timed`` is for tracks whose points have their own times (see
+    ``join_split_lines``): the one after must begin when the one before has
+    ended, or later, so that the times of the flight go on in order.
     """
     name = before_meta.get("airport_name")
     if name != after_meta.get("airport_name") or _ends_on_ground(before):
@@ -198,22 +203,22 @@ def _continues(
     repeated = (end.lat, end.lon, end.alt) == (start.lat, start.lon, start.alt)
     span = (before_meta.get("timestamp"), before_meta.get("end_timestamp"))
     after_span = (after_meta.get("timestamp"), after_meta.get("end_timestamp"))
-    if span[0] and span == after_span:
+    if span[0] and span == after_span and not timed:
         return bool(name) or repeated
     before_end = parse_timestamp_epoch(span[1] or span[0])
     after_begin = parse_timestamp_epoch(after_span[0])
     begin = parse_timestamp_epoch(span[0])
     if before_end is None or after_begin is None or begin is None:
-        return repeated
+        return repeated and not timed
     return (
         (bool(name) or repeated)
-        and begin <= after_begin
+        and (after_begin >= before_end if timed else begin <= after_begin)
         and after_begin - before_end <= JOIN_MAX_GAP_SECONDS
     )
 
 
-def _join_split_lines(
-    paths: FlightPathGroup, metadata: list[PathMetadata]
+def join_split_lines(
+    paths: FlightPathGroup, metadata: list[PathMetadata], *, timed: bool = False
 ) -> tuple[FlightPathGroup, list[PathMetadata]]:
     """Join the lines that are one flight split in pieces, in document order.
 
@@ -223,12 +228,14 @@ def _join_split_lines(
     name an arrival) at a point of the flight where nobody landed. A line
     that continues the one before (see ``_continues``) is appended to it,
     without the point they share; the flight ends when the last piece does.
+    The tracks of gx:Track placemarks are split the same way, and joined
+    with ``timed`` (see ``_continues``).
     """
     joined_paths: FlightPathGroup = []
     joined_metadata: list[PathMetadata] = []
     for path, meta in zip(paths, metadata, strict=True):
         if joined_paths and _continues(
-            joined_paths[-1], joined_metadata[-1], path, meta
+            joined_paths[-1], joined_metadata[-1], path, meta, timed
         ):
             last = joined_paths[-1]
             shared = (last[-1].lat, last[-1].lon) == (path[0].lat, path[0].lon)

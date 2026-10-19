@@ -331,9 +331,9 @@ def segments_by_id(year_file):
     """The segments of a parsed year file, one entry per path id as a string.
 
     The file lays them out column by column across its paths (see
-    ``flown.segment_codec.split_segments``); a test reads one path at a time.
+    ``tests.codec.split_segments``); a test reads one path at a time.
     """
-    from flown.segment_codec import split_segments
+    from tests.codec import split_segments
 
     return {str(path_id): entry for path_id, entry in split_segments(year_file).items()}
 
@@ -346,7 +346,8 @@ def decoded_segments(entry):
     ``flown.segment_codec``). Tests that care about the values rather
     than the encoding go through here.
     """
-    from flown.segment_codec import COORDINATE_SCALE, decode_rows
+    from flown.segment_codec import COORDINATE_SCALE
+    from tests.codec import decode_rows
 
     start = [value / COORDINATE_SCALE for value in entry["start"]]
     return start, decode_rows(entry["start"], entry["columns"])

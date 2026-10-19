@@ -175,32 +175,42 @@ of your flights (SkyDemon, Charterware and the other formats the site build
 takes, named as [the naming convention](usage.md#kml-file-naming-convention)
 says, since the aircraft comes from the name and the year from the times in the
 file, and an `aircraft.json` next to them for the model names), dropped on it,
-on the map anywhere, or chosen with the file picker. A folder dropped gives the
-KML and KMZ files in it, however deep; of files of one name in different folders
-the first is kept, and the panel says so. The files kept come to 200 MB at most
-in all, each up to 100 MB, since every build takes all of them. The browser
-keeps the files, runs the same build the site was made with on them, in a worker
-with [Pyodide](https://pyodide.org) (the Python runtime is fetched from its CDN
-the first time, some 10 MB, and the site's own code next to the page), and then
+on the map anywhere (not while Wrapped is open, which says to close it first),
+or chosen with the file picker. A folder dropped gives the KML and KMZ files in
+it, however deep; of files of one name in different folders the first is kept,
+and the panel says so. Every `aircraft.json` of a drop is kept, the second as
+`aircraft-2.json` and so on, and the build merges them, the first one's entries
+first. The AppleDouble files macOS writes into a folder (`._1_x.kml`) are left
+out, as the site build leaves them out. The files kept come to 200 MB at most in
+all, each up to 100 MB, since every build takes all of them. The browser keeps
+the files, runs the same build the site was made with on them, in a worker with
+[Pyodide](https://pyodide.org) (the Python runtime is fetched from its CDN the
+first time, some 10 MB, and the site's own code next to the page), and then
 reloads the page on your flights: the heatmap, the flights, the airports, the
 statistics, the replays, the profiles and Wrapped all work on them as they do on
 the site's. The ground under the flights and the airport names come from the
 same hosts the build asks (see [Privacy](privacy.md#requests-to-other-servers));
 a build that cannot reach them goes on without the ground, or with the airport
-names as the files spell them. **Without the ground under the flights** builds
-them without the elevation tiles, so AWS is not asked for the tiles along them,
-and the panel keeps the choice. A file that makes no flight (a route plan
-without altitudes, a track without a date) is left out rather than failing the
-build: the others are shown, and the list marks that file with the reason. The
-panel says the steps of the build as it goes, and lists the warnings of the
-build once it is done (a file that names no aircraft, say). A build that is done
-while the panel is closed, or while a replay, the tour or Wrapped has the map,
-does not reload the page under you: a toast says your flights are ready, with a
-Show to switch to them. Nor does one for a file removed or the ground switch
-changed while the site's flights are shown. **Stop the build** stops one on its
-way and keeps the files, until it is done and its dataset is being kept; **Show
-my flights** builds them again, also where your flights are shown and the
-stopped build was of a drop.
+names as the files spell them and no landings counted. Such a build is offered
+again, once the connection may be back: the panel shows **Build again**, and a
+toast says what the flights lack as the page starts on them, once a tab; that
+build fetches what the last could not (another build waits an hour after a
+download of the airport names failed, so a slow line does not wait for it at
+every file added). **Without the ground under the flights** builds them without
+the elevation tiles, so AWS is not asked for the tiles along them, and the panel
+keeps the choice. A file that makes no flight (a route plan without altitudes, a
+track without a date) is left out rather than failing the build: the others are
+shown, and the list marks that file with the reason. The panel says the steps of
+the build as it goes, and lists the warnings of the build once it is done (a
+file that names no aircraft, say). A build that is done while the panel is
+closed, or while a replay, the tour or Wrapped has the map, does not reload the
+page under you: a toast says your flights are ready, with a Show to switch to
+them; one that fails then says why in a toast too, with a Show that opens the
+panel. Nor does one for a file removed or the ground switch changed while the
+site's flights are shown. **Stop the build** stops one on its way and keeps the
+files, until it is done and its dataset is being kept; **Show my flights**
+builds them again, also where your flights are shown and the stopped build was
+of a drop.
 
 The panel says which flights the page shows and lists the files kept, each with
 its size and a Remove; a file added or removed builds the set again, and so does
@@ -211,27 +221,32 @@ that fails leaves the next visit on the site's flights, and **Show my flights**
 tries again. A build that is done while an older dataset is still shown goes to
 the new one, whole, as soon as the page reads a file of it. **Show the site's
 flights** goes back to the site's without losing the files, **Show my flights**
-returns to them, and **Remove all**, pressed a second time as it asks, lets the
-files, the build and the build's cache go (the parsed tracks, the elevation
-tiles along them and the airport database, which the next build fetches again);
-while another tab of the page still holds them, it says so and removes nothing.
-A build also lets go of what the cache holds of files removed: their parses,
-and, once it gets through, the tiles no flight left needs (all of them without
-the ground). Each set of flights keeps a view, year, aircraft and selection of
-its own; the switch opens the page afresh. Nothing leaves the browser: the files
-and the data built from them stay in its storage (IndexedDB), which goes with
-the site's data when the browser clears it; Safari lets go of the storage of a
-site not used for a week unless the page is on the home screen. Copy link is
-dimmed while they are shown, its title saying that a link cannot carry flights
-that are only in this browser, which a press says as well. A link opened on a
-page that shows your flights, someone else's long link or one from before the
-short links, opens on the site's flights, which it is of, and a toast says so,
-with a **Show my flights** that switches back. While your flights are shown the
-page keeps no state in its address (their registrations and flight ids would
+returns to them, and **Remove all**, pressed a second time as it asks (for 15
+seconds, and for as long as it has the focus; it says when it stops asking),
+lets the files, the build and the build's cache go (the parsed tracks, the
+elevation tiles along them and the airport database, which the next build
+fetches again). Another tab of the page lets them go, and a build of its says
+the files were removed in another tab. If a tab does not let go in time (one
+still on an older deploy of the site), Remove all says so and removes nothing. A
+build also lets go of what the cache holds of files removed: their parses, and,
+once it gets through, the tiles no flight left needs (all of them without the
+ground). Each set of flights keeps a view, year, aircraft and selection of its
+own; the switch opens the page afresh. Nothing leaves the browser: the files and
+the data built from them stay in its storage (IndexedDB), which goes with the
+site's data when the browser clears it; Safari lets go of the storage of a site
+not used for a week unless the page is on the home screen. Copy link is dimmed
+while they are shown, and the statistics say they were built in this browser
+rather than when the site was. Copy link's title says that a link cannot carry
+flights that are only in this browser, which a press says as well. A link opened
+on a page that shows your flights, someone else's long link or one from before
+the short links, opens on the site's flights, which it is of, and a toast says
+so, with a **Show my flights** that switches back. While your flights are shown
+the page keeps no state in its address (their registrations and flight ids would
 stay in the history and a browser's sync); a reload opens on them with the view
 saved in the browser. Replay, Replay all and the hotspot tour hold Your flights
 while they run, as they hold the search. Escape closes the panel, wherever the
-focus is.
+focus is, but in a text field or a dropdown outside it (the search of the
+flights, the year), whose Escape is its own.
 
 ### Statistics
 
@@ -612,8 +627,9 @@ heatmap and airports on and the other layers, 3D, the globe and the satellite
 imagery off, nothing selected, the statistics and the cross-section closed, and
 the map flat and north up over all the flights. The saved session and the link
 follow. While there is nothing to reset, on a first visit and after a reset
-until the page or the map changes, it is dimmed and a press does nothing. On a
-phone it is in the More sheet; during a replay it is disabled like the filters.
+until the page or the map changes, it is dimmed and a press says why; in the
+phone's More sheet, where it is on a phone, a press does nothing then. During a
+replay it is disabled like the filters.
 
 ### Across the controls
 
@@ -635,15 +651,18 @@ phone it is in the More sheet; during a replay it is disabled like the filters.
 - An error stays on screen until it is dismissed or put right (a later load of
   flights, of Replay's or Wrapped's code or of the satellite imagery, or the map
   drawing after all); a failed load offers Retry, which a running replay
-  ignores. When the first year cannot be loaded the map says what failed and
-  offers Retry there, with no toast beside it; the year dropdown keeps showing
-  that year (or another one picked meanwhile that failed as well), which Retry
-  loads again, the colour legends are hidden while there are no flights,
-  Statistics, Wrapped, Replay all, the hotspot tour, the cross-section and the
-  export are unavailable and say so (on a phone the tabs and the More rows too),
-  and Reset view is available. The loading indicator shows from the start, while
-  the list of years loads, and the year dropdown names the year the page opens
-  on from the first paint
+  ignores, and one that asks for a reload (a site published again since the page
+  loaded, a map that does not draw or does not start) offers Reload, as an app
+  on the home screen has no control of its own for it. When the first year
+  cannot be loaded the map says what failed and offers Retry there, with no
+  toast beside it; the year dropdown keeps showing that year (or another one
+  picked meanwhile that failed as well), which Retry loads again, the colour
+  legends are hidden while there are no flights, Statistics, Wrapped, Replay
+  all, the hotspot tour, the cross-section and the export are unavailable and
+  say so (on a phone the tabs and the More rows too), and Reset view is
+  available. The loading indicator shows from the start, while the list of years
+  loads, and the year dropdown names the year the page opens on from the first
+  paint
 - The toasts stand over the colour legend beside the statistics or in a window
   narrower than 940 px: the legend steps aside there while one shows
 - The controls come before the map in the tab order, and the "Skip to map" link
@@ -714,8 +733,9 @@ the page groups the digits the same way.
 Escape closes the innermost thing first: the readout of the heat cloud, the
 search while focus is in it (and the pulse of its last pick with it), then an
 airport's popup while focus is on its marker or inside the popup (focus goes
-back to the marker), then a sheet on a phone (the statistics sheet among them),
-the panel of Your flights, a replay, Replay all, the hotspot tour, Wrapped, the
+back to the marker), then a sheet on a phone (the statistics sheet among them,
+but not while focus is in the panel of Your flights or the search over it), the
+panel of Your flights, a replay, Replay all, the hotspot tour, Wrapped, the
 cross-section, whose Escape takes back a point being placed or the line being
 redrawn before it closes the tool, or the pulse the search left on the map. The
 popup of a flight or of a replay has no Escape: its close button or a click on

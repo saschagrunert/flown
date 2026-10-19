@@ -63,7 +63,10 @@ else (`DA40 with Anna`, `DA40-ANNA`).
 Nor are times of day or weekdays: the type is published, so a `TYPE` that is one
 (`1_DEHYL_1513h.kml`, `1_DEHYL_15h13.kml`, `1_DEHYL_Saturday.kml`) is left out
 of the site, like a date (`1_DEHYL_2026-08-16.kml`), and
-`make check-obfuscation` fails on the name.
+`make check-obfuscation` fails on the name. A type that names a day, a week, a
+part of the year or an hour with the shape of a designator (`SAT16`, `FRI13`,
+`W33`, `Q3`, `H2`, `AM10`) is dropped with a warning as well; `DO27` and `MI8`
+stay.
 
 ### Charterware format
 
@@ -347,7 +350,8 @@ Output:
   file's directory writes to `./docs/`. It also refuses an output directory that
   holds files the site is made of (an `index.html`, a `styles.css`, a
   `data/airports.json` and the like) but no sign of an earlier run
-  (`map_config.js`, `data/metadata.json`): many a project keeps a site of its
+  (`map_config.js` or `data/metadata.json` as this tool writes them, files of
+  other tools by those names do not count): many a project keeps a site of its
   own in `docs/`, and the run would replace it file by file.
 - `--force` - Replace the files of a site in the output directory that no
   earlier run wrote (see `--output-dir`)
@@ -399,15 +403,17 @@ Privacy:
   the landing roll, everything before the one and after the other goes first (a
   stale fix, a drive to or from the field); then the points within `METRES` of
   where the rest starts and ends. A recording that never leaves that distance is
-  left out. The times show the takeoff only after a wait on level ground no
-  higher than the lowest the recording was before it, so a drive is left out
-  from a home at the height of the field or up to 300 ft above it: a recording
-  that starts or ends on the move, or at a home 30 m or more below the field or
-  300 ft or more above it, keeps its drive but for the `METRES` around where it
-  starts or ends. Switch the logger on and off at the field to keep a drive out.
-  The KML files keep their ends, so this hides nothing while they are public, as
-  those in `data/` of a repository on GitHub are, and the deploy job does not
-  use it. See [Privacy](privacy.md#what-reaches-the-site).
+  left out, and a file left without any flight that way stops the run, as a file
+  without a flight does (see [The run stops](#the-run-stops)). The times show
+  the takeoff only after a wait on level ground no higher than the lowest the
+  recording was before it, so a drive is left out from a home at the height of
+  the field or up to 300 ft above it: a recording that starts or ends on the
+  move, or at a home 30 m or more below the field or 300 ft or more above it,
+  keeps its drive but for the `METRES` around where it starts or ends. Switch
+  the logger on and off at the field to keep a drive out. The KML files keep
+  their ends, so this hides nothing while they are public, as those in `data/`
+  of a repository on GitHub are, and the deploy job does not use it. See
+  [Privacy](privacy.md#what-reaches-the-site).
 
 Network and cache:
 
@@ -425,7 +431,9 @@ Network and cache:
   when a download after 30 days fails.
 - `--jobs N` - Use at most `N` worker processes for parsing, decoding elevation
   tiles, exporting and drawing the link previews (default: one per CPU the
-  process may use, within a container's CPU quota)
+  process may use, within a container's CPU quota; the parse takes no more than
+  one per 2.5 MB of KML and the export one per 10,000 points, as a worker
+  process costs more than it saves below that)
 
 ### How the output directory is written
 
@@ -498,17 +506,28 @@ Look for these lines:
   `<when>` of a `gx:Track` that belongs to a point of the path, so a flight
   across New Year stays in the year it started in, or a `<TimeStamp>`), then
   from a `<TimeSpan>`, then from a date in the track's placemark name
-  (`EDDS to EDDP - 16 Aug 2026`), then from a Charterware `<description>` and
-  finally from a `<TimeStamp>` or `<TimeSpan>` of the enclosing `<Folder>` or
-  `<Document>`, never from the file name. A time that cannot be read (neither
-  ISO 8601, `YYYY-MM-DD HH:MM:SSZ` nor a date without a time of day such as
-  `2026-08-16`, `2026-08` or `2026`) does not count. Export the flight again
-  with its times. This only leaves out a track of a file that has another one to
-  export; a file none of whose tracks has a year stops the run (see below).
+  (`EDDS to EDDP - 16 Aug 2026`), then from a Charterware `<description>`, then
+  from a `<TimeStamp>` or `<TimeSpan>` of the enclosing `<Folder>` or
+  `<Document>`, and finally from the `Point` placemarks of the file when the
+  times or dates they have all fall into one year (Flightradar24 puts the times
+  of a flight on a trail of points next to its line, SkyDemon a
+  `Log Start: 03 Mar 2025 08:58 Z` marker), never from the file name. A time
+  that cannot be read (neither ISO 8601, `YYYY-MM-DD HH:MM:SSZ` nor a date
+  without a time of day such as `2026-08-16`, `2026-08` or `2026`) does not
+  count. Export the flight again with its times. This only leaves out a track of
+  a file that has another one to export; a file none of whose tracks has a year
+  stops the run (see below).
 - A `gx:Track` time more than seven days from the track's median, or out of
   order with its neighbours, is a logger glitch: that point loses its time (and
   so its groundspeed), the rest of the track keeps theirs. A position of exactly
   0,0 is dropped as a missing fix.
+- Part of a flight is missing: a fix the aircraft cannot have flown to from the
+  one before (one coordinate zeroed, a sign flipped) is dropped as a position
+  spike, and so is a short stretch of them (up to ten fixes, or a fiftieth of a
+  long track). At either end that includes the stale fixes a logger writes
+  before its receiver has a position of its own, which can cut the first or last
+  minutes of a recording. `--debug` names them:
+  `Dropped <n> position spike(s) in <file>`.
 - The file is not picked up at all: only files ending in `.kml` or `.kmz` (in
   any case) are read. A `.kmz` archive is read without unpacking it: its
   `doc.kml` at the root, or else its first `.kml` file, is the flight, up to the
@@ -523,23 +542,24 @@ Look for these lines:
 
 One broken file stops the whole run, so a site never silently misses a flight:
 
-- `<file>: No valid coordinates found` or `Error processing <file>`, followed by
-  `<n> of <m> file(s) failed to parse`: the file holds no track the parser
-  reads, or it is not valid KML (not XML at all, or cut off before its first
-  track). A file cut off later, as a logger whose battery ran out leaves it, is
-  read up to where it ends, with a warning that gives the parser's message with
-  the line (`<file>: damaged, the points after it may be missing (...)`); white
-  space before the XML declaration and `gx:` elements without the declaration of
-  their namespace are read as if they were right. Only `LineString` and
-  `gx:Track` geometry (also inside a `MultiGeometry`) forms a flight; polygons
-  are skipped with a warning. So is a track whose `altitudeMode` is
-  `clampToGround` or `relativeToGround`, because its altitudes are not above sea
-  level. A track without `altitudeMode` is read as absolute, which is what
-  flight logs write.
+- `Error processing <file>`, followed by `<n> of <m> file(s) failed to parse`:
+  the file is not valid KML (not XML at all, or cut off before its first track).
+  A file cut off later, as a logger whose battery ran out leaves it, is read up
+  to where it ends, with a warning that gives the parser's message with the line
+  (`<file>: damaged, the points after it may be missing (...)`); white space
+  before the XML declaration and `gx:` elements without the declaration of their
+  namespace are read as if they were right. Only `LineString` and `gx:Track`
+  geometry (also inside a `MultiGeometry`) forms a flight; polygons are skipped
+  with a warning. So is a track whose `altitudeMode` is `clampToGround` or
+  `relativeToGround`, because its altitudes are not above sea level. A track
+  without `altitudeMode` is read as absolute, which is what flight logs write.
 - `<file>: <reason>`, followed by `<n> of <m> file(s) hold no flight to export`:
-  the file has coordinates, but nothing of it would reach the site. A file whose
-  flight is only skipped as a copy of one in another file (see below) does not
-  stop the run. The reason says why:
+  the file parsed, but nothing of it would reach the site. A file whose flight
+  is only skipped as a copy of one in another file (see below) does not stop the
+  run. The reason says why:
+  - `no valid coordinates`: a well-formed document without a single point the
+    parser reads (it warned `<file>: No valid coordinates found` before), such
+    as one without any `LineString`, `gx:Track` or `Point`
   - `no track of two or more valid points (waypoints are none)`: a waypoint file
     or one that marks places on the map, which holds no flight, or a line of
     which only one point is valid
@@ -548,6 +568,10 @@ One broken file stops the whole run, so a site never silently misses a flight:
     the ground
   - `no track with a determinable year`: see above for where the year comes from
   - `every track with a year stays on one spot`: a recording that never moved
+- `<file>: no track is left once --trim-ends takes out its ends`, followed by
+  `<n> file(s) hold no flight once --trim-ends takes out their ends`: every
+  flight of the file stays within `--trim-ends` of where it starts and ends, a
+  recording of taxiing, say. Lower `--trim-ends` or remove the file.
 - `<n> of <m> input file(s) are not valid KML files`: a file is empty, a symlink
   or larger than 100 MB.
 
@@ -583,6 +607,13 @@ looked up in the [OurAirports](https://ourairports.com/) database:
   `--refresh-airports`, or delete `airports.csv`, `runways.csv` and the
   `.download-failed` markers from the
   [cache directory](output.md#cache-directory).
+- A route name is split where a hyphen, an en or em dash, `>`, `->` or the word
+  `to` (in any case) stands between spaces and an ICAO code follows
+  (`EDDS Stuttgart - EDDP Leipzig`), or, in a name without such a place, where a
+  hyphen, a dash, `>`, `->` or `/` stands between two codes without spaces
+  (`EDDF-EDDM`). Airport names may hold a hyphen between spaces themselves
+  (`LFBN Niort - Marais Poitevin`), so a name with more than one such place is
+  no route: it is shown as written, and the flight gets no arrival.
 - A code OurAirports does not know keeps the name from the file. A name without
   an ICAO code is shown as an airport only as an end of a route
   (`Home strip - Aunt farm`), and not as a single word (`Home`). Any other
@@ -612,7 +643,9 @@ starts at midnight: such recordings are lined up by where they flew, and then
 have to be within 150 m of each other. So are two on real clocks that are off by
 a few seconds (GPS time runs 18 s ahead of UTC), or two files whose clocks are
 off by whole half hours (a device that writes the local time as UTC) and whose
-takeoffs and landings agree once lined up. Two recordings that name two
+takeoffs and landings agree once lined up. A flight that took off around
+midnight on New Year may start in two years on two such clocks: the recordings
+around it are compared across the years as well. Two recordings that name two
 registrations are never one flight: two aircraft flying in formation are as
 close as one flight on two loggers, and two flying one circuit an hour apart
 would line up as well. The one whose file name gives the aircraft stays,
@@ -627,9 +660,11 @@ the one before ended, splits one flight into pieces, and the parser joins them
 again: a line continues the one before it when both have the same placemark
 name, the one before did not end on the ground, and the line starts within 50 m
 of its end, at the same `<TimeSpan>` or within 30 minutes of its end. Without
-times, only the point of the split written twice joins them. A `gx:Track` is
-never joined. Give the pieces of a flight one name, and flights of their own
-different names or times.
+times, only the point of the split written twice joins them. The `gx:Track`s of
+placemarks are joined the same way, when the times of the one after begin no
+earlier than those of the one before end (the tracks of one `gx:MultiTrack` are
+one flight anyway). Give the pieces of a flight one name, and flights of their
+own different names or times.
 
 ### The flights show but the map behind them is black
 
@@ -664,20 +699,20 @@ besides its timestamps, and for a date split by a CDATA section
 its permissions. A trip whose legs on several days are less than 12 hours apart
 is one flight that runs past the days after January 1st: split the file into one
 per day of flying, as the check says. The pre-push hook also refuses a commit
-message that dates a flight it adds or changes (`Add flight 16 Aug 2026`):
-reword it with `git commit --amend` or a rebase. Four digits that are a year and
-a time at once, such as `2026 local` (20:26), count as a time. A duration
-written like a time of day (`Flight time 1:25`) cannot be told from one and has
-to go as well. A place named after a weekday other than `Friday Harbor`,
-`Thursday Island` and `Sunday Creek`, or after a holiday other than
-`Christmas Island`, `Christmas Creek`, `Easter Island`, `Pentecost Island`,
-`Weihnachtsinsel`, `Christmas Flying Service` and the others followed by
-`Harbour`, `Island`, `Creek`, `Valley`, `Coast`, `Hill`, `Township`, `Province`,
-`Field`, `Airfield`, `Airport` or `Airstrip` (or their plurals), needs another
-name as well. That takes the Scottish `Easter` (eastern) of
-`Easter Nether Cabra Farm Airstrip` and the first name `Silvester`
-(`Silvester Meier`) along, and `SAT` (San Antonio) right before a time goes as a
-weekday (`KAUS to SAT 14:30` becomes `KAUS to`).
+message that dates a flight it adds or changes (`Add flight 16 Aug 2026`), or
+gives its time of day (`Add flight 1430Z`): reword it with `git commit --amend`
+or a rebase. Four digits that are a year and a time at once, such as
+`2026 local` (20:26), count as a time. A duration written like a time of day
+(`Flight time 1:25`) cannot be told from one and has to go as well. A place
+named after a weekday other than `Friday Harbor`, `Thursday Island` and
+`Sunday Creek`, or after a holiday other than `Christmas Island`,
+`Christmas Creek`, `Easter Island`, `Pentecost Island`, `Weihnachtsinsel`,
+`Christmas Flying Service` and the others followed by `Harbour`, `Island`,
+`Creek`, `Valley`, `Coast`, `Hill`, `Township`, `Province`, `Field`, `Airfield`,
+`Airport` or `Airstrip` (or their plurals), needs another name as well. That
+takes the Scottish `Easter` (eastern) of `Easter Nether Cabra Farm Airstrip` and
+the first name `Silvester` (`Silvester Meier`) along, and `SAT` (San Antonio)
+right before a time goes as a weekday (`KAUS to SAT 14:30` becomes `KAUS to`).
 
 A number of ten or thirteen digits in the text of an element (not in an
 attribute, and not the id after the `#` of a reference such as

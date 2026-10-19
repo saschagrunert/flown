@@ -9,10 +9,12 @@ test_png.py and the numbers the frontend shares in test_frontend_parity.py.
 
 import logging
 import math
+import struct
 from array import array
 
 import pytest
 
+import flown.terrain as terrain_module
 import flown.terrain_pixels as pixels_module
 from flown.constants import METERS_TO_FEET
 from flown.png import PngError
@@ -221,6 +223,116 @@ class TestSamplePathElevations:
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
         assert "1 flight(s)" in warnings[0].getMessage()
+
+
+class _KeptGround(FunctionTiles):
+    """Tiles that keep the ground of the paths in ``ground_dir``, and count
+    the pixels they are asked for."""
+
+    def __init__(self, ground_dir, elevation=lambda gx, gy: gx * 0.5 - gy, **kwargs):
+        super().__init__(elevation, **kwargs)
+        self.ground_dir = ground_dir
+        self.pixels_asked = 0
+
+    def pixels(self, wanted):
+        self.pixels_asked += sum(len(indices) for indices in wanted.values())
+        return super().pixels(wanted)
+
+
+def _content(path):
+    """The content of a path as path_content.exported_contents packs it."""
+    return struct.pack(
+        f"<{3 * len(path)}d",
+        *(value for p in path for value in (round(p.lat, 6), round(p.lon, 6), p.alt)),
+    )
+
+
+_KEPT_PATHS = {
+    3: [TrackPoint(50.0000004, 8.0, 100.0), TrackPoint(50.1, 8.1, 200.0)],
+    7: [TrackPoint(51.0, 9.0, 100.0)],
+}
+
+
+class TestKeptGround:
+    def _contents(self, paths=None):
+        return {index: _content(path) for index, path in (paths or _KEPT_PATHS).items()}
+
+    def test_a_build_reads_the_ground_the_last_one_sampled(self, tmp_path):
+        tiles = _KeptGround(tmp_path / "ground")
+        first = sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+        asked = tiles.pixels_asked
+
+        again = sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+
+        assert asked > 0
+        assert tiles.pixels_asked == asked
+        assert {i: list(v) for i, v in again.items()} == {
+            i: list(v) for i, v in first.items()
+        }
+        assert len(list((tmp_path / "ground").iterdir())) == 2
+
+    def test_the_same_ground_as_sampled_from_the_points(self, tmp_path):
+        """The contents hold the coordinates as the exporter rounds them."""
+        tiles = _KeptGround(tmp_path / "ground")
+        from_contents = sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+        from_points = sample_path_elevations(
+            _KEPT_PATHS, FunctionTiles(tiles.elevation)
+        )
+
+        assert {i: list(v) for i, v in from_contents.items()} == {
+            i: list(v) for i, v in from_points.items()
+        }
+
+    def test_a_changed_flight_is_sampled_again(self, tmp_path):
+        tiles = _KeptGround(tmp_path / "ground")
+        sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+        asked = tiles.pixels_asked
+        moved = {**_KEPT_PATHS, 7: [TrackPoint(51.0, 9.001, 100.0)]}
+
+        sample_path_elevations(moved, tiles, self._contents(moved))
+
+        # The points of path 7 alone, four pixels each
+        assert tiles.pixels_asked == asked + 4
+
+    def test_a_ground_with_a_gap_is_not_kept(self, tmp_path, caplog):
+        """Its tile may be there the next time."""
+        x, y = global_pixel(51.0, 9.0)
+        missing = TileKey(TERRAIN_ZOOM, int(x) // TILE_SIZE, int(y) // TILE_SIZE)
+        tiles = _KeptGround(tmp_path / "ground", missing=[missing])
+
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+
+        assert len(list((tmp_path / "ground").iterdir())) == 1
+
+    def test_a_broken_entry_is_sampled_again(self, tmp_path):
+        tiles = _KeptGround(tmp_path / "ground")
+        sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+        for entry in (tmp_path / "ground").iterdir():
+            entry.write_bytes(b"short")
+        asked = tiles.pixels_asked
+
+        again = sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+
+        assert tiles.pixels_asked == 2 * asked
+        assert len(again[3]) == 2
+
+    def test_nothing_is_kept_without_the_contents(self, tmp_path):
+        tiles = _KeptGround(tmp_path / "ground")
+
+        sample_path_elevations(_KEPT_PATHS, tiles)
+
+        assert not (tmp_path / "ground").exists()
+
+    def test_another_sampling_code_misses(self, tmp_path, monkeypatch):
+        tiles = _KeptGround(tmp_path / "ground")
+        sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+        asked = tiles.pixels_asked
+        monkeypatch.setattr(terrain_module, "_GROUND_FORMAT", 0)
+
+        sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
+
+        assert tiles.pixels_asked == 2 * asked
 
 
 # --- The ground of a flight ---------------------------------------------

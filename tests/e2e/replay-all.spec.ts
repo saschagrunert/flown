@@ -78,7 +78,6 @@ test.describe("Replay all flights", () => {
       return location.search;
     });
     expect(search).not.toMatch(/[?&]t=/);
-    await expectNoA11yViolations(page, "Replay all controls");
   });
 
   test("pauses with the clock held, and gives the page back as it was", async ({
@@ -120,6 +119,12 @@ test.describe("Replay all flights", () => {
       ),
     ]);
     await expect(clock).toHaveText(held!);
+    // Paused and of the controls alone: a scan of the whole page while the
+    // replay played drew a frame of every flight per step of axe, and took
+    // the test above to 38 of its 45 s on CI
+    await expectNoA11yViolations(page, "Replay all controls", (builder) =>
+      builder.include("#replay-all-controls"),
+    );
 
     await page.locator("#replay-all-close-btn").click();
     await expect(panel).toBeHidden();

@@ -255,7 +255,7 @@ test.describe("Core", () => {
     ).toBe(false);
     await expect(replayBtn).toHaveAttribute(
       "title",
-      "Pick flights with timing data to replay, under Statistics, Flights",
+      "Pick flights with timing data to replay, under Flights in the statistics",
     );
     // Announced as unavailable, but still in the tab order
     await expect(replayBtn).toHaveAttribute("aria-disabled", "true");
@@ -373,7 +373,6 @@ test.describe("Core", () => {
   test("map config is loaded with correct structure", async ({ page }) => {
     const config = await page.evaluate(() => window.MAP_CONFIG);
     expect(config).toBeTruthy();
-    expect(config!.center).toHaveLength(2);
     expect(config!.bounds).toHaveLength(2);
     expect(config!.dataDir).toBe("data");
   });

@@ -8,23 +8,25 @@ the day of the flight.
 
 Numeric dates: 2024-03-14, 2024.03.14, 14.03.2024, 14/03/2024, 14-03-2024,
 14_03_2024, 14 03 2024, 14 - 03 - 2024, 3/14/2024, 14.03.24, 2024/3/14,
-2024-3-4, the compact 20240314 (with the time right after it as well,
-202403141430) and 14032024 or 03142024 with the year last, the year and
-month 2024-03, the ISO week 2024-W11 and 2024W11 and 2024/W11, a calendar
-week with its year (KW11 2024, CW11 2024, Week 11 2024, Wk 11 2024, W11
-2024), the ordinal date 2024-074 and the year first with spaces (2024 03
-14). An en dash, a minus sign or a Unicode hyphen may stand for the
-hyphen, a Unicode slash for the slash, and the fullwidth forms for the
-digits and the rest; a character that shows nothing (a zero-width space)
-does not split a date. With a month name: "14 Mar 2024", "14th March 2024", "the 14th of
-March 2024", "14-MAR-2024", "14/Mar/2024", "March 14, 2024", "Mar/14/2024",
-"Mar14_2024", "2024/Mar/14" and "March 2024", a range of days or months
-("14-16 Mar 2024", "Mar 14-16, 2024", "Feb/Mar 2024") whole, with a
-two-digit year "14 Mar 24", "14-MAR-24", "14MAR24" and "Mar '24", and in
-German, day first: "14. März 2024", "14.Mrz.2024", "14-Okt-2024" and "Mai
+2024-3-4, 14. 3. 24 and 14. 3.2024 with a space after a dot (DIN 5008),
+the compact 20240314 (with the time right after it as well, 202403141430)
+and 14032024 or 03142024 with the year last, the year and month 2024-03,
+the ISO week 2024-W11 and 2024W11 and 2024/W11, a calendar week with its
+year (KW11 2024, CW11 2024, Week 11 2024, Wk 11 2024, W11 2024, Woche 11
+2024, semaine 11 2024), the ordinal date 2024-074 and the year first with
+spaces (2024 03 14). An en dash, a minus sign or a Unicode hyphen may stand
+for the hyphen, a Unicode slash for the slash, and the fullwidth forms for
+the digits and the rest; a character that shows nothing (a zero-width
+space) does not split a date. With a month name: "14 Mar 2024", "14th March
+2024", "the 14th of March 2024", "14-MAR-2024", "14/Mar/2024", "March 14,
+2024", "Mar/14/2024", "Mar14_2024", "2024/Mar/14" and "March 2024", a range
+of days or months ("14-16 Mar 2024", "Mar 14-16, 2024", "Feb/Mar 2024")
+whole, with a two-digit year "14 Mar 24", "14-MAR-24", "14MAR24" and "Mar
+'24", and in German, day first: "14. März 2024", "14.Mrz.2024", "14-Okt-2024" and "Mai
 2024", and so in French, Spanish, Portuguese, Italian, Dutch, Czech,
 Slovak, Polish, Slovenian and Hungarian ("14 mars 2024", "14 de marzo de
-2024", "14. března 2024", "14 marca 2024", "2024. március 14."). With the
+2024", "14. března 2024", "14 marca 2024", "2024. március 14."), with their
+abbreviations ("14 ago 2024", "14 kwi 2024"; see date_words). With the
 month in Roman numerals: "14.III.2024", "14. III. 2024" and "2024. III.
 14.". And the date of flight of an ICAO flight plan, "DOF/240314". A
 weekday named in full ("Sunday", "Sonntag", "samedi", "sobota") gives the
@@ -35,23 +37,24 @@ knows may be a date (``find_possible_date_tokens``), which the check
 leaves to a person.
 
 Names lose more than that (``strip_dates``): a day and month without the
-year ("16 Aug", "16. Mai", "16.08.", "26.08", "16.8", "16/08", "16-08",
-"16_08", "16.III.", "16-III", "16 III") and a calendar week without it ("KW33",
-"CW33", "Week 33", "Wk 33"), which the year of the flight completes, six
-digits that are a date ("260816", "log_260816", "260816-1430"), a month
-and year ("03/2026", "03.2026", "2026/03", "08-2026", "2026_08",
-"2026.08", "VII/2026"), a season, quarter or half of a year with it
-("Summer 2026", "Sommer 2026", "Q3 2026", "H2 2026"), a weekday abbreviated
-next to a date or a time ("Sat 16 Aug", "Sa., 16.08.2026", "Sat 14:30") and
-a time of day ("14:30", "1430Z", "0930z", "1430L", "1513h" as in a
-Charterware file name, "14h30", "14.30 Uhr", "3pm", "0930Z-1045Z", the time
-after a date as in 20260816T1430, 20260816T14Z, 2026-08-16_1430,
-2026-08-16-14-30, 2026-08-16T14-30-00Z or "2026-08-16 14-30" but not
-"2026-08-16 07-25 RWY" or "2026-08-16 14-30 min", and a range
-such as "14.30-15.45 Uhr" or "14.30 bis 15.45 Uhr" whole), with the zone,
-the fraction or the offset after it ("1430 GMT", "1430 Zulu", "09:30 EDT",
-"1430 local", "0930 hours", "14:30:00.5Z", "14:30 +02:00", "1430+0200"). The
-common zones count, not every one there is. "14.30" alone stays: it is a
+year ("16 Aug", "16. Mai", "16.08.", "16. 8.", "26.08", "16.8", "16/08",
+"16-08", "16_08", "16.III.", "16-III", "16 III") and a calendar week without
+it ("KW33", "CW33", "Week 33", "Wk 33", "Woche 33", "33. KW"), which the
+year of the flight completes, six digits that are a date ("260816",
+"log_260816", "260816-1430"), a month and year ("03/2026", "03.2026",
+"2026/03", "08-2026", "2026_08", "2026.08", "VII/2026"), a season, quarter
+or half of a year with it ("Summer 2026", "Sommer 2026", "Q3 2026", "H2
+2026"), a weekday abbreviated next to a date or a time ("Sat 16 Aug", "Sa.,
+16.08.2026", "Sat16Aug", "Sat 14:30") and a time of day ("14:30", "1430Z",
+"0930z", "1430L", "1513h" as in a Charterware file name, "14h30", "14h",
+"14.30 Uhr", "3pm", "0930Z-1045Z", the time after a date as in
+20260816T1430, 20260816T14Z, 2026-08-16_1430, 2026-08-16-14-30,
+2026-08-16T14-30-00Z or "2026-08-16 14-30" but not "2026-08-16 07-25 RWY"
+or "2026-08-16 14-30 min", and a range such as "14.30-15.45 Uhr" or "14.30
+bis 15.45 Uhr" whole), with the zone, the fraction or the offset after it
+("1430 GMT", "1430 Zulu", "09:30 EDT", "1430 local", "0930 hours",
+"14:30:00.5Z", "14:30 +02:00", "1430+0200"). The common zones count, not
+every one there is. "14.30" alone stays: it is a
 decimal as often ("fuel 14.30"), and only goes with a zone, the local time
 or the hours ("14.30Z", "14.30L", "14.30 hrs"). The obfuscator's check
 reports the times of day, the weekdays and the holidays anywhere
@@ -76,6 +79,25 @@ from bisect import bisect_left, bisect_right
 from datetime import UTC, datetime, time, timedelta
 from itertools import pairwise
 from typing import TYPE_CHECKING
+
+from .date_words import (
+    GERMAN_MONTHS,
+    HOLIDAYS_ENGLISH,
+    HOLIDAYS_GERMAN,
+    HOLIDAYS_OTHER,
+    MONTHS_DAY_FIRST,
+    MONTHS_LONG,
+    MONTHS_SHORT,
+    NO_MONTH_WORDS,
+    ROMAN_MONTHS,
+    SEASONS,
+    WEEKDAY_ABBREVIATIONS,
+    WEEKDAYS_ENGLISH,
+    WEEKDAYS_GERMAN,
+    WEEKDAYS_OTHER,
+    WITH_A_DAY_AND_YEAR_MONTHS,
+    WITH_A_DAY_MONTHS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -109,203 +131,39 @@ __all__ = [
 # giveaway.
 MAX_DAYS_AFTER_JAN_1 = 2
 
-MONTHS_SHORT = (
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-)
-MONTHS_LONG = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
 _MONTH_NUMBERS = {name.lower(): i + 1 for i, name in enumerate(MONTHS_LONG)}
 _MONTH_NUMBERS.update({name.lower(): i + 1 for i, name in enumerate(MONTHS_SHORT)})
 # The four-letter abbreviation that is common in English as well
 _MONTH_NUMBERS["sept"] = 9
-# The German names that English does not share (Aug, Nov and the like it
-# does), with the Austrian Jänner, and those of the languages below. Only
-# read in the shapes these write a date in, the day first ("16. Mai 2026")
-# or a month and year ("Mai 2026"): "Mai" or "Juli" alone is a name as
-# often.
-_DAY_FIRST_MONTH_NUMBERS = {
-    "januar": 1,
-    "jänner": 1,
-    "jaenner": 1,
-    "jän": 1,
-    "februar": 2,
-    "märz": 3,
-    "maerz": 3,
-    "mär": 3,
-    "mrz": 3,
-    "mai": 5,
-    "juni": 6,
-    "juli": 7,
-    "oktober": 10,
-    "okt": 10,
-    "dezember": 12,
-    "dez": 12,
-}
-# The other languages of the countries the flights of a European pilot reach
-# that write the day first: French, Spanish, Portuguese, Italian, Dutch,
-# Czech, Slovak, Polish, Slovenian and Hungarian, with the forms a month
-# takes in a date (the srpna of Czech, the sierpnia of Polish and the
-# avgusta of Slovenian for August) and the letters without their accents
-# (aout, wrzesnia), but for those that are first names as well (Marc,
-# Julius). Read as the German ones are, in the shapes of a date only: mars,
-# maja and leden alone are words and names.
-_MONTHS_DAY_FIRST = (
-    # French
-    ("janvier", "janv"),
-    ("février", "fevrier", "févr", "fevr"),
-    ("mars",),
-    ("avril", "avr"),
-    ("mai",),
-    ("juin",),
-    ("juillet", "juil"),
-    ("août", "aout"),
-    ("septembre",),
-    ("octobre",),
-    ("novembre",),
-    ("décembre", "decembre", "déc"),
-    # Spanish and Portuguese
-    ("enero", "janeiro"),
-    ("febrero", "fevereiro"),
-    ("marzo", "março"),
-    ("abril",),
-    ("mayo", "maio"),
-    ("junio", "junho"),
-    ("julio", "julho"),
-    ("agosto",),
-    ("septiembre", "setiembre", "setembro"),
-    ("octubre", "outubro"),
-    ("noviembre", "novembro"),
-    ("diciembre", "dezembro"),
-    # Italian
-    ("gennaio",),
-    ("febbraio",),
-    ("marzo",),
-    ("aprile",),
-    ("maggio",),
-    ("giugno",),
-    ("luglio",),
-    ("agosto",),
-    ("settembre",),
-    ("ottobre",),
-    ("novembre",),
-    ("dicembre",),
-    # Dutch
-    ("januari",),
-    ("februari",),
-    ("maart",),
-    ("april",),
-    ("mei",),
-    ("juni",),
-    ("juli",),
-    ("augustus",),
-    ("september",),
-    ("oktober",),
-    ("november",),
-    ("december",),
-    # Czech, as named and as a date has it
-    ("leden", "ledna"),
-    ("únor", "unor", "února", "unora"),
-    ("březen", "brezen", "března", "brezna"),
-    ("duben", "dubna"),
-    ("květen", "kveten", "května", "kvetna"),
-    ("červen", "cerven", "června", "cervna"),
-    ("červenec", "cervenec", "července", "cervence"),
-    ("srpen", "srpna"),
-    ("září", "zari"),
-    ("říjen", "rijen", "října", "rijna"),
-    ("listopad", "listopadu"),
-    ("prosinec", "prosince"),
-    # Slovak
-    ("január", "januára", "januara"),
-    ("február", "februára", "februara"),
-    ("marec", "marca"),
-    ("apríl", "apríla", "aprila"),
-    ("máj", "maj", "mája", "maja"),
-    ("jún", "júna", "juna"),
-    ("júl", "júla", "jula"),
-    ("augusta",),
-    ("septembra",),
-    ("október", "októbra", "oktobra"),
-    ("novembra",),
-    ("decembra",),
-    # Polish
-    ("styczeń", "styczen", "stycznia"),
-    ("luty", "lutego"),
-    ("marzec", "marca"),
-    ("kwiecień", "kwiecien", "kwietnia"),
-    ("maj", "maja"),
-    ("czerwiec", "czerwca"),
-    ("lipiec", "lipca"),
-    ("sierpień", "sierpien", "sierpnia"),
-    ("wrzesień", "wrzesien", "września", "wrzesnia"),
-    ("październik", "pazdziernik", "października", "pazdziernika"),
-    ("listopad", "listopada"),
-    ("grudzień", "grudzien", "grudnia"),
-    # Slovenian
-    ("januar", "januarja"),
-    ("februar", "februarja"),
-    ("marec", "marca"),
-    ("april", "aprila"),
-    ("maj", "maja"),
-    ("junij", "junija"),
-    ("julij", "julija"),
-    ("avgust", "avgusta"),
-    ("september", "septembra"),
-    ("oktober", "oktobra"),
-    ("november", "novembra"),
-    ("december", "decembra"),
-    # Hungarian, which writes the year first ("2026. augusztus 16.")
-    ("január", "januar"),
-    ("február", "februar"),
-    ("március", "marcius", "márc"),
-    ("április", "aprilis", "ápr"),
-    ("május", "majus"),
-    ("június",),
-    ("július",),
-    ("augusztus",),
-    ("szeptember", "szept"),
-    ("október", "oktober"),
-    ("november",),
-    ("december",),
-)
+# The names of the languages that write the day first, but those English
+# shares, read only in the shapes these write a date in (see GERMAN_MONTHS)
+_DAY_FIRST_MONTH_NUMBERS = dict(GERMAN_MONTHS)
 _MONTHS_PER_LANGUAGE = 12
 _DAY_FIRST_MONTH_NUMBERS.update(
     {
         name: index % _MONTHS_PER_LANGUAGE + 1
-        for index, names in enumerate(_MONTHS_DAY_FIRST)
+        for index, names in enumerate(MONTHS_DAY_FIRST)
         for name in names
         if name not in _MONTH_NUMBERS
     }
 )
+# Every month name a date with the day first may have, those that are words
+# as well (WITH_A_DAY_MONTHS) included
+_ANY_DAY_FIRST_MONTH_NUMBERS = (
+    _DAY_FIRST_MONTH_NUMBERS | WITH_A_DAY_MONTHS | WITH_A_DAY_AND_YEAR_MONTHS
+)
 
 _DAYS_AFTER_JAN_1 = "|".join(f"{day:02d}" for day in range(1, MAX_DAYS_AFTER_JAN_1 + 2))
 
-# The words a calendar week is written with: the German "KW33", the English
-# "CW33", "Week 33" and "Wk 33"
-_WEEK_WORD = r"(?:(?i:[KC]W)\s?|(?i:week|wk\.?)\s*)"
+# The words a calendar week is written with: the German "KW33", "Woche 33"
+# and "Kalenderwoche 33", the English "CW33", "Week 33" and "Wk 33" (Dutch
+# as well), and the week of French, Spanish and Portuguese, Italian, Polish,
+# Czech, Slovak and Slovenian ("semaine 33", "semana 33", "settimana 33",
+# "tydzień 33", "týden 33", "týždeň 33", "teden 33")
+_WEEK_WORD = (
+    r"(?:(?i:[KC]W)\s?|(?i:week|wk\.?|kalenderwoche|woche|semaine|semana|settimana"
+    r"|tydzie[nń]|t[yý]den|t[yý][zž]de[nň]|teden)\s*)"
+)
 # A day and a month of the numeric shapes, and a week of the year
 _DAY = r"(?:0?[1-9]|[12]\d|3[01])"
 _MONTH = r"(?:0?[1-9]|1[0-2])"
@@ -405,6 +263,15 @@ def _numeric_patterns(skip_near_jan_first: bool) -> tuple[re.Pattern[str], ...]:
             + unless(r"0?1(?P<skip>[./_-])0?1(?P=skip)\d{2}(?!\d|\.\d)")
             + r"\d{1,2}(?P<sep>[./_-])\d{1,2}(?P=sep)\d{2}(?!\d|\.\d)"
         ),
+        # German with a space after a dot, as DIN 5008 writes it: "16. 8.
+        # 26", "16. 8.2026" and "16.8. 2026" ("16. 8. 2026" is the spaced
+        # shape below)
+        re.compile(
+            r"(?<![^\W_]|\.)"
+            + unless(r"0?1\.\s?0?1\.\s?(?:19|20)?\d{2}(?!\d|[.,]\d)")
+            + rf"{_DAY}\.(?:\s{_MONTH}\.(?:\s?\d{{2}}|(?:19|20)\d{{2}})"
+            + rf"|{_MONTH}\.\s(?:\d{{2}}|(?:19|20)\d{{2}}))(?!\d|[.,]\d)"
+        ),
         # The same with spaces, "16 08 2026" and "16 - 08 - 2026": only a
         # real day and month, not both of one digit, and a year of this or
         # the last century, since numbers in a row are anything as often
@@ -487,21 +354,35 @@ def _first_letters(names: Iterable[str]) -> str:
     return "(?=[" + "".join(sorted(letters)) + "])"
 
 
+def _names_re(names: Iterable[str]) -> str:
+    """Any of ``names``, in any case, the longest first."""
+    return (
+        _first_letters(names)
+        + "(?i:"
+        + "|".join(sorted(names, key=len, reverse=True))
+        + ")"
+    )
+
+
 # Only the month names themselves: a word that merely looks like one would
 # take the place of a date after it ("EDDS 2026/Aug/16" is no "EDDS 2026")
-_MONTH_NAME_RE = (
-    _first_letters(_MONTH_NUMBERS)
-    + "(?i:"
-    + "|".join(sorted(_MONTH_NUMBERS, key=len, reverse=True))
-    + ")"
-)
+_MONTH_NAME_RE = _names_re(_MONTH_NUMBERS)
 _MONTH_RE = rf"{_MONTH_NAME_RE}(?![A-Za-z])"
-_DAY_FIRST_MONTH_RE = (
-    _first_letters(_DAY_FIRST_MONTH_NUMBERS)
-    + "(?i:"
-    + "|".join(sorted(_DAY_FIRST_MONTH_NUMBERS, key=len, reverse=True))
-    + ")"
+_DAY_FIRST_MONTH_RE = _names_re(_DAY_FIRST_MONTH_NUMBERS)
+_WITH_A_DAY_MONTH_RE = _names_re(WITH_A_DAY_MONTHS)
+_WITH_A_DAY_AND_YEAR_MONTH_RE = _names_re(WITH_A_DAY_AND_YEAR_MONTHS)
+# Where the day of a date with a month name starts: not right after a letter
+# or a digit, but right after an abbreviated weekday ("Sat16Aug",
+# "FRI16AUG26"), which _with_weekday_around takes along. The digit up front:
+# the obfuscator's check runs these over whole files.
+_AFTER_A_WEEKDAY = "|".join(
+    rf"(?<=(?<![^\W\d_]){form})"
+    for form in sorted(
+        {f for name in WEEKDAY_ABBREVIATIONS for f in (name, name.upper())}
+    )
 )
+_DAY_START = rf"(?=\d)(?:(?<![A-Za-z\d])|{_AFTER_A_WEEKDAY})"
+_DAY_FIRST_DAY_START = rf"(?=\d)(?:(?<![^\W_])|{_AFTER_A_WEEKDAY})"
 _DAY_RE = r"\d{1,2}(?:st|nd|rd|th)?"
 # A slash as well: "16/Aug/2026" and "2026/Aug/16"
 _SEP_RE = r"[\s_.,/-]"
@@ -536,7 +417,7 @@ _APOSTROPHE_YEAR = (
     r"\s*['\u2018\u2019](?P<year5>\d{2})(?![\d'\u2018\u2019]|s(?![^\W\d_]))"
 )
 _TEXT_MONTH = re.compile(
-    rf"(?<![A-Za-z\d]){_DAYS_BEFORE}(?P<day1>{_DAY_RE}){_SEP_RE}*{_OF_RE}"
+    rf"{_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_RE}){_SEP_RE}*{_OF_RE}"
     rf"(?P<month1>{_MONTH_RE}){_SEP_RE}*(?P<year1>{_YEAR_RE})(?!\d)|"
     rf"(?<![A-Za-z])(?P<month2>{_MONTH_RE}){_SEP_RE}*(?P<day2>{_DAY_RE}){_DAYS_AFTER}"
     rf"{_SEP_RE}*(?P<year2>{_YEAR_RE})(?!\d)|"
@@ -553,7 +434,7 @@ _TEXT_MONTH = re.compile(
 # along ("16AUG26", "16-AUG-26"), or the year would be left behind on its
 # own. A time of day is no year ("16 Aug 14:30").
 _TEXT_MONTH_WITHOUT_YEAR = re.compile(
-    rf"(?<![A-Za-z\d]){_DAYS_BEFORE}(?P<day1>{_DAY_RE}){_SEP_RE}*{_OF_RE}"
+    rf"{_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_RE}){_SEP_RE}*{_OF_RE}"
     rf"(?P<month1>{_MONTH_NAME_RE})"
     rf"(?![A-Za-z])(?:{_SEP_RE}?\d{{2}}(?![\d:]))?|"
     rf"(?<![A-Za-z])(?P<month2>{_MONTH_NAME_RE}){_SEP_RE}*(?P<day2>{_DAY_RE})"
@@ -565,21 +446,32 @@ _TEXT_MONTH_WITHOUT_YEAR = re.compile(
 # French) or without one ("16. Mai", "16MAI26" with its two-digit year), a
 # month with a year ("Mai 2026") and the year first, as Hungarian writes it
 # ("2026. augusztus 16."). No letter may touch the name on either side,
-# umlauts included ("Maier 2026" is no date).
+# umlauts included ("Maier 2026" is no date). The abbreviations that are
+# words as well only go with a day before them (WITH_A_DAY_MONTHS: "16 sie",
+# not "Sie 2026"), and some with the year after it too
+# (WITH_A_DAY_AND_YEAR_MONTHS: "16 out 2026", not "3 out of 5").
 _DAY_FIRST_MONTH = rf"(?<![^\W\d_])(?:{_DAY_FIRST_MONTH_RE})(?![^\W\d_])"
+_WITH_A_DAY_MONTH = (
+    rf"(?<![^\W\d_])(?:{_DAY_FIRST_MONTH_RE}|{_WITH_A_DAY_MONTH_RE})(?![^\W\d_])"
+)
+_WITH_A_DAY_AND_YEAR_MONTH = (
+    rf"(?<![^\W\d_])(?:{_DAY_FIRST_MONTH_RE}|{_WITH_A_DAY_MONTH_RE}"
+    rf"|{_WITH_A_DAY_AND_YEAR_MONTH_RE})(?![^\W\d_])"
+)
 _DAY_FIRST_DAY = r"\d{1,2}(?:er)?"
 _DE = r"(?:(?i:de)\s+)?"
 _TEXT_MONTH_DAY_FIRST = re.compile(
-    rf"(?<![^\W_]){_DAYS_BEFORE}(?P<day1>{_DAY_FIRST_DAY}){_SEP_RE}*{_DE}"
-    rf"(?P<month1>{_DAY_FIRST_MONTH}){_SEP_RE}*{_DE}(?P<year1>{_YEAR_RE})(?!\d)|"
+    rf"{_DAY_FIRST_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_FIRST_DAY}){_SEP_RE}*{_DE}"
+    rf"(?P<month1>{_WITH_A_DAY_AND_YEAR_MONTH}){_SEP_RE}*{_DE}"
+    rf"(?P<year1>{_YEAR_RE})(?!\d)|"
     rf"(?<![^\W\d_]){_MONTHS_BEFORE}(?P<month3>{_DAY_FIRST_MONTH})"
     rf"(?:{_SEP_RE}+{_DE}(?P<year3>{_YEAR_RE})(?!\d)|{_APOSTROPHE_YEAR})|"
     rf"(?<![\w.])(?P<year4>{_YEAR_RE})\.?\s+(?P<month4>{_DAY_FIRST_MONTH})\s+"
     r"(?P<day4>\d{1,2})\.?(?![\w]|[.,]?\d)"
 )
 _TEXT_MONTH_DAY_FIRST_WITHOUT_YEAR = re.compile(
-    rf"(?<![^\W_]){_DAYS_BEFORE}(?P<day1>{_DAY_FIRST_DAY}){_SEP_RE}*{_DE}"
-    rf"(?P<month1>{_DAY_FIRST_MONTH})(?:{_SEP_RE}?\d{{2}}(?![\d:]))?"
+    rf"{_DAY_FIRST_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_FIRST_DAY}){_SEP_RE}*{_DE}"
+    rf"(?P<month1>{_WITH_A_DAY_MONTH})(?:{_SEP_RE}?\d{{2}}(?![\d:]))?"
 )
 # A day, a month name and a two-digit year: "16 Aug 26", "16-AUG-26",
 # "16AUG26" (the aviation form) and "16. Mai 26". The separators after the
@@ -587,8 +479,9 @@ _TEXT_MONTH_DAY_FIRST_WITHOUT_YEAR = re.compile(
 # obfuscator's check reports these, where a day and month alone say too
 # little to fail a file on.
 _TEXT_MONTH_SHORT_YEAR = re.compile(
-    rf"(?<![A-Za-z\d])(?P<day1>{_DAY_RE})(?P<sep>{_SEP_RE}*)"
-    rf"(?P<month1>{_MONTH_NAME_RE}|{_DAY_FIRST_MONTH_RE})(?![^\W\d_])"
+    rf"{_DAY_START}(?P<day1>{_DAY_RE})(?P<sep>{_SEP_RE}*)"
+    rf"(?P<month1>{_MONTH_NAME_RE}|{_DAY_FIRST_MONTH_RE}|{_WITH_A_DAY_MONTH_RE})"
+    r"(?![^\W\d_])"
     r"(?P=sep)(?P<year1>\d{2})(?![\d:]|\.\d)"
 )
 # The month in Roman numerals, as Poland, Czechia, Hungary and others write
@@ -603,23 +496,9 @@ _TEXT_MONTH_SHORT_YEAR = re.compile(
 # "Section 2. IV", "Leg 3. II", "Model 3. V", "2026. I liked it" and
 # "v.2024" are not. Nor is a day and a numeral with a space alone ("16
 # VIII"), as "Gate 12 VI", "Part 12 II" and "Mk 12 IV" are written too.
-_ROMAN_MONTHS = (
-    "I",
-    "II",
-    "III",
-    "IV",
-    "V",
-    "VI",
-    "VII",
-    "VIII",
-    "IX",
-    "X",
-    "XI",
-    "XII",
-)
-_ROMAN_MONTH_NUMBERS = {name: i + 1 for i, name in enumerate(_ROMAN_MONTHS)}
+_ROMAN_MONTH_NUMBERS = {name: i + 1 for i, name in enumerate(ROMAN_MONTHS)}
 _ROMAN_MONTH_NUMBERS.update(
-    {name.lower(): i + 1 for i, name in enumerate(_ROMAN_MONTHS)}
+    {name.lower(): i + 1 for i, name in enumerate(ROMAN_MONTHS)}
 )
 _ROMAN_RE = "(?:" + "|".join(sorted(_ROMAN_MONTH_NUMBERS, key=len, reverse=True)) + ")"
 _ROMAN_LONG_RE = (
@@ -631,7 +510,7 @@ _ROMAN_LONG_RE = (
 )
 _ROMAN_CAPITALS_RE = (
     "(?:"
-    + "|".join(sorted((n for n in _ROMAN_MONTHS if len(n) > 1), key=len, reverse=True))
+    + "|".join(sorted((n for n in ROMAN_MONTHS if len(n) > 1), key=len, reverse=True))
     + ")"
 )
 _ROMAN_SEP = r"\.\s?|[/_-]"
@@ -658,15 +537,16 @@ _ROMAN_MONTH_YEAR = re.compile(
     rf"(?:[/.](?P<month2>{_ROMAN_CAPITALS_RE})\.?|\.\s(?P<month3>{_ROMAN_CAPITALS_RE})\.)"
     r"(?![\w/]|[.,]?\d)"
 )
-# A day and month in German notation, "16.08.", with the year left out, and
-# "26.08" or "16.8" without the last dot when the day has two digits, with
-# an underscore around it as in a file name ("EDDS_16.08"): 118.30 is a
-# frequency and 1.2 a version, which the digits and dots around keep out.
-# After a word that says it is a version ("firmware 12.10", or an app that
-# numbers its versions by year and month, "ForeFlight 2026.03") it is one
-# (see _day_month_dotted_spans and _month_year_spans).
+# A day and month in German notation, "16.08." and "16. 8." (DIN 5008), with
+# the year left out, and "26.08" or "16.8" without the last dot when the day
+# has two digits, with an underscore around it as in a file name
+# ("EDDS_16.08"): 118.30 is a frequency and 1.2 a version, which the digits
+# and dots around keep out. After a word that says it is a version
+# ("firmware 12.10", or an app that numbers its versions by year and month,
+# "ForeFlight 2026.03") it is one (see _day_month_dotted_spans and
+# _month_year_spans).
 _DAY_MONTH_DOTTED = re.compile(
-    rf"(?<![\d.]){_DAYS_BEFORE_DOTTED}(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])"
+    rf"(?<![\d.]){_DAYS_BEFORE_DOTTED}(?:0?[1-9]|[12]\d|3[01])\.\s?(?:0?[1-9]|1[0-2])"
     r"\.(?![\d.])|"
     r"(?<![^\W_]|\.)(?:(?:0[1-9]|[12]\d|3[01])\.(?:0[1-9]|1[0-2])|"
     r"(?:[12]\d|3[01])\.[1-9])(?![^\W_]|\.|,\d)"
@@ -736,20 +616,7 @@ _MONTH_YEAR = re.compile(
 # "summer of 2026", "Sommer 2026", "Frühjahr 2026", "Winter 2025/26", "Q3
 # 2026", "Q3/2026", "2026 Q3", "2026-Q3" and "H2 2026". Without the year
 # they stay: a "Summer camp" or the "Q3" of a code is no date.
-_SEASONS = (
-    "spring",
-    "summer",
-    "autumn",
-    "fall",
-    "winter",
-    "frühling",
-    "fruehling",
-    "frühjahr",
-    "fruehjahr",
-    "sommer",
-    "herbst",
-)
-_SEASON_RE = "(?i:" + "|".join(sorted(_SEASONS, key=len, reverse=True)) + ")"
+_SEASON_RE = "(?i:" + "|".join(sorted(SEASONS, key=len, reverse=True)) + ")"
 _PART_OF_YEAR = r"(?:(?i:q)[1-4]|H[12])"
 _AFTER_A_YEAR = r"(?![^\W_]|[/-]|[.,]\d)"
 _SEASON_YEAR = re.compile(
@@ -818,7 +685,9 @@ _TIME_OF_DAY = re.compile(
 # "L" of the local time ("14.30h", "14.30 hrs", "14.30L"; two digits for
 # the hour, "1h30" and "1.30 hrs" are durations), either with a zone
 # ("14h30Z", "9h30 UTC", "14.30Z", "9.30 CET"), anything with "Uhr" ("14.30
-# Uhr", "1430 Uhr", "14 Uhr"), and the English "3pm", "3 p.m.", "10 AM" and
+# Uhr", "1430 Uhr", "14 Uhr"), the hour alone with its "h" ("14h", "14 h";
+# two digits as well, and in lowercase: "21H" is an airport in the US), and
+# the English "3pm", "3 p.m.", "10 AM" and
 # "11.30am" ("3 am" is German for "3 at the", while "10 AM" in capitals is
 # the time, and so is a German "2 AM RHEIN" written in capitals, which
 # cannot be told from one). After a hyphen it is a type or a registration
@@ -855,19 +724,37 @@ _TIME_OF_DAY_WORDS = re.compile(
     rf"{_NOT_AFTER_A_NAME}{_HOUR_12}(?i:p\.?m\.?|a\.m\.|am)|"
     rf"{_NOT_AFTER_A_NAME}{_HOUR_12}(?:\s(?i:p\.?m\.?|a\.m\.)|\sA\.?M\.?)|"
     rf"{_AFTER_A_TIME}{_HOUR_12}\s(?i:am)|"
-    rf"{_NOT_AFTER_A_NAME}{_HOUR_12}\s(?i:am)(?={_RANGE_END}))"
+    rf"{_NOT_AFTER_A_NAME}{_HOUR_12}\s(?i:am)(?={_RANGE_END})|"
+    r"(?:[01]\d|2[0-3])\s?h)"
     r"(?![^\W_])"
 )
 # A calendar week without the year, "KW33", "CW33", "Week 33" and "Wk 33", which the
-# year of the flight completes ("Week 3" of a course goes as well). "W33"
-# alone stays: it is the code of an airport in the US as often.
-_WEEK_ONLY = re.compile(rf"(?<![A-Za-z\d]){_WEEK_WORD}{_WEEK}(?![\w])")
+# year of the flight completes ("Week 3" of a course goes as well), and the
+# German order with the number first, "33. KW" and "33. Woche" (only with
+# the dot: "50 KW" is the power of an engine). "W33" alone stays: it is the
+# code of an airport in the US as often.
+_WEEK_ONLY = re.compile(
+    rf"(?<![A-Za-z\d]){_WEEK_WORD}{_WEEK}(?![\w])|"
+    rf"(?<![\w.]){_WEEK}\.\s?(?:KW|(?i:kalenderwoche|woche))(?![^\W\d_])"
+)
 # "KW05" is an airport in the US as well (Gettysburg), where a route side
 # starts: at the start of a route name or after its separator, or at the
-# start of a name that says it is an airport
+# start of a name that says it is an airport. The separators are those of
+# airport_lookup: a dash (or an en or em dash), an arrow or a "to" in any
+# case between spaces, and between two codes, of which one is all letters
+# (so that "KW33-KW34" stays a range of weeks), a dash, an arrow or a slash
+# without them ("KW05-EDDF", "EDDF/KW05")
 _AIRPORT_KW = re.compile(r"KW\d{2}")
-_ROUTE_SEPARATOR = re.compile(r"\s+(?:-|to)\s+")
-_SIDE_START = re.compile(r"\s(?:-|to)\s+\Z")
+_SPACED_SEPARATOR = r"\s+(?:->|[-\u2013\u2014>]|(?i:to))\s+"
+_CODE_SEPARATOR = r"\s*(?:->|[-\u2013\u2014>/])\s*"
+_ROUTE_SEPARATOR = re.compile(
+    rf"{_SPACED_SEPARATOR}|"
+    rf"(?<=\b[A-Z]{{4}}){_CODE_SEPARATOR}(?=[A-Z][A-Z\d]{{3}}\b)|"
+    rf"(?<=\b[A-Z][A-Z\d]{{3}}){_CODE_SEPARATOR}(?=[A-Z]{{4}}\b)"
+)
+_SIDE_START = re.compile(
+    rf"(?:{_SPACED_SEPARATOR}|(?<=\b[A-Z]{{4}}){_CODE_SEPARATOR})\Z"
+)
 _AIRPORT_WORD = re.compile(r"\b(?:Airport|Airfield|Airpark|Field|Strip|Heliport)\b")
 
 
@@ -957,138 +844,21 @@ _TIME_AFTER_DATE = re.compile(
 )
 # A weekday gives the day of a flight away along with its year and the
 # order of the files. Only the full names, in English, German and the
-# languages of _MONTHS_DAY_FIRST, go wherever they stand, with the forms
+# languages of MONTHS_DAY_FIRST, go wherever they stand, with the forms
 # made of them: "Sundays", "Sunday's", "sonntags", "Sonntagsflug" and
 # "Sonntagabend" ("Montage" is no Monday).
 # The places OurAirports names after one keep it: Friday Harbor (KFHR, the
 # only airport with an ICAO code among them), Thursday Island and Sunday
 # Creek. Other names lose it, family names (Freitag, Sonntag) and "1WA9
 # Friday West" among them: a name kept whole would publish the day.
-_WEEKDAYS_ENGLISH = (
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-)
 _PLACE_AFTER_WEEKDAY = r"[\s_-]+(?:harbou?r|island|creek)(?![^\W\d_])"
-_WEEKDAYS_GERMAN = (
-    "montag",
-    "dienstag",
-    "mittwoch",
-    "donnerstag",
-    "freitag",
-    "samstag",
-    "sonnabend",
-    "sonntag",
-)
 _PARTS_OF_THE_DAY_GERMAN = "morgen|vormittag|nachmittag|mittag|abend|nacht"
-# The weekdays of the languages of _MONTHS_DAY_FIRST, with the letters
+# The weekdays of the languages of MONTHS_DAY_FIRST, with the letters
 # without their accents as well. The places named after one keep it: Murska
 # Sobota (LJMS) and Rimavska Sobota, Santo Domingo (and Sto. Domingo), Sroda
 # Slaska and Sroda Wielkopolska, Dunajska Streda (LZDS) and Streda nad
 # Bodrogom, Mardi Station (YMDZ), and Domingo Faustino Sarmiento (SANU), a
 # person's name.
-_WEEKDAYS_OTHER = (
-    # French
-    "lundi",
-    "mardi",
-    "mercredi",
-    "jeudi",
-    "vendredi",
-    "samedi",
-    "dimanche",
-    # Spanish and Portuguese
-    "lunes",
-    "martes",
-    "miércoles",
-    "miercoles",
-    "jueves",
-    "viernes",
-    "sábado",
-    "sabado",
-    "domingo",
-    "segunda-feira",
-    "terça-feira",
-    "terca-feira",
-    "quarta-feira",
-    "quinta-feira",
-    "sexta-feira",
-    # Italian
-    "lunedì",
-    "lunedi",
-    "martedì",
-    "martedi",
-    "mercoledì",
-    "mercoledi",
-    "giovedì",
-    "giovedi",
-    "venerdì",
-    "venerdi",
-    "sabato",
-    "domenica",
-    # Dutch
-    "maandag",
-    "dinsdag",
-    "woensdag",
-    "donderdag",
-    "vrijdag",
-    "zaterdag",
-    "zondag",
-    # Czech and Slovak
-    "pondělí",
-    "pondeli",
-    "pondelok",
-    "úterý",
-    "utery",
-    "utorok",
-    "středa",
-    "streda",
-    "čtvrtek",
-    "ctvrtek",
-    "štvrtok",
-    "stvrtok",
-    "pátek",
-    "patek",
-    "piatok",
-    "sobota",
-    "neděle",
-    "nedele",
-    "nedeľa",
-    "nedela",
-    # Polish
-    "poniedziałek",
-    "poniedzialek",
-    "wtorek",
-    "środa",
-    "sroda",
-    "czwartek",
-    "piątek",
-    "piatek",
-    "niedziela",
-    # Slovenian
-    "ponedeljek",
-    "torek",
-    "sreda",
-    "četrtek",
-    "cetrtek",
-    "petek",
-    "nedelja",
-    # Hungarian
-    "hétfő",
-    "hetfo",
-    "kedd",
-    "szerda",
-    "csütörtök",
-    "csutortok",
-    "péntek",
-    "pentek",
-    "szombat",
-    "vasárnap",
-    "vasarnap",
-)
 _TOWN_BEFORE_WEEKDAY = (
     r"(?<!murska[\s_-])(?<!rimavska[\s_-])(?<!rimavská[\s_-])(?<!santo[\s_-])"
     r"(?<!sto\.[\s_-])(?<!dunajska[\s_-])(?<!dunajská[\s_-])"
@@ -1099,21 +869,22 @@ _TOWN_AFTER_WEEKDAY = (
 # The first letter up front: the obfuscator's check runs this over whole
 # files, and the case-insensitive names are slow to try at every character
 _WEEKDAY = re.compile(
-    _first_letters(_WEEKDAYS_ENGLISH + _WEEKDAYS_GERMAN + _WEEKDAYS_OTHER)
+    _first_letters(WEEKDAYS_ENGLISH + WEEKDAYS_GERMAN + WEEKDAYS_OTHER)
     + r"(?<![^\W\d_])(?i:"
-    rf"(?:{'|'.join(_WEEKDAYS_ENGLISH)})(?!{_PLACE_AFTER_WEEKDAY})(?:'?s)?|"
-    rf"(?:{'|'.join(_WEEKDAYS_GERMAN)})"
+    rf"(?:{'|'.join(WEEKDAYS_ENGLISH)})(?!{_PLACE_AFTER_WEEKDAY})(?:'?s)?|"
+    rf"(?:{'|'.join(WEEKDAYS_GERMAN)})"
     rf"(?:s[^\W\d_]*|(?:{_PARTS_OF_THE_DAY_GERMAN})s?)?|"
     rf"{_TOWN_BEFORE_WEEKDAY}"
-    rf"(?:{'|'.join(sorted(_WEEKDAYS_OTHER, key=len, reverse=True))})"
+    rf"(?:{'|'.join(sorted(WEEKDAYS_OTHER, key=len, reverse=True))})"
     rf"(?!{_TOWN_AFTER_WEEKDAY})"
     r")(?![^\W\d_])"
 )
 # A holiday names the day of a flight as well, with the year of the flight
 # even the movable ones ("Easter Monday 2026"). The common ones of the
 # English and German speaking countries, each in both languages where it has
-# a name in both, and the forms made of the German ones ("Weihnachtsflug",
-# "Vorweihnachtsflug", "Ostermontagsflug"). The places named after one keep
+# a name in both, a few of the other languages, and the forms made of the
+# German ones ("Weihnachtsflug", "Vorweihnachtsflug", "Ostermontagsflug"; see
+# date_words). The places named after one keep
 # it, as those of the weekdays do, and so do the airfields: Christmas
 # Island, Christmas Creek, Christmas Valley, Easter Island, Easter Field,
 # High Easter Airfield, Pentecost Island, Pentecost Airport and Proserpine
@@ -1128,124 +899,9 @@ _PLACE_AFTER_HOLIDAY = (
     r"|church|chapel|cathedral|college|parish|school)s?(?![^\W\d_])"
     r"|[\s_/-]+flying[\s_/-]+service\b"
 )
-_HOLIDAYS_ENGLISH = (
-    r"christmas(?:\s+(?:eve|day))?",
-    r"x-?mas(?:\s+(?:eve|day))?",
-    r"boxing\s+day",
-    r"new\s+year'?s?(?:\s+(?:eve|day))?",
-    r"easter(?:\s+(?:sunday|monday))?",
-    r"good\s+friday",
-    r"maundy\s+thursday",
-    r"whit(?:sun(?:day)?|\s+(?:sunday|monday))",
-    "pentecost",
-    r"ascension\s+day",
-    # With their day: All Saints and All Souls name churches and colleges
-    r"all\s+saints'?\s+day",
-    r"all\s+souls'?\s+day",
-    r"st\.?\s+patrick'?s\s+day",
-    "thanksgiving",
-    "halloween",
-    r"valentine'?s\s+day",
-    r"independence\s+day",
-    r"(?:fourth|4th)\s+of\s+july",
-    r"july\s+(?:fourth|4th)",
-    "juneteenth",
-    r"labou?r\s+day",
-    r"memorial\s+day",
-    r"veterans'?\s+day",
-    r"(?:mother|father)'?s\s+day",
-    "hogmanay",
-    r"groundhog\s+day",
-    r"walpurgis\s+night",
-    # The English names of the German ones below, and more of the US, the
-    # UK and the Commonwealth
-    r"holy\s+saturday",
-    r"palm\s+sunday",
-    r"ash\s+wednesday",
-    r"shrove\s+tuesday",
-    r"pancake\s+day",
-    r"mardi\s+gras",
-    # As Corpus Christi below: Epiphany alone names churches
-    r"epiphany\s+day",
-    r"feast\s+of\s+(?:the\s+)?epiphany",
-    r"three\s+kings'?(?:\s+day)?",
-    r"twelfth\s+night",
-    r"st\.?\s+nicholas'?\s+day",
-    r"st\.?\s+stephen'?s\s+day",
-    r"reformation\s+day",
-    r"may\s+day",
-    r"(?:german\s+unity\s+day|day\s+of\s+german\s+unity)",
-    # Not the city in Texas
-    r"corpus\s+christi\s+day",
-    r"feast\s+of\s+corpus\s+christi",
-    r"repentance\s+day",
-    r"columbus\s+day",
-    r"presidents'?\s+day",
-    r"(?:mlk|martin\s+luther\s+king(?:\s+jr\.?)?)\s+day",
-    r"remembrance\s+(?:day|sunday)",
-    r"armistice\s+day",
-    r"victoria\s+day",
-    r"canada\s+day",
-    r"australia\s+day",
-    r"anzac\s+day",
-)
-# The German ones that make words of their own take the forms made of them
-# along, such as "Ostermontagsflug" and "Himmelfahrtswochenende"
-_COMPOUND = r"(?:s[^\W\d_]*)?"
-_HOLIDAYS_GERMAN = (
-    r"heilig(?:abend[^\W\d_]*|er\s+abend)",
-    r"(?:vor)?weihnacht(?:en|s(?!insel)[^\W\d_]*)",
-    r"silvester[^\W\d_]*",
-    r"neujahr[^\W\d_]*",
-    "ostern",
-    rf"oster(?:sonntag|montag|samstag|feiertage?|flug|ferien|wochenende){_COMPOUND}",
-    rf"karfreitag{_COMPOUND}",
-    rf"karsamstag{_COMPOUND}",
-    rf"palmsonntag{_COMPOUND}",
-    rf"gründonnerstag{_COMPOUND}",
-    rf"gruendonnerstag{_COMPOUND}",
-    "pfingsten",
-    rf"pfingst(?:sonntag|montag|feiertage?|flug|ferien|wochenende){_COMPOUND}",
-    rf"(?:christi\s+)?himmelfahrt{_COMPOUND}",
-    rf"vatertag{_COMPOUND}",
-    rf"muttertag{_COMPOUND}",
-    rf"fronleichnam{_COMPOUND}",
-    rf"rosenmontag{_COMPOUND}",
-    rf"faschingsdienstag{_COMPOUND}",
-    rf"aschermittwoch{_COMPOUND}",
-    "allerheiligen",
-    "allerseelen",
-    rf"totensonntag{_COMPOUND}",
-    rf"reformationstag{_COMPOUND}",
-    rf"maifeiertag{_COMPOUND}",
-    r"erste[nr]?\s+mai",
-    r"tag\s+der\s+arbeit",
-    r"tag\s+der\s+(?:deutschen\s+)?einheit",
-    # The German names of the English ones above
-    rf"dreik(?:ö|oe)nigs(?:tag|fest){_COMPOUND}",
-    r"heilige[n]?\s+drei\s+k(?:ö|oe)nige",
-    rf"nikolaustag{_COMPOUND}",
-    # Nikolaus alone is a first name
-    rf"nikolaus(?:abend|flug|fahrt|wochenende){_COMPOUND}",
-    rf"walpurgisnacht{_COMPOUND}",
-    # The Sundays of Advent, which name the day as the year completes them
-    (
-        r"(?:[1-4]\.?|erste[nr]?|zweite[nr]?|dritte[nr]?|vierte[nr]?)\s*advent"
-        r"(?:s(?:sonntag|wochenende)[^\W\d_]*)?"
-    ),
-    rf"adventssonntag{_COMPOUND}",
-    rf"stephanstag{_COMPOUND}",
-    rf"valentinstag{_COMPOUND}",
-    rf"patrickstag{_COMPOUND}",
-    rf"martinstag{_COMPOUND}",
-    rf"erntedank(?:fest|sonntag|tag)?{_COMPOUND}",
-    rf"volkstrauertag{_COMPOUND}",
-    rf"unabh(?:ä|ae)ngigkeitstag{_COMPOUND}",
-    r"bu(?:ß|ss)-?\s*und\s+bettag",
-)
 _HOLIDAY = re.compile(
     r"(?=[ABCDEFGHIJKLMNOPRSTUVWXZabcdefghijklmnoprstuvwxz1-4])(?<![^\W_])(?i:(?:"
-    + "|".join(_HOLIDAYS_ENGLISH + _HOLIDAYS_GERMAN)
+    + "|".join(HOLIDAYS_ENGLISH + HOLIDAYS_GERMAN + HOLIDAYS_OTHER)
     + rf")(?!{_PLACE_AFTER_HOLIDAY}))(?![^\W\d_])"
 )
 # The abbreviations are words, codes and types of their own: "Sun" and
@@ -1256,30 +912,11 @@ _HOLIDAY = re.compile(
 # hyphen, as in the registrations D-EFRI and OE-SAT. Next to a time the
 # airport code goes as well ("KAUS to SAT 14:30" keeps "KAUS to"): it
 # cannot be told from a weekday there, and a weekday with a time is a leak.
-_WEEKDAY_ABBREVIATIONS = (
-    "Mon",
-    "Tue",
-    "Tues",
-    "Wed",
-    "Thu",
-    "Thur",
-    "Thurs",
-    "Fri",
-    "Sat",
-    "Sun",
-    "Mo",
-    "Di",
-    "Mi",
-    "Do",
-    "Fr",
-    "Sa",
-    "So",
-)
 _WEEKDAY_ABBREVIATION = (
     "(?:"
     + "|".join(
         sorted(
-            {form for name in _WEEKDAY_ABBREVIATIONS for form in (name, name.upper())},
+            {form for name in WEEKDAY_ABBREVIATIONS for form in (name, name.upper())},
             key=len,
             reverse=True,
         )
@@ -1493,7 +1130,7 @@ def _day_number(day_text: str | None) -> int:
 
 
 def _day_first_month_number(name: str) -> int | None:
-    return _DAY_FIRST_MONTH_NUMBERS.get(name.lower())
+    return _ANY_DAY_FIRST_MONTH_NUMBERS.get(name.lower())
 
 
 def any_month_number(name: str) -> int | None:
@@ -1814,115 +1451,6 @@ _POSSIBLE_DATE = re.compile(
     r"(?<![^\W_])(?:0?[1-9]|[12]\d|3[01])[\s_.-]*(?P<word>[^\W\d_]{3,})"
     rf"[\s_.,-]*(?:19|20)\d{{2}}(?![^\W_]){_UNIT_AFTER}"
 )
-_NO_MONTH_WORDS = frozenset(
-    {
-        # English
-        "and",
-        "the",
-        "from",
-        "since",
-        "until",
-        "till",
-        "for",
-        "with",
-        "per",
-        "out",
-        "over",
-        "into",
-        "after",
-        "before",
-        "time",
-        "times",
-        "leg",
-        "legs",
-        "flight",
-        "flights",
-        "landing",
-        "landings",
-        "circuit",
-        "circuits",
-        "lap",
-        "laps",
-        "hour",
-        "hours",
-        "hrs",
-        "min",
-        "mins",
-        "minute",
-        "minutes",
-        "day",
-        "days",
-        "week",
-        "weeks",
-        "month",
-        "months",
-        "year",
-        "years",
-        "pax",
-        "person",
-        "people",
-        "tour",
-        "trip",
-        "trips",
-        "stage",
-        "stop",
-        "stops",
-        "elevation",
-        "altitude",
-        "feet",
-        "runway",
-        # German
-        "bis",
-        "von",
-        "vom",
-        "seit",
-        "und",
-        "oder",
-        "zum",
-        "zur",
-        "der",
-        "die",
-        "das",
-        "mit",
-        "nach",
-        "vor",
-        "auf",
-        "für",
-        "fur",
-        "mal",
-        "flug",
-        "flüge",
-        "fluege",
-        "landung",
-        "landungen",
-        "platzrunde",
-        "platzrunden",
-        "runde",
-        "runden",
-        "stunde",
-        "stunden",
-        "std",
-        "minuten",
-        "tag",
-        "tage",
-        "tagen",
-        "woche",
-        "wochen",
-        "monat",
-        "monate",
-        "monaten",
-        "jahr",
-        "jahre",
-        "jahren",
-        "personen",
-        "etappe",
-        "etappen",
-        "reise",
-        "höhe",
-        "hoehe",
-        "bahn",
-    }
-)
 
 
 def find_possible_date_tokens(text: str) -> list[str]:
@@ -1933,7 +1461,7 @@ def find_possible_date_tokens(text: str) -> list[str]:
     return [
         match.group(0)
         for match in _POSSIBLE_DATE.finditer(_plain(text)[0])
-        if match["word"].lower() not in _NO_MONTH_WORDS
+        if match["word"].lower() not in NO_MONTH_WORDS
         and not (len(match["word"]) <= _CODE_LETTERS and match["word"].isupper())
         and any_month_number(match["word"]) is None
         and match["word"] not in _ROMAN_MONTH_NUMBERS

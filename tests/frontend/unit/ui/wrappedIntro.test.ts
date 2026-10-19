@@ -893,6 +893,19 @@ describe("Wrapped's intro", () => {
       expect(map().flyTo).toHaveBeenCalledTimes(2);
     });
 
+    it("drops the wait for a row once the pointer rests on a country's heading", async () => {
+      await hover("LOWW", "mouse", 100);
+      const heading = el("wrapped-airports-grid").querySelector(
+        ".country-group-title",
+      )!;
+      const event = new Event("pointerover", { bubbles: true });
+      Object.assign(event, { pointerType: "mouse" });
+      heading.dispatchEvent(event);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(map().flyTo).not.toHaveBeenCalled();
+    });
+
     it("does not follow a finger, reduced motion, or a closed dialog", async () => {
       await hover("LOWW", "touch");
       vi.spyOn(motion, "prefersReducedMotion").mockReturnValue(true);

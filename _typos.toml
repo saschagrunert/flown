@@ -15,7 +15,7 @@ Nd = "Nd"
 paeth = "paeth"
 # The National Elevation Dataset, in the attribution of the terrain tiles
 NED = "NED"
-# German month names, which flown/date_tokens.py takes out of names
+# German month names, which flown/date_words.py lists for the names
 januar = "januar"
 februar = "februar"
 juni = "juni"
@@ -23,7 +23,7 @@ juli = "juli"
 oktober = "oktober"
 dezember = "dezember"
 # French month names without their accents, and the German "or" and "days",
-# which flown/date_tokens.py reads in dates and keeps out of possible ones
+# which flown/date_words.py lists as months and as no months
 aout = "aout"
 decembre = "decembre"
 oder = "oder"
@@ -31,9 +31,13 @@ tage = "tage"
 # The time zone of India and Ireland, and the German "is", which
 # flown/date_tokens.py tells apart by their case
 ist = "ist"
-# The German "before" of Vorweihnachten, which flown/date_tokens.py
+# The German "before" of Vorweihnachten, which flown/date_words.py
 # matches as a part of the word
 vor = "vor"
+# The abbreviations of August in Polish and of March in Czech, which
+# flown/date_words.py lists, "sie" a German word as well
+sie = "sie"
+bre = "bre"
 
 [default.extend-identifiers]
 # The plural of the image format, which typos would split into "PN" and "Gs"

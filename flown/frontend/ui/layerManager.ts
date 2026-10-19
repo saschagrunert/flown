@@ -236,6 +236,9 @@ export class LayerManager implements PathHitTester {
       readyMap: () => readyMap(this.app),
       drawnRuns: (map) => this.drawnRuns(map),
       describe: (segment) => formatSegmentTooltip(app, this.state, segment),
+      // The profile of a flight picked on the map comes with the feature
+      // bundle (MapApp.followFlightProfile)
+      prepare: loadFeatures,
     });
     // Lifted or flat, the flights are cut and written anew. The smoothed
     // flights and the ground of every level only the 3D view needs are let

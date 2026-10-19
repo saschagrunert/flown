@@ -152,7 +152,7 @@ test.describe("Error-Free Interactions", () => {
       const download = page.waitForEvent("download", { timeout: 20000 });
       await page.locator("#export-btn").click();
 
-      expect((await download).suggestedFilename()).toMatch(/^heatmap_.*\.jpg$/);
+      expect((await download).suggestedFilename()).toMatch(/^flown_.*\.jpg$/);
       await expect(toastMessage(page, "Map exported")).toBeVisible();
       // The library clones the map into an SVG image; none of that may
       // trip the CSP, which allows no inline styles

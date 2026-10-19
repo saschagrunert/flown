@@ -10,7 +10,7 @@
  * Only Wrapped counts the area, so this module is part of its bundle.
  */
 import type { KMLDataset, PathSegment } from "../types";
-import type { Coordinate } from "../utils/geometry";
+import { turnOf, wrapDegrees, type Coordinate } from "../utils/geometry";
 import { cellKey, columnWidth, rowDegrees } from "./grid";
 import { segmentDistance } from "./statistics";
 
@@ -41,10 +41,15 @@ export function visitedCells(segments: readonly PathSegment[]): Set<number> {
   for (const segment of segments) {
     const [[lat0, lng0], [lat1, lng1]] = segment.coords;
     const steps = Math.ceil((segmentDistance(segment) * 2000) / CELL_M);
+    // The short way across the antimeridian, as the distance is measured
+    const turn = turnOf(lng0, lng1);
     for (let step = 0; step <= steps; step++) {
       const along = steps > 0 ? step / steps : 0;
       cells.add(
-        cellOf([lat0 + (lat1 - lat0) * along, lng0 + (lng1 - lng0) * along]),
+        cellOf([
+          lat0 + (lat1 - lat0) * along,
+          wrapDegrees(lng0 + turn * along),
+        ]),
       );
     }
   }
