@@ -25,7 +25,12 @@ import { formatFileSize } from "../utils/formatters";
 import { frameCoalescer } from "../utils/frameCoalescer";
 import { logError } from "../utils/logger";
 import { cssVar, onMapReady, whenContextRestored } from "../utils/mapHelpers";
-import { dismissToast, showToast, type ToastAction } from "../utils/toast";
+import {
+  dismissToast,
+  RELOAD_ACTION,
+  showToast,
+  type ToastAction,
+} from "../utils/toast";
 import { dimsHeatmap, dimsHeatmapAtAnyZoom } from "./layerVisibility";
 import { AVIATION_BAND } from "../mapLayers";
 import {
@@ -223,12 +228,15 @@ export class DataManager {
             failedYears.join(", ") +
             // The site was published again since the page was loaded
             (stale ? ". Reload the page to update it." : ""),
-          // The Retry is the one of the load asked for last (retryYear),
+          // A Retry would fetch the same out-of-date file again. Otherwise
+          // the Retry is the one of the load asked for last (retryYear),
           // which fetches these years again only if they are among its own:
           // they may be of an earlier load another caller still waits on
-          this.retryYear === "all" || failedYears.includes(this.retryYear)
-            ? this.retry
-            : undefined,
+          stale
+            ? RELOAD_ACTION
+            : this.retryYear === "all" || failedYears.includes(this.retryYear)
+              ? this.retry
+              : undefined,
         );
       },
     });

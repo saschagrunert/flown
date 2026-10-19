@@ -30,8 +30,11 @@ __all__ = [
     "atomic_write",
     "decode_entry",
     "encode_entry",
+    "load_bytes",
     "load_entry",
+    "prune_entries",
     "source_fingerprint",
+    "store_bytes",
     "store_entry",
 ]
 
@@ -328,19 +331,19 @@ def decode_entry(data: bytes) -> Any:
     return json.loads(zstd.decompress(data))
 
 
-def load_entry(path: Path) -> Any:
-    """The data ``store_entry`` kept at ``path``, None when there is none.
+def load_bytes(path: Path) -> bytes | None:
+    """The bytes ``store_bytes`` kept at ``path``, None when there are none.
 
     Only from a directory of this user's alone (see ``private_directory``):
     whoever else could write to it could put what a build publishes into
-    it. An entry that cannot be read counts as none, and one that is read
-    is touched, which keeps it from being pruned.
+    it. An entry that is read is touched, which keeps it from being pruned
+    (see ``prune_entries``).
     """
     if not private_directory(path.parent):
         return None
     try:
-        data = decode_entry(path.read_bytes())
-    except (OSError, zstd.ZstdError, ValueError) as e:
+        data = path.read_bytes()
+    except OSError as e:
         if not isinstance(e, FileNotFoundError):
             logger.debug("Cache entry %s is unreadable: %s", path, e)
         return None
@@ -349,28 +352,62 @@ def load_entry(path: Path) -> Any:
     return data
 
 
-def store_entry(path: Path, data: Any) -> None:
-    """Keep ``data`` at ``path`` for ``load_entry``, as compact JSON compressed.
+def store_bytes(path: Path, data: bytes, *, prune: bool = True) -> None:
+    """Keep ``data`` at ``path`` for ``load_bytes``.
 
     In a directory of this user's alone (see ``private_directory``), with
     mode 0600, written atomically: a run that reads it meanwhile finds the
-    old entry or the new one whole. The entries of the directory that were
-    not used for ``ENTRY_MAX_AGE_DAYS`` go then, and so do the temp files an
-    interrupted write left: what the directory holds is what the runs of
-    the last month used. A failure to write costs the next run the time to
-    compute it again, nothing else.
+    old entry or the new one whole. With ``prune`` the directory is pruned
+    then (see ``prune_entries``); a caller that stores many entries at once
+    prunes once after them. A failure to write costs the next run the time
+    to compute it again, nothing else.
     """
     directory = path.parent
     if not private_directory(directory):
         return
     try:
-        atomic_bytes_write(path, encode_entry(data), mode=PRIVATE_FILE_MODE)
+        atomic_bytes_write(path, data, mode=PRIVATE_FILE_MODE)
     except OSError as e:
         logger.debug("Failed to write cache entry %s: %s", path, e)
         return
+    if prune:
+        prune_entries(directory, keep=path)
+
+
+def prune_entries(directory: Path, keep: Path | None = None) -> None:
+    """Remove the entries of ``directory`` unused for ``ENTRY_MAX_AGE_DAYS``.
+
+    And the temp files an interrupted write left: what the directory holds
+    is what the runs of the last month used. ``keep`` stays whatever its age.
+    """
     oldest = time.time() - ENTRY_MAX_AGE_DAYS * 24 * 3600
     with contextlib.suppress(OSError):
         for entry in directory.iterdir():
             with contextlib.suppress(OSError):
-                if entry != path and entry.lstat().st_mtime < oldest:
+                if entry != keep and entry.lstat().st_mtime < oldest:
                     entry.unlink()
+
+
+def load_entry(path: Path) -> Any:
+    """The data ``store_entry`` kept at ``path``, None when there is none.
+
+    Read with ``load_bytes``; an entry that cannot be decoded counts as none.
+    """
+    data = load_bytes(path)
+    if data is None:
+        return None
+    try:
+        return decode_entry(data)
+    except (zstd.ZstdError, ValueError) as e:
+        logger.debug("Cache entry %s is unreadable: %s", path, e)
+        return None
+
+
+def store_entry(path: Path, data: Any) -> None:
+    """Keep ``data`` at ``path`` for ``load_entry``, as compact JSON compressed.
+
+    Written with ``store_bytes``, which prunes the directory: the entries
+    not used for ``ENTRY_MAX_AGE_DAYS`` go then, and so do the temp files
+    an interrupted write left.
+    """
+    store_bytes(path, encode_entry(data))

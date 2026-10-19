@@ -12,6 +12,8 @@ import { trustedHtml } from "../utils/trustedHtml";
 
 export const DROP_SHEET_ID = "file-drop-sheet";
 export const DROP_MESSAGE = "Drop the files to see your flights";
+/** Said for files dropped while Wrapped is open (see toggleLocalFlights) */
+export const DROP_IN_WRAPPED_MESSAGE = "Close Wrapped to add your flights";
 
 let sheet: HTMLElement | null = null;
 /** Puts the sheet's count of the drag's depth at one (see showDropSheet) */
@@ -24,7 +26,7 @@ let reset: () => void = () => {};
  * or without the sheet.
  */
 export function showDropSheet(
-  app: Pick<MapApp, "signal" | "toggleLocalFlights">,
+  app: Pick<MapApp, "signal" | "toggleLocalFlights" | "wrappedVisible">,
 ): HTMLElement {
   if (!sheet) {
     const made = document.createElement("div");
@@ -56,7 +58,9 @@ export function showDropSheet(
       (event) => {
         if (!carriesFiles(event.dataTransfer)) return;
         depth++;
-        made.hidden = false;
+        // Over Wrapped's dialog the drop is refused (see toggleLocalFlights
+        // in ui/localFlights.ts)
+        made.hidden = app.wrappedVisible;
       },
       { signal },
     );
@@ -78,7 +82,7 @@ export function showDropSheet(
       (event) => {
         if (!carriesFiles(event.dataTransfer)) return;
         depth = Math.max(depth, 1);
-        made.hidden = false;
+        made.hidden = app.wrappedVisible;
       },
       { signal },
     );

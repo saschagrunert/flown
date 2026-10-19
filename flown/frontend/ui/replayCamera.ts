@@ -674,6 +674,9 @@ export class ReplayCamera {
     }
     if (this.userMovement?.isActive()) {
       this.chaseHeld = true;
+      // No frame of a paused replay comes to look again once the hand or
+      // the ease back from an earlier chase lets go
+      this.chaseAgain(state.playing);
       return true;
     }
     if (!this.chase) {

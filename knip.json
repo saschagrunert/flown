@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  // Test seams. `npx knip --production` lists some 170 exports of the
-  // frontend that only the tests import: the pure parts a module is built
+  // Test seams. `npx knip --production` lists the exports of the frontend
+  // that only the tests import, some hundreds of them: the pure parts a module is built
   // of, the constants a test holds a behaviour to, and the functions that
   // reset the state of a module between tests. They are exported so the
   // unit tests reach those parts rather than drive them through the page,

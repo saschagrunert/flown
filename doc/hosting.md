@@ -133,13 +133,15 @@ and so on in every build, and the hash of the sources is written inside them
 (the first line of a bundle), not into their names; `map_config.js` carries the
 build date and commit under the same name in every build too. So nothing may be
 cached as if it were immutable, and a rebuild has to reach the browser through
-revalidation:
+revalidation. Everything the page runs on has to be revalidated on every load: a
+bundle the browser keeps for an hour next to the year files of a new build,
+written in a newer format, cannot read them, and a reload does not help, since
+the browser takes the bundle from its cache again without asking the server.
 
-| Path                                                                        | Cache policy                                                                                                                              |
-| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.html`, `map_config.js`, `data/**`                                    | `no-cache`, or a `max-age` of minutes: what a rebuild changes first. With `no-cache` the browser keeps a copy and asks whether it changed |
-| `*.bundle.js`, `*.css`, `flown-src.zip`, `vendor/`                          | A modest `max-age` (an hour to a day), never `immutable`: they change with a rebuild under the same names                                 |
-| `flags/`, the favicons, `manifest.json`, `preview.png`, `y/`, `f/`, `*.map` | The same modest `max-age`                                                                                                                 |
+| Path                                                                                         | Cache policy                                                                                                      |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `index.html`, `map_config.js`, `data/**`, `*.bundle.js`, `*.css`, `flown-src.zip`, `vendor/` | `no-cache`: the browser keeps a copy and asks whether it changed, which costs a request and no download           |
+| `flags/`, the favicons, `manifest.json`, `preview.png`, `y/`, `f/`, `*.map`                  | `no-cache` as well, or a modest `max-age` (an hour to a day), never `immutable`: a stale one shows an old picture |
 
 Revalidation works with `ETag` or `Last-Modified`. A server that derives its
 ETags from the modification times, as GitHub Pages does, keeps them for the

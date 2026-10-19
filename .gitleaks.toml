@@ -1,4 +1,4 @@
-# Gitleaks configuration, used by the CI security job and the pre-commit hook.
+# Gitleaks configuration, used by the CI secrets job and the pre-commit hook.
 
 # Extend the built-in rule set. Without this block gitleaks would only apply
 # the rules defined in this file (none) and therefore detect nothing.
@@ -7,7 +7,7 @@ useDefault = true
 
 # The generated site used to be committed, and its pages embedded the public
 # client-side tile API keys (Stadia, CARTO, OpenAIP). None of these files is
-# tracked any more, but the CI security job scans the whole commit history,
+# tracked any more, but the CI secrets job scans the whole commit history,
 # so the old revisions still need the allowlist. [[allowlists]] needs
 # gitleaks 8.25 or newer; older versions ignore it without a warning.
 [[allowlists]]

@@ -23,8 +23,11 @@ from flown.cache import (
     atomic_data_write,
     atomic_text_write,
     atomic_write,
+    load_bytes,
     load_entry,
+    prune_entries,
     source_fingerprint,
+    store_bytes,
     store_entry,
 )
 
@@ -523,6 +526,34 @@ class TestEntries:
             store_entry(path, [1])
         assert load_entry(path) is None
         assert list(tmp_path.iterdir()) == []
+
+
+class TestBytesEntries:
+    """Entries of bytes as they are (see store_bytes and load_bytes)."""
+
+    def test_an_entry_is_read_back_as_it_was_stored(self, tmp_path):
+        path = tmp_path / "kept" / "entry"
+        store_bytes(path, b"\x00\x01")
+        assert load_bytes(path) == b"\x00\x01"
+        assert oct(path.stat().st_mode & 0o777) == "0o600"
+
+    def test_none_for_an_entry_that_cannot_be_read(self, tmp_path):
+        assert load_bytes(tmp_path / "missing") is None
+        (tmp_path / "a directory").mkdir()
+        assert load_bytes(tmp_path / "a directory") is None
+
+    def test_many_entries_are_pruned_once(self, tmp_path):
+        """A caller that stores an entry per flight prunes after the last."""
+        old = time.time() - (ENTRY_MAX_AGE_DAYS + 1) * 24 * 3600
+        directory = tmp_path / "kept"
+        store_bytes(directory / "unused", b"1")
+        os.utime(directory / "unused", (old, old))
+
+        store_bytes(directory / "new", b"2", prune=False)
+        assert (directory / "unused").exists()
+        prune_entries(directory)
+
+        assert sorted(entry.name for entry in directory.iterdir()) == ["new"]
 
 
 class TestSourceFingerprint:

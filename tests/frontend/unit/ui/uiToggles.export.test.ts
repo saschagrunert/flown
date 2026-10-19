@@ -483,7 +483,7 @@ describe("UIToggles export and share", () => {
 
       expect(toJpeg).toHaveBeenCalledTimes(1);
       expect(share).toHaveBeenCalledTimes(1);
-      expect(clickedLink().download).toBe("heatmap_all.jpg");
+      expect(clickedLink().download).toBe("flown_all.jpg");
       expect(toast()?.textContent).not.toBe(EXPORT_FAILED_MESSAGE);
     });
 
@@ -499,7 +499,7 @@ describe("UIToggles export and share", () => {
       await finishExport();
 
       expect(toJpeg).toHaveBeenCalledTimes(1);
-      expect(clickedLink().download).toBe("heatmap_all.jpg");
+      expect(clickedLink().download).toBe("flown_all.jpg");
     });
 
     it("captures what there is once the map has taken too long", async () => {
@@ -689,9 +689,7 @@ describe("UIToggles export and share", () => {
       const link = clickedLink();
       expect(link.href).toBe("blob:mock-url");
       // The year shown, never the time of the export
-      expect(link.download).toBe(
-        `heatmap_${app.store.get("selectedYear")}.jpg`,
-      );
+      expect(link.download).toBe(`flown_${app.store.get("selectedYear")}.jpg`);
       expect(link.isConnected).toBe(false);
       expect(toast()?.textContent).toBe("Map exported");
       // The object URL is released after the download had time to start
@@ -749,7 +747,7 @@ describe("UIToggles export and share", () => {
         expect.objectContaining({ files: [expect.any(File)] }),
       );
       const shared = (share.mock.calls[0]![0] as { files: File[] }).files[0]!;
-      expect(shared.name).toMatch(/^heatmap_.*\.jpg$/);
+      expect(shared.name).toMatch(/^flown_.*\.jpg$/);
       expect(shared.type).toBe("image/jpeg");
       expect(clickSpy).not.toHaveBeenCalled();
       expect(toast()?.textContent).toBe("Map shared");
@@ -887,7 +885,6 @@ describe("UIToggles export and share", () => {
         years: [2025],
         flights: 1,
         airports: 1,
-        center: [50, 8],
         bounds: [
           [49, 7],
           [51, 9],
@@ -1181,6 +1178,26 @@ describe("UIToggles export and share", () => {
       expect(url.searchParams.get("a")).toBe("x".repeat(300));
       expect(url.searchParams.get("p")).toBe("a5");
       expect(url.searchParams.get("i")).toBe("1");
+      // Nor debugging for whoever opens it
+      expect(url.searchParams.has("debug")).toBe(false);
+    });
+
+    it("hands on the long link without debug or the fragment", async () => {
+      window.history.replaceState(null, "", "/?debug=true&y=2025#top");
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      defineNavigatorProperty("clipboard", { writeText });
+      app.stateManager.flush.mockReturnValue({
+        ...sharedState(false),
+        selectedAircraft: "x".repeat(300),
+      });
+
+      await uiToggles.shareLink();
+
+      const url = new URL(writeText.mock.calls[0]![0] as string);
+      expect(url.searchParams.has(SHARE_TOKEN_PARAM)).toBe(false);
+      expect(url.searchParams.has("debug")).toBe(false);
+      expect(url.searchParams.get("y")).toBe("2025");
+      expect(url.hash).toBe("");
     });
 
     it("marks the link of the share sheet in share mode as well", async () => {

@@ -54,7 +54,7 @@ import {
 } from "./ui/actions";
 import { loadInitialData } from "./appInitializer";
 import { logError } from "./utils/logger";
-import { dismissToast, showToast } from "./utils/toast";
+import { dismissToast, RELOAD_ACTION, showToast } from "./utils/toast";
 import { setUnavailableFor } from "./utils/buttonState";
 import { domCache } from "./utils/domCache";
 import { applyGradientTokens } from "./utils/colors";
@@ -109,6 +109,7 @@ import {
   loadExtras,
   loadFeatures,
   loadLocal,
+  loadPhone,
   loadSearch,
   loadWrapped,
 } from "./services/featureLoader";
@@ -185,7 +186,6 @@ import { trustedHtml } from "./utils/trustedHtml";
  * Map configuration passed to constructor
  */
 export interface MapConfig {
-  center: [number, number];
   bounds: [[number, number], [number, number]];
   cartoApiKey?: string | undefined;
   dataDir: string;
@@ -672,7 +672,7 @@ export class MapApp {
       // A hidden tab draws nothing, and is no sign of a failure. Nor is a
       // map that has all it needs without having drawn since: no data came
       if (!this.destroyed && !document.hidden && !map.loaded()) {
-        showToast(MAP_STALL_MESSAGE, "error");
+        showToast(MAP_STALL_MESSAGE, "error", RELOAD_ACTION);
       }
     }, MAP_STALL_MS);
     map.once("idle", () => {
@@ -974,8 +974,8 @@ export class MapApp {
 
   /**
    * Mount the phone's bar (ui/mobileBar.ts) once the phone layout applies,
-   * at the start or on a turn or a resize later: it comes with the extras
-   * bundle, which a desktop never fetches for it. A phone has asked for the
+   * at the start or on a turn or a resize later: it comes with the phone
+   * bundle, which a desktop never fetches. A phone has asked for the
    * bundle as the page started (startApp), so the bar stands in for the
    * control columns as soon as the managers are there; the columns do not
    * show in the phone layout meanwhile (styles.css). From then on the bar
@@ -988,14 +988,14 @@ export class MapApp {
     const mount = (phone: boolean): void => {
       if (!phone || loading || this.mobileBar) return;
       loading = true;
-      void loadLazyBundle(loadExtras, MOBILE_BAR_UNAVAILABLE_MESSAGE).then(
-        (extras) => {
+      void loadLazyBundle(loadPhone, MOBILE_BAR_UNAVAILABLE_MESSAGE).then(
+        (phone) => {
           loading = false;
           // The columns stand in for the bar meanwhile (styles.css)
-          document.body.classList.toggle("mobile-bar-unavailable", !extras);
-          if (!extras || this.destroyed || this.mobileBar) return;
+          document.body.classList.toggle("mobile-bar-unavailable", !phone);
+          if (!phone || this.destroyed || this.mobileBar) return;
           stop();
-          this.mobileBar = extras.MobileBar.mountFor(this);
+          this.mobileBar = phone.MobileBar.mountFor(this);
         },
       );
     };
@@ -1526,9 +1526,15 @@ export const RESET_VIEW_DONE_MESSAGE =
 export const INIT_ERROR_MESSAGE =
   "The map could not start. Reload the page to try again.";
 
-/** Markup shown in place of the map when initialization fails */
+/**
+ * Markup shown in place of the map when initialization fails, with the
+ * reload it asks for: a site added to the home screen has no control of
+ * its own for that
+ */
 export const INIT_ERROR_HTML =
-  '<div class="init-error" role="alert">' + INIT_ERROR_MESSAGE + "</div>";
+  '<div class="init-error" role="alert"><p>' +
+  INIT_ERROR_MESSAGE +
+  '</p><button type="button" class="btn-surface control-btn">Reload</button></div>';
 
 /**
  * Create the app, bind the controls and run the initial load. Exported so
@@ -1580,9 +1586,9 @@ export async function startApp(config: MapConfig): Promise<MapApp> {
   // A shared link becomes the ordinary one before anything reads it: the
   // token is read here, its packing for Copy link is in the extras bundle
   resolveShareToken();
-  // The extras bundle has the phone's bar (MapApp.followMobileBar): a phone
+  // The phone bundle has the phone's bar (MapApp.followMobileBar): a phone
   // asks for it while the rest of the start runs
-  if (isPhoneLayout()) void loadExtras();
+  if (isPhoneLayout()) void loadPhone();
   const local = !shared && storedFlag(LOCAL_FLIGHTS_KEY);
   // The bundle is asked for the dataset, or only to reopen its panel after
   // the reload that went back to the site's flights
@@ -1604,16 +1610,19 @@ export async function startApp(config: MapConfig): Promise<MapApp> {
 export function reportInitFailure(error: unknown): void {
   logError(error);
   // Only a message of the app's own replaces the generic one
-  const message =
-    error instanceof UnsupportedBrowserError
-      ? error.message
-      : INIT_ERROR_MESSAGE;
+  const unsupported = error instanceof UnsupportedBrowserError;
+  const message = unsupported ? error.message : INIT_ERROR_MESSAGE;
   failStart(message);
   const mapEl = document.getElementById("map");
   if (mapEl) {
     mapEl.innerHTML = trustedHtml(INIT_ERROR_HTML);
+    const notice = mapEl.firstElementChild!;
     // Set as text
-    mapEl.firstElementChild!.textContent = message;
+    notice.firstElementChild!.textContent = message;
+    const reload = notice.lastElementChild!;
+    // A browser that lacks what the map needs lacks it after a reload too
+    if (unsupported) reload.remove();
+    else reload.addEventListener("click", RELOAD_ACTION.run);
   }
 }
 

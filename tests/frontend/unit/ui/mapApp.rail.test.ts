@@ -210,7 +210,7 @@ describe("MapApp controls and map", () => {
 
       expect(btn.getAttribute("aria-disabled")).toBe("true");
       expect(btn.title).toBe(
-        "Pick flights with timing data to replay, under Statistics, Flights",
+        "Pick flights with timing data to replay, under Flights in the statistics",
       );
 
       app.selectedPathIds = new Set([...app.selectedPathIds, 1]);
@@ -468,7 +468,7 @@ describe("MapApp controls and map", () => {
       app.mobileBar = bar;
     });
 
-    it("leaves an Escape for a popup, a marker, the search of the flights or one taken before to them", async () => {
+    it("leaves an Escape for a popup, a marker, the searches, Your flights or one taken before to them", async () => {
       await initializeApp(app);
       const bar = app.mobileBar;
       app.mobileBar = {
@@ -496,6 +496,9 @@ describe("MapApp controls and map", () => {
       );
       escapeIn('<div class="maplibregl-marker" data-target></div>');
       escapeIn('<input type="search" data-target>');
+      // Your flights and the search over the sheet close first
+      escapeIn('<div id="local-flights"><button data-target></button></div>');
+      escapeIn('<div id="location-search"><button data-target></button></div>');
       // The readout of the cloud takes its Escape first
       const taken = (event: Event): void => event.preventDefault();
       document.addEventListener("keydown", taken, true);

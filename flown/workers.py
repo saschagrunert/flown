@@ -42,6 +42,11 @@ __all__ = [
 # what the interpreter and its modules take anyway
 PARSE_BYTES_PER_FILE_BYTE = 22
 WORKER_BASE_BYTES = 100 * 1024 * 1024
+# A parse worker starts a process, imports the package and unpickles the
+# airport and runway databases before its first file: it pays off for about
+# this many bytes of KML. The 17 MB of data/ parsed in 630 ms with 6 to 8
+# workers and in 810 ms with 16
+MIN_PARSE_BYTES_PER_WORKER = 2_500_000
 
 # The most workers any pool of the run gets (--jobs), None for every CPU
 _worker_limit: int | None = None
@@ -313,21 +318,25 @@ def _available_memory_bytes() -> int | None:
 
 
 def parse_worker_count(kml_files: Sequence[str]) -> int:
-    """The number of parse workers: one per CPU, as far as memory allows.
+    """The number of parse workers: one per CPU, as far as the work and the
+    memory call for them.
 
-    Parsing takes about 15 times the size of the KML in memory, and every
-    worker may be parsing one of the largest files at the same time. The
-    size is the one ``parse_size`` gives, that of the document inside a KMZ
-    rather than of the archive, which is ten to twenty times smaller. The
-    pool gets as many workers as the largest files fit into the available
-    memory, at least one; an unknown amount of memory does not limit it.
+    A worker only pays off for ``MIN_PARSE_BYTES_PER_WORKER`` of KML. Parsing
+    takes about 15 times the size of the KML in memory, and every worker may
+    be parsing one of the largest files at the same time. The size is the
+    one ``parse_size`` gives, that of the document inside a KMZ rather than
+    of the archive, which is ten to twenty times smaller. The pool gets as
+    many workers as the largest files fit into the available memory, at
+    least one; an unknown amount of memory does not limit it.
     """
-    workers = max(1, min(len(kml_files), default_worker_count()))
+    sizes = [parse_size(path) for path in kml_files]
+    by_work = math.ceil(sum(sizes) / MIN_PARSE_BYTES_PER_WORKER)
+    workers = max(1, min(len(kml_files), default_worker_count(), by_work))
     available = _available_memory_bytes()
     if available is None:
         return workers
 
-    largest = sorted((parse_size(path) for path in kml_files), reverse=True)
+    largest = sorted(sizes, reverse=True)
     needed = 0
     for count, size in enumerate(largest[:workers]):
         needed += WORKER_BASE_BYTES + size * PARSE_BYTES_PER_FILE_BYTE

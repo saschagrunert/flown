@@ -111,6 +111,16 @@ function whenSourceLoaded(map: MapLibreMap, id: string): Promise<void> {
   });
 }
 
+/** Whether two trail tips stand the ribbons at the same heights */
+function sameOffsets(
+  a: readonly number[] | undefined,
+  b: readonly number[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((value, i) => value === b[i]);
+}
+
 /** Shown in the readout while no segment has been reached */
 const READOUT_PLACEHOLDER = "—";
 
@@ -690,17 +700,20 @@ export class ReplayRenderer {
    * landed during the pause after it; never a date or an hour. Null for
    * one flight, whose clock is the replay's. The time is written as the
    * longest of them would be, so it keeps its width from one to the next
-   * (see ReplayManager.setupReplayUI).
+   * (see ReplayManager.setupReplayUI), which measures it with `widest`: at
+   * the end of the longest, where the time has the most digits ("15:00"
+   * against "0:00").
    */
-  legClock(state: ReplayState, leg?: number): string | null {
+  legClock(state: ReplayState, leg?: number, widest = false): string | null {
     const legs = state.smoothed?.legs ?? [];
     if (legs.length < 2) return null;
     leg ??= legAt(legs, state.currentTime);
     const { start, finish } = legs[leg]!;
-    // None before it starts, as its width is measured at another (see
-    // ReplayManager.setupReplayUI)
-    const into = Math.max(Math.min(state.currentTime, finish) - start, 0);
     const longest = Math.max(...legs.map((l) => l.finish - l.start));
+    // None before it starts, as its width is measured at another
+    const into = widest
+      ? longest
+      : Math.max(Math.min(state.currentTime, finish) - start, 0);
     return `${this.legName(state, leg)}: ${formatTime(into, longest)} in`;
   }
 
@@ -886,10 +899,14 @@ export class ReplayRenderer {
    */
   private setTrailTip(state: ReplayState, tip: TrailTip | null): void {
     const was = state.trailTip;
+    // The height counts too: a change of the terrain or the relief lifts
+    // the airplane where it stands, and the trail has to end there with it
     if (
       was?.index === tip?.index &&
       was?.position[0] === tip?.position[0] &&
-      was?.position[1] === tip?.position[1]
+      was?.position[1] === tip?.position[1] &&
+      was?.heightFt === tip?.heightFt &&
+      sameOffsets(was?.offsetsFt, tip?.offsetsFt)
     ) {
       return;
     }

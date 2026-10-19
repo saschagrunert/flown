@@ -361,6 +361,11 @@ class TestCommitMessages:
             "Add flight 08162026",
             "Add log_260816",
             "Add flight 260816-1430",
+            # The time of day of a flight (regression: only the dates were
+            # looked for)
+            "Add flight EDDS-EDDF 1430Z",
+            "Add flight 14:30",
+            "Flug 33. KW",
         ],
     )
     def test_refuses_what_dates_a_flight(self, repo, message):
@@ -434,6 +439,7 @@ class TestRefNames:
             "refs/heads/260816",
             "refs/heads/flight-16-08",
             "refs/heads/flights-16082026",
+            "refs/heads/flight-1430z",
         ],
     )
     def test_refuses_a_branch_with_a_compact_date(self, repo, branch, capsys):

@@ -28,11 +28,9 @@ from flown.obfuscate import (
     NAME_YEAR_DATE_PATTERN,
     _extract_frac,
     _find_stray_dates,
+    _list_kml_files,
     check_directory,
-    check_directory_obfuscated,
     check_kml,
-    check_kml_obfuscated,
-    find_kml_files,
     main,
     obfuscate_kml_content,
     obfuscate_kml_file,
@@ -110,7 +108,7 @@ ROUTE_NAME_KML = """\
 
 def obfuscate_kml_directory(directory):
     """Obfuscate every KML file of a directory, as the command line does."""
-    return obfuscate_module._obfuscate_listed_files(find_kml_files(directory))
+    return obfuscate_module._obfuscate_listed_files(_list_kml_files(directory).files)
 
 
 def _whens(content):
@@ -239,7 +237,7 @@ class TestTimezoneHandling:
         assert _whens(result) == ["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"]
         kml_file = tmp_path / "comment.kml"
         kml_file.write_text(kml.replace("2025-03-03", "2025-01-01"), encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "Flight does not start at 00:00:00 on Jan 1: 2025-01-01T10:25:15Z"
         ]
 
@@ -265,7 +263,7 @@ class TestTimezoneHandling:
         assert _whens(result) == ["2025-01-01T00:00:00Z", "2025-01-03T23:00:00Z"]
         kml_file = tmp_path / "offset.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_obfuscated_timestamps_are_left_as_written(self):
         kml = (
@@ -335,7 +333,7 @@ class TestExtendedPatterns:
         assert obfuscate_kml_content(result) is None
         kml_file = tmp_path / "route.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_local_description_date_lands_on_jan_1_of_its_year(self):
         kml = (
@@ -384,7 +382,7 @@ class TestExtendedPatterns:
         assert obfuscate_kml_content(result) is None
         kml_file = tmp_path / "two.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_the_tracks_of_one_flight_keep_their_gaps(self, tmp_path):
         """One offset for the whole flight: its tracks keep order and gaps."""
@@ -405,7 +403,7 @@ class TestExtendedPatterns:
         assert obfuscate_kml_content(result) is None
         kml_file = tmp_path / "tracks.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_flight_keeps_its_intervals_across_days(self):
         kml = (
@@ -437,7 +435,7 @@ class TestExtendedPatterns:
         # Too long for the days after January 1st: the check fails closed
         kml_file = tmp_path / "paused.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file)
+        assert check_kml(kml_file)[0]
 
     def test_a_clock_wrong_at_the_start_does_not_hold_the_flight(self, tmp_path):
         """A logger's clock sits at its default date until the GPS fix.
@@ -462,7 +460,7 @@ class TestExtendedPatterns:
         ]
         kml_file = tmp_path / "clock.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_flight_on_new_years_day_stays_in_its_year(self, tmp_path):
         """Eight hours after a flight across midnight it still is 2026's."""
@@ -498,7 +496,7 @@ class TestExtendedPatterns:
         assert obfuscate_kml_content(result) is None
         kml_file = tmp_path / "new_year.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_one_recording_across_new_year_is_not_split(self):
         kml = (
@@ -561,7 +559,7 @@ class TestExtendedPatterns:
             "2025-01-01T00:00:00Z",
             "2025-01-01T00:20:00Z",
         ]
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_line_strings_across_new_year_keep_their_years(self, tmp_path):
         """A LineString takes the year of its Placemark's TimeSpan."""
@@ -590,7 +588,7 @@ class TestExtendedPatterns:
 
         assert before == [2024, 2025]
         assert [meta["year"] for meta in parse_kml_file(str(kml_file))[2]] == before
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_multi_track_then_a_track_across_new_year(self, tmp_path):
         """The tracks of a gx:MultiTrack are one track, the one after another."""
@@ -628,7 +626,7 @@ class TestExtendedPatterns:
             "2025-01-01T00:00:00Z",
             "2025-01-01T00:20:00Z",
         ]
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_marker_after_new_year_joins_the_flight_before(self, tmp_path):
         """A point marker's TimeStamp is no track: it moves with its flight."""
@@ -651,7 +649,7 @@ class TestExtendedPatterns:
         ]
         kml_file = tmp_path / "marker.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_multi_track_across_new_year_stays_in_one_piece(self):
         """The parser makes one path of it, in the year it started in."""
@@ -687,7 +685,7 @@ class TestExtendedPatterns:
         assert obfuscate_kml_content(result) is None
         kml_file = tmp_path / "evening.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_timestamps_beyond_the_window_start_a_new_flight(self):
         kml = (
@@ -709,7 +707,7 @@ class TestExtendedPatterns:
         assert _whens(result) == ["2025-01-01", "2025-01-01T00:00:00Z"]
         kml_file = tmp_path / "date_only.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     @pytest.mark.parametrize(
         "when,expected",
@@ -771,7 +769,7 @@ class TestRewriteGaps:
         assert result == f"<kml><when>{expected}</when></kml>"
         kml_file = tmp_path / "t.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_loose_timestamp_at_midnight_on_jan_1_is_normalized(self):
         """The parsers read the canonical form; the time does not move."""
@@ -822,7 +820,7 @@ class TestObfuscateFile:
 
         assert obfuscate_kml_file(kml_file) is True
 
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
         _, paths, _ = parse_kml_file(str(kml_file))
         assert len(paths[0]) == 60
         assert paths[0][0].ts == datetime(2025, 1, 1, tzinfo=UTC).timestamp()
@@ -935,7 +933,7 @@ class TestObfuscateFiles:
         (tmp_path / "link.kml").symlink_to(target)
         (tmp_path / "flight.KML").write_text(SAMPLE_KML, encoding="utf-8")
 
-        assert [p.name for p in find_kml_files(tmp_path)] == ["flight.KML"]
+        assert [p.name for p in _list_kml_files(tmp_path).files] == ["flight.KML"]
         assert obfuscate_kml_directory(tmp_path) == 1
         assert (tmp_path / "link.kml").is_symlink()
         assert target.read_text(encoding="utf-8") == SAMPLE_KML
@@ -958,9 +956,8 @@ class TestTimestampsNotUnderstood:
     def test_the_check_reports_it(self, tmp_path, text):
         kml_file = tmp_path / "t.kml"
         kml_file.write_text(f"<kml><when>{text}</when></kml>", encoding="utf-8")
-        assert f"Timestamp not understood, remove or fix it: {text}" in (
-            check_kml_obfuscated(kml_file)
-        )
+        violations = check_kml(kml_file)[0]
+        assert f"Timestamp not understood, remove or fix it: {text}" in violations
 
     def test_a_unix_time_in_a_when_makes_the_rewrite_refuse(
         self, tmp_path, monkeypatch, capsys
@@ -995,7 +992,7 @@ class TestKmz:
         return path
 
     def test_is_listed_like_the_generator_lists_it(self, tmp_path, kmz):
-        assert find_kml_files(tmp_path) == [kmz]
+        assert _list_kml_files(tmp_path).files == [kmz]
 
     def test_is_not_rewritten(self, kmz, capsys):
         before = kmz.read_bytes()
@@ -1004,7 +1001,7 @@ class TestKmz:
         assert "unzip it" in capsys.readouterr().err
 
     def test_the_check_reports_it(self, tmp_path, kmz):
-        assert check_directory_obfuscated(tmp_path) == {
+        assert check_directory(tmp_path).violations == {
             kmz.name: [f"KMZ archive: {obfuscate_module.KMZ_REFUSAL}"]
         }
 
@@ -1031,7 +1028,7 @@ class TestCheckObfuscated:
     def test_detects_unobfuscated_timestamps_and_names(self, tmp_path):
         kml_file = tmp_path / "test.kml"
         kml_file.write_text(SAMPLE_KML, encoding="utf-8")
-        violations = check_kml_obfuscated(kml_file)
+        violations = check_kml(kml_file)[0]
         assert any("Name element" in v for v in violations)
         assert any(
             "Flight does not start at 00:00:00 on Jan 1" in v for v in violations
@@ -1040,19 +1037,15 @@ class TestCheckObfuscated:
     def test_detects_description_and_route_dates(self, tmp_path):
         (tmp_path / "c.kml").write_text(CHARTERWARE_KML, encoding="utf-8")
         (tmp_path / "r.kml").write_text(ROUTE_NAME_KML, encoding="utf-8")
-        assert any(
-            "Description date" in v for v in check_kml_obfuscated(tmp_path / "c.kml")
-        )
-        assert any(
-            "Route name date" in v for v in check_kml_obfuscated(tmp_path / "r.kml")
-        )
+        assert any("Description date" in v for v in check_kml(tmp_path / "c.kml")[0])
+        assert any("Route name date" in v for v in check_kml(tmp_path / "r.kml")[0])
 
     @pytest.mark.parametrize("kml", [SAMPLE_KML, CHARTERWARE_KML, ROUTE_NAME_KML])
     def test_passes_after_obfuscation(self, tmp_path, kml):
         kml_file = tmp_path / "test.kml"
         kml_file.write_text(kml, encoding="utf-8")
         obfuscate_kml_file(kml_file)
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_real_creator_is_a_violation(self, tmp_path):
         kml_file = tmp_path / "test.kml"
@@ -1060,7 +1053,7 @@ class TestCheckObfuscated:
             '<kml creator="SkyDemon"><when>2025-01-01T00:00:00Z</when></kml>',
             encoding="utf-8",
         )
-        violations = check_kml_obfuscated(kml_file)
+        violations = check_kml(kml_file)[0]
         assert len(violations) == 1
         assert "SkyDemon" in violations[0]
 
@@ -1070,7 +1063,7 @@ class TestCheckObfuscated:
             '<kml creator="flown"><when>2025-01-01T00:00:00Z</when></kml>',
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     @pytest.mark.parametrize(
         "kml",
@@ -1085,7 +1078,7 @@ class TestCheckObfuscated:
     def test_clean_edge_cases(self, tmp_path, kml):
         kml_file = tmp_path / "test.kml"
         kml_file.write_text(kml, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     @pytest.mark.parametrize(
         "extra",
@@ -1103,7 +1096,7 @@ class TestCheckObfuscated:
         kml_file.write_text(
             f"<kml><when>2025-01-01T00:00:00Z</when>{extra}</kml>", encoding="utf-8"
         )
-        assert check_kml_obfuscated(kml_file) != []
+        assert check_kml(kml_file)[0] != []
 
     def test_prefixed_timestamps_are_checked(self, tmp_path):
         kml_file = tmp_path / "test.kml"
@@ -1114,7 +1107,7 @@ class TestCheckObfuscated:
         )
         assert any(
             "Flight does not start at 00:00:00 on Jan 1" in v
-            for v in check_kml_obfuscated(kml_file)
+            for v in check_kml(kml_file)[0]
         )
 
     def test_date_only_timestamps_must_be_on_jan_1(self, tmp_path):
@@ -1123,7 +1116,7 @@ class TestCheckObfuscated:
             "<kml><when>2025-01-02</when><when>2025-01-01</when></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == ["Timestamp not on Jan 1: 2025-01-02"]
+        assert check_kml(kml_file)[0] == ["Timestamp not on Jan 1: 2025-01-02"]
 
     def test_second_flight_on_another_date_is_a_violation(self, tmp_path):
         kml_file = tmp_path / "test.kml"
@@ -1132,7 +1125,7 @@ class TestCheckObfuscated:
             "<when>2025-03-14T10:00:00Z</when></kml>",
             encoding="utf-8",
         )
-        violations = check_kml_obfuscated(kml_file)
+        violations = check_kml(kml_file)[0]
         assert violations == [
             "Flight does not start at 00:00:00 on Jan 1: 2025-03-14T10:00:00Z",
             "Date not on Jan 1: 2025-03-14",
@@ -1271,7 +1264,7 @@ class TestCheckObfuscated:
     def test_other_file_name_shapes_are_violations(self, tmp_path, name):
         kml_file = tmp_path / name
         kml_file.write_text("<kml/>", encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             f"File name contains a date: {_find_stray_dates(name)[0]}"
         ]
 
@@ -1284,7 +1277,7 @@ class TestCheckObfuscated:
         leftover = tmp_path / ".a.kml.x1y2z3.tmp"
         leftover.write_text(SAMPLE_KML, encoding="utf-8")
 
-        violations = check_directory_obfuscated(tmp_path)
+        violations = check_directory(tmp_path).violations
 
         assert list(violations) == [".a.kml.x1y2z3.tmp"]
         assert "Leftover temporary file" in violations[".a.kml.x1y2z3.tmp"][0]
@@ -1296,7 +1289,7 @@ class TestCheckObfuscated:
         (tmp_path / ".old" / "1_x.kml").write_text(SAMPLE_KML, encoding="utf-8")
         (tmp_path / "._1_x.kml").write_bytes(b"\x00\x05\x16\x07 macOS metadata")
 
-        assert set(check_directory_obfuscated(tmp_path)) == {".2_y.kml", ".old/1_x.kml"}
+        assert set(check_directory(tmp_path).violations) == {".2_y.kml", ".old/1_x.kml"}
 
     def test_directory_check_includes_subdirectories(self, tmp_path):
         """The generator reads subdirectories, so the check has to see them."""
@@ -1305,13 +1298,13 @@ class TestCheckObfuscated:
         (tmp_path / "sub" / "b.kml").write_text(SAMPLE_KML, encoding="utf-8")
         (tmp_path / "sub" / "deeper" / "c.kml").write_text(SAMPLE_KML, encoding="utf-8")
 
-        assert set(check_directory_obfuscated(tmp_path)) == {
+        assert set(check_directory(tmp_path).violations) == {
             "a.kml",
             "sub/b.kml",
             "sub/deeper/c.kml",
         }
         assert obfuscate_kml_directory(tmp_path) == 3
-        assert check_directory_obfuscated(tmp_path) == {}
+        assert check_directory(tmp_path).violations == {}
 
     @pytest.mark.parametrize(
         ("name", "violations"),
@@ -1346,26 +1339,24 @@ class TestCheckObfuscated:
         """A time of day right after a date no longer hides either."""
         kml_file = tmp_path / name
         kml_file.write_text("<kml/>", encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == violations
+        assert check_kml(kml_file)[0] == violations
 
     def test_charterware_file_name_with_date_is_a_violation(self, tmp_path):
         kml_file = tmp_path / "2026-01-12_1513h_OE-AKI_LOAV-LOAV.kml"
         kml_file.write_text(
             "<kml><when>2026-01-01T00:00:00Z</when></kml>", encoding="utf-8"
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "File name contains the flight date: 2026-01-12_1513h_OE-AKI_LOAV-LOAV.kml"
         ]
         renamed = tmp_path / "2026-01-01_0000h_OE-AKI_LOAV-LOAV.kml"
         kml_file.rename(renamed)
-        assert check_kml_obfuscated(renamed) == []
+        assert check_kml(renamed)[0] == []
 
     def test_other_file_name_with_date_is_a_violation(self, tmp_path):
         kml_file = tmp_path / "flight 14.06.2025.kml"
         kml_file.write_text("<kml/>", encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == [
-            "File name contains a date: 14.06.2025"
-        ]
+        assert check_kml(kml_file)[0] == ["File name contains a date: 14.06.2025"]
 
     @pytest.mark.parametrize(
         ("name", "violation"),
@@ -1406,7 +1397,7 @@ class TestCheckObfuscated:
         """The export takes them out, but the file itself is public."""
         kml_file = tmp_path / name
         kml_file.write_text("<kml/>", encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == [f"File name contains {violation}"]
+        assert check_kml(kml_file)[0] == [f"File name contains {violation}"]
 
     @pytest.mark.parametrize(
         "name",
@@ -1422,7 +1413,7 @@ class TestCheckObfuscated:
     def test_file_name_without_a_time_passes(self, tmp_path, name):
         kml_file = tmp_path / name
         kml_file.write_text("<kml/>", encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     @settings(max_examples=100)
     @given(slot=st.integers(min_value=0, max_value=24 * 60 - 1))
@@ -1436,10 +1427,8 @@ class TestCheckObfuscated:
         numbered = directory / f"1_DEHYL_{time}.kml"
         for kml_file in (charterware, numbered):
             kml_file.write_text("<kml/>", encoding="utf-8")
-        assert check_kml_obfuscated(charterware) == []
-        assert check_kml_obfuscated(numbered) == [
-            f"File name contains a time of day: {time}"
-        ]
+        assert check_kml(charterware)[0] == []
+        assert check_kml(numbered)[0] == [f"File name contains a time of day: {time}"]
 
     @pytest.mark.parametrize(
         ("element", "violation"),
@@ -1471,7 +1460,7 @@ class TestCheckObfuscated:
             "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [violation]
+        assert check_kml(kml_file)[0] == [violation]
 
     def test_the_xml_declaration_and_a_comment_pass(self, tmp_path):
         kml_file = tmp_path / "1_DEHYL_DA40.kml"
@@ -1481,7 +1470,7 @@ class TestCheckObfuscated:
             "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     @pytest.mark.parametrize(
         ("name", "violation"),
@@ -1508,12 +1497,12 @@ class TestCheckObfuscated:
             "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [violation]
+        assert check_kml(kml_file)[0] == [violation]
 
     def test_a_file_name_in_another_language_is_a_violation(self, tmp_path):
         kml_file = tmp_path / "3_DEAGJ_DA20 16 sierpnia.kml"
         kml_file.write_text("<kml/>", encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "File name contains part of a date: 16 sierpnia"
         ]
 
@@ -1533,7 +1522,7 @@ class TestCheckObfuscated:
         assert violations == []
         assert len(warnings) == 1
         assert warnings[0].startswith("May be a date in another language")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_file_name_that_may_hold_a_date_warns(self, tmp_path):
         kml_file = tmp_path / "3_DEAGJ_DA20 16 augusti 2026.kml"
@@ -1552,7 +1541,7 @@ class TestCheckObfuscated:
         check = check_directory(tmp_path)
         assert check.violations == {}
         assert list(check.warnings) == ["1_DEHYL_DA40.kml"]
-        assert check_directory_obfuscated(tmp_path) == {}
+        assert check_directory(tmp_path).violations == {}
 
     def test_the_check_prints_the_warnings_and_passes(
         self, tmp_path, monkeypatch, capsys
@@ -1580,7 +1569,7 @@ class TestCheckObfuscated:
             "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "Weekday gives the day of the flight away, remove it: Saturday"
         ]
 
@@ -1610,7 +1599,7 @@ class TestCheckObfuscated:
             "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             f"Time of day gives the flight away, remove it: {time}"
         ]
 
@@ -1631,7 +1620,7 @@ class TestCheckObfuscated:
             "<when>2026-01-03T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             f"Flight does not start at 00:00:00 on Jan 1: {time}"
         ]
 
@@ -1642,7 +1631,7 @@ class TestCheckObfuscated:
             "</description></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "Description date not on Jan 1 at 12:00AM: Flight Jan 01 2026 03:01PM"
         ]
         kml_file.write_text(
@@ -1650,20 +1639,20 @@ class TestCheckObfuscated:
             "</description></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_unreadable_file_is_a_violation(self, tmp_path):
         # A file that cannot be read must not be certified as obfuscated
-        violations = check_kml_obfuscated(tmp_path / "missing.kml")
+        violations = check_kml(tmp_path / "missing.kml")[0]
         assert len(violations) == 1
         assert "Cannot read file" in violations[0]
 
     def test_directory_check(self, tmp_path):
         (tmp_path / "a.kml").write_text(SAMPLE_KML, encoding="utf-8")
         (tmp_path / "b.kml").write_text(SAMPLE_KML, encoding="utf-8")
-        assert set(check_directory_obfuscated(tmp_path)) == {"a.kml", "b.kml"}
+        assert set(check_directory(tmp_path).violations) == {"a.kml", "b.kml"}
         obfuscate_kml_directory(tmp_path)
-        assert check_directory_obfuscated(tmp_path) == {}
+        assert check_directory(tmp_path).violations == {}
 
 
 class TestDifferentYearsAndMidnight:
@@ -1693,7 +1682,7 @@ class TestDifferentYearsAndMidnight:
         assert "<name>Log Stop: 2025-01-01</name>" in result
         kml_file = tmp_path / "late.kml"
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
 
 class TestExtractFrac:
@@ -1834,7 +1823,7 @@ class TestCLI:
             "<ExtendedData>2025-09-21 2025-09-21 2025-09-21</ExtendedData></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == ["Date not on Jan 1: 2025-09-21"]
+        assert check_kml(kml_file)[0] == ["Date not on Jan 1: 2025-09-21"]
 
     def test_numbers_that_are_no_time_pass_the_check(self, tmp_path):
         kml_file = tmp_path / "test.kml"
@@ -1846,7 +1835,7 @@ class TestCLI:
             "<LookAt><range>1234567890</range></LookAt></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_past_unix_time_in_a_name_fails_the_check(self, tmp_path):
         kml_file = tmp_path / "test.kml"
@@ -1855,7 +1844,7 @@ class TestCLI:
             "<name>Flight 1710406320</name></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "Unix time not at midnight on Jan 1, remove it: 1710406320"
         ]
 
@@ -1868,7 +1857,7 @@ class TestCLI:
             "<description>Landed 1710406320</description></Placemark></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "Unix time not at midnight on Jan 1, remove it: 1710406320"
         ]
 
@@ -1880,7 +1869,7 @@ class TestCLI:
             "<ExtendedData><value>1735732800</value></ExtendedData></kml>",
             encoding="utf-8",
         )
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "Unix time not at midnight on Jan 1, remove it: 1735732800"
         ]
 
@@ -1953,9 +1942,9 @@ class TestUnparsableDates:
         assert result == "<kml><name>EDDS to EDDP - 2026-01-01</name></kml>"
         kml_file = tmp_path / "route.kml"
         kml_file.write_text(content, encoding="utf-8")
-        assert any("Route name date" in v for v in check_kml_obfuscated(kml_file))
+        assert any("Route name date" in v for v in check_kml(kml_file)[0])
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
         # A day that does not exist moves, as in the other form
         assert (
             obfuscate_kml_content("<kml><name>X - 2026-02-31</name></kml>")
@@ -2121,7 +2110,7 @@ class TestRenameCharterwareFiles:
             "2026-01-01_0000h_OE-AKI_LOAV-LOAV.kml",
             "2026-01-01_0001h_OE-AKI_LOAV-LOAV.kml",
         ]
-        assert check_directory_obfuscated(tmp_path) == {}
+        assert check_directory(tmp_path).violations == {}
         assert obfuscate_kml_directory(tmp_path) == 0
 
 
@@ -2163,7 +2152,7 @@ class TestErrorBranches:
 
     def test_unlistable_directory_yields_no_files(self, tmp_path):
         with patch.object(Path, "iterdir", side_effect=OSError("denied")):
-            assert obfuscate_module.find_kml_files(tmp_path) == []
+            assert obfuscate_module._list_kml_files(tmp_path).files == []
 
     def test_write_flushes_to_disk_before_replacing(self, tmp_path):
         kml_file = tmp_path / "test.kml"
@@ -2307,11 +2296,11 @@ class TestNamesAndDescriptions:
     ):
         kml_file = tmp_path / "flight.kml"
         kml_file.write_text(_kml(body), encoding="utf-8")
-        assert violation in check_kml_obfuscated(kml_file)
+        assert violation in check_kml(kml_file)[0]
 
         assert obfuscate_kml_content(_kml(body)) == _kml(fixed)
         kml_file.write_text(_kml(fixed), encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     def test_a_name_keeps_the_year_the_parser_reads(self, tmp_path):
         kml_file = tmp_path / "flight.kml"
@@ -2326,7 +2315,7 @@ class TestNamesAndDescriptions:
         assert obfuscate_kml_file(kml_file)
         assert "<name>EDDS 01 Jan 2026</name>" in kml_file.read_text(encoding="utf-8")
         assert [meta["year"] for meta in parse_kml_file(str(kml_file))[2]] == [2026]
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     @pytest.mark.parametrize(
         ("name", "moved"),
@@ -2493,11 +2482,11 @@ class TestPartsOfDatesInEveryElement:
     def test_the_rewrite_fixes_the_free_text(self, tmp_path, body, violation, fixed):
         kml_file = tmp_path / "flight.kml"
         kml_file.write_text(_kml(body), encoding="utf-8")
-        assert violation in check_kml_obfuscated(kml_file)
+        assert violation in check_kml(kml_file)[0]
 
         assert obfuscate_kml_content(_kml(body)) == _kml(fixed)
         kml_file.write_text(_kml(fixed), encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
     @pytest.mark.parametrize(
         ("body", "violation"),
@@ -2525,7 +2514,7 @@ class TestPartsOfDatesInEveryElement:
     def test_anywhere_else_it_goes_by_hand(self, tmp_path, body, violation):
         kml_file = tmp_path / "flight.kml"
         kml_file.write_text(_kml(body), encoding="utf-8")
-        assert violation in check_kml_obfuscated(kml_file)
+        assert violation in check_kml(kml_file)[0]
         assert obfuscate_kml_content(_kml(body)) is None
 
     @pytest.mark.parametrize(
@@ -2553,7 +2542,7 @@ class TestPartsOfDatesInEveryElement:
     def test_what_passes(self, tmp_path, body):
         kml_file = tmp_path / "flight.kml"
         kml_file.write_text(_kml(body), encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
         assert obfuscate_kml_content(_kml(body)) is None
 
     def test_a_number_alone_in_a_name_is_still_scrubbed(self):
@@ -2587,7 +2576,7 @@ class TestCreators:
         )
         kml_file = tmp_path / "flight.kml"
         kml_file.write_text(content, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == [
+        assert check_kml(kml_file)[0] == [
             "Creator identifies the recording device: SkyDemon Mobile"
         ]
 
@@ -2595,7 +2584,7 @@ class TestCreators:
         assert result is not None
         assert "SkyDemon" not in result
         kml_file.write_text(result, encoding="utf-8")
-        assert check_kml_obfuscated(kml_file) == []
+        assert check_kml(kml_file)[0] == []
 
 
 class TestFlightsOfSeveralDays:
@@ -2614,7 +2603,7 @@ class TestFlightsOfSeveralDays:
         content = f'<kml xmlns:gx="http://www.google.com/kml/ext/2.2">{legs}</kml>'
         kml_file = tmp_path / "trip.kml"
         kml_file.write_text(obfuscate_kml_content(content) or content, encoding="utf-8")
-        violations = check_kml_obfuscated(kml_file)
+        violations = check_kml(kml_file)[0]
         assert (
             "Flight runs over 4 days, more than the 3 from Jan 1 the check lets "
             "pass: split the file into one per day of flying"
@@ -2625,13 +2614,11 @@ class TestRenameDatedFiles:
     def test_a_date_leaves_the_name(self, tmp_path):
         dated = tmp_path / "1_DEHYL_DA40_16Aug.kml"
         dated.write_text(_kml(""), encoding="utf-8")
-        assert check_kml_obfuscated(dated) == [
-            "File name contains part of a date: 16Aug"
-        ]
+        assert check_kml(dated)[0] == ["File name contains part of a date: 16Aug"]
 
         assert rename_dated_files([dated]) == [tmp_path / "1_DEHYL_DA40.kml"]
         assert not dated.exists()
-        assert check_kml_obfuscated(tmp_path / "1_DEHYL_DA40.kml") == []
+        assert check_kml(tmp_path / "1_DEHYL_DA40.kml")[0] == []
 
     @pytest.mark.parametrize(
         ("name", "renamed"),
@@ -2698,14 +2685,14 @@ class TestRenameDatedFiles:
         path.write_text(_kml(""), encoding="utf-8")
         renamed = tmp_path / "2026-01-01_0000h_OE-AKI_LOAV-LOAV.kml"
         assert rename_dated_files([path]) == [renamed]
-        assert check_kml_obfuscated(renamed) == []
+        assert check_kml(renamed)[0] == []
 
     def test_make_obfuscate_fixes_the_name(self, tmp_path):
         (tmp_path / "3_DEAGJ_DA20_Sat_16.08.kml").write_text(_kml(""), encoding="utf-8")
         with patch("sys.argv", ["obfuscate", str(tmp_path)]):
             main()
         assert [path.name for path in tmp_path.iterdir()] == ["3_DEAGJ_DA20.kml"]
-        assert check_directory_obfuscated(tmp_path) == {}
+        assert check_directory(tmp_path).violations == {}
 
 
 class TestRenamedNamesAreClean:
@@ -2734,7 +2721,7 @@ class TestRenamedNamesAreClean:
         path = tmp_path / name
         path.write_text(_kml(""), encoding="utf-8")
         assert rename_dated_files([path]) == [tmp_path / renamed]
-        assert check_kml_obfuscated(tmp_path / renamed) == []
+        assert check_kml(tmp_path / renamed)[0] == []
 
     @given(
         st.lists(
@@ -2846,7 +2833,7 @@ class TestCheckSeesThroughMarkup:
             _kml("<description>Flight 16.<![CDATA[08]]>.2026</description>"),
             encoding="utf-8",
         )
-        assert "Date not on Jan 1: 16.08.2026" in check_kml_obfuscated(path)
+        assert "Date not on Jan 1: 16.08.2026" in check_kml(path)[0]
 
     def test_cdata_around_a_whole_text_is_scanned_once(self):
         content = "<description><![CDATA[EDDS 2026-01-01]]></description>"
@@ -2855,7 +2842,7 @@ class TestCheckSeesThroughMarkup:
     def test_a_holiday(self, tmp_path):
         path = tmp_path / "1_DEHYL_DA40.kml"
         path.write_text(_kml("<name>Heiligabend bei Oma</name>"), encoding="utf-8")
-        assert check_kml_obfuscated(path) == [
+        assert check_kml(path)[0] == [
             "Holiday gives the day of the flight away, remove it: Heiligabend"
         ]
         assert obfuscate_kml_content(path.read_text(encoding="utf-8")) == _kml(
@@ -2878,28 +2865,28 @@ class TestCheckSeesThroughMarkup:
         """They passed the check and were published until 2026-10."""
         path = tmp_path / "1_DEHYL_DA40.kml"
         path.write_text(_kml(f"<name>{name}</name>"), encoding="utf-8")
-        assert check_kml_obfuscated(path)
+        assert check_kml(path)[0]
         rewritten = obfuscate_kml_content(path.read_text(encoding="utf-8"))
         assert rewritten == _kml(f"<name>{kept}</name>")
         path.write_text(rewritten, encoding="utf-8")
-        assert check_kml_obfuscated(path) == []
+        assert check_kml(path)[0] == []
 
     def test_a_holiday_in_the_file_name(self, tmp_path):
         path = tmp_path / "1_DEHYL_DA40_Christmas.kml"
         path.write_text(_kml(""), encoding="utf-8")
-        assert check_kml_obfuscated(path) == ["File name contains a holiday: Christmas"]
+        assert check_kml(path)[0] == ["File name contains a holiday: Christmas"]
 
     def test_a_place_named_after_a_holiday(self, tmp_path):
         path = tmp_path / "1_DEHYL_DA40.kml"
         path.write_text(_kml("<name>YPXM Christmas Island</name>"), encoding="utf-8")
-        assert check_kml_obfuscated(path) == []
+        assert check_kml(path)[0] == []
 
     def test_a_roman_month(self, tmp_path):
         path = tmp_path / "1_DEHYL_DA40.kml"
         path.write_text(
             _kml("<name>Aunt farm 16.VII.2026 - Home strip</name>"), encoding="utf-8"
         )
-        assert check_kml_obfuscated(path) == ["Date not on Jan 1: 16.VII.2026"]
+        assert check_kml(path)[0] == ["Date not on Jan 1: 16.VII.2026"]
 
     @pytest.mark.parametrize(
         "text",
@@ -2915,7 +2902,7 @@ class TestCheckSeesThroughMarkup:
         content = _kml(f"<description>{text}</description>")
         path = tmp_path / "1_DEHYL_DA40.kml"
         path.write_text(content, encoding="utf-8")
-        assert check_kml_obfuscated(path) == []
+        assert check_kml(path)[0] == []
         assert obfuscate_kml_content(content) is None
 
 
@@ -2928,7 +2915,7 @@ class TestUnlistedDirectories:
         (locked / "2_DEHYL_DA40.kml").write_text(_kml(""), encoding="utf-8")
         locked.chmod(0)
         try:
-            assert check_directory_obfuscated(tmp_path) == {
+            assert check_directory(tmp_path).violations == {
                 "locked/": [
                     (
                         "Cannot list the directory, so its files are not "

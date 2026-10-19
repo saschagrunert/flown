@@ -30,7 +30,7 @@ package to its newest release.
 
 ## Split tracks and recordings of one flight
 
-`_join_split_lines` in `flown/parser_standard.py` joins the `LineString`s of a
+`join_split_lines` in `flown/parser_standard.py` joins the `LineString`s of a
 file that are one flight in pieces. A line continues the one before it
 (`_continues`) when both have the same name, the one before has not landed
 (`_ends_on_ground`: it came back down to within 30 m of its lowest altitude
@@ -40,18 +40,21 @@ the same time span or within 30 minutes of its end. Without times, or without a
 name, only the point of the split written twice (the same longitude, latitude
 and altitude) joins them. A document `TimeSpan` over a flight out and one back,
 or two untimed flights of a placemark named after the aircraft, stay two
-flights. `gx:Track`s are never joined.
+flights. The `gx:Track`s of a file's placemarks go through it as well, with
+`timed`: a track continues the one before only when its times begin when the one
+before ended or later, so the times of the joined flight stay in order.
 
 After `drop_duplicate_paths` in `flown/path_content.py` has dropped the exact
 copies, `drop_overlapping_paths` in `flown/duplicates.py` drops a recording of a
-flight another one of the same year records as well: two timed recordings are
-one flight when they overlap in time by more than half of the shorter one and
-are within 300 m of each other at 20 moments spread over the time they share
-(two of them may be further apart). That holds for recordings on the real clock,
-the files of a user who does not obfuscate them. Obfuscated files, though, start
-every flight at midnight on January 1st, so two recordings of one flight line up
-only if they were started in the same second, and every flight of a year
-overlaps every other.
+flight another one of the same year records as well (and of the year before or
+after, for the recordings within 15 hours of New Year, `_around_new_year`): two
+timed recordings are one flight when they overlap in time by more than half of
+the shorter one and are within 300 m of each other at 20 moments spread over the
+time they share (two of them may be further apart). That holds for recordings on
+the real clock, the files of a user who does not obfuscate them. Obfuscated
+files, though, start every flight at midnight on January 1st, so two recordings
+of one flight line up only if they were started in the same second, and every
+flight of a year overlaps every other.
 
 Two real clocks may be off, though: a phone on its own clock, a logger that
 writes GPS time (18 s ahead of UTC), or one that writes the local time as UTC.
@@ -146,8 +149,8 @@ changed. One flat array per column with row counts came out within 0.1 % of
 that, so each flight keeps an array of its own, which lets the page check and
 cut one flight short without losing the rest. The exporter streams every array
 into a fragment of its own per chunk (`_PARTS` in `flown/data_exporter.py`) and
-joins them like before; `split_segments` in `flown/segment_codec.py` turns a
-file back into one entry per flight for the tests.
+joins them like before; `split_segments` in `tests/codec.py` turns a file back
+into one entry per flight for the tests.
 
 Format 7 writes the latitude and longitude columns as second differences: each
 value is how much the step from the row before changed, the step before the

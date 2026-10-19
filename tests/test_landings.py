@@ -572,6 +572,17 @@ class TestRunwayDatabase:
             "FFFF,1,09,,,90,27,,,270",
             # A code of another length is no ICAO code
             "DE-0001,0,09,,,90,27,,,270",
+            # A true heading, gliders and ultralights, arrivals and departures
+            "HHHH,0,16T,,,,34T,,,",
+            "IIII,0,09G,,,,27U,,,",
+            "JJJJ,0,10A,,,,28D,,,",
+            # Compass points, with a letter for parallels, and a bearing
+            "KKKK,0,N,,,,S,,,",
+            "LLLL,0,NEL,,,,SWR,,,",
+            "MMMM,0,,,,,S30W,,,",
+            # A water lane and words are no runways
+            "NNNN,0,09W,,,,27W,,,",
+            "OOOO,0,ALL,,,,WAY,,,",
         ]
         path = tmp_path / "runways.csv"
         path.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
@@ -591,7 +602,25 @@ class TestRunwayDatabase:
         assert runways["CCCC"] == (RunwayEnd("03", 30.0), RunwayEnd("21", 210.0))
         assert runways["DDDD"] == (RunwayEnd("27", 268.0),)
         assert runways["GGGG"] == (RunwayEnd("27", 270.0),)
-        assert set(runways) == {"AAAA", "BBBB", "CCCC", "DDDD", "GGGG"}
+        assert runways["HHHH"] == (RunwayEnd("16T", 160.0), RunwayEnd("34T", 340.0))
+        assert runways["IIII"] == (RunwayEnd("09G", 90.0), RunwayEnd("27U", 270.0))
+        assert runways["JJJJ"] == (RunwayEnd("10A", 100.0), RunwayEnd("28D", 280.0))
+        assert runways["KKKK"] == (RunwayEnd("N", 0.0), RunwayEnd("S", 180.0))
+        assert runways["LLLL"] == (RunwayEnd("NEL", 45.0), RunwayEnd("SWR", 225.0))
+        assert runways["MMMM"] == (RunwayEnd("S30W", 210.0),)
+        assert set(runways) == {
+            "AAAA",
+            "BBBB",
+            "CCCC",
+            "DDDD",
+            "GGGG",
+            "HHHH",
+            "IIII",
+            "JJJJ",
+            "KKKK",
+            "LLLL",
+            "MMMM",
+        }
 
     def test_a_missing_list_leaves_the_runways_out(self, monkeypatch, tmp_path):
         monkeypatch.setattr(lookup_module, "RUNWAYS_CACHE_FILE", tmp_path / "no.csv")

@@ -14,6 +14,7 @@ import {
   EXTRAS_CSS_URL,
   FEATURES_CSS_URL,
   LOCAL_CSS_URL,
+  PHONE_CSS_URL,
   SEARCH_CSS_URL,
   SITE_UPDATED_MESSAGE,
   WRAPPED_CSS_URL,
@@ -22,11 +23,13 @@ import {
   loadExtras,
   loadFeatures,
   loadLocal,
+  loadPhone,
   loadSearch,
   loadWrapped,
   resetExtrasLoader,
   resetFeatureLoader,
   resetLocalLoader,
+  resetPhoneLoader,
   resetSearchLoader,
   resetWrappedLoader,
   wasSiteUpdated,
@@ -36,6 +39,7 @@ import type { WrappedModule } from "../../../../flown/frontend/wrapped";
 import type { SearchModule } from "../../../../flown/frontend/search";
 import type { ExtrasModule } from "../../../../flown/frontend/extras";
 import type { LocalModule } from "../../../../flown/frontend/local";
+import type { PhoneModule } from "../../../../flown/frontend/phone";
 import { logError } from "../../../../flown/frontend/utils/logger";
 
 vi.mock("../../../../flown/frontend/utils/logger", () => ({
@@ -385,7 +389,7 @@ describe("loadLocal", () => {
 });
 
 describe("loadExtras", () => {
-  const extras = { MobileSheet: vi.fn() } as unknown as ExtrasModule;
+  const extras = { exportImage: vi.fn() } as unknown as ExtrasModule;
   /** Stands in for `import("../extras")` */
   const importExtras =
     vi.fn<(failedImports: number) => Promise<ExtrasModule>>();
@@ -400,7 +404,7 @@ describe("loadExtras", () => {
     loadStylesheet.mockResolvedValue(undefined);
   });
 
-  it("imports its own bundle and stylesheet, the phone's sheet's, and none of the others", async () => {
+  it("imports its own bundle and stylesheet, the popup list's, and none of the others", async () => {
     expect(loadedExtras()).toBeNull();
 
     await expect(loadExtras()).resolves.toBe(extras);
@@ -421,6 +425,45 @@ describe("loadExtras", () => {
     expect(loadedExtras()).toBeNull();
     expect(logError).toHaveBeenCalledWith(
       "Could not load the extras bundle:",
+      expect.any(Error),
+    );
+  });
+});
+
+describe("loadPhone", () => {
+  const phone = { MobileBar: vi.fn() } as unknown as PhoneModule;
+  /** Stands in for `import("../phone")` */
+  const importPhone = vi.fn<(failedImports: number) => Promise<PhoneModule>>();
+  const importExtras =
+    vi.fn<(failedImports: number) => Promise<ExtrasModule>>();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetFeatureLoader(importFeatures);
+    resetWrappedLoader(importWrapped);
+    resetSearchLoader(importSearch);
+    resetExtrasLoader(importExtras);
+    resetPhoneLoader(importPhone);
+    importPhone.mockResolvedValue(phone);
+    loadStylesheet.mockResolvedValue(undefined);
+  });
+
+  it("imports its own bundle and stylesheet, the phone's sheet's, and not the extras", async () => {
+    await expect(loadPhone()).resolves.toBe(phone);
+
+    expect(importPhone).toHaveBeenCalledTimes(1);
+    expect(loadStylesheet).toHaveBeenCalledExactlyOnceWith(PHONE_CSS_URL);
+    expect(PHONE_CSS_URL.startsWith("./")).toBe(true);
+    expect(importExtras).not.toHaveBeenCalled();
+    expect(importFeatures).not.toHaveBeenCalled();
+  });
+
+  it("resolves with null and reports when the bundle cannot be loaded", async () => {
+    importPhone.mockRejectedValueOnce(new Error("offline"));
+
+    await expect(loadPhone()).resolves.toBeNull();
+    expect(logError).toHaveBeenCalledWith(
+      "Could not load the phone bundle:",
       expect.any(Error),
     );
   });
@@ -506,7 +549,7 @@ describe("a bundle of another build", () => {
     expect(notices()).toHaveLength(0);
   });
 
-  it.each(["features.ts", "wrapped.ts", "search.ts", "extras.ts"])(
+  it.each(["features.ts", "wrapped.ts", "search.ts", "phone.ts", "extras.ts"])(
     "is told by the build %s exports",
     (entry) => {
       const source = readFileSync(

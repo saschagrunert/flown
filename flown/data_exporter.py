@@ -83,7 +83,7 @@ if TYPE_CHECKING:
     from .types import FlightPathGroup, PathMetadata, YearFileHeader
 
 __all__ = [
-    "MIN_PATHS_PER_CHUNK",
+    "MIN_POINTS_PER_CHUNK",
     "ChunkResult",
     "ExportResult",
     "ExportSelection",
@@ -94,9 +94,11 @@ __all__ = [
     "select_exported_paths",
 ]
 
-# A year is not split below this many paths per chunk: a worker process only
-# pays off when it has real work to do
-MIN_PATHS_PER_CHUNK = 50
+# A chunk gets at least this many points: a worker process only pays off
+# when it has real work to do. Points rather than paths, since the paths of a
+# year differ a lot in length (data/ exports about 1,500 points per path, and
+# 50 paths a chunk left 14 of 16 workers idle)
+MIN_POINTS_PER_CHUNK = 10_000
 # Chunks handed to the process pool ahead of time, per worker
 MAX_QUEUED_CHUNKS_PER_WORKER = 2
 JSON_SEPARATORS = (",", ":")
@@ -430,11 +432,45 @@ def _group_paths_by_year(
     }
 
 
-def _chunk_count(path_count: int, year_count: int, max_workers: int) -> int:
-    """How many chunks a year is split into."""
-    wanted = max(1, math.ceil(max_workers / max(1, year_count)))
-    by_size = max(1, path_count // MIN_PATHS_PER_CHUNK)
-    return max(1, min(wanted, by_size))
+def _chunk_count(points: int, target: int, path_count: int) -> int:
+    """How many chunks a year of ``points`` is split into, ``target`` points
+    each at least (see ``_chunk_target``), with at least one path each."""
+    return max(1, min(path_count, points // max(1, target)))
+
+
+def _chunk_target(total_points: int, max_workers: int) -> int:
+    """The points a chunk should get: every worker gets about the same share
+    of all the years, and no chunk less than ``MIN_POINTS_PER_CHUNK``."""
+    return max(MIN_POINTS_PER_CHUNK, math.ceil(total_points / max(1, max_workers)))
+
+
+def _split_by_weight(
+    indices: list[int], weights: list[int], chunks: int
+) -> list[list[int]]:
+    """Cut ``indices`` into ``chunks`` runs of about the same weight, in order.
+
+    A run ends at the first path that takes it to its share of the total,
+    and every run keeps at least one path.
+    """
+    if chunks <= 1 or len(indices) <= 1:
+        return [indices]
+    total = sum(weights)
+    runs: list[list[int]] = []
+    run: list[int] = []
+    reached = 0
+    for position, (index, weight) in enumerate(zip(indices, weights, strict=True)):
+        run.append(index)
+        reached += weight
+        left_paths = len(indices) - position - 1
+        left_runs = chunks - len(runs) - 1
+        if left_runs <= 0:
+            continue
+        if reached * chunks >= total * (len(runs) + 1) or left_paths == left_runs:
+            runs.append(run)
+            run = []
+    # The cuts leave a path for every run still to come: the last one has some
+    runs.append(run)
+    return runs
 
 
 def _plan_chunks(
@@ -443,6 +479,7 @@ def _plan_chunks(
     max_workers: int,
     elevations: Mapping[int, PointElevations] | None = None,
     landings: Mapping[int, FlightLandings] | None = None,
+    point_counts: Mapping[int, int] | None = None,
 ) -> list[_ChunkPlan]:
     """Cut the years into chunks, in input order, and hand each its path ids.
 
@@ -451,16 +488,27 @@ def _plan_chunks(
     ``elevations`` are the ground under the points of the paths, by input
     index (see ``terrain.sample_path_elevations``), and ``landings`` what
     the paths did at the fields, likewise (see ``landings.detect_landings``).
+    ``point_counts`` are the points of the paths by input index, which the
+    chunks are sized by; a path without one counts as one point.
     """
     elevations = elevations or {}
     landings = landings or {}
+    point_counts = point_counts or {}
+    weights_by_year = {
+        year: [max(1, point_counts.get(i, 1)) for i in indices]
+        for year, indices in paths_by_year.items()
+    }
+    target = _chunk_target(
+        sum(sum(weights) for weights in weights_by_year.values()), max_workers
+    )
     plans: list[_ChunkPlan] = []
     for year in sorted(paths_by_year):
         indices = paths_by_year[year]
-        chunks = _chunk_count(len(indices), len(paths_by_year), max_workers)
-        size = max(1, math.ceil(len(indices) / chunks))
-        for index, start in enumerate(range(0, max(1, len(indices)), size)):
-            chunk_indices = indices[start : start + size]
+        weights = weights_by_year[year]
+        chunks = _chunk_count(sum(weights), target, len(indices))
+        for index, chunk_indices in enumerate(
+            _split_by_weight(indices, weights, chunks)
+        ):
             chunk_ids = [path_ids.get(i) for i in chunk_indices]
             plans.append(
                 _ChunkPlan(
@@ -541,7 +589,13 @@ def _fail(
         logger.debug("Error processing year %s", plan.year, exc_info=exc)
     else:
         logger.exception("  Error processing year %s", plan.year)
-    return RuntimeError(f"Failed to process year {plan.year}: {exc}")
+    # A MemoryError says nothing of its own
+    reason = (
+        "out of memory"
+        if isinstance(exc, MemoryError)
+        else str(exc) or type(exc).__name__
+    )
+    return RuntimeError(f"Failed to process year {plan.year}: {reason}")
 
 
 def _run_single(job: _ChunkJob, plan: _ChunkPlan) -> list[ChunkResult]:
@@ -687,7 +741,7 @@ def export_all_data(
     # once, and a chunk only gets the elevations of its own paths
     elevations = (
         sample_path_elevations(
-            {index: all_path_groups[index] for index in path_ids}, terrain
+            {index: all_path_groups[index] for index in path_ids}, terrain, contents
         )
         if terrain is not None and path_ids
         else None
@@ -706,7 +760,18 @@ def export_all_data(
         }
         log_landings(found)
     max_workers = default_worker_count()
-    plans = _plan_chunks(paths_by_year, path_ids, max_workers, elevations, found)
+    plans = _plan_chunks(
+        paths_by_year,
+        path_ids,
+        max_workers,
+        elevations,
+        found,
+        {
+            index: len(all_path_groups[index])
+            for indices in paths_by_year.values()
+            for index in indices
+        },
+    )
 
     logger.info(
         "\n  Processing %d year(s) in %d chunk(s)...", len(paths_by_year), len(plans)

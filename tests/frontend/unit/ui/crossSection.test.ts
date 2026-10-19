@@ -539,11 +539,9 @@ describe("cross-section", () => {
 
       expect(part(".section-plot").hidden).toBe(false);
       expect(summary()).not.toBeNull();
-      // On the control that draws a new line, the one on show
-      expect(document.activeElement).toBe(
-        part(".section-btn[aria-label='Draw a new line']"),
-      );
-      expect(document.activeElement?.closest("[hidden]")).toBeNull();
+      // The focus stays where it was: the page opened on the line, and
+      // nobody pressed for it
+      expect(document.activeElement).toBe(document.body);
       expect(map.dragPan.isEnabled()).toBe(true);
       expect(handles().map((handle) => handle.map)).toEqual([map, map]);
       expect(app.crossSectionLine.split(",").map(Number)).toEqual([

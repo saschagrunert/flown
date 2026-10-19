@@ -185,6 +185,34 @@ class TestInputFiles:
 
         assert browser.input_files(tmp_path) == ([str(tmp_path / "a.kml")], [])
 
+    def test_leaves_the_apple_double_files_out(self, tmp_path):
+        """As the site build does (validation.list_kml_files)."""
+        for name in ("1_DEAGJ_DA20.kml", "._1_DEAGJ_DA20.kml"):
+            (tmp_path / name).write_text("x")
+
+        kml_files, _ = browser.input_files(tmp_path)
+
+        assert [Path(f).name for f in kml_files] == ["1_DEAGJ_DA20.kml"]
+
+    def test_every_aircraft_file_the_page_numbered_in_order(self, tmp_path):
+        """The first wins in merge_aircraft_data, as the page kept them."""
+        for name in (
+            "aircraft-10.json",
+            "aircraft-2.json",
+            "aircraft.json",
+            "aircraft-0.json",
+            "my-aircraft.json",
+        ):
+            (tmp_path / name).write_text("{}")
+
+        _, aircraft = browser.input_files(tmp_path)
+
+        assert [path.name for path in aircraft] == [
+            "aircraft.json",
+            "aircraft-2.json",
+            "aircraft-10.json",
+        ]
+
 
 class TestBuild:
     def test_writes_the_data_files_and_answers_with_the_extent(self, tmp_path, js):
@@ -204,7 +232,7 @@ class TestBuild:
         assert outcome["years"] == [2025]
         assert outcome["flights"] == 1
         assert outcome["airports"] == 2
-        assert outcome["center"] == pytest.approx([51.34, 12.905])
+        assert "center" not in outcome
         assert outcome["bounds"] == [[51.13, 12.05], [51.55, 13.76]]
         metadata = json.loads((out / "metadata.json").read_text())
         assert metadata["available_years"] == [2025]
@@ -217,6 +245,7 @@ class TestBuild:
         assert {message for _, message in lines} <= set(browser.PHASES.values())
         assert outcome["skipped"] == []
         assert outcome["warnings"] == []
+        assert outcome["degraded"] == []
         # Nothing of the build is left on the logger
         assert not any(isinstance(h, browser._Relay) for h in logger.handlers)
 
@@ -240,6 +269,9 @@ class TestBuild:
         assert set(js.timeouts) == {int(browser.TILE_TIMEOUT_SECONDS * 1000)}
         data = json.loads((tmp_path / "site" / "2025" / "data.json").read_text())
         assert data["segments"]["ground"] == [None]
+        # Which the page offers to build again once the connection is back
+        assert outcome["degraded"] == ["terrain"]
+        assert any("elevation tile" in w for w in outcome["warnings"])
 
     def test_an_empty_directory_is_refused(self, tmp_path, js):
         (tmp_path / "input").mkdir()
@@ -455,3 +487,118 @@ class TestBuild:
             "Finding the airports…",
             "Writing your flights…",
         ]
+
+    def test_every_degraded_and_unsaid_warning_is_a_line_the_build_logs(self):
+        """A line reworded would say the command line's way out again."""
+        logged = set()
+        for source in Path(browser.__file__).parent.glob("*.py"):
+            for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "warning"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "logger"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                ):
+                    logged.add(node.args[0].value)
+
+        assert set(browser.DEGRADED) <= logged
+        assert logged >= browser.UNSAID
+
+    def test_what_a_build_went_without_is_said_in_the_page_s_words(self):
+        """Offline: the airports and the ground, without the env variable."""
+        with browser._relayed(None, "/input") as relay:
+            airports, runways, terrain = browser.DEGRADED
+            (unsaid,) = browser.UNSAID
+            logger.warning(airports, "FLOWN_REQUIRE_AIRPORT_DB")
+            logger.warning(runways)
+            logger.warning(unsaid)
+            logger.warning(terrain, 5, 5, 2)
+
+        assert relay.degraded == {"airports", "terrain"}
+        assert relay.warnings == [
+            browser.DEGRADED[airports][1],
+            browser.DEGRADED[runways][1],
+            terrain % (5, 5, 2),
+        ]
+        assert not any("FLOWN_" in warning for warning in relay.warnings)
+
+    def test_a_build_tries_again_what_the_last_could_not_fetch(
+        self, tmp_path, js, monkeypatch
+    ):
+        """The worker keeps its process, and the cache its failure marker."""
+        tried = []
+
+        def retry(download):
+            tried.append(download)
+
+        monkeypatch.setattr("flown.airport_lookup.retry_missing_databases", retry)
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+
+        browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+        browser.build(str(inputs), str(tmp_path / "again"), terrain=False, retry=True)
+
+        # Downloaded again only where asked: a slow line waits for the timeout
+        assert tried == [False, True]
+
+    def test_running_out_of_memory_is_said_as_such(self, tmp_path, js, monkeypatch):
+        """A failed year says so only as its cause: the page lets the runtime go."""
+
+        def export(*_args, **_kwargs):
+            raise RuntimeError("Failed to process year 2025") from MemoryError()
+
+        monkeypatch.setattr("flown.pipeline.export_flight_data", export)
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+
+        with pytest.raises(MemoryError):
+            browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+
+
+class TestRetryMissingDatabases:
+    def test_a_database_loaded_empty_is_downloaded_again(self):
+        databases = lookup_module.databases
+        databases.use({})
+        databases.use_runways({})
+        for database in (lookup_module._airports_csv(), lookup_module._runways_csv()):
+            database.failed_marker.parent.mkdir(parents=True, exist_ok=True)
+            database.failed_marker.touch()
+
+        lookup_module.retry_missing_databases()
+
+        assert databases.airports is None
+        assert databases.runways is None
+        assert not lookup_module._recent_download_failure()
+        assert not lookup_module._recent_download_failure(lookup_module._runways_csv())
+
+    def test_without_download_the_failed_download_holds_the_next_back(self):
+        """Loaded again, to be said again to be missing, not downloaded."""
+        databases = lookup_module.databases
+        databases.use({})
+        databases.use_runways({})
+        marker = lookup_module._airports_csv().failed_marker
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+
+        lookup_module.retry_missing_databases(download=False)
+
+        assert databases.airports is None
+        assert databases.runways is None
+        assert lookup_module._recent_download_failure()
+
+    def test_databases_that_loaded_are_kept(self):
+        databases = lookup_module.databases
+        airports = lookup_module.load_airport_database()
+        runways = lookup_module.load_runway_database()
+        assert airports
+        assert runways
+
+        lookup_module.retry_missing_databases()
+
+        assert databases.airports is airports
+        assert databases.runways is runways

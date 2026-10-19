@@ -32,11 +32,13 @@ export function droppedOf(
 }
 
 export interface DropSheetModule {
-  showDropSheet(app: Pick<MapApp, "signal" | "toggleLocalFlights">): unknown;
+  showDropSheet(
+    app: Pick<MapApp, "signal" | "toggleLocalFlights" | "wrappedVisible">,
+  ): unknown;
 }
 
 export function watchFileDrops(
-  app: Pick<MapApp, "signal" | "toggleLocalFlights">,
+  app: Pick<MapApp, "signal" | "toggleLocalFlights" | "wrappedVisible">,
   load: () => Promise<DropSheetModule | null>,
 ): void {
   const signal = app.signal;

@@ -14,14 +14,12 @@ from flown.segment_codec import (
     COORDINATE_SCALE,
     FORMAT_VERSION,
     GROUND_STEP,
-    decode_ground,
-    decode_rows,
     encode_ground,
     encode_rows,
     encode_start,
-    split_segments,
 )
 from flown.types import COORDINATE_DECIMALS
+from tests.codec import decode_ground, decode_rows, split_segments
 
 # The exporter's own rounding, which is what the format relies on
 coordinates = st.floats(-180, 180).map(lambda v: round(v, COORDINATE_DECIMALS))

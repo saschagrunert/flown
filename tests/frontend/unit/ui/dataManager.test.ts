@@ -135,6 +135,7 @@ const toastMock = vi.hoisted(() => ({
   showToast: vi.fn(),
   announceStatus: vi.fn(),
   dismissToast: vi.fn(),
+  RELOAD_ACTION: { label: "Reload", run: vi.fn() },
 }));
 vi.mock("../../../../flown/frontend/utils/toast", () => toastMock);
 
@@ -875,7 +876,8 @@ describe("DataManager", () => {
       expect(toastMock.showToast).toHaveBeenCalledWith(
         "Could not load the flights of 2024, 2025. Reload the page to update it.",
         "error",
-        undefined,
+        // A Retry would fetch the same out-of-date files again
+        toastMock.RELOAD_ACTION,
       );
     });
   });

@@ -265,13 +265,17 @@ function rowsHtml(rows: FlightRow[]): string {
 function headerHtml(): string {
   let html = "<tr>";
   for (const column of COLUMNS) {
+    // Also what a screen reader names each cell of the column by, in place
+    // of the short label ("Ldg, 3")
+    const title = column.title ? '="' + escapeHtml(column.title) + '"' : "";
     html +=
       '<th scope="col" data-sort="' +
       column.key +
       '"' +
+      (title && " abbr" + title) +
       (column.numeric ? ' class="num"' : "") +
       '><button type="button"' +
-      (column.title ? ' title="' + escapeHtml(column.title) + '"' : "") +
+      (title && " title" + title) +
       ">" +
       escapeHtml(column.label) +
       "</button></th>";

@@ -1,7 +1,9 @@
 """Input validation utilities."""
 
 import contextlib
+import json
 import os
+import re
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -17,9 +19,19 @@ MAX_KML_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 KML_SUFFIXES = (".kml", ".kmz")
 
 # Files that only a site of this tool has, relative to the output directory
-# and to the data directory: where either is, the site is ours to replace
+# and to the data directory: where either is, the site is ours to replace.
+# Another site may have a file by either name, so each must also read as
+# this tool writes it (see _is_marker)
 SITE_MARKERS = ("map_config.js",)
 DATA_MARKERS = ("metadata.json",)
+# How map_config.js starts: the assignment of the configuration, after the
+# comment lines the template of the builds before 2026-10-02 had
+_SITE_MARKER_START = re.compile(rb"(?:\s*//[^\n]*\n)*\s*window\.MAP_CONFIG\s*=")
+# The most of map_config.js read to find it
+_MAX_SITE_MARKER_BYTES = 4096
+_DATA_MARKER_KEYS = ("available_years", "year_file_bytes")
+# Larger than any metadata.json of a site: it lists the years and aircraft
+_MAX_DATA_MARKER_BYTES = 1024 * 1024
 # The data files a run owns besides its markers
 _OWNED_DATA_FILES = ("airports.json", "metadata.json", "[0-9][0-9][0-9][0-9]/data.json")
 
@@ -176,8 +188,8 @@ def foreign_site_files(
     """
     output = Path(output_dir)
     data = Path(data_dir)
-    if any((output / name).is_file() for name in SITE_MARKERS) or any(
-        (data / name).is_file() for name in DATA_MARKERS
+    if any(_is_marker(output / name) for name in SITE_MARKERS) or any(
+        _is_marker(data / name) for name in DATA_MARKERS
     ):
         return []
     found = [
@@ -193,6 +205,31 @@ def foreign_site_files(
             for pattern in patterns:
                 found.extend(sorted(directory.glob(pattern)))
     return list(dict.fromkeys(found))
+
+
+def _is_marker(path: Path) -> bool:
+    """Whether a marker file is one this tool wrote, by what it holds.
+
+    ``map_config.js`` starts with the assignment of the configuration,
+    ``metadata.json`` is an object with the years of the site.
+    """
+    try:
+        with open(path, "rb") as f:
+            if path.suffix == ".js":
+                start = f.read(_MAX_SITE_MARKER_BYTES)
+                return _SITE_MARKER_START.match(start) is not None
+            text = f.read(_MAX_DATA_MARKER_BYTES + 1)
+    except OSError:
+        return False
+    if len(text) > _MAX_DATA_MARKER_BYTES:
+        return False
+    try:
+        metadata = json.loads(text)
+    except ValueError:
+        return False
+    return isinstance(metadata, dict) and all(
+        key in metadata for key in _DATA_MARKER_KEYS
+    )
 
 
 def validate_output_dir(

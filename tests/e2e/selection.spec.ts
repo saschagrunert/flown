@@ -85,7 +85,7 @@ test.describe("Path Selection", () => {
     const replayBtn = page.locator("#replay-btn");
     await expect(replayBtn).toHaveAttribute(
       "title",
-      "Pick flights with timing data to replay, under Statistics, Flights",
+      "Pick flights with timing data to replay, under Flights in the statistics",
     );
 
     await selectPathForReplay(page);
@@ -150,7 +150,7 @@ test.describe("Path Selection", () => {
 
     await expect(page.locator("#replay-btn")).toHaveAttribute(
       "title",
-      "Pick flights with timing data to replay, under Statistics, Flights",
+      "Pick flights with timing data to replay, under Flights in the statistics",
     );
   });
 

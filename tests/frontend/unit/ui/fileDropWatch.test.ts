@@ -28,7 +28,7 @@ function drag(type: string, transfer: unknown): DragLike {
 
 const FILES = { types: ["Files"], files: [new File(["x"], "a.kml")] };
 
-type AppLike = Pick<MapApp, "signal" | "toggleLocalFlights">;
+type AppLike = Pick<MapApp, "signal" | "toggleLocalFlights" | "wrappedVisible">;
 
 let app: AppLike & {
   toggleLocalFlights: ReturnType<typeof vi.fn<MapApp["toggleLocalFlights"]>>;
@@ -40,6 +40,7 @@ beforeEach(() => {
   app = {
     signal: controller.signal,
     toggleLocalFlights: vi.fn<MapApp["toggleLocalFlights"]>(),
+    wrappedVisible: false,
   };
 });
 

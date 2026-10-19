@@ -50,7 +50,7 @@ export const NOT_SHARED_HINT =
 /** Said for a press on Share mode with nothing selected */
 export const ISOLATE_HINT =
   NO_SELECTION_MESSAGE +
-  ": pick one on the map, or tick one under Statistics, Flights";
+  ": pick one on the map, or tick one under Flights in the statistics";
 
 /** The control columns, which the phone's bar replaces */
 export const CONTROL_COLUMNS = "#left-buttons, #right-buttons";

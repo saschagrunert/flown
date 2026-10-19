@@ -664,7 +664,8 @@ function createTool(app: MapApp): CrossSectionTool {
     startPlacing();
     // The line of the link or of the last visit, as the page opens
     const saved = app.crossSectionLine;
-    if (isSectionLine(saved)) {
+    const restoring = isSectionLine(saved);
+    if (restoring) {
       const [a, b, c, d] = saved.split(",").map(parseFloat) as [
         number,
         number,
@@ -676,8 +677,14 @@ function createTool(app: MapApp): CrossSectionTool {
     // One too short to show leaves the link and the saved state with it
     if (phase !== "shown") app.crossSectionLine = "";
     notify();
-    // Into the part on show: on a line of the link, placing is over
-    (phase === "placing" ? placeButton : redraw).focus({ preventScroll: true });
+    // Into the part on show, for a press. A line the page opens on leaves
+    // the focus where it is: at the start of the page, past which it
+    // jumped, or in the search the visitor typed in before the bundle came.
+    if (!restoring) {
+      (phase === "placing" ? placeButton : redraw).focus({
+        preventScroll: true,
+      });
+    }
   };
 
   const hide = (): void => {

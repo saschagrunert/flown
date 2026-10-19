@@ -49,7 +49,6 @@ playwright-report*
 .pre-commit-cache
 
 # Generated site and input data
-/index.html
 *.kml
 *.kmz
 docs

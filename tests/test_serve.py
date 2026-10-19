@@ -87,12 +87,21 @@ def test_sends_the_security_headers(site):
 
 
 def _serve_module():
-    """serve.py as a module, which is not in a package."""
+    """serve.py as a module, which is not in a package.
+
+    Without its bytecode, which would land in a __pycache__ at the root of
+    the repository, next to serve.py.
+    """
     spec = importlib.util.spec_from_file_location("serve", SERVE)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    writes = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = writes
     return module
 
 

@@ -129,6 +129,7 @@ class TerrariumTiles:
         *,
         get: Callable[[str], tuple[int, bytes]] | None = None,
         workers: int | None = None,
+        keep_ground: bool = True,
     ) -> None:
         """Keep the tiles in ``cache_dir`` (by default ``TERRAIN_CACHE_DIR``).
 
@@ -136,9 +137,14 @@ class TerrariumTiles:
         the status and the body, as ``_get`` does; the browser build passes
         one (see ``flown.browser``), which has no sockets. ``workers`` is how
         many tiles are fetched at once (``FETCH_WORKERS`` by default); one
-        fetches them in this thread, where no other can be started.
+        fetches them in this thread, where no other can be started. With
+        ``keep_ground``, the ground sampled under each flight is kept in
+        ``ground_dir`` (see ``terrain.sample_path_elevations``); the build
+        in the page keeps none, which prunes the tiles of the flights it
+        no longer has (see ``prune_except``).
         """
         self.cache_dir = cache_dir if cache_dir is not None else TERRAIN_CACHE_DIR
+        self.ground_dir = self.cache_dir / "ground" if keep_ground else None
         self._get_url = get if get is not None else self._get
         self.workers = workers
         self._offline = threading.Event()

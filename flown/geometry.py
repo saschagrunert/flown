@@ -372,13 +372,3 @@ class CoordinateExtent:
             min(point.lon for point in points),
             max(point.lon for point in points),
         )
-
-    @property
-    def center_lat(self) -> float:
-        """The latitude halfway between the extremes."""
-        return (self.min_lat + self.max_lat) / 2
-
-    @property
-    def center_lon(self) -> float:
-        """The longitude halfway between the extremes."""
-        return (self.min_lon + self.max_lon) / 2

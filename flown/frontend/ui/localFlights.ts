@@ -23,6 +23,7 @@ import type { MapApp, MapConfig } from "../mapApp";
 import { LocalBuilder, type InputFile } from "../services/localBuild";
 import {
   CACHE_BUSY_MESSAGE,
+  CACHE_GONE_MESSAGE,
   clearAll,
   deleteCache,
   fileStamp,
@@ -57,6 +58,7 @@ import {
 } from "../state/localFlags";
 import { trustedHtml } from "../utils/trustedHtml";
 import { droppedOf } from "./fileDropWatch";
+import { DROP_IN_WRAPPED_MESSAGE } from "./fileDrop";
 
 /** The button in the left column, and the row of the phone's More sheet */
 export const LOCAL_BUTTON_ID = "local-flights-btn";
@@ -68,6 +70,19 @@ const PANEL_GAP_PX = 8;
 
 const ACCEPTED = /\.(kml|kmz)$/i;
 const AIRCRAFT_FILE = "aircraft.json";
+/** The AppleDouble files macOS writes into a folder, which are no KML */
+const APPLE_DOUBLE = /^\._/;
+
+/**
+ * The name the `index`th aircraft.json of a drop is kept under, from 0:
+ * the store keeps one file a name, and the folders of a drop may each
+ * have one, which the build merges as the site build merges those of its
+ * directories, the first one's entries first (flown/browser.py,
+ * input_files): aircraft.json, aircraft-2.json and on
+ */
+export function aircraftName(index: number): string {
+  return index ? `aircraft-${index + 1}.json` : AIRCRAFT_FILE;
+}
 /** How a file is named for its aircraft, which the hint links to */
 const NAMING_DOCS_URL =
   "https://github.com/saschagrunert/flown/blob/main/doc/usage.md#kml-file-naming-convention";
@@ -111,11 +126,17 @@ export const MAX_FILE_BYTES = 100 * 1024 * 1024;
 export const CANCELLED_MESSAGE = "The build is stopped; your files are kept";
 /** What Remove all says while it waits for the second press */
 export const CONFIRM_CLEAR_LABEL = "Remove all files?";
-/** How long it waits for it */
-const CONFIRM_CLEAR_MS = 4000;
+/**
+ * How long it waits for it, at the least, and on while the button has the
+ * focus (askToClear): time enough to hear the question out and find the
+ * button again (WCAG 2.2.1)
+ */
+export const CONFIRM_CLEAR_MS = 15_000;
 /** Said as it asks, for a screen reader the label's change is not */
 export const CONFIRM_CLEAR_MESSAGE =
   "Press Remove all again to remove all the files from this browser";
+/** Said when it stops asking without the second press */
+export const CONFIRM_LAPSED_MESSAGE = "Nothing was removed";
 /** A later click this soon after the first is of a triple-click, at the
  * 500 ms double-click time of most systems */
 const DOUBLE_CLICK_MS = 500;
@@ -153,6 +174,22 @@ export function replacedMessage(names: readonly string[]): string {
 export function duplicateMessage(names: readonly string[]): string {
   return `More than one file is named ${names.join(", ")}; the first is kept, rename the others`;
 }
+
+/**
+ * Said of a dataset built without what the build could not fetch
+ * (LocalInfo.degraded), with Build again beside it
+ */
+export function degradedMessage(degraded: readonly string[]): string {
+  const missing = [
+    ...(degraded.includes("airports") ? ["the airport names"] : []),
+    ...(degraded.includes("terrain") ? ["the ground under the flights"] : []),
+  ];
+  return `Your flights were built without ${missing.join(" and ") || "some of their data"}, which could not be fetched`;
+}
+/** What offers to build them again */
+export const BUILD_AGAIN_LABEL = "Build again";
+/** Set in a tab once its start said so: once a tab, not at every reload */
+const DEGRADED_SAID_KEY = keyedToPage("flown-local-degraded-said");
 
 /** Said of a drop with nothing the build takes in it (a folder of others) */
 export const NO_FILES_MESSAGE =
@@ -202,8 +239,9 @@ async function entriesOf(
 /**
  * The files of a drop: those dropped, and those in the folders dropped,
  * however deep. Of a folder only what the build takes: it holds other
- * files too, which are no mistake of the visitor's. What could not be
- * read is named in `unreadable`.
+ * files too, which are no mistake of the visitor's, the AppleDouble files
+ * of macOS among them (`._1_x.kml`, which the site build leaves out too).
+ * What could not be read is named in `unreadable`.
  */
 async function filesOf(
   dropped: Dropped,
@@ -217,8 +255,8 @@ async function filesOf(
         for (const inner of entries) await walk(inner, false);
       } else if (
         top ||
-        ACCEPTED.test(entry.name) ||
-        entry.name === AIRCRAFT_FILE
+        (!APPLE_DOUBLE.test(entry.name) &&
+          (ACCEPTED.test(entry.name) || entry.name === AIRCRAFT_FILE))
       ) {
         files.push(await fileOf(entry as FileSystemFileEntry));
       }
@@ -237,8 +275,14 @@ async function filesOf(
 /** What the panel says about what is shown */
 export function shownMessage(info: LocalInfo | null | undefined): string {
   if (!info) return SITE_FLIGHTS_MESSAGE;
+  // The files the flights are of: not the aircraft files, nor the ones
+  // the build left out
+  const left = new Set((info.skipped ?? []).map((entry) => entry.file));
+  const count = info.files.filter(
+    (name) => ACCEPTED.test(name) && !left.has(name),
+  ).length;
   const flights = `${info.flights} flight${info.flights === 1 ? "" : "s"}`;
-  const files = `${info.files.length} file${info.files.length === 1 ? "" : "s"}`;
+  const files = `${count} file${count === 1 ? "" : "s"}`;
   return `Showing your ${flights} from ${files}`;
 }
 
@@ -276,6 +320,27 @@ export function upToDate(
 
 function decode(bytes: ArrayBuffer): string {
   return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Whether an element is rendered, and so can take focus; taken for shown
+ * where the browser cannot tell (checkVisibility is recent)
+ */
+function rendered(element: HTMLElement): boolean {
+  return (
+    typeof element.checkVisibility !== "function" || element.checkVisibility()
+  );
+}
+
+/** Whether the start said in this tab already what the dataset lacks */
+function saidThisTab(): boolean {
+  try {
+    if (sessionStorage.getItem(DEGRADED_SAID_KEY) === "1") return true;
+    sessionStorage.setItem(DEGRADED_SAID_KEY, "1");
+  } catch {
+    // Said at every start, then
+  }
+  return false;
 }
 
 function ownTab(): boolean {
@@ -375,7 +440,6 @@ export async function localStartConfig(
   };
   return {
     ...config,
-    center: info.center,
     bounds: info.bounds,
     dataDir: LOCAL_DATA_DIR,
     dataSource: {
@@ -452,6 +516,7 @@ const PANEL_HTML =
   "Without the ground under the flights</label>" +
   '<div class="local-flights-actions">' +
   '<button type="button" class="btn-surface" data-local="show">Show my flights</button>' +
+  `<button type="button" class="btn-surface" data-local="again" hidden>${BUILD_AGAIN_LABEL}</button>` +
   '<button type="button" class="btn-surface" data-local="cancel" hidden>Stop the build</button>' +
   '<button type="button" class="btn-surface" data-local="site">Show the site’s flights</button>' +
   '<button type="button" class="btn-surface" data-local="clear">Remove all</button>' +
@@ -473,7 +538,7 @@ export class LocalFlights {
   private readonly input: HTMLInputElement;
   private readonly terrainOff: HTMLInputElement;
   private readonly actions: Record<
-    "show" | "cancel" | "site" | "clear",
+    "show" | "again" | "cancel" | "site" | "clear",
     HTMLButtonElement
   >;
   private files: StoredFile[] = [];
@@ -482,6 +547,8 @@ export class LocalFlights {
   /** Set while the dataset a build made is being kept: too late to stop */
   private keeping = false;
   private buildAgain = false;
+  /** Whether the next build downloads again what the last could not */
+  private retry = false;
   /**
    * Whether a build asked for since the last one ended goes on to show the
    * flights: a drop and Show my flights do, a removal or the ground asked
@@ -542,6 +609,7 @@ export class LocalFlights {
     this.terrainOff.checked = storedFlag(NO_TERRAIN_KEY);
     this.actions = {
       show: panel.querySelector('[data-local="show"]')!,
+      again: panel.querySelector('[data-local="again"]')!,
       cancel: panel.querySelector('[data-local="cancel"]')!,
       site: panel.querySelector('[data-local="site"]')!,
       clear: panel.querySelector('[data-local="clear"]')!,
@@ -619,6 +687,11 @@ export class LocalFlights {
       listen,
     );
     this.actions.show.addEventListener("click", () => void this.show(), listen);
+    this.actions.again.addEventListener(
+      "click",
+      () => void this.buildAgainNow(),
+      listen,
+    );
     this.actions.cancel.addEventListener("click", () => this.cancel(), listen);
     this.actions.site.addEventListener("click", () => this.showSite(), listen);
     // Twice: once, and again while it asks (CONFIRM_CLEAR_LABEL), since
@@ -711,8 +784,15 @@ export class LocalFlights {
     this.panel.hidden = true;
     this.setButtonExpanded(false);
     if (restoreFocus && focused) {
-      [this.opener, document.getElementById(LOCAL_BUTTON_ID)]
-        .find((element) => element?.isConnected)
+      // The first of them that is shown: on a phone the column with the
+      // button is hidden, and so is an opener in it (a reopen, a drop)
+      [
+        this.opener,
+        document.getElementById(LOCAL_BUTTON_ID),
+        document.getElementById("mobile-tab-more"),
+        this.app.map?.getCanvas(),
+      ]
+        .find((element) => element?.isConnected && rendered(element))
         ?.focus();
     }
   }
@@ -839,6 +919,15 @@ export class LocalFlights {
       upToDate(this.info, this.files) &&
       this.app.config.localFlights?.builtAt === this.info?.builtAt;
     this.actions.show.hidden = !any || current || this.building;
+    // A dataset built without what could not be fetched (offline), which
+    // a build tries again: offered, rather than built again at every
+    // start, which offline would do over and over
+    const degraded =
+      upToDate(this.info, this.files) && !!this.info?.degraded?.length;
+    this.actions.again.hidden = !any || !degraded || this.building;
+    this.actions.again.title = degraded
+      ? degradedMessage(this.info?.degraded ?? [])
+      : "";
     // Not once the build is done and its dataset is being kept, which a
     // stop would no longer keep from showing
     this.actions.cancel.hidden = !this.building || this.keeping;
@@ -848,19 +937,33 @@ export class LocalFlights {
     if (!this.building) this.say("");
   }
 
-  /** Remove all asks to be pressed again, for a while */
+  /**
+   * Remove all asks to be pressed again: for CONFIRM_CLEAR_MS, and on for
+   * as long as it has the focus then. Ended without the press, that is
+   * said, as the question was.
+   */
   private askToClear(): void {
     this.actions.clear.textContent = CONFIRM_CLEAR_LABEL;
     this.askedAt = Date.now();
-    this.confirming = setTimeout(() => this.stopAsking(), CONFIRM_CLEAR_MS);
+    const wait = (): void => {
+      this.confirming = setTimeout(() => {
+        if (document.activeElement === this.actions.clear) wait();
+        else this.stopAsking(true);
+      }, CONFIRM_CLEAR_MS);
+    };
+    wait();
     this.say(CONFIRM_CLEAR_MESSAGE);
   }
 
-  private stopAsking(): void {
+  /** `lapsed`: it asked, and was not pressed again */
+  private stopAsking(lapsed = false): void {
+    if (this.confirming === undefined) return;
     clearTimeout(this.confirming);
     this.confirming = undefined;
     this.actions.clear.textContent = "Remove all";
-    if (this.status.textContent === CONFIRM_CLEAR_MESSAGE) this.say("");
+    if (this.status.textContent === CONFIRM_CLEAR_MESSAGE) {
+      this.say(lapsed ? CONFIRM_LAPSED_MESSAGE : "");
+    }
   }
 
   /**
@@ -920,10 +1023,14 @@ export class LocalFlights {
     if (folders && !this.building) this.say(READING_MESSAGE);
     const found = await filesOf(dropped, unreadable);
     if (folders && !this.building) this.say("");
+    // By the name each is kept under
+    let aircraft = 0;
     for (const file of found) {
       if (!ACCEPTED.test(file.name) && file.name !== AIRCRAFT_FILE) refused++;
       else if (file.size > MAX_FILE_BYTES) oversized.push(file.name);
-      else if (taken.has(file.name)) duplicates.add(file.name);
+      else if (file.name === AIRCRAFT_FILE) {
+        taken.set(aircraftName(aircraft++), file);
+      } else if (taken.has(file.name)) duplicates.add(file.name);
       else taken.set(file.name, file);
     }
     const problems = [
@@ -953,7 +1060,7 @@ export class LocalFlights {
     }
     // Kept by name: one of another size under it is said to be replaced
     const replaced: string[] = [];
-    for (const { name, size } of taken.values()) {
+    for (const [name, { size }] of taken) {
       if ((sizes.get(name) ?? size) !== size) replaced.push(name);
       sizes.set(name, size);
     }
@@ -963,7 +1070,7 @@ export class LocalFlights {
       this.say(TOO_LARGE_MESSAGE, true);
       return false;
     }
-    for (const file of taken.values()) {
+    for (const [name, file] of taken) {
       let bytes: ArrayBuffer;
       try {
         bytes = await file.arrayBuffer();
@@ -975,7 +1082,7 @@ export class LocalFlights {
         continue;
       }
       files.push({
-        name: file.name,
+        name,
         size: file.size,
         bytes,
         added: Date.now(),
@@ -1030,6 +1137,17 @@ export class LocalFlights {
     if (!this.files.length) return;
     if (upToDate(this.info, this.files)) this.switchTo(true);
     else await this.build();
+  }
+
+  /**
+   * Build the files kept again, as asked (Build again): a dataset built
+   * without what could not be fetched, which the build tries again
+   */
+  async buildAgainNow(): Promise<void> {
+    this.clearAlert();
+    await this.refresh();
+    this.retry = true;
+    await this.build();
   }
 
   /**
@@ -1158,7 +1276,12 @@ export class LocalFlights {
         const bytes = await readFileBytes(file.name);
         if (bytes) inputs.push({ name: file.name, bytes });
       }
-      const options = { flags: await flags, version: siteBuild(config) };
+      const options = {
+        flags: await flags,
+        version: siteBuild(config),
+        retry: this.retry,
+      };
+      this.retry = false;
       // A file went while they were read, or all of them with the worker
       // and its cache (clear), or the build was stopped: no worker starts
       // again, with a cache of its own, for files no longer kept. And one
@@ -1188,7 +1311,6 @@ export class LocalFlights {
         years: outcome.years,
         flights: outcome.flights,
         airports: outcome.airports,
-        center: outcome.center,
         bounds: outcome.bounds,
         files: built.map((file) => file.name),
         stamp: fileStamp(built),
@@ -1197,6 +1319,7 @@ export class LocalFlights {
         skipped: outcome.skipped ?? [],
         warnings: outcome.warnings ?? [],
         terrain,
+        degraded: outcome.degraded ?? [],
       };
       this.keeping = true;
       this.render();
@@ -1240,14 +1363,25 @@ export class LocalFlights {
       // Of files since removed: what it failed with is not of those kept
       if (generation === this.generation) {
         logError("The build of the flights failed:", error);
-        this.say(
+        const message =
           error instanceof DOMException
             ? storageMessage(error)
             : error instanceof Error
               ? error.message
-              : String(error),
-          true,
-        );
+              : String(error);
+        // Another tab removed them, which the list then shows too
+        if (message === CACHE_GONE_MESSAGE) await this.refresh();
+        this.say(message, true);
+        // Unseen in a panel that is closed or held under Wrapped, where a
+        // build that got through says so with a toast as well
+        if (!this.isOpen() || this.app.mapHeld) {
+          showToast(message, "error", {
+            label: "Show",
+            run: () => {
+              if (!this.app.mapHeld) this.open();
+            },
+          });
+        }
       }
       if (this.buildAgain) await this.build(BUILDING_MESSAGE, false);
     }
@@ -1271,6 +1405,12 @@ let current: LocalFlights | null = null;
 export function toggleLocalFlights(app: MapApp, dropped?: Dropped): void {
   if (framed()) {
     showToast(FRAMED_MESSAGE, "info");
+    return;
+  }
+  // Wrapped's dialog would hold the panel inert under it, with what the
+  // build says
+  if (dropped && app.wrappedVisible) {
+    showToast(DROP_IN_WRAPPED_MESSAGE, "info");
     return;
   }
   if (current?.app !== app) {
@@ -1321,6 +1461,18 @@ export function reopenAfterSwitch(
       run: () => {
         markOwnTab();
         showMine();
+      },
+    });
+  }
+  const degraded = app.config.localFlights?.degraded;
+  if (degraded?.length && !saidThisTab()) {
+    // The connection may be back: the visitor is offered the build that
+    // gets what this one could not, once a tab
+    showToast(degradedMessage(degraded), "info", {
+      label: BUILD_AGAIN_LABEL,
+      run: () => {
+        if (current?.app !== app || !current.isOpen()) toggleLocalFlights(app);
+        void current?.buildAgainNow();
       },
     });
   }

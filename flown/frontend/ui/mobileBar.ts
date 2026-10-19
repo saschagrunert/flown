@@ -15,10 +15,10 @@
  * When replay activates, or the hotspot tour starts, the bar steps aside
  * entirely: their panel takes the bottom edge, so the two never stack.
  *
- * The bar comes with the extras bundle (extras.ts), its sheet with it,
+ * The bar comes with the phone bundle (phone.ts), its sheet with it,
  * which the app asks for once the phone layout applies
- * (MapApp.followMobileBar): no part of a first visit, and on a desktop
- * not fetched for it at all.
+ * (MapApp.followMobileBar): no part of a first visit, and not fetched by
+ * a desktop whose window stays out of that layout.
  */
 import type { MapApp } from "../mapApp";
 import { MobileSheet, type SheetRow, type SheetSwitchRow } from "./mobileSheet";

@@ -30,6 +30,7 @@ from .parser_common import (
     local_name,
     validate_and_normalize_coordinate,
 )
+from .parser_standard import join_split_lines
 from .spikes import distance_spikes, run_spikes
 from .types import TrackPoint
 
@@ -358,7 +359,9 @@ def process_gx_track(
     """Process all gx:Track elements of a KML document.
 
     Every gx:Track is one path, except that the tracks of a gx:MultiTrack
-    make one path together (see ``parse_gx_tracks``). Returns the ids of
+    make one path together (see ``parse_gx_tracks``), and so do the tracks
+    of placemarks that are one flight split in pieces, as a logger writes a
+    long one (see ``parser_standard.join_split_lines``). Returns the ids of
     the tracks that are part of a path: one that yields none (empty, with
     2D coordinates, clamped to the ground) leaves its placemark's flight to
     a LineString next to it (see ``parser._build_coord_metadata_map``).
@@ -369,6 +372,7 @@ def process_gx_track(
 
     filename = Path(kml_file).name
     metadata_cache: dict[int, PlacemarkMetadata] = {}
+    first_path = len(path_groups)
 
     for flight in _flights(tracks):
         placemark = _find_placemark(flight[0])
@@ -412,5 +416,10 @@ def process_gx_track(
         )
         with_path.update(id(track) for track in flight)
 
+    joined_paths, joined_metadata = join_split_lines(
+        path_groups[first_path:], path_metadata[first_path:], timed=True
+    )
+    path_groups[first_path:] = joined_paths
+    path_metadata[first_path:] = joined_metadata
     logger.debug("Parsed %d gx:Track element(s) in %s", len(tracks), filename)
     return with_path

@@ -23,7 +23,11 @@
 
 import { versioned } from "./lazyImport";
 import { localCacheDbName } from "../state/localFlags";
-import { CACHE_BUSY_MESSAGE, CACHE_WAIT_MS } from "./localStore";
+import {
+  CACHE_BUSY_MESSAGE,
+  CACHE_GONE_MESSAGE,
+  CACHE_WAIT_MS,
+} from "./localStore";
 
 /** The Pyodide release, which matches the Python the package needs */
 const PYODIDE_VERSION = "314.0.7";
@@ -67,6 +71,11 @@ export interface BuildOptions {
   flags?: string[] | undefined;
   /** The site's build, which the package's archive is fetched as */
   version?: string | undefined;
+  /**
+   * Download again at once what the last build could not (Build again),
+   * which a failed download holds back for an hour otherwise
+   */
+  retry?: boolean | undefined;
 }
 
 export type BuildRequest = {
@@ -85,21 +94,29 @@ export interface BuildOutcome {
   years: number[];
   flights: number;
   airports: number;
-  center: [number, number];
   bounds: [[number, number], [number, number]];
   /** The files that made no flight, which the rest were built without */
   skipped?: SkippedFile[] | undefined;
   /** What the build warned of, for the panel to show */
   warnings?: string[] | undefined;
+  /** What it went without for want of a connection ("airports", "terrain") */
+  degraded?: string[] | undefined;
   files: { path: string; bytes: ArrayBuffer }[];
 }
 
-export type BuildResponse = { id: number } & (
+type BuildResponse = { id: number } & (
   | { progress: string }
   | { done: BuildOutcome }
   // `lost`: the runtime failed with it, and the worker goes (RuntimeLost)
   | { error: string; lost?: true }
 );
+
+/**
+ * What the worker says to the page: the answers to its builds, and that
+ * another tab deleted the cache (Runtime.onCacheGone), which the worker
+ * goes with
+ */
+export type WorkerMessage = BuildResponse | { cacheGone: true };
 
 /** What the worker uses of Pyodide */
 export interface PyodideLike {
@@ -128,6 +145,15 @@ export interface PyodideLike {
     rmdir(path: string): void;
     filesystems: { IDBFS: unknown };
   };
+}
+
+/**
+ * What IDBFS is besides a file system: it keeps the connection a sync
+ * opens to the database of a mount, by the mount's path, for as long as
+ * the worker lives, and never closes it
+ */
+interface IdbfsConnections {
+  dbs?: Record<string, IDBDatabase | undefined>;
 }
 
 export type ProgressReport = (message: string) => void;
@@ -365,6 +391,12 @@ export class Runtime {
   private loaded: Promise<PyodideLike> | null = null;
   /** Whether the cache is mounted, which a second mount would refuse */
   private mounted = false;
+  /** The cache's connection that is watched (watchCache) */
+  private watched: IDBDatabase | null = null;
+  /** Set once another tab deleted the cache: nothing goes into it again */
+  private cacheGone = false;
+  /** Told that another tab deleted the cache (serveBuilds tells the page) */
+  onCacheGone: () => void = () => undefined;
 
   constructor(
     private readonly loadPyodide: () => Promise<PyodideLoader>,
@@ -431,6 +463,7 @@ export class Runtime {
         CACHE_BUSY_MESSAGE,
       );
       await within(syncfs(pyodide, true), CACHE_LOAD_MS, CACHE_SLOW_MESSAGE);
+      this.watchCache(pyodide);
       pyodide.runPython(
         `import os, sys\n` +
           `sys.path.insert(0, ${JSON.stringify(SOURCES_DIR)})\n` +
@@ -451,6 +484,27 @@ export class Runtime {
       throw error;
     }
     return pyodide;
+  }
+
+  /**
+   * Let go of the cache's connection when another tab deletes the cache
+   * (localStore.ts, deleteCache, for its Remove all), which waits on it:
+   * IDBFS never closes it, and that tab's Remove all would wait and fail.
+   * Closed alone it would be opened again by the next sync, which would
+   * write the cache back with the parses of the files removed: so nothing
+   * syncs again, the next build refuses, and the page lets the worker go.
+   */
+  private watchCache(pyodide: PyodideLike): void {
+    const dbs = (pyodide.FS.filesystems.IDBFS as IdbfsConnections | null)?.dbs;
+    const db = dbs?.[this.cacheDir];
+    if (!dbs || !db || db === this.watched) return;
+    this.watched = db;
+    db.onversionchange = () => {
+      this.cacheGone = true;
+      db.close();
+      delete dbs[this.cacheDir];
+      this.onCacheGone();
+    };
   }
 
   /**
@@ -479,8 +533,9 @@ export class Runtime {
     files: InputFile[],
     terrain: boolean,
     report: ProgressReport,
-    { flags, version }: BuildOptions = {},
+    { flags, version, retry }: BuildOptions = {},
   ): Promise<BuildOutcome> {
+    if (this.cacheGone) throw new RuntimeLost(CACHE_GONE_MESSAGE);
     let pyodide: PyodideLike;
     try {
       pyodide = await this.ready(report, version);
@@ -493,7 +548,7 @@ export class Runtime {
       });
     }
     try {
-      return await this.run(pyodide, files, terrain, report, flags);
+      return await this.run(pyodide, files, terrain, report, flags, retry);
     } finally {
       // Nothing of the files stays in the worker's memory between builds:
       // the page keeps them, and the next build writes them again
@@ -512,17 +567,24 @@ export class Runtime {
     terrain: boolean,
     report: ProgressReport,
     flags: string[] | undefined,
+    retry = false,
   ): Promise<BuildOutcome> {
     const fs = pyodide.FS;
-    removeTree(pyodide, INPUT_DIR);
-    removeTree(pyodide, OUTPUT_DIR);
-    fs.mkdirTree(INPUT_DIR);
-    for (const file of files) {
-      // The name decides the aircraft (flown/browser.py)
-      const name = file.name.replace(/[/\\]/g, "_");
-      fs.writeFile(`${INPUT_DIR}/${name}`, new Uint8Array(file.bytes));
-      // The file system holds its copy; the one handed over can go
-      file.bytes = new ArrayBuffer(0);
+    try {
+      removeTree(pyodide, INPUT_DIR);
+      removeTree(pyodide, OUTPUT_DIR);
+      fs.mkdirTree(INPUT_DIR);
+      for (const file of files) {
+        // The name decides the aircraft (flown/browser.py)
+        const name = file.name.replace(/[/\\]/g, "_");
+        fs.writeFile(`${INPUT_DIR}/${name}`, new Uint8Array(file.bytes));
+        // The file system holds its copy; the one handed over can go
+        file.bytes = new ArrayBuffer(0);
+      }
+    } catch (error) {
+      // The memory for the files' copies, which the runtime could not
+      // get: a new one starts with all of it again
+      throw new RuntimeLost(RUNTIME_LOST_MESSAGE, { cause: error });
     }
     pyodide.globals.set("report", (_level: string, message: string) =>
       report(message),
@@ -535,18 +597,27 @@ export class Runtime {
           `from flown import browser\n` +
           `json.dumps(browser.build(${JSON.stringify(INPUT_DIR)}, ` +
           `${JSON.stringify(OUTPUT_DIR)}, report, terrain=${terrain ? "True" : "False"}, ` +
+          `retry=${retry ? "True" : "False"}, ` +
           `flags=json.loads(${JSON.stringify(JSON.stringify(flags ?? null))})))`,
       )) as string;
       outcome = JSON.parse(result) as Omit<BuildOutcome, "files">;
     } catch (error) {
-      // A Python exception leaves the runtime as it was
-      if (error instanceof pyodide.ffi.PythonError) {
+      // A Python exception leaves the runtime as it was, but for one of
+      // memory (flown/browser.py raises one for a year that ran out): the
+      // memory the runtime took stays taken, which a new one has again
+      if (
+        error instanceof pyodide.ffi.PythonError &&
+        (error as { type?: unknown }).type !== "MemoryError"
+      ) {
         throw new Error(pythonErrorMessage(error), { cause: error });
       }
       throw new RuntimeLost(RUNTIME_LOST_MESSAGE, { cause: error });
     } finally {
-      // The tiles and the airports fetched on the way stay for the next build
-      await syncfs(pyodide, false).catch(() => undefined);
+      // The tiles and the airports fetched on the way stay for the next
+      // build, unless another tab deleted the cache meanwhile (watchCache)
+      if (!this.cacheGone) {
+        await syncfs(pyodide, false).catch(() => undefined);
+      }
     }
     return { ...outcome, files: filesUnder(pyodide, OUTPUT_DIR) };
   }
@@ -554,12 +625,13 @@ export class Runtime {
 
 export interface LocalWorkerScope {
   onmessage: ((event: MessageEvent<BuildRequest>) => void) | null;
-  postMessage(message: BuildResponse, transfer?: Transferable[]): void;
+  postMessage(message: WorkerMessage, transfer?: Transferable[]): void;
   location: { href: string };
 }
 
 /** Answer the page's build requests with `runtime` */
 export function serveBuilds(scope: LocalWorkerScope, runtime: Runtime): void {
+  runtime.onCacheGone = () => scope.postMessage({ cacheGone: true });
   scope.onmessage = (event) => {
     const { id, build } = event.data;
     const report = (message: string) =>

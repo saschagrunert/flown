@@ -282,6 +282,8 @@ describe("expandYearData", () => {
       ]),
     );
     expect(data.path_segments).toHaveLength(1);
+    // Nor counted twice, as a flight of its own
+    expect(data.path_info).toEqual([{ id: 10, year: 2025 }]);
   });
 
   it("skips paths without segments and has no holes in the arrays", () => {
@@ -386,6 +388,22 @@ describe("expandYearData", () => {
         expect(warn).toHaveBeenCalledOnce();
       },
     );
+
+    it("cuts a path short at a latitude that is null, as at a longitude", () => {
+      const raw = path(
+        [50, 8],
+        [
+          [50.1, 8.1, 500, 80, 0],
+          [50.2, 8.2, 500, 80, 1],
+        ],
+      );
+      (raw.columns[0] as unknown[])[1] = null;
+
+      const data = expandWith(raw);
+
+      expect(data.path_segments.map((s) => s.path_id)).toEqual([1, 2]);
+      expect(warn).toHaveBeenCalledOnce();
+    });
 
     it("cuts a path short where a column ends early", () => {
       const data = expandWith({

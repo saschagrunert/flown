@@ -20,12 +20,21 @@
  *
  * The map itself is hidden rather than masked in the snapshots of the
  * chrome: a mask over a full-viewport element covers the chrome along with
- * it. One snapshot is of the map instead, the heat cloud of the 3D view,
- * whose own shaders nothing else compares (see the last describe).
+ * it. Two snapshots are of the map instead: the flat map with its heatmap,
+ * flights and airports, and the heat cloud of the 3D view, whose own
+ * shaders nothing else compares (see the last describe).
+ *
+ * The desktop snapshots carry @desktop and the phone's @touch at the end of
+ * their titles: the visual project takes them in a desktop browser, the
+ * visual-phone project in the Pixel 7 of the mobile project, each without
+ * the other's (see playwright.config.ts). On a phone the bottom bar and its
+ * sheet stand in for the columns, and their styles are a stylesheet of
+ * their own (phone.css).
  */
 import { test, expect } from "./fixtures";
 import {
   gotoApp,
+  openMobileSheet,
   openWrapped,
   settleAnimations,
   toggleStatsPanel,
@@ -74,7 +83,7 @@ test.describe("visual", () => {
     await settleAnimations(page);
   });
 
-  test("the control chrome at rest", async ({ page }) => {
+  test("the control chrome at rest @desktop", async ({ page }) => {
     // Every control has to be in the frame. An earlier version masked
     // `#map`, which is `inset: 0` behind the whole page, so Playwright
     // painted its mask over the entire viewport and the snapshot was 1280
@@ -85,7 +94,7 @@ test.describe("visual", () => {
     await expect(page).toHaveScreenshot("chrome-at-rest.png", EXACT);
   });
 
-  test("the statistics rail", async ({ page }) => {
+  test("the statistics rail @desktop", async ({ page }) => {
     await toggleStatsPanel(page);
     const rail = page.locator("#stats-rail");
     await expect(rail).toBeVisible();
@@ -94,7 +103,7 @@ test.describe("visual", () => {
     await expect(rail).toHaveScreenshot("stats-rail.png", EXACT);
   });
 
-  test("the Wrapped dialog", async ({ page }) => {
+  test("the Wrapped dialog @desktop", async ({ page }) => {
     const dialog = await openWrapped(page);
     // Without this the snapshot races the reveal
     await waitForWrappedMap(page);
@@ -102,9 +111,45 @@ test.describe("visual", () => {
 
     await expect(dialog).toHaveScreenshot("wrapped-dialog.png", EXACT);
   });
+
+  test("the bottom bar of a phone at rest @touch", async ({ page }) => {
+    await expect(page.locator("#mobile-bar")).toBeVisible();
+    await expect(page.locator("#left-buttons")).toBeHidden();
+
+    await expect(page).toHaveScreenshot("phone-bar-at-rest.png", EXACT);
+  });
+
+  test("the layers sheet of a phone @touch", async ({ page }) => {
+    await openMobileSheet(page, "layers");
+    const sheet = page.locator("#mobile-sheet");
+    await settleAnimations(page);
+
+    await expect(sheet).toHaveScreenshot("phone-layers-sheet.png", EXACT);
+  });
 });
 
-test.describe("visual, on the map", () => {
+test.describe("visual, on the map @desktop", () => {
+  // The flat map over the home field of the fixture at a fixed zoom: the
+  // heatmap's colour ramp, the flights and the airport markers, which only
+  // the functional tests looked at, by their layers and counts. The chrome
+  // is hidden, as for the heat cloud below.
+  test("the flat map with its heatmap, flights and airports", async ({
+    page,
+  }) => {
+    // Software WebGL, beside the other snapshots
+    test.setTimeout(60000);
+    await gotoApp(page, `/?y=${PINNED_YEAR}`);
+    await expect(page.locator("#year-select")).toHaveValue(String(PINNED_YEAR));
+    await waitForPathData(page);
+    await jumpToView(page, await homeField(page), 9);
+    await expect.poll(() => mapIsIdle(page), { timeout: 30000 }).toBe(true);
+    await waitForMapIdleEvent(page);
+    await hideChrome(page);
+    await settleAnimations(page);
+
+    await expect(page).toHaveScreenshot("map-2d.png", EXACT);
+  });
+
   // The heat cloud of the 3D view over the home field of the fixture, with
   // the flights on it. Everything in it is fixed: the fixture's flights,
   // the stubbed base map (a background colour) and flat elevation tiles

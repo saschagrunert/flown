@@ -14,8 +14,13 @@ import {
   LOCAL_DATA_DIR,
   LOCAL_PANEL_ID,
   CANCELLED_MESSAGE,
+  BUILD_AGAIN_LABEL,
   CONFIRM_CLEAR_LABEL,
   CONFIRM_CLEAR_MESSAGE,
+  CONFIRM_CLEAR_MS,
+  CONFIRM_LAPSED_MESSAGE,
+  aircraftName,
+  degradedMessage,
   duplicateMessage,
   MAX_FILE_BYTES,
   MAX_KEPT_BYTES,
@@ -47,18 +52,20 @@ import {
   LOCAL_STATE_KEY,
   REOPEN_KEY,
 } from "../../../../flown/frontend/state/localFlags";
-import type {
+import {
   LocalBuilder,
-  BuildOutcome,
+  type BuildOutcome,
 } from "../../../../flown/frontend/services/localBuild";
 import {
   CACHE_BUSY_MESSAGE,
+  CACHE_GONE_MESSAGE,
   fileStamp,
   type LocalInfo,
   type StoredFile,
   type StoredFileWithBytes,
 } from "../../../../flown/frontend/services/localStore";
 import { logError } from "../../../../flown/frontend/utils/logger";
+import { DROP_IN_WRAPPED_MESSAGE } from "../../../../flown/frontend/ui/fileDrop";
 import { siteData } from "../../../../flown/frontend/state/siteData";
 import {
   asMapApp,
@@ -103,7 +110,6 @@ const INFO: LocalInfo = {
   years: [2025],
   flights: 3,
   airports: 2,
-  center: [51, 12],
   bounds: [
     [50, 11],
     [52, 13],
@@ -118,7 +124,6 @@ const OUTCOME: BuildOutcome = {
   years: [2025],
   flights: 1,
   airports: 2,
-  center: [51.3, 12.9],
   bounds: [
     [51.1, 12.0],
     [51.5, 13.7],
@@ -172,7 +177,7 @@ const alert = (): HTMLElement =>
 const shown = (): string =>
   panel().querySelector(".local-flights-shown")!.textContent ?? "";
 const action = (
-  name: "show" | "cancel" | "site" | "clear",
+  name: "show" | "again" | "cancel" | "site" | "clear",
 ): HTMLButtonElement =>
   panel().querySelector<HTMLButtonElement>(`[data-local="${name}"]`)!;
 const names = (): string[] =>
@@ -258,6 +263,31 @@ describe("shownMessage", () => {
       "Showing your 1 flight from 1 file",
     );
   });
+
+  it("counts only the files the flights are of", () => {
+    // Not the aircraft files, nor a file the build left out
+    expect(
+      shownMessage({
+        ...INFO,
+        flights: 2,
+        files: ["a.kml", "b.KMZ", "c.kml", "aircraft.json", "aircraft-2.json"],
+        skipped: [{ file: "c.kml", reason: "no flight" }],
+      }),
+    ).toBe("Showing your 2 flights from 2 files");
+  });
+});
+
+describe("degradedMessage", () => {
+  it("names what the build went without", () => {
+    expect(degradedMessage(["airports"])).toBe(
+      "Your flights were built without the airport names, which could not be fetched",
+    );
+    expect(degradedMessage(["airports", "terrain"])).toBe(
+      "Your flights were built without the airport names and the ground " +
+        "under the flights, which could not be fetched",
+    );
+    expect(degradedMessage(["other"])).toContain("some of their data");
+  });
 });
 
 describe("the panel", () => {
@@ -299,6 +329,22 @@ describe("the panel", () => {
     expect(button.classList.contains("active")).toBe(true);
     expect(store.listFiles).toHaveBeenCalledTimes(1);
     expect(store.readInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes to a control that is shown, where the button is not", async () => {
+    // A phone: the column with the button is hidden, the More tab is not
+    const more = document.createElement("button");
+    more.id = "mobile-tab-more";
+    document.body.append(more);
+    button.focus();
+    button.checkVisibility = () => false;
+    const local = makePanel();
+    local.open();
+    await settle();
+
+    local.close();
+
+    expect(document.activeElement).toBe(more);
   });
 
   it("closes back to the button, which is no longer active", async () => {
@@ -592,7 +638,11 @@ describe("adding files", () => {
     ];
     expect(terrain).toBe(true);
     // No flags where the site's metadata could not be read
-    expect(options).toEqual({ flags: undefined, version: undefined });
+    expect(options).toEqual({
+      flags: undefined,
+      version: undefined,
+      retry: false,
+    });
     expect(inputs.map((i) => i.name)).toEqual(["1.KMZ", "aircraft.json"]);
     // The bytes are read from the store by name: the build takes them
     // over, and the store keeps its own
@@ -615,7 +665,6 @@ describe("adding files", () => {
         years: [2025],
         flights: 1,
         airports: 2,
-        center: OUTCOME.center,
         bounds: OUTCOME.bounds,
         files: ["1.KMZ", "aircraft.json"],
         stamp: fileStamp([stored("1.KMZ", 6), stored("aircraft.json", 2)]),
@@ -1060,6 +1109,59 @@ describe("adding files", () => {
     await adding;
   });
 
+  it("keeps every aircraft.json of a drop, numbered, and no AppleDouble file", async () => {
+    const entry = (name: string, content = "{}") => ({
+      name,
+      isDirectory: false,
+      isFile: true,
+      file: (resolve: (file: File) => void) => resolve(file(name, content)),
+    });
+    const folder = (name: string, ...entries: unknown[]) => ({
+      name,
+      isDirectory: true,
+      isFile: false,
+      createReader: () => {
+        const left = [entries, []];
+        return {
+          readEntries: (resolve: (entries: unknown[]) => void) =>
+            resolve(left.shift()!),
+        };
+      },
+    });
+    store.listFiles.mockResolvedValue([stored("1.kml", 6)]);
+    const local = makePanel();
+
+    // A folder from a foreign disk on macOS, with ._ files beside each
+    const adding = local.add([
+      folder(
+        "logs",
+        entry("aircraft.json"),
+        entry("._aircraft.json"),
+        folder(
+          "2025",
+          entry("1.kml", "<kml/>"),
+          entry("._1.kml", "\u0000\u0005"),
+          entry("aircraft.json", '{"D-EAGJ": {}}'),
+        ),
+      ),
+    ] as unknown as FileSystemEntry[]);
+    await settle();
+    await settle();
+    await settle();
+
+    const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
+    expect(kept.map((f) => f.name)).toEqual([
+      aircraftName(0),
+      "1.kml",
+      aircraftName(1),
+    ]);
+    expect(aircraftName(1)).toBe("aircraft-2.json");
+    // Neither is a mistake of the visitor's
+    expect(alert().textContent).toBe("");
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
   it("keeps the first of files of one name in different folders, and says so", async () => {
     const entry = (name: string, content: string) => ({
       name,
@@ -1286,6 +1388,7 @@ describe("adding files", () => {
     expect(fake.build.mock.calls[0]![3]).toEqual({
       flags: ["de", "fr"],
       version: siteBuild({ generator: "abc" }),
+      retry: false,
     });
     fake.settlers[0]!.resolve(OUTCOME);
     await adding;
@@ -1741,8 +1844,12 @@ describe("Remove all", () => {
     expect(store.deleteCache).not.toHaveBeenCalled();
     expect(store.clearAll).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(CONFIRM_CLEAR_MS - 1);
+    expect(action("clear").textContent).toBe(CONFIRM_CLEAR_LABEL);
+    await vi.advanceTimersByTimeAsync(1);
     expect(action("clear").textContent).toBe("Remove all");
+    // Said, as the question was
+    expect(status().textContent).toBe(CONFIRM_LAPSED_MESSAGE);
     action("clear").click();
     await settle();
     expect(store.clearAll).not.toHaveBeenCalled();
@@ -1751,6 +1858,32 @@ describe("Remove all", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(store.clearAll).toHaveBeenCalledTimes(1);
     expect(action("clear").textContent).toBe("Remove all");
+  });
+});
+
+describe("Remove all, with the focus on it", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks for as long as the button has the focus", async () => {
+    vi.useFakeTimers();
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    local.open();
+    await settle();
+
+    action("clear").focus();
+    action("clear").click();
+    await vi.advanceTimersByTimeAsync(CONFIRM_CLEAR_MS * 3);
+    expect(action("clear").textContent).toBe(CONFIRM_CLEAR_LABEL);
+    expect(status().textContent).toBe(CONFIRM_CLEAR_MESSAGE);
+
+    // And no longer than the wait after the focus moved on
+    closeButton().focus();
+    await vi.advanceTimersByTimeAsync(CONFIRM_CLEAR_MS);
+    expect(action("clear").textContent).toBe("Remove all");
+    expect(status().textContent).toBe(CONFIRM_LAPSED_MESSAGE);
   });
 });
 
@@ -1907,6 +2040,148 @@ describe("upToDate", () => {
     const built = { ...INFO, build: siteBuild({ generator: "one" }) };
     expect(upToDate(built, files, { generator: "one" })).toBe(true);
     expect(upToDate(built, files, { generator: "two" })).toBe(false);
+  });
+});
+
+describe("Build again", () => {
+  const DEGRADED: LocalInfo = { ...INFO, degraded: ["airports", "terrain"] };
+
+  it("is offered for a dataset built without what could not be fetched", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue(DEGRADED);
+    const local = makePanel({ config: { localFlights: DEGRADED } });
+    local.open();
+    await settle();
+
+    expect(action("again").hidden).toBe(false);
+    expect(action("again").textContent).toBe(BUILD_AGAIN_LABEL);
+    expect(action("again").title).toBe(degradedMessage(DEGRADED.degraded!));
+    // The dataset is what was asked for: nothing is built by itself
+    expect(fake.build).not.toHaveBeenCalled();
+
+    action("again").click();
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(1);
+    // Downloaded again at once, which a failed download holds back else
+    expect(fake.build.mock.calls[0]![3]).toMatchObject({ retry: true });
+    expect(action("again").hidden).toBe(true);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await settle();
+    await settle();
+    // Built with everything this time: the page goes to it
+    expect(store.putDataset).toHaveBeenCalledWith(
+      OUTCOME.files,
+      expect.objectContaining({ degraded: [] }),
+    );
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not offered for a dataset with everything", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue({ ...INFO, degraded: [] });
+    const local = makePanel();
+    local.open();
+    await settle();
+
+    expect(action("again").hidden).toBe(true);
+  });
+
+  it("keeps what the build went without with the dataset", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    // A build of its own waits out a failed download, a slow line its timeout
+    expect(fake.build.mock.calls[0]![3]).toMatchObject({ retry: false });
+    fake.settlers[0]!.resolve({ ...OUTCOME, degraded: ["terrain"] });
+    await adding;
+
+    expect(store.putDataset).toHaveBeenCalledWith(
+      OUTCOME.files,
+      expect.objectContaining({ degraded: ["terrain"] }),
+    );
+  });
+
+  it("is offered once a tab as the page starts on such a dataset", async () => {
+    const config = { config: { localFlights: DEGRADED } };
+    const said = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>(
+        `.toast-notification[data-message="${degradedMessage(DEGRADED.degraded!)}"]`,
+      );
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue(DEGRADED);
+    const started = asMapApp(createMockApp(config));
+
+    // The panel the toast opens is the page's, with a builder of its own
+    const build = vi
+      .spyOn(LocalBuilder.prototype, "build")
+      .mockReturnValue(new Promise<BuildOutcome>(() => {}));
+
+    reopenAfterSwitch(started);
+    const toast = said()!;
+    const again = toast.querySelector<HTMLButtonElement>(".toast-button")!;
+    expect(again.textContent).toBe(BUILD_AGAIN_LABEL);
+    again.click();
+    await settle();
+    await settle();
+
+    expect(panel().hidden).toBe(false);
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(build.mock.calls[0]![3]).toMatchObject({ retry: true });
+    build.mockRestore();
+    toast.remove();
+    reopenAfterSwitch(asMapApp(createMockApp(config)));
+    expect(said()).toBeNull();
+  });
+});
+
+describe("a build that fails", () => {
+  it("says so with a toast while the panel is closed, with the way to it", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    local.close();
+
+    fake.settlers[0]!.reject(new Error("No valid KML files to process!"));
+    await adding;
+
+    expect(alert().textContent).toBe("No valid KML files to process!");
+    const toast = document.querySelector<HTMLElement>(
+      '.toast-notification.toast-error[data-message="No valid KML files to process!"]',
+    )!;
+    toast.querySelector<HTMLButtonElement>(".toast-button")!.click();
+    expect(local.isOpen()).toBe(true);
+  });
+
+  it("says so in the panel alone while it is open", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    local.open();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    fake.settlers[0]!.reject(new Error("No valid KML files to process!"));
+    await adding;
+
+    expect(alert().textContent).toBe("No valid KML files to process!");
+    expect(document.querySelector(".toast-error")).toBeNull();
+  });
+
+  it("reads the files again when another tab removed them", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    local.open();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    store.listFiles.mockResolvedValue([]);
+
+    fake.settlers[0]!.reject(new Error(CACHE_GONE_MESSAGE));
+    await adding;
+
+    expect(alert().textContent).toBe(CACHE_GONE_MESSAGE);
+    expect(names()).toEqual([]);
   });
 });
 
@@ -2144,6 +2419,22 @@ describe("toggleLocalFlights", () => {
     toggleLocalFlights(asMapApp(held), dropped);
     expect(panel().hidden).toBe(false);
   });
+
+  it("refuses a drop while Wrapped is open, which would hold the panel inert", async () => {
+    const app = createMockApp();
+    app.wrappedVisible = true;
+
+    toggleLocalFlights(asMapApp(app), [file("a.kml")]);
+    await settle();
+
+    expect(document.getElementById(LOCAL_PANEL_ID)?.hidden ?? true).toBe(true);
+    expect(store.putFiles).not.toHaveBeenCalled();
+    expect(
+      document.querySelector(
+        `.toast-notification[data-message="${DROP_IN_WRAPPED_MESSAGE}"]`,
+      ),
+    ).not.toBeNull();
+  });
 });
 
 describe("in a page another frames", () => {
@@ -2177,7 +2468,6 @@ describe("in a page another frames", () => {
     try {
       await expect(
         localStartConfig({
-          center: [1, 2],
           bounds: [
             [0, 0],
             [3, 3],
@@ -2376,7 +2666,6 @@ describe("localStartConfig", () => {
     // The state this tab writes from now on is of the visitor's flights
     expect(sessionStorage.getItem(OWN_TAB_KEY)).toBe("1");
     expect(start).toMatchObject({
-      center: INFO.center,
       bounds: INFO.bounds,
       dataDir: LOCAL_DATA_DIR,
       localFlights: INFO,
@@ -2442,7 +2731,6 @@ describe("reopenAfterSwitch", () => {
     try {
       await expect(
         localStartConfig({
-          center: [1, 2],
           bounds: [
             [0, 0],
             [3, 3],

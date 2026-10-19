@@ -1,10 +1,10 @@
 /**
  * Export of the map as an image (the Export control, and the Export row
  * of the phone's More sheet). It comes with the extras bundle (extras.ts),
- * which the app fetches as Export is first used, or ahead of it on a phone
- * (MobileBar): nothing of it is part of a first visit. The control's busy
- * state and the messages of a failure stay with the app (UIToggles), which
- * says them when this bundle cannot be fetched either.
+ * which every page fetches once it has a moment (initMapApp), and Export
+ * if it is pressed before: nothing of it is part of a first visit. The
+ * control's busy state and the messages of a failure stay with the app
+ * (UIToggles), which says them when this bundle cannot be fetched either.
  *
  * html-to-image draws the map's element into a canvas; the map's WebGL
  * canvas copies blank, so it stands still as an image of itself while it
@@ -384,7 +384,7 @@ export async function exportImage(
 
   // Named after the year shown, not the time of the export: an image
   // posted right after a flight would give its time of day away
-  const filename = "heatmap_" + app.store.get("selectedYear") + ".jpg";
+  const filename = "flown_" + app.store.get("selectedYear") + ".jpg";
 
   const outcome = await deliverImage(dataUrl, filename);
   if (outcome === "shared") {

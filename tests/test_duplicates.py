@@ -352,12 +352,36 @@ class TestDropOverlappingPaths:
         kept = drop_overlapping_paths(
             {2024: [0], 2025: [1]}, [path, list(path)], metadata, {0: b"", 1: b""}
         )
-        # Different years are never compared
+        # Different years are compared around New Year only
         assert kept == {2024: [0], 2025: [1]}
         kept = drop_overlapping_paths(
             {2025: [0, 1]}, [path, list(path)], metadata, {0: b"", 1: b""}
         )
         assert kept == {2025: [0]}
+
+    def test_a_flight_at_midnight_on_new_year_counts_once(self):
+        """Two loggers 40 s apart put it into two years: one stays, in its year."""
+        new_year = 1767225600.0  # 2026-01-01T00:00:00Z
+        late = _with_ground(_recording(new_year - 40.0, 3600.0, step_s=10.0))
+        fine = _with_ground(
+            [
+                p._replace(lon=8.0 + SPEED * (p.ts - new_year))
+                for p in _recording(new_year, 3500.0, step_s=3.0, lat=50.0001)
+            ]
+        )
+        metadata = cast("Any", [{"filename": "a.kml"}, {"filename": "b.kml"}])
+        exported = {0: b"", 1: b""}
+
+        kept = drop_overlapping_paths(
+            {2025: [0], 2026: [1]}, [late, fine], metadata, exported
+        )
+
+        assert kept == {2026: [1]}
+        # A flight of the evening before is another one
+        evening = _with_ground(_recording(new_year - 20 * 3600.0, 3600.0))
+        assert drop_overlapping_paths(
+            {2025: [0], 2026: [1]}, [evening, fine], metadata, exported
+        ) == {2025: [0], 2026: [1]}
 
     def test_the_recording_that_names_the_aircraft_stays(self):
         """A 1 Hz phone log and the panel GPS file with the registration."""
@@ -484,6 +508,19 @@ class TestFastLines:
         assert recording.time_near(50.0, 8.0 + 0.0042 * 90.0) is not None
 
 
+def _count_comparisons(monkeypatch):
+    """The calls to duplicates._pair_recordings from now on, as it is called."""
+    calls = []
+    real = duplicates_module._pair_recordings
+
+    def compare(*args):
+        calls.append(args)
+        return real(*args)
+
+    monkeypatch.setattr(duplicates_module, "_pair_recordings", compare)
+    return calls
+
+
 class TestKeptOverlaps:
     """A build of the same flights finds the same recordings to drop
     (see duplicates.OVERLAPS_CACHE_DIR)."""
@@ -502,7 +539,7 @@ class TestKeptOverlaps:
         def compare(*args):
             raise AssertionError("compared again")
 
-        monkeypatch.setattr(duplicates_module, "_overlapping_pairs", compare)
+        monkeypatch.setattr(duplicates_module, "_pair_recordings", compare)
         with caplog.at_level(logging.WARNING, logger="flown"):
             assert _drop(paths, ["phone.kml", "panel.kml"]) == {2025: [1]}
         # Still named, as the build that found it did
@@ -524,16 +561,60 @@ class TestKeptOverlaps:
         paths = self._twice()
         names = ["phone.kml", "panel.kml"]
         _drop(paths, names)
-        calls = []
-        real = duplicates_module._overlapping_pairs
-
-        def compare(*args):
-            calls.append(args)
-            return real(*args)
-
-        monkeypatch.setattr(duplicates_module, "_overlapping_pairs", compare)
+        calls = _count_comparisons(monkeypatch)
         change(paths, names)
         _drop(paths, names)
+        assert len(calls) == 1
+
+    def test_a_flight_added_to_another_year_compares_that_year_alone(self, monkeypatch):
+        """The flights of 2025 move one index on, and keep what was found."""
+        paths = self._twice()
+        metadata: Any = [{"filename": "phone.kml"}, {"filename": "panel.kml"}]
+        exported = dict.fromkeys(range(2), b"")
+        assert drop_overlapping_paths({2025: [0, 1]}, paths, metadata, exported) == {
+            2025: [1]
+        }
+        calls = _count_comparisons(monkeypatch)
+        added = _recording(JUNE_2025 - 365 * 86400.0, 3600.0)
+        more: Any = [{"filename": "2024.kml"}, *metadata]
+        kept = drop_overlapping_paths(
+            {2024: [0], 2025: [1, 2]},
+            [added, *paths],
+            more,
+            dict.fromkeys(range(3), b""),
+        )
+        assert kept == {2024: [0], 2025: [2]}
+        assert [list(recordings) for recordings, *_ in calls] == [[0]]
+
+    def test_a_new_year_is_kept_as_well(self, monkeypatch):
+        new_year = 1767225600.0  # 2026-01-01T00:00:00Z
+        late = _with_ground(_recording(new_year - 40.0, 3600.0, step_s=10.0))
+        fine = _with_ground(
+            [
+                p._replace(lon=8.0 + SPEED * (p.ts - new_year))
+                for p in _recording(new_year, 3500.0, step_s=3.0, lat=50.0001)
+            ]
+        )
+        metadata: Any = [{"filename": "a.kml"}, {"filename": "b.kml"}]
+        exported = dict.fromkeys(range(2), b"")
+        by_year = {2025: [0], 2026: [1]}
+        assert drop_overlapping_paths(by_year, [late, fine], metadata, exported) == {
+            2026: [1]
+        }
+        calls = _count_comparisons(monkeypatch)
+        assert drop_overlapping_paths(by_year, [late, fine], metadata, exported) == {
+            2026: [1]
+        }
+        assert calls == []
+
+    def test_an_entry_of_other_paths_is_compared_again(self, monkeypatch):
+        """Places beyond the paths of the year are no pairs of them."""
+        paths = self._twice()
+        _drop(paths)
+        (entry,) = duplicates_module.OVERLAPS_CACHE_DIR.iterdir()
+        entry.write_bytes(encode_entry({"pairs": [[2, 0]]}))
+        calls = _count_comparisons(monkeypatch)
+        assert _drop(paths) == {2025: [1]}
         assert len(calls) == 1
 
     def test_the_kept_entry_is_this_users_alone(self):

@@ -1403,6 +1403,25 @@ describe("ReplayRenderer", () => {
         return last ? -last[1] : 0;
       };
 
+      it("ends the trail at the airplane's new height when the ground under it changes", () => {
+        const state = mockReplayManager.state;
+        state.layerActive = true;
+        callUpdateDisplay();
+        const before = state.trailTip!.heightFt;
+
+        // The same place and time, over other ground: the terrain or the
+        // relief changed where the airplane stands
+        state.groundFt = new Float64Array(state.segments.length).fill(0);
+        state.smoothed = replayFeature.replayCurve(state.segments, (i) =>
+          liftFt(state.segments[i]!.altitude_ft ?? 0, state.groundFt[i]!),
+        );
+        state.trailDirty = false;
+        callUpdateDisplay();
+
+        expect(state.trailTip!.heightFt).not.toBe(before);
+        expect(state.trailDirty).toBe(true);
+      });
+
       it("lifts the airplane to its height on a tilted map, along its segment", () => {
         // The middle of the map far south of the airplane, at 50 degrees
         map.jumpTo({ center: [8, 20], zoom: 13, pitch: 60 });

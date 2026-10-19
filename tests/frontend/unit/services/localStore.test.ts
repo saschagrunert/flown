@@ -53,7 +53,6 @@ const INFO: LocalInfo = {
   years: [2025],
   flights: 2,
   airports: 3,
-  center: [51.3, 12.9],
   bounds: [
     [51.1, 12.0],
     [51.5, 13.7],

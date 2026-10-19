@@ -899,6 +899,21 @@ class TestSplitRouteName:
             ),
             ("Some Field - Other Field", ("Some Field", "Other Field")),
             ("EDDS to EDDP - 6 Aug 2026", ("EDDS", "EDDP")),
+            # Other separators, and none of the spaces between two codes
+            ("EDDF-EDDM", ("EDDF", "EDDM")),
+            ("KPAO-KSQL - 16 Aug 2026", ("KPAO", "KSQL")),
+            ("EDDF \u2013 EDDM", ("EDDF", "EDDM")),
+            ("EDDF\u2014EDDM", ("EDDF", "EDDM")),
+            ("EDDF > EDDM", ("EDDF", "EDDM")),
+            ("EDDF->EDDM", ("EDDF", "EDDM")),
+            ("EDDF/EDDM", ("EDDF", "EDDM")),
+            ("EDDF TO EDDM", ("EDDF", "EDDM")),
+            # A separator with spaces goes first, as before the others
+            ("EDDS - EDDF/EDDM", ("EDDS", "EDDF/EDDM")),
+            (
+                "EDDS Stuttgart \u2013 EDDP Leipzig/Halle",
+                ("EDDS Stuttgart", "EDDP Leipzig/Halle"),
+            ),
             # VIII is August in a Polish date, no airport code
             (
                 "Aunt farm 16.VIII.2026 - Home strip",
@@ -920,7 +935,14 @@ class TestSplitRouteName:
             "LFBN Niort - Marais Poitevin",
             "EDAQ Halle-Oppin - Private Strip",
             "EDDF - EDDM - EDDT",
+            "EDDF-EDDM-EDDT",
             "A - B - C",
+            # A code next to a word or a registration is no route
+            "EDDF-Tower",
+            "EDDF D-EAGJ",
+            "EDDF/Frankfurt",
+            # X is no region of airport codes
+            "XAAA-EDDM",
             "Log Start: 03 Mar 2025 08:58 Z",
             "",
             None,

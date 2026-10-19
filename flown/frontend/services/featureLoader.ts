@@ -8,17 +8,18 @@
  * imagery, the profile of the selected flights, the cross-section and
  * the hotspot tour, wrapped.ts (wrapped.bundle.js) for Wrapped and the
  * statistics panel, search.ts (search.bundle.js) for the search of
- * airports and places, and extras.ts (extras.bundle.js) for what no
- * desktop's first visit needs: the phone's bar and its sheet, the tokens
- * of shared links and the export of the map as an image. They are apart
- * because opening one says nothing about the
- * others. Each gets one shared promise, and a failure that resolves rather
- * than throws so the caller can say something useful.
+ * airports and places, phone.ts (phone.bundle.js) for the phone's bar and
+ * its sheet, which a desktop does not fetch, and extras.ts
+ * (extras.bundle.js) for what no first visit needs: the tokens of shared
+ * links, the export of the map as an image and the flight list of an
+ * airport's popup. They are apart because opening one says nothing about
+ * the others. Each gets one shared promise, and a failure that resolves
+ * rather than throws so the caller can say something useful.
  *
- * Their styles ride along in features.css, wrapped.css, search.css and
- * extras.css for the same reason (see the header of static/styles.css);
- * the phone's bar is drawn by styles.css, as the columns give way to it
- * there, and its sheet by extras.css. A bundle
+ * Their styles ride along in features.css, wrapped.css, search.css,
+ * phone.css and extras.css for the same reason (see the header of
+ * static/styles.css); the phone's bar is drawn by styles.css, as the
+ * columns give way to it there, and its sheet by phone.css. A bundle
  * and its stylesheet have to arrive before a panel is shown, so they are
  * fetched together and a failure of either is a failure of the load: a
  * Wrapped panel without its stylesheet is worse than the toast.
@@ -36,11 +37,12 @@
 import { importWithRetry, timedImports, versioned } from "./lazyImport";
 import { loadStylesheet } from "./stylesheet";
 import { logError } from "../utils/logger";
-import { showToast } from "../utils/toast";
+import { RELOAD_ACTION, showToast } from "../utils/toast";
 import type { FeatureModule } from "../features";
 import type { WrappedModule } from "../wrapped";
 import type { SearchModule } from "../search";
 import type { ExtrasModule } from "../extras";
+import type { PhoneModule } from "../phone";
 import type { LocalModule } from "../local";
 
 /** Next to the page, like every other file the site ships */
@@ -49,6 +51,7 @@ export const WRAPPED_CSS_URL = "./wrapped.css";
 export const SEARCH_CSS_URL = "./search.css";
 export const LOCAL_CSS_URL = "./local.css";
 export const EXTRAS_CSS_URL = "./extras.css";
+export const PHONE_CSS_URL = "./phone.css";
 
 /** A lazy bundle is a fraction of a year file, so it gets less time */
 const LAZY_LOAD_TIMEOUT_MS = 30_000;
@@ -77,10 +80,7 @@ export function wasSiteUpdated(): boolean {
  */
 export function noticeSiteUpdate(): null {
   siteUpdated = true;
-  showToast(SITE_UPDATED_MESSAGE, "info", {
-    label: "Reload",
-    run: () => location.reload(),
-  });
+  showToast(SITE_UPDATED_MESSAGE, "info", RELOAD_ACTION);
   return null;
 }
 
@@ -117,6 +117,12 @@ const importExtras: Importer<ExtrasModule> = (failedImports) =>
   importWithRetry(
     () => import("../extras"),
     versioned("./extras.bundle.js"),
+    failedImports,
+  );
+const importPhone: Importer<PhoneModule> = (failedImports) =>
+  importWithRetry(
+    () => import("../phone"),
+    versioned("./phone.bundle.js"),
     failedImports,
   );
 const importLocal: Importer<LocalModule> = (failedImports) =>
@@ -200,6 +206,7 @@ const features = lazyBundle("feature", FEATURES_CSS_URL, importFeatures);
 const wrapped = lazyBundle("Wrapped", WRAPPED_CSS_URL, importWrapped);
 const search = lazyBundle("search", SEARCH_CSS_URL, importSearch);
 const extras = lazyBundle("extras", EXTRAS_CSS_URL, importExtras);
+const phone = lazyBundle("phone", PHONE_CSS_URL, importPhone);
 const local = lazyBundle("Your flights", LOCAL_CSS_URL, importLocal);
 
 /** The feature bundle's exports, or null when it could not be loaded */
@@ -230,6 +237,11 @@ export function loadExtras(): Promise<ExtrasModule | null> {
   return extras.load();
 }
 
+/** The phone bundle's exports, or null when it could not be loaded */
+export function loadPhone(): Promise<PhoneModule | null> {
+  return phone.load();
+}
+
 /** The Your flights bundle's exports, or null when it could not be loaded */
 export function loadLocal(): Promise<LocalModule | null> {
   return local.load();
@@ -258,6 +270,11 @@ export function resetSearchLoader(importer: Importer<SearchModule>): void {
 /** Forget the cached request and replace the import (used by tests) */
 export function resetExtrasLoader(importer: Importer<ExtrasModule>): void {
   extras.reset(importer);
+}
+
+/** Forget the cached request and replace the import (used by tests) */
+export function resetPhoneLoader(importer: Importer<PhoneModule>): void {
+  phone.reset(importer);
 }
 
 export function resetLocalLoader(importer: Importer<LocalModule>): void {

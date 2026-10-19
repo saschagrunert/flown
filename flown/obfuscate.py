@@ -76,10 +76,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ObfuscationCheck",
     "check_directory",
-    "check_directory_obfuscated",
     "check_kml",
-    "check_kml_obfuscated",
-    "find_kml_files",
     "obfuscate_kml_content",
     "obfuscate_kml_file",
     "obfuscate_kml_files",
@@ -983,10 +980,11 @@ def rename_dated_files(filepaths: Iterable[Path]) -> list[Path]:
     return result
 
 
-def find_kml_files(directory: Path) -> list[Path]:
-    """List the KML files of a directory tree, the ones the generator reads.
+def _list_kml_files(directory: Path) -> KmlListing:
+    """The KML files of a directory tree, the ones the generator reads.
 
-    The generator (``cli._collect_kml_files``) and this module share
+    With the directories that could not be listed. The generator
+    (``cli._collect_kml_files``) and this module share
     ``validation.list_kml_files``, so they agree on the extension (``.kml``
     and ``.KML`` alike) and on the subdirectories: a file in a subfolder of
     the data directory is checked like the generator publishes it. Symlinks
@@ -994,11 +992,6 @@ def find_kml_files(directory: Path) -> list[Path]:
     would replace the link with a regular file and leave the dates in its
     target.
     """
-    return _list_kml_files(directory).files
-
-
-def _list_kml_files(directory: Path) -> KmlListing:
-    """``find_kml_files`` with the directories that could not be listed."""
     listing = list_kml_files(directory)
     kml_files = []
     for path in listing.files:
@@ -1244,17 +1237,12 @@ _TIMESTAMP_ELEMENTS = frozenset(("when", "begin", "end"))
 _TEXT_BETWEEN_ELEMENTS = re.compile(r">([^<]*[^<\s][^<]*)")
 
 
-def check_kml_obfuscated(filepath: Path) -> list[str]:
-    """Check if a KML file is properly obfuscated.
-
-    Returns a list of violation descriptions (empty means the file is clean).
-    """
-    return check_kml(filepath)[0]
-
-
 def check_kml(filepath: Path) -> tuple[list[str], list[str]]:
-    """The violations of a KML file (``check_kml_obfuscated``), and what
-    may be a date for a person to look at, which fails nothing.
+    """The violations of a KML file, and what may be a date for a person to
+    look at, which fails nothing.
+
+    The violations say what a file that is not properly obfuscated gives
+    away; a clean file has none.
 
     A day, a word and a year in a language the patterns do not know
     (``find_possible_date_tokens``) is as often a count and a place ("Day 2
@@ -1419,19 +1407,14 @@ def _check_listed_files(
     return ObfuscationCheck(results, warned)
 
 
-def check_directory_obfuscated(directory: Path) -> dict[str, list[str]]:
+def check_directory(directory: Path) -> ObfuscationCheck:
     """Check all KML files in a directory tree for obfuscation violations.
 
-    Returns a dict mapping file names (relative to ``directory``) to their
-    violations; only files with violations are included. A temp file left by
-    an interrupted rewrite is a violation as well, and so is a directory
-    that cannot be listed.
+    The violations map file names (relative to ``directory``) to theirs;
+    only files with violations are included. A temp file left by an
+    interrupted rewrite is a violation as well, and so is a directory that
+    cannot be listed. The warnings are those of ``check_kml``.
     """
-    return check_directory(directory).violations
-
-
-def check_directory(directory: Path) -> ObfuscationCheck:
-    """``check_directory_obfuscated``, with the warnings of ``check_kml``."""
     return _check_listed_files(*_list_kml_files(directory), directory)
 
 

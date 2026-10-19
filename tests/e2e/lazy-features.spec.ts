@@ -25,6 +25,7 @@ import {
   waitForStatsContent,
 } from "./helpers";
 import { mapPopup, openAirportPopup } from "./map";
+import { PHONE_LAYOUT_QUERY } from "../../flown/frontend/utils/device";
 import type { Page } from "./fixtures";
 
 const FEATURES = "features.bundle.js";
@@ -32,10 +33,14 @@ const FEATURES_CSS = "features.css";
 const WRAPPED = "wrapped.bundle.js";
 const WRAPPED_CSS = "wrapped.css";
 /**
- * The phone's bar, the packing of share tokens and the export, which every
- * page fetches once it has a moment (initMapApp), after its first visit
+ * The packing of share tokens, the export and the popup's list of flights,
+ * which every page fetches once it has a moment (initMapApp), after its
+ * first visit
  */
 const EXTRAS = "extras.bundle.js";
+/** The phone's bar and sheet, which only the phone layout fetches */
+const PHONE = "phone.bundle.js";
+const PHONE_CSS = "phone.css";
 
 /** The requests the page made so far for a bundle, retries included */
 function trackBundleRequests(page: Page, name: string): string[] {
@@ -82,8 +87,25 @@ test.describe("the lazy bundles", () => {
     // which is what the main bundle has to answer on its own
     await expect(page.locator("#replay-btn")).toHaveAttribute(
       "title",
-      "Pick flights with timing data to replay, under Statistics, Flights",
+      "Pick flights with timing data to replay, under Flights in the statistics",
     );
+  });
+
+  test("leave the phone's bar to the phone layout", async ({ page }) => {
+    const requested = [
+      trackBundleRequests(page, PHONE),
+      trackCssRequests(page, PHONE_CSS),
+    ];
+    const extras = trackBundleRequests(page, EXTRAS);
+    await gotoApp(page);
+    // The page has had its moment once the extras have come
+    await expect.poll(() => extras.length).toBeGreaterThan(0);
+
+    const phone = await page.evaluate(
+      (query) => matchMedia(query).matches,
+      PHONE_LAYOUT_QUERY,
+    );
+    expect(requested.map((urls) => urls.length > 0)).toEqual([phone, phone]);
   });
 
   test("bring Wrapped when it is opened, only once and without replay", async ({
@@ -127,7 +149,7 @@ test.describe("the lazy bundles", () => {
     // a lazy bundle would quietly hold stale elements. A module is
     // instantiated once per URL, so each lazy bundle importing the chunk
     // the app already loaded is what gives them all the same instance.
-    for (const name of [FEATURES, WRAPPED, EXTRAS]) {
+    for (const name of [FEATURES, WRAPPED, PHONE, EXTRAS]) {
       const bundle = await page.request.get(new URL(name, page.url()).href);
       expect(await bundle.text()).toContain('"./shared.bundle.js"');
     }

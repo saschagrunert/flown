@@ -1043,15 +1043,29 @@ class TestFindPartialDateTokens:
             "KW05 Gettysburg Regional Airport - KW22 Upshur County",
             "EDDS to KW05",
             "KW05 Gettysburg Regional Airport",
+            # The separators of airport_lookup's route names
+            "KW05-EDDF",
+            "EDDF \u2013 KW05",
+            "EDDF\u2014KW05",
+            "EDDF->KW05",
+            "EDDF/KW05",
+            "EDDF > KW05",
+            "EDDS TO KW05",
         ],
     )
     def test_us_airport_codes_are_no_weeks(self, text):
         assert find_partial_date_tokens(text) == []
         assert strip_dates(text) == text
 
-    @pytest.mark.parametrize("text", ["KW33 Ausflug", "Trip KW33", "Trip KW33 - EDDS"])
+    @pytest.mark.parametrize(
+        "text", ["KW33 Ausflug", "Trip KW33", "Trip KW33 - EDDS", "Trip-KW33"]
+    )
     def test_weeks_outside_a_route_side(self, text):
         assert find_partial_date_tokens(text) == ["KW33"]
+
+    def test_a_range_of_weeks_is_no_route(self):
+        """Between two codes without spaces one has to be all letters."""
+        assert find_partial_date_tokens("KW33-KW34") == ["KW33", "KW34"]
 
     def test_a_two_digit_year_needs_a_boundary(self):
         assert find_date_tokens("DA40_16_08") == []
@@ -1872,3 +1886,161 @@ class TestUnicodeForms:
         assert strip_dates("EDDS 16/VIII") == "EDDS"
         # After a hyphen it is part of a type
         assert strip_dates("Mk-16-II") == "Mk-16-II"
+
+
+class TestDatesThatPassedTheCheck:
+    """Dates the check, the rewrite and the site's names let through
+    (regression): DIN 5008 spaces, the abbreviations of other languages,
+    weeks with the number first, a weekday stuck to the day, bare hours."""
+
+    @pytest.mark.parametrize(
+        "date", ["16. 8. 26", "1. 9. 26", "16. 08. 26", "16.8. 2026", "16. 8.2026"]
+    )
+    def test_spaces_after_the_dots(self, date):
+        text = f"Home strip {date} EDDS"
+        assert find_date_tokens(text, skip_near_jan_first=True) == [date]
+        assert strip_dates(f"Home strip Sa. {date}") == "Home strip"
+
+    @pytest.mark.parametrize("day_month", ["16. 8.", "16. 08.", "1. 9."])
+    def test_spaces_after_the_dots_without_the_year(self, day_month):
+        assert find_partial_date_tokens(f"Flug {day_month}") == [day_month]
+        assert strip_dates(f"Flug {day_month} EDDS") == "Flug EDDS"
+
+    def test_spaces_after_the_dots_of_january_first_pass(self):
+        assert find_date_tokens("1. 1. 26", skip_near_jan_first=True) == []
+        assert find_partial_date_tokens("Flug 1. 1.") == []
+
+    @pytest.mark.parametrize(
+        "text", ["firmware 12. 10.", "Leg 2. 3", "Seite 2.3", "COM 118. 30"]
+    )
+    def test_spaces_after_the_dots_of_no_date(self, text):
+        assert find_partial_date_tokens(text) == []
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        ("text", "date"),
+        [
+            ("Casa 16 ago 2026", "16 ago 2026"),
+            ("vuelo 16 dic 2026", "16 dic 2026"),
+            ("vuelo 16 ene 2026", "16 ene 2026"),
+            ("voo 16 fev 2026", "16 fev 2026"),
+            ("volo 16 ott 2026", "16 ott 2026"),
+            ("vlucht 16 mrt 2026", "16 mrt 2026"),
+            ("lot 16 kwi 2026", "16 kwi 2026"),
+            ("let 16 srp 2026", "16 srp 2026"),
+            # The words of English and German as well, with a day and a year
+            ("voo 16 out 2026", "16 out 2026"),
+            ("voo 16 de out de 2026", "16 de out de 2026"),
+            ("volo 16 set 2026", "16 set 2026"),
+            ("volo 16 mag 2026", "16 mag 2026"),
+            ("lot 16 sie 2026", "16 sie 2026"),
+        ],
+    )
+    def test_abbreviated_months_of_other_languages(self, text, date):
+        assert find_date_tokens(text, skip_near_jan_first=True) == [date]
+        assert strip_dates(text) == text.split(" ", 1)[0]
+
+    @pytest.mark.parametrize(
+        "day_month", ["16 ago", "16 lug", "16 mrt", "16 kwi", "16 sie", "16 srp"]
+    )
+    def test_abbreviated_months_without_the_year(self, day_month):
+        assert find_partial_date_tokens(f"Lot {day_month}") == [day_month]
+        assert strip_dates(f"Lot {day_month}") == "Lot"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "3 out of 5",
+            "2 mag check",
+            "L mag 2000 rpm",
+            "4 LED lights",
+            "set 2000 rpm",
+            "Kommen Sie 2026 wieder",
+            "Sie 2026",
+            "Gen 2026",
+            "out 2026",
+        ],
+    )
+    def test_abbreviations_that_are_words(self, text):
+        assert find_date_tokens(text) == []
+        assert find_partial_date_tokens(text) == []
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        "week",
+        [
+            "33. KW",
+            "33.KW",
+            "33. Woche",
+            "Woche 33",
+            "Kalenderwoche 33",
+            "semaine 33",
+            "semana 33",
+            "settimana 33",
+            "tydzień 33",
+            "týden 33",
+            "teden 33",
+        ],
+    )
+    def test_weeks(self, week):
+        assert find_partial_date_tokens(f"Home strip {week}") == [week]
+        assert strip_dates(f"Home strip {week}") == "Home strip"
+
+    def test_a_week_with_its_year(self):
+        assert find_date_tokens("Woche 33 2026", skip_near_jan_first=True) == [
+            "Woche 33 2026"
+        ]
+
+    @pytest.mark.parametrize("text", ["Motor 50 KW", "100 kW", "1. KW", "Woche 1"])
+    def test_no_week_or_the_first(self, text):
+        assert find_partial_date_tokens(text) == []
+
+    @pytest.mark.parametrize(
+        ("text", "found", "kept"),
+        [
+            ("Trip Sat16Aug", "Sat16Aug", "Trip"),
+            ("Trip FRI16AUG", "FRI16AUG", "Trip"),
+            ("Flug Sa16Mai", "Sa16Mai", "Flug"),
+            ("EDDS Sat16Aug EDDF", "Sat16Aug", "EDDS EDDF"),
+        ],
+    )
+    def test_a_weekday_stuck_to_the_day(self, text, found, kept):
+        assert find_partial_date_tokens(text) == [found]
+        assert strip_dates(text) == kept
+
+    def test_a_weekday_stuck_to_a_date_with_its_year(self):
+        assert strip_dates("EDDS FRI16AUG26") == "EDDS"
+
+    @pytest.mark.parametrize("text", ["Do27", "DO27", "MI8", "Thesat16Aug"])
+    def test_no_weekday_before_a_day(self, text):
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize("hour", ["14h", "14 h", "09h"])
+    def test_bare_hours(self, hour):
+        assert find_time_tokens(f"Oma {hour}") == [hour]
+        assert strip_dates(f"1_DEHYL_{hour}") == "1_DEHYL"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "2h flight",
+            "1h30",
+            "1013 hPa",
+            "10 hPa",
+            "24h",
+            "R44 heli",
+            "14hPa",
+            # An airport in the US
+            "21H Skyline Seaplane Base",
+        ],
+    )
+    def test_no_hours(self, text):
+        assert find_time_tokens(text) == []
+
+    @pytest.mark.parametrize(
+        "holiday",
+        ["Pfingstsamstag", "Bastille Day", "Nationalfeiertag", "Ferragosto", "Wigilia"],
+    )
+    def test_holidays(self, holiday):
+        assert find_holiday_tokens(f"Oma {holiday} EDDS") == [holiday]
+        assert strip_dates(f"EDDS {holiday}") == "EDDS"

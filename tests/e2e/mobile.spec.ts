@@ -564,7 +564,7 @@ test.describe("Mobile bar", () => {
         "a disabled button would not be reachable by keyboard",
       ).toBe(false);
       await expect(replay.locator(".sheet-row-hint")).toHaveText(
-        "Pick flights with timing data to replay, under Statistics, Flights",
+        "Pick flights with timing data to replay, under Flights in the statistics",
       );
       // The label dims, the hint that explains it does not
       await expect(replay).toHaveCSS("opacity", "1");
@@ -579,7 +579,7 @@ test.describe("Mobile bar", () => {
       );
       await expect(page.locator("#replay-btn")).toHaveAttribute(
         "title",
-        "Pick flights with timing data to replay, under Statistics, Flights",
+        "Pick flights with timing data to replay, under Flights in the statistics",
       );
 
       // Share mode needs something to share. Unavailable the way it is on

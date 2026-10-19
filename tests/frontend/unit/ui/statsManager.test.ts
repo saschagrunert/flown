@@ -629,6 +629,34 @@ describe("StatsManager", () => {
       expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     });
 
+    it("says the visitor's own flights were built in the browser", () => {
+      // What the site's build was is not of them
+      mockApp.config.builtOn = "2026-09-21";
+      mockApp.config.commit = "5b3ab40";
+      mockApp.config.localFlights = {
+        years: [2025],
+        flights: 1,
+        airports: 1,
+        bounds: [
+          [49, 7],
+          [51, 9],
+        ],
+        files: ["a.kml"],
+        stamp: "",
+        build: undefined,
+        builtAt: 1,
+      };
+      try {
+        statsManager.updateStatsPanel(mockStats, false);
+
+        expect(statsPanel.querySelector(".stats-build")!.textContent).toBe(
+          "Built in this browser",
+        );
+      } finally {
+        mockApp.config.localFlights = undefined;
+      }
+    });
+
     it("links the commit only when the build knew where it is", () => {
       mockApp.config.builtOn = "2026-09-21";
       mockApp.config.commit = "5b3ab40";

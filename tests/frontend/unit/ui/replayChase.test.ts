@@ -295,6 +295,23 @@ describe("ReplayManager chase view", () => {
     expect(map.getZoom()).toBeCloseTo(12.5, 1);
   });
 
+  it("takes the camera of a paused replay once the hand that held it lets go", () => {
+    openReplay();
+    const map = mockApp.map!;
+    // Switched on while the user holds the map, paused: no frame of the
+    // replay comes to look again
+    map.getCanvasContainer().dispatchEvent(new Event("mousedown"));
+    replayManager.toggleChase();
+    vi.advanceTimersByTime(200);
+    expect(map.jumpTo).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event("mouseup"));
+    settle();
+
+    expect(map.jumpTo).toHaveBeenCalled();
+    expect(map.getPitch()).toBeCloseTo(CHASE_PITCH, 0);
+  });
+
   it("gives back the zoom, turn and tilt over the airplane when switched off", () => {
     openReplay();
     replayManager.toggleChase();

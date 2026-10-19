@@ -2,9 +2,10 @@
 # Tests every pull request and every push to main. A push to main (or a
 # manual run on main) also builds the site, alongside the tests, and
 # publishes it to GitHub Pages, but only once every test job has passed. The
-# weekly run only repeats the security job, so a new advisory for a pinned
-# dependency or a leaked secret shows up without a push, runs the real build
-# of Your flights, which needs Pyodide from its CDN (the pyodide job), and
+# weekly run only repeats the security and secrets jobs, so a new advisory
+# for a pinned dependency or a leaked secret shows up without a push, runs
+# the real build of Your flights, which needs Pyodide from its CDN (the
+# pyodide job, which pushes to main and some pull requests run too), and
 # draws new examples for the property tests (the properties job); a manual
 # run does the last two as well. The checks job at the end is the one status
 # a ruleset on main requires (see there).
@@ -16,15 +17,15 @@
 #
 # A bump of @playwright/test (the `playwright` group, branches starting with
 # dependabot/npm_and_yarn/playwright) needs a commit of its own for the jobs
-# that run in the Playwright image, e2e and visual: its tag and digest are
-# bumped by hand on the branch (see the visual job), and until then every
-# one of them failed at once against the old image. They skip Dependabot's
-# own pushes there, and the lint job fails until the image reference is
-# pushed. `github.actor` is whoever pushed (a re-run keeps it), so the push
-# of the image reference runs all of them. zizmor calls the actor
-# spoofable: here it can only skip jobs, and only in a pull request
-# Dependabot opened (its author cannot be spoofed), whose lint job still
-# checks the image against the library.
+# that run in the Playwright image, e2e, visual and pyodide: its tag and
+# digest are bumped by hand on the branch (see the visual job), and until
+# then every one of them failed at once against the old image. They skip
+# Dependabot's own pushes there, and the lint job fails until the image
+# reference is pushed. `github.actor` is whoever pushed (a re-run keeps
+# it), so the push of the image reference runs all of them. zizmor calls
+# the actor spoofable: here it can only skip jobs, and only in a pull
+# request Dependabot opened (its author cannot be spoofed), whose lint job
+# still checks the image against the library.
 name: test
 on:
   push:
@@ -407,11 +408,12 @@ jobs:
   # The image is pulled by a step and the tests run in it with docker run,
   # not as the job's container: the runner pulls a job's container without
   # a time limit, and on 2026-10-12 eight jobs of three runs hung in that
-  # pull until their job timed out, 15 to 25 minutes each. The pull step
-  # gives up after two minutes and tries again once; the rest of the job
-  # (Node.js, npm ci, the artifacts) runs on the runner, and the tests read
-  # the checkout and its node_modules mounted at the same path. They run on
-  # the image's own Node.js, which may be older than the runner's.
+  # pull until their job timed out, 15 to 25 minutes each. The pull, which
+  # starts in the background right after the checkout, gives up after two
+  # minutes and tries again once; the rest of the job (Node.js, npm ci, the
+  # artifacts) runs on the runner, and the tests read the checkout and its
+  # node_modules mounted at the same path. They run on the image's own
+  # Node.js, which may be older than the runner's.
   e2e:
     name: e2e (${{ matrix.name }})
     needs: e2e-sites
@@ -447,16 +449,19 @@ jobs:
       # already held back.
       #
       # Software WebGL runs one browser per core of the 4-vCPU runner. The
-      # desktop project is split into three shards, the mobile and webkit
-      # projects into two each, on runners of their own. Playwright splits a
-      # project by the number of tests, not their time: with two even
-      # mobile shards the second needed about 315 s of tests against 150 to
-      # 220 s of the first (the phone's state.spec.ts tests take 30 to 44 s
-      # each), and the one webkit job ran its 114 tests for 6.7 minutes, the
-      # longest job of the run. So the desktop and mobile shards are
-      # weighted (PWTEST_SHARD_WEIGHTS, the share of the tests each shard
-      # gets, in file order; whole numbers, Playwright reads them with
-      # parseInt, so "0.85" would be 0 and leave a shard empty). The last
+      # desktop project is split into three shards, the mobile project into
+      # two, on runners of their own. Playwright splits a project by the
+      # number of tests, not their time: with two even mobile shards the
+      # second needed about 315 s of tests against 150 to 220 s of the
+      # first (the phone's state.spec.ts tests take 30 to 44 s each). The
+      # webkit project, once 6.7 minutes in one job, ran in two shards of 83
+      # to 124 s and 122 to 163 s of tests after its desktop specs moved to
+      # webkit-desktop: two runners of the 20 the account runs at once for
+      # 3.5 to 4.8 minutes of tests, so it is one job again, about as long
+      # as the longest desktop and mobile shards. The desktop and mobile
+      # shards are weighted (PWTEST_SHARD_WEIGHTS, the share of the tests
+      # each shard gets, in file order; whole numbers, Playwright reads them
+      # with parseInt, so "0.85" would be 0 and leave a shard empty). The last
       # desktop shard always drew the slow specs state, selection and
       # wrapped-export, 955 s of tests against 681 s of the first. Three
       # even mobile shards ran 130, 140 and 202 s of tests; weighted 3:2,
@@ -521,12 +526,8 @@ jobs:
             shard: 2/2
             shard-weights: *mobile-weights
           # The phone interface in Safari's engine
-          - name: webkit-1
+          - name: webkit
             project: webkit
-            shard: 1/2
-          - name: webkit-2
-            project: webkit
-            shard: 2/2
           # Turning, the globe, the replay and the error-free interactions
           # in Safari's engine
           - name: webkit-desktop
@@ -548,20 +549,43 @@ jobs:
             no-key: true
     steps:
       - *checkout
+      # Two attempts of two minutes each; a pull takes about 30 s. It runs in
+      # the background while Node.js and the npm dependencies are set up,
+      # which took 15 s of it one after the other, and the step that waits
+      # for it below is the one that fails. Its output goes to a file, which
+      # that step prints: a background process that kept the step's output
+      # open would hold the step until it ended. Both steps skip where the
+      # pyodide job's check of what changed set PYODIDE_BUILD to false; no
+      # other job sets it.
+      - &start-image-pull
+        name: Start pulling the Playwright image
+        if: env.PYODIDE_BUILD != 'false'
+        run: |
+          {
+            status=1
+            for attempt in 1 2; do
+              if timeout 120 docker pull --quiet "$PLAYWRIGHT_IMAGE"; then status=0; break; fi
+              echo "::warning::pulling the Playwright image failed or took over two minutes (attempt $attempt)"
+            done
+            echo "$status" > "$RUNNER_TEMP/image-pull.tmp"
+            mv "$RUNNER_TEMP/image-pull.tmp" "$RUNNER_TEMP/image-pull.status"
+          } < /dev/null > "$RUNNER_TEMP/image-pull.log" 2>&1 &
       - name: Set up Node.js
         uses: ./.github/actions/setup-toolchain
       - name: Install npm dependencies
         run: npm ci
-      # Two attempts of two minutes each; a pull takes about 30 s
-      - &pull-playwright-image
-        name: Pull the Playwright image
+      # The two attempts above take four minutes at most
+      - &wait-image-pull
+        name: Wait for the Playwright image
         id: pull
+        if: env.PYODIDE_BUILD != 'false'
         run: |
-          for attempt in 1 2; do
-            if timeout 120 docker pull --quiet "$PLAYWRIGHT_IMAGE"; then exit 0; fi
-            echo "::warning::pulling the Playwright image failed or took over two minutes (attempt $attempt)"
+          for _ in $(seq 300); do
+            if [ -e "$RUNNER_TEMP/image-pull.status" ]; then break; fi
+            sleep 1
           done
-          exit 1
+          cat "$RUNNER_TEMP/image-pull.log"
+          test "$(cat "$RUNNER_TEMP/image-pull.status" 2>/dev/null)" = 0
       # tests/e2e/site-check.ts compares the hash of the sources the site
       # was built from, which its bundles and map_config.js carry, with
       # this checkout. The site with the dummy key into docs/, where the
@@ -685,11 +709,12 @@ jobs:
     env: *playwright-image
     steps:
       - *checkout
+      - *start-image-pull
       - name: Set up Node.js
         uses: ./.github/actions/setup-toolchain
       - name: Install npm dependencies
         run: npm ci
-      - *pull-playwright-image
+      - *wait-image-pull
       # The bundles come with it, so tests/e2e/site-check.ts can check them
       # against the sources in this checkout
       - name: Download the fixture site
@@ -700,7 +725,7 @@ jobs:
       - name: Compare the page against the committed snapshots
         run: |
           docker run --rm --ipc=host -v "$PWD:$PWD" -w "$PWD" -e CI \
-            "$PLAYWRIGHT_IMAGE" npx playwright test --project=visual
+            "$PLAYWRIGHT_IMAGE" npx playwright test --project=visual --project=visual-phone
       # The report carries the expected, actual and diff images side by side
       - name: Upload the visual diff
         if: ${{ !success() }}
@@ -719,8 +744,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # gitleaks scans the whole commit history, or the commits of a pull
-          # request from its base on
+          # The base of a pull request, for the comparison below
           fetch-depth: 0
           persist-credentials: false
       # npm audit reads package-lock.json and installs nothing, so without
@@ -768,6 +792,21 @@ jobs:
       - name: Audit npm dependencies
         if: steps.deps.outputs.audit == 'true'
         run: npm audit --audit-level=high
+
+  # The scan for secrets, which checks requires: a commit that carries one
+  # must not merge, and must not be published. A job of its own rather than
+  # a step of the security job, which gates nothing (see checks), and not a
+  # step of the lint job, which the weekly run leaves out.
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # gitleaks scans the whole commit history, or the commits of a pull
+          # request from its base on
+          fetch-depth: 0
+          persist-credentials: false
       # The same gitleaks release as the pre-commit hook, whose rev Dependabot
       # bumps (a commit, with the release in its "# frozen:" comment), pulled
       # by digest like every other image and action here, with its release
@@ -776,9 +815,8 @@ jobs:
       # (`docker manifest inspect -v` or the registry's
       # Docker-Content-Digest header). Until it does, scripts/check_pins.py
       # fails the lint job, which compares the comment with the hook's rev,
-      # and this step, which compares the release the image reports: this
-      # job gates nothing, so a bump would merge on its own without the
-      # first. The config's [[allowlists]] needs gitleaks 8.25 or newer. A
+      # and this step, which compares the release the image reports. The
+      # config's [[allowlists]] needs gitleaks 8.25 or newer. A
       # pull request scans only the commits it adds on top of its base, and
       # a push to main the commits it pushed (the whole history took 80 to
       # 106 s a run); the weekly run and a manual one scan the whole history.
@@ -808,32 +846,67 @@ jobs:
           timeout 600 docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" \
             git --redact --verbose --config /repo/.gitleaks.toml "${range[@]}" /repo
 
-  # The real build of Your flights, weekly and in a manual run: Pyodide,
-  # lxml and the site's Python from flown-src.zip, fetched by the page's
-  # worker from their hosts (tests/e2e/local-flights-pyodide.spec.ts). The
-  # e2e jobs leave it out, since the hermetic suite blocks every host but
-  # the site's and a build takes a minute or two; so a Pyodide release the
-  # pinned version stops resolving to, or Python of the site that does not
-  # run there, shows within a week. The site is built as in the e2e-sites
-  # job, with the dummy key, and the test runs in the Playwright image as
-  # there.
+  # The real build of Your flights: Pyodide, lxml and the site's Python from
+  # flown-src.zip, fetched by the page's worker from their hosts
+  # (tests/e2e/local-flights-pyodide.spec.ts). The e2e jobs leave it out,
+  # since the hermetic suite blocks every host but the site's and a build
+  # takes a minute or two. It runs on every push to main, weekly and in a
+  # manual run, so a Pyodide release the pinned version stops resolving to
+  # shows within a week, and in a pull request that changes the Python of
+  # the site, the worker that runs it or this spec, so Python that does not
+  # run there shows before it merges. It gates nothing (checks leaves it
+  # out): it depends on the CDN, whose outage must not hold back the
+  # flights, and a failure on main shows in the run. The site is built as
+  # in the e2e-sites job, with the dummy key, and the test runs in the
+  # Playwright image as there. Not for Dependabot's Playwright bumps, see
+  # the top.
   pyodide:
-    if: &weekly-or-manual github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >- # zizmor: ignore[bot-conditions]
+      !(github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.actor == 'dependabot[bot]' &&
+      startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env: *playwright-image
     steps:
-      - *checkout
+      # The merge commit of a pull request and its first parent, the head of
+      # the base branch, so the step below sees what the pull request changes
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      # flown/*.py takes in every Python module of the package (a pathspec's
+      # * crosses directories), which is what flown-src.zip ships;
+      # services/local*.ts the worker, the page's side of the build and the
+      # store both read, and localFlags.ts the cache's name; the template
+      # holds the page's CSP. What else the worker imports changes rarely,
+      # and the next push to main builds anyway. A diff that cannot be made (no parent) builds as well: the
+      # step fails closed. Every step after it skips when it sets
+      # PYODIDE_BUILD to false, the ones of the image pull among them (see
+      # the e2e job).
+      - name: Check whether the build in the page changed
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- 'flown/*.py' 'flown/frontend/services/local*.ts' \
+            flown/frontend/state/localFlags.ts flown/templates \
+            tests/e2e/local-flights-pyodide.spec.ts; then
+            echo "PYODIDE_BUILD=false" >> "$GITHUB_ENV"
+            echo "::notice::neither the Python of the site nor its worker changed; skipping the Pyodide build"
+          fi
+      - *start-image-pull
       - name: Set up the site build
+        if: env.PYODIDE_BUILD != 'false'
         uses: ./.github/actions/site-build-setup
         with:
           flights: ${{ env.FLOWN_INPUT_DIR }}
       - name: Build the site with a dummy tile API key
+        if: env.PYODIDE_BUILD != 'false'
         run: python -m flown "$FLOWN_INPUT_DIR" --output-dir docs
         env:
           CARTO_API_KEY: e2e-carto
-      - *pull-playwright-image
+      - *wait-image-pull
       - name: Build two flights with Pyodide in the page
+        if: env.PYODIDE_BUILD != 'false'
         env:
           E2E_API_KEYS: dummy
           FLOWN_E2E_PYODIDE: "1"
@@ -845,6 +918,7 @@ jobs:
       # one test was skipped passes: the report of the JSON reporter
       # (playwright.config.ts) has to count the one test as passed
       - name: Check that the build ran and passed
+        if: env.PYODIDE_BUILD != 'false'
         run: |
           report=test-results/e2e-timings.json
           jq .stats "$report"
@@ -872,7 +946,7 @@ jobs:
   # the example goes into its test, with @example for Hypothesis. The tests
   # need neither the bundles nor a site.
   properties:
-    if: *weekly-or-manual
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -907,12 +981,13 @@ jobs:
   # merges main into it, and the run of that push is the one that counts.
   # Not the security job, for the reason publishing does not wait for it
   # (below): a new advisory would hold back every pull request, the flights
-  # among them. A job may be skipped only where its own
-  # condition skips it on purpose, Dependabot's own pushes to a Playwright
-  # branch (see the top), and the e2e jobs in a copy of the repository
-  # whose data/ holds flights of its own (FLOWN_OWN_FLIGHTS); anywhere
-  # else a skip, a failure or a cancellation fails this job. The weekly run
-  # has none of these jobs.
+  # among them; the secrets job, which scans the commits, is in. Nor the
+  # pyodide job, which depends on Pyodide's CDN. A job may be skipped only
+  # where its own condition skips it on purpose, Dependabot's own pushes to
+  # a Playwright branch (see the top), and the e2e jobs in a copy of the
+  # repository whose data/ holds flights of its own (FLOWN_OWN_FLIGHTS);
+  # anywhere else a skip, a failure or a cancellation fails this job. The
+  # weekly run leaves this job out, as it does all of these but secrets.
   checks:
     needs:
       - lint
@@ -921,6 +996,7 @@ jobs:
       - e2e-sites
       - e2e
       - visual
+      - secrets
     if: ${{ always() && github.event_name != 'schedule' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

@@ -3,9 +3,12 @@
 import hashlib
 import json
 import logging
+import math
 import os
 import shutil
 import time
+from array import array
+from compression import zstd
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,13 +17,14 @@ import pytest
 import flown.airport_lookup as lookup_module
 import flown.parser_cache as parser_cache_module
 from flown.airport_lookup import database_fingerprint
-from flown.cache import decode_entry, encode_entry
 from flown.landings import FlightLandings
 from flown.parser_cache import (
     CACHE_FORMAT_VERSION,
     CACHE_MAX_AGE_DAYS,
     CACHE_SUFFIX,
     KML_CACHE_DIR,
+    _join_entry,
+    _split_entry,
     get_cache_key,
     load_cached_parse,
     parser_fingerprint,
@@ -337,6 +341,18 @@ class TestPruneStaleCacheEntries:
         )
         assert not any(p.exists() for p in (old_version, old_database, legacy))
 
+    def test_removes_the_json_entries_of_version_8(self, tmp_path):
+        """Version 8 wrote compressed JSON, under a .json.zst name."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        json_entry = _entry(
+            cache_dir,
+            f"{'0' * 32}_v8_{parser_fingerprint()}_{database_fingerprint()}.json.zst",
+        )
+
+        assert prune_stale_cache_entries(cache_dir=cache_dir) == 1
+        assert not json_entry.exists()
+
     def test_entries_of_another_parser_go_by_their_age(self, tmp_path):
         """A checkout on another commit shares the directory and reads them."""
         cache_dir = tmp_path / "cache"
@@ -438,14 +454,14 @@ class TestPruneStaleCacheEntries:
 
 
 class TestSaveAndLoad:
-    def test_an_entry_is_compressed_json(self, tmp_path):
+    def test_an_entry_is_compressed(self, tmp_path):
         cache_path = tmp_path / f"entry{CACHE_SUFFIX}"
         save_to_cache(cache_path, COORDS, [], [])
 
         data = cache_path.read_bytes()
         # The magic number of a zstd frame
         assert data.startswith(b"\x28\xb5\x2f\xfd")
-        assert decode_entry(data)["version"] == CACHE_FORMAT_VERSION
+        assert _split_entry(data)[0]["version"] == CACHE_FORMAT_VERSION
         assert load_cached_parse(cache_path) is not None
 
     def test_an_uncompressed_entry_is_a_miss(self, tmp_path):
@@ -453,8 +469,26 @@ class TestSaveAndLoad:
         cache_path.write_text(json.dumps({"version": CACHE_FORMAT_VERSION}))
         assert load_cached_parse(cache_path) is None
 
+    def test_an_entry_of_version_8_is_a_miss(self, tmp_path):
+        """Compressed JSON with the points in it, as version 8 wrote them."""
+        cache_path = tmp_path / f"entry{CACHE_SUFFIX}"
+        cache_path.write_bytes(
+            zstd.compress(
+                json.dumps(
+                    {
+                        "version": 8,
+                        "coordinates": [[50.0, 8.5, 300.0, 1000.5]],
+                        "path_groups": [[0]],
+                        "path_metadata": [{}],
+                        "warnings": [],
+                    }
+                ).encode()
+            )
+        )
+        assert load_cached_parse(cache_path) is None
+
     def test_round_trip_preserves_track_points_and_identity(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         save_to_cache(cache_path, COORDS, PATHS, METADATA)
 
         loaded = load_cached_parse(cache_path)
@@ -467,112 +501,191 @@ class TestSaveAndLoad:
         # A path point is the coordinate entry itself, as after parsing
         assert path_groups[0][0] is coordinates[0]
 
-    def test_file_format_is_explicit(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
-        save_to_cache(cache_path, COORDS, PATHS, METADATA)
-        raw = decode_entry(cache_path.read_bytes())
-        assert raw["version"] == CACHE_FORMAT_VERSION
-        assert raw["coordinates"] == [
-            [50.0, 8.5, 300.0, 1000.5],
-            [51.0, 9.5, None, None],
+    def test_points_round_trip_to_the_last_bit(self, tmp_path):
+        """The columns are doubles: nothing is rounded on the way."""
+        cache_path = tmp_path / "cache.parse.zst"
+        points = [
+            TrackPoint(50.123456789012345, -8.000000000000001, 0.1 + 0.2, 1e9 / 3),
+            TrackPoint(-89.99999999999999, 179.99999999999997, None, 1.5),
+            TrackPoint(0.0, -0.0, -12.25, None),
         ]
-        assert raw["path_groups"] == [[0]]
-        assert raw["path_metadata"] == METADATA
+        save_to_cache(cache_path, points, [points], METADATA)
+
+        loaded = load_cached_parse(cache_path)
+
+        assert loaded is not None
+        assert [tuple(map(repr, p)) for p in loaded.coordinates] == [
+            tuple(map(repr, p)) for p in points
+        ]
+
+    def test_file_format_is_explicit(self, tmp_path):
+        cache_path = tmp_path / "cache.parse.zst"
+        save_to_cache(cache_path, COORDS, PATHS, METADATA)
+        header, rest = _split_entry(cache_path.read_bytes())
+        assert header["version"] == CACHE_FORMAT_VERSION
+        assert header["points"] == 2
+        assert header["coordinates"] == 2
+        assert header["path_lengths"] == [1]
+        assert header["path_metadata"] == METADATA
+        latitudes, longitudes, altitudes, times = (
+            array("d", rest[n * 16 : (n + 1) * 16]).tolist() for n in range(4)
+        )
+        assert latitudes == [50.0, 51.0]
+        assert longitudes == [8.5, 9.5]
+        assert altitudes[0] == 300.0
+        assert math.isnan(altitudes[1])
+        assert times[0] == 1000.5
+        assert math.isnan(times[1])
+        assert array("i", rest[64:]).tolist() == [0]
 
     def test_path_point_outside_coordinates_is_stored_in_full(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         extra = TrackPoint(52.0, 10.0, 100.0, None)
         save_to_cache(cache_path, COORDS, [[SHARED, extra]], METADATA)
 
-        raw = decode_entry(cache_path.read_bytes())
-        assert raw["path_groups"] == [[0, [52.0, 10.0, 100.0, None]]]
+        header, _ = _split_entry(cache_path.read_bytes())
+        assert (header["points"], header["coordinates"]) == (3, 2)
         loaded = load_cached_parse(cache_path)
         assert loaded is not None
-        assert loaded[1] == [[SHARED, extra]]
+        assert loaded.coordinates == COORDS
+        assert loaded.path_groups == [[SHARED, extra]]
+
+    def _rewrite(self, cache_path, change, rest=None):
+        """Change the header of an entry (and the bytes after it)."""
+        header, old_rest = _split_entry(cache_path.read_bytes())
+        change(header)
+        cache_path.write_bytes(_join_entry(header, old_rest if rest is None else rest))
 
     def test_version_mismatch_is_rejected(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         save_to_cache(cache_path, COORDS, PATHS, METADATA)
-        raw = decode_entry(cache_path.read_bytes())
-        raw["version"] = CACHE_FORMAT_VERSION - 1
-        cache_path.write_bytes(encode_entry(raw))
+        self._rewrite(
+            cache_path, lambda header: header.update(version=CACHE_FORMAT_VERSION - 1)
+        )
         assert load_cached_parse(cache_path) is None
 
     def test_missing_version_is_rejected(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
+        save_to_cache(cache_path, COORDS, PATHS, METADATA)
+        self._rewrite(cache_path, lambda header: header.pop("version"))
+        assert load_cached_parse(cache_path) is None
+
+    def test_corrupt_data_is_rejected(self, tmp_path):
+        cache_path = tmp_path / "cache.parse.zst"
+        cache_path.write_text("invalid")
+        assert load_cached_parse(cache_path) is None
+        cache_path.write_bytes(zstd.compress(b"\xff\xff\xff\x7f{}"))
+        assert load_cached_parse(cache_path) is None
+        cache_path.write_bytes(_join_entry({"version": CACHE_FORMAT_VERSION}, b""))
+        assert load_cached_parse(cache_path) is None
+
+    def test_a_header_that_is_no_object_is_rejected(self, tmp_path):
+        cache_path = tmp_path / "cache.parse.zst"
+        encoded = b"[1]"
         cache_path.write_bytes(
-            encode_entry({"coordinates": [], "path_groups": [], "path_metadata": []})
+            zstd.compress(len(encoded).to_bytes(4, "little") + encoded)
         )
         assert load_cached_parse(cache_path) is None
 
-    def test_corrupt_json_is_rejected(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
-        cache_path.write_text("invalid json")
+    def test_metadata_that_is_no_list_is_rejected(self, tmp_path):
+        cache_path = tmp_path / "cache.parse.zst"
+        save_to_cache(cache_path, COORDS, PATHS, METADATA)
+        self._rewrite(cache_path, lambda header: header.update(path_metadata={}))
         assert load_cached_parse(cache_path) is None
+
+    def test_a_big_endian_machine_swaps_the_bytes_both_ways(
+        self, tmp_path, monkeypatch
+    ):
+        """The entries are little endian: a cache moved between machines."""
+        native = tmp_path / "native.parse.zst"
+        swapped = tmp_path / "swapped.parse.zst"
+        save_to_cache(native, COORDS, PATHS, METADATA)
+        monkeypatch.setattr("sys.byteorder", "big")
+
+        save_to_cache(swapped, COORDS, PATHS, METADATA)
+
+        assert (
+            _split_entry(swapped.read_bytes())[1]
+            != (_split_entry(native.read_bytes())[1])
+        )
+        loaded = load_cached_parse(swapped)
+        assert loaded is not None
+        assert loaded.coordinates == COORDS
 
     @pytest.mark.parametrize(
-        "coordinates,path_groups",
+        "change",
         [
-            ([[1, 2]], []),
-            ([[50.0, 8.5, 300.0, 1000.5]], [[7]]),
-            ([], "not a list"),
+            {"points": 3},
+            {"points": "2"},
+            {"coordinates": 3},
+            {"coordinates": -1},
+            {"path_lengths": [2]},
+            {"path_lengths": "1"},
+            {"path_lengths": [-1]},
         ],
-        ids=["short-point", "index-out-of-range", "wrong-type"],
+        ids=[
+            "more-points",
+            "points-no-number",
+            "more-coordinates-than-points",
+            "negative-coordinates",
+            "longer-path",
+            "lengths-no-list",
+            "negative-length",
+        ],
     )
-    def test_wrong_structure_is_rejected(self, tmp_path, coordinates, path_groups):
-        cache_path = tmp_path / "cache.json"
-        cache_path.write_bytes(
-            encode_entry(
-                {
-                    "version": CACHE_FORMAT_VERSION,
-                    "coordinates": coordinates,
-                    "path_groups": path_groups,
-                    "path_metadata": [],
-                    "warnings": [],
-                }
-            )
+    def test_counts_that_do_not_fit_are_rejected(self, tmp_path, change):
+        cache_path = tmp_path / "cache.parse.zst"
+        save_to_cache(cache_path, COORDS, PATHS, METADATA)
+        self._rewrite(cache_path, lambda header: header.update(change))
+        assert load_cached_parse(cache_path) is None
+
+    def test_cut_short_is_rejected(self, tmp_path):
+        cache_path = tmp_path / "cache.parse.zst"
+        save_to_cache(cache_path, COORDS, PATHS, METADATA)
+        _, rest = _split_entry(cache_path.read_bytes())
+        self._rewrite(cache_path, lambda header: None, rest[:-1])
+        assert load_cached_parse(cache_path) is None
+
+    def test_index_out_of_range_is_rejected(self, tmp_path):
+        cache_path = tmp_path / "cache.parse.zst"
+        save_to_cache(cache_path, COORDS, PATHS, METADATA)
+        _, rest = _split_entry(cache_path.read_bytes())
+        self._rewrite(
+            cache_path, lambda header: None, rest[:64] + array("i", [7]).tobytes()
         )
+        assert load_cached_parse(cache_path) is None
+
+    def test_a_point_without_a_position_is_rejected(self, tmp_path):
+        cache_path = tmp_path / "cache.parse.zst"
+        save_to_cache(cache_path, COORDS, PATHS, METADATA)
+        _, rest = _split_entry(cache_path.read_bytes())
+        latitudes = array("d", [math.nan, 51.0]).tobytes()
+        self._rewrite(cache_path, lambda header: None, latitudes + rest[16:])
         assert load_cached_parse(cache_path) is None
 
     def test_paths_without_their_metadata_are_rejected(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         save_to_cache(cache_path, COORDS, PATHS, METADATA)
-        entry = decode_entry(cache_path.read_bytes())
-        entry["path_metadata"] = entry["path_metadata"][:-1]
-        cache_path.write_bytes(encode_entry(entry))
-        assert load_cached_parse(cache_path) is None
-
-    @pytest.mark.parametrize(
-        "point",
-        [[50.0, 8.5, "high", 1000.5], [50.0, 8.5, 300.0, {"t": 1}]],
-        ids=["altitude", "time"],
-    )
-    def test_a_point_of_the_wrong_type_is_rejected(self, tmp_path, point):
-        cache_path = tmp_path / "cache.json"
-        cache_path.write_bytes(
-            encode_entry(
-                {
-                    "version": CACHE_FORMAT_VERSION,
-                    "coordinates": [point],
-                    "path_groups": [[0]],
-                    "path_metadata": [{}],
-                    "warnings": [],
-                }
-            )
+        self._rewrite(
+            cache_path,
+            lambda header: header.update(path_metadata=header["path_metadata"][:-1]),
         )
         assert load_cached_parse(cache_path) is None
 
     def test_metadata_that_is_no_object_is_rejected(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         save_to_cache(cache_path, COORDS, PATHS, METADATA)
-        entry = decode_entry(cache_path.read_bytes())
-        entry["path_metadata"] = ["not an object"] * len(entry["path_metadata"])
-        cache_path.write_bytes(encode_entry(entry))
+        self._rewrite(
+            cache_path,
+            lambda header: header.update(
+                path_metadata=["not an object"] * len(header["path_metadata"])
+            ),
+        )
         assert load_cached_parse(cache_path) is None
 
     def test_landings_round_trip(self, tmp_path):
         """One per path, kept as the parse found them (see path_landings)."""
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         landings = [
             FlightLandings(
                 takeoffs=1,
@@ -595,12 +708,12 @@ class TestSaveAndLoad:
         assert loaded.landings == [None]
 
     def test_landings_of_other_paths_are_rejected(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         save_to_cache(cache_path, COORDS, PATHS, METADATA, landings=[None, None])
         assert load_cached_parse(cache_path) is None
 
     def test_warnings_round_trip(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         warnings = [(logging.WARNING, "a.kml: 2 line(s) without usable altitudes")]
         save_to_cache(cache_path, COORDS, PATHS, METADATA, warnings)
         loaded = load_cached_parse(cache_path)
@@ -608,11 +721,9 @@ class TestSaveAndLoad:
         assert loaded.warnings == warnings
 
     def test_entry_without_warnings_is_rejected(self, tmp_path):
-        cache_path = tmp_path / "cache.json"
+        cache_path = tmp_path / "cache.parse.zst"
         save_to_cache(cache_path, COORDS, PATHS, METADATA)
-        raw = decode_entry(cache_path.read_bytes())
-        del raw["warnings"]
-        cache_path.write_bytes(encode_entry(raw))
+        self._rewrite(cache_path, lambda header: header.pop("warnings"))
         assert load_cached_parse(cache_path) is None
 
     def test_missing_file(self, tmp_path):
@@ -627,7 +738,7 @@ class TestSaveAndLoad:
         read_only.mkdir()
         read_only.chmod(0o555)
         try:
-            save_to_cache(read_only / "cache.json", [], [], [])
-            assert not (read_only / "cache.json").exists()
+            save_to_cache(read_only / "cache.parse.zst", [], [], [])
+            assert not (read_only / "cache.parse.zst").exists()
         finally:
             read_only.chmod(0o755)

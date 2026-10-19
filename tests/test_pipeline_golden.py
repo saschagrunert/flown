@@ -25,11 +25,10 @@ from flown.segment_codec import (
     COORDINATE_SCALE,
     FORMAT_VERSION,
     GROUND_STEP,
-    decode_ground,
-    decode_rows,
 )
 from flown.site_assets import CARTO_STYLE_URL, CARTO_TILEJSON_URL
 from flown.terrain import TILE_SIZE
+from tests.codec import decode_ground, decode_rows
 from tests.conftest import parse_data as _load_js
 from tests.conftest import segments_by_id
 
@@ -550,7 +549,11 @@ def test_no_date_of_a_name_is_exported(tmp_path):
     assert len(path_info) == len(DATED_FLIGHTS)
     # Free text without a code and no route is no airport at all
     assert not any("Sunday" in name for name in names)
-    assert "Flight EDDS-EDDP" in names
+    # A route between two codes without spaces, its date left out
+    assert (path_info[1]["start_airport"], path_info[1]["end_airport"]) == (
+        "EDDS Stuttgart",
+        "EDDP Leipzig/Halle",
+    )
     assert "EDXX" in names
     assert "EDXY" in names
     for name in names:

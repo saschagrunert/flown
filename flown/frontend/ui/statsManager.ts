@@ -311,8 +311,13 @@ function aircraftSection(stats: FilteredStatistics): string {
 /**
  * When and from which commit the site was built, if map_config.js says. The
  * hash links to its commit only when the build knew which repository that is.
+ * Of the visitor's own flights, that they were built in the browser: the
+ * site's build says nothing of them.
  */
 function buildInfo(config: MapApp["config"]): string {
+  if (config.localFlights) {
+    return '<p class="stats-build">Built in this browser</p>';
+  }
   const { builtOn, commit, commitUrl } = config;
   const parts: string[] = [];
   const date = builtOn ? formatBuildDate(builtOn) : null;

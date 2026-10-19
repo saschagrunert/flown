@@ -9,16 +9,18 @@ import { describe, it, expect, vi } from "vitest";
 import {
   LocalBuilder,
   WORKER_FAILED_MESSAGE,
+  WORKER_LOAD_FAILED_MESSAGE,
   type BuildOutcome,
   type LocalWorkerLike,
 } from "../../../../flown/frontend/services/localBuild";
+import { CACHE_GONE_MESSAGE } from "../../../../flown/frontend/services/localStore";
 import type {
   BuildRequest,
-  BuildResponse,
+  WorkerMessage,
 } from "../../../../flown/frontend/services/localWorker";
 
 class FakeWorker implements LocalWorkerLike {
-  onmessage: ((event: MessageEvent<BuildResponse>) => void) | null = null;
+  onmessage: ((event: MessageEvent<WorkerMessage>) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   readonly posted: [BuildRequest, Transferable[]][] = [];
   terminated = 0;
@@ -32,11 +34,17 @@ class FakeWorker implements LocalWorkerLike {
   }
 
   /** What the worker answers */
-  answer(response: BuildResponse): void {
-    this.onmessage!({ data: response } as MessageEvent<BuildResponse>);
+  answer(response: WorkerMessage): void {
+    this.onmessage!({ data: response } as MessageEvent<WorkerMessage>);
   }
 
+  /** An error its script threw, which the event carries the message of */
   die(): void {
+    this.onerror!(new ErrorEvent("error", { message: "Uncaught boom" }));
+  }
+
+  /** Its bundle did not load: the event is a plain one */
+  failToLoad(): void {
     this.onerror!(new Event("error") as ErrorEvent);
   }
 }
@@ -45,7 +53,6 @@ const OUTCOME: BuildOutcome = {
   years: [2025],
   flights: 1,
   airports: 2,
-  center: [51, 12],
   bounds: [
     [50, 11],
     [52, 13],
@@ -158,6 +165,44 @@ describe("LocalBuilder", () => {
     expect(workers).toHaveLength(2);
     workers[1]!.answer({ id: 3, done: OUTCOME });
     await expect(three).resolves.toBe(OUTCOME);
+  });
+
+  it("says to check the connection when the worker's bundle did not load", async () => {
+    const { builder, workers } = setup();
+    const one = builder.build([], false, vi.fn());
+
+    workers[0]!.failToLoad();
+
+    await expect(one).rejects.toThrow(WORKER_LOAD_FAILED_MESSAGE);
+  });
+
+  it("says to check the connection when offline, whatever the error", async () => {
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      const { builder, workers } = setup();
+      const one = builder.build([], false, vi.fn());
+
+      workers[0]!.die();
+
+      await expect(one).rejects.toThrow(WORKER_LOAD_FAILED_MESSAGE);
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it("lets the worker go when another tab deleted the cache", async () => {
+    const { builder, workers } = setup();
+    const one = builder.build([], false, vi.fn());
+
+    workers[0]!.answer({ cacheGone: true });
+
+    await expect(one).rejects.toThrow(CACHE_GONE_MESSAGE);
+    expect(workers[0]!.terminated).toBe(1);
+    expect(builder.busy).toBe(false);
+    const two = builder.build([], false, vi.fn());
+    expect(workers).toHaveLength(2);
+    workers[1]!.answer({ id: 2, done: OUTCOME });
+    await expect(two).resolves.toBe(OUTCOME);
   });
 
   it("rejects pending builds when destroyed", async () => {

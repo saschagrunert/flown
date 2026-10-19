@@ -10,9 +10,11 @@ airport database is part of the key because the parser standardizes airport
 names with it: a file parsed while the database was unavailable would
 otherwise keep its raw names until the KML changed.
 
-An entry is the parse as compact JSON, compressed with zstd: a few million
-points take a fifth of the space, and the files are read back faster than
-the JSON alone is from disk.
+An entry is the parse compressed with zstd: a header of compact JSON (the
+metadata, warnings and landings of the paths), then the coordinates as four
+columns of doubles and the paths as indices into them. Reading the points
+back from columns takes half the time JSON did, which a build whose files
+are all in the cache spent a sixth of its time on.
 
 Stale entries are not removed on the fly. ``prune_stale_cache_entries`` does
 that in one pass over the cache directory before a run: entries that another
@@ -25,20 +27,21 @@ import dataclasses
 import functools
 import hashlib
 import json
+import math
 import os
 import re
+import sys
 import time
+from array import array
 from compression import zstd
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from .airport_lookup import database_fingerprint
 from .cache import (
     CACHE_DIR,
     PRIVATE_FILE_MODE,
     atomic_bytes_write,
-    decode_entry,
-    encode_entry,
     private_directory,
     source_fingerprint,
 )
@@ -64,11 +67,12 @@ __all__ = [
 ]
 
 # Bump whenever the serialized structure or its encoding changes (6: zstd,
-# 7: the landings of the paths, 8: no circuits in them).
-# Entries of any other version are pruned (see prune_stale_cache_entries).
-CACHE_FORMAT_VERSION = 8
-# The name an entry ends in (see cache.encode_entry)
-CACHE_SUFFIX = ".json.zst"
+# 7: the landings of the paths, 8: no circuits in them, 9: the points in
+# columns of doubles). Entries of any other version are pruned (see
+# prune_stale_cache_entries).
+CACHE_FORMAT_VERSION = 9
+# The name an entry ends in (see save_to_cache)
+CACHE_SUFFIX = ".parse.zst"
 
 # Entries not read or written for this long are removed
 CACHE_MAX_AGE_DAYS = 30
@@ -82,6 +86,7 @@ _PARSER_MODULES = (
     "airport_lookup",
     "constants",
     "date_tokens",
+    "date_words",
     "geometry",
     "helpers",
     "landings",
@@ -97,11 +102,21 @@ _PARSER_MODULES = (
 
 _ENTRY_NAME = re.compile(
     r"^[0-9a-f]{32}_v(?P<version>\d+)_(?P<parser>[0-9a-f]{8})"
-    r"_(?P<database>[0-9a-f]{8}|nodb)\.json(?:\.zst)?$"
+    r"_(?P<database>[0-9a-f]{8}|nodb)\.(?:json(?:\.zst)?|parse\.zst)$"
 )
 # The names this module ever gave an entry, for the legacy ones
 _ENTRY_SUFFIXES = (".json", ".zst")
 _HASH_CHUNK_BYTES = 1024 * 1024
+# The zstd level of an entry, as cache.encode_entry takes it
+_ZSTD_LEVEL = 3
+# The columns of the points of an entry, in this order, NaN for None
+_COLUMNS = 4
+# Bytes of the header's length, which comes first
+_HEADER_LENGTH_BYTES = 4
+# The array type of the indices of the path points, and its bytes (four on
+# every platform CPython runs on)
+_INDEX_TYPECODE = "i"
+_INDEX_BYTES = array(_INDEX_TYPECODE).itemsize
 
 
 @functools.cache
@@ -286,16 +301,6 @@ def _landings_from_json(item: Any, paths: int) -> list[FlightLandings | None]:
     ]
 
 
-def _point_from_json(item: Any) -> TrackPoint:
-    lat, lon, alt, ts = item
-    return TrackPoint(
-        float(lat),
-        float(lon),
-        None if alt is None else float(alt),
-        None if ts is None else float(ts),
-    )
-
-
 def _metadata_list(value: Any, paths: int) -> list[PathMetadata]:
     """The path metadata of an entry, a list of one per path.
 
@@ -311,32 +316,124 @@ def _metadata_list(value: Any, paths: int) -> list[PathMetadata]:
     return value
 
 
+def _little_endian(values: array[Any]) -> array[Any]:
+    """``values`` in little endian order, which an entry stores."""
+    if sys.byteorder == "big":
+        values.byteswap()
+    return values
+
+
+def _doubles(data: bytes) -> list[float]:
+    """The values of a column of doubles."""
+    return _little_endian(array("d", data)).tolist()
+
+
+def _has_nan(values: list[float]) -> bool:
+    # The sum is NaN when a value is (or two infinities cancel, which only
+    # costs the slower way): one pass in C rather than one call per value
+    return math.isnan(sum(values)) and any(map(math.isnan, values))
+
+
+def _positions(data: bytes) -> list[float]:
+    """A column of latitudes or longitudes, which every point has."""
+    values = _doubles(data)
+    if _has_nan(values):
+        raise ValueError("a point without a position")
+    return values
+
+
+def _optional(data: bytes) -> list[float | None]:
+    """A column of altitudes or times, None for NaN."""
+    values = _doubles(data)
+    if _has_nan(values):
+        return [None if math.isnan(value) else value for value in values]
+    # No None in it: the list itself, as list is invariant to mypy
+    return cast("list[float | None]", values)
+
+
+def _split_entry(data: bytes) -> tuple[dict[str, Any], bytes]:
+    """The header of an entry and the bytes of its columns and indices."""
+    body = zstd.decompress(data)
+    length = int.from_bytes(body[:_HEADER_LENGTH_BYTES], "little")
+    end = _HEADER_LENGTH_BYTES + length
+    header = json.loads(body[_HEADER_LENGTH_BYTES:end])
+    if not isinstance(header, dict):
+        raise TypeError("the header must be an object")
+    return header, body[end:]
+
+
+def _join_entry(header: dict[str, Any], rest: bytes) -> bytes:
+    """An entry of ``header`` and the bytes after it (see ``_split_entry``)."""
+    encoded = json.dumps(header, separators=(",", ":")).encode()
+    return zstd.compress(
+        len(encoded).to_bytes(_HEADER_LENGTH_BYTES, "little") + encoded + rest,
+        level=_ZSTD_LEVEL,
+    )
+
+
+def _points(header: dict[str, Any], rest: bytes) -> tuple[FlightPath, FlightPathGroup]:
+    """The coordinates and the paths of an entry (see ``save_to_cache``).
+
+    Raises ``TypeError``, ``ValueError`` or ``IndexError`` for an entry
+    whose counts, columns or indices do not fit together.
+    """
+    points = header["points"]
+    count = header["coordinates"]
+    lengths = header["path_lengths"]
+    if not (
+        isinstance(points, int)
+        and isinstance(count, int)
+        and 0 <= count <= points
+        and isinstance(lengths, list)
+        and all(isinstance(length, int) and length >= 0 for length in lengths)
+    ):
+        raise TypeError("the counts of the entry are malformed")
+    column_bytes = points * 8
+    if len(rest) != _COLUMNS * column_bytes + sum(lengths) * _INDEX_BYTES:
+        raise ValueError("the entry is cut short or too long")
+    lat, lon, alt, ts = (
+        rest[n * column_bytes : (n + 1) * column_bytes] for n in range(_COLUMNS)
+    )
+    table = list(
+        map(
+            TrackPoint,
+            _positions(lat),
+            _positions(lon),
+            _optional(alt),
+            _optional(ts),
+            strict=True,
+        )
+    )
+    indices = _little_endian(array(_INDEX_TYPECODE, rest[_COLUMNS * column_bytes :]))
+    if indices and not 0 <= min(indices) <= max(indices) < points:
+        raise IndexError("a path point outside the points")
+    path_groups: FlightPathGroup = []
+    position = 0
+    for length in lengths:
+        path_groups.append([table[i] for i in indices[position : position + length]])
+        position += length
+    return table[:count], path_groups
+
+
 def load_cached_parse(cache_path: Path) -> CachedParse | None:
     """Load cached parse results, or None if the cache entry is invalid.
 
-    Path points are stored as indices into the coordinate list, so a path
-    point and its coordinate entry are the same object after loading, as
-    they are after parsing. A loaded entry is touched, which keeps it from
-    being pruned for its age.
+    Path points are stored as indices into the points of the entry, so a
+    path point and its coordinate entry are the same object after loading,
+    as they are after parsing. A loaded entry is touched, which keeps it
+    from being pruned for its age.
     """
     try:
-        cached = decode_entry(cache_path.read_bytes())
-        if cached.get("version") != CACHE_FORMAT_VERSION:
+        header, rest = _split_entry(cache_path.read_bytes())
+        if header.get("version") != CACHE_FORMAT_VERSION:
             logger.debug("Cache file %s has an unsupported version", cache_path)
             return None
-        coordinates = [_point_from_json(item) for item in cached["coordinates"]]
-        path_groups = [
-            [
-                coordinates[item] if isinstance(item, int) else _point_from_json(item)
-                for item in path
-            ]
-            for path in cached["path_groups"]
-        ]
-        path_metadata = _metadata_list(cached["path_metadata"], len(path_groups))
-        warnings = [(int(level), str(message)) for level, message in cached["warnings"]]
+        coordinates, path_groups = _points(header, rest)
+        path_metadata = _metadata_list(header["path_metadata"], len(path_groups))
+        warnings = [(int(level), str(message)) for level, message in header["warnings"]]
         landings = (
-            _landings_from_json(cached["landings"], len(path_groups))
-            if "landings" in cached
+            _landings_from_json(header["landings"], len(path_groups))
+            if "landings" in header
             else None
         )
     except (
@@ -374,24 +471,39 @@ def save_to_cache(
 
     The parser appends every path point to the coordinate list as well, so a
     path is stored as the indices of its points. A point that is not in the
-    coordinate list (results built by hand) is stored in full instead.
+    coordinate list (results built by hand) is stored after the coordinates,
+    which the entry says the number of.
     """
-    index_by_id = {id(point): index for index, point in enumerate(coordinates)}
-
-    def encode(point: TrackPoint) -> int | list[Any]:
-        index = index_by_id.get(id(point))
-        return list(point) if index is None else index
-
-    entry: dict[str, Any] = {
+    table = list(coordinates)
+    index_by_id = {id(point): index for index, point in enumerate(table)}
+    indices = array(_INDEX_TYPECODE)
+    for path in path_groups:
+        for point in path:
+            index = index_by_id.get(id(point))
+            if index is None:
+                index = index_by_id[id(point)] = len(table)
+                table.append(point)
+            indices.append(index)
+    header: dict[str, Any] = {
         "version": CACHE_FORMAT_VERSION,
-        "coordinates": [list(point) for point in coordinates],
-        "path_groups": [[encode(point) for point in path] for path in path_groups],
+        "points": len(table),
+        "coordinates": len(coordinates),
+        "path_lengths": [len(path) for path in path_groups],
         "path_metadata": path_metadata,
         "warnings": [list(warning) for warning in warnings],
     }
     if landings is not None:
-        entry["landings"] = [_landings_to_json(item) for item in landings]
-    data = encode_entry(entry)
+        header["landings"] = [_landings_to_json(item) for item in landings]
+    columns = [
+        _little_endian(
+            array(
+                "d",
+                (math.nan if point[n] is None else point[n] for point in table),
+            )
+        ).tobytes()
+        for n in range(_COLUMNS)
+    ]
+    data = _join_entry(header, b"".join(columns) + _little_endian(indices).tobytes())
     try:
         atomic_bytes_write(cache_path, data, mode=PRIVATE_FILE_MODE)
     except OSError as e:

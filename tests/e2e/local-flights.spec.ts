@@ -63,7 +63,6 @@ self.onmessage = async (event) => {
       years: metadata.available_years,
       flights: build.files.length,
       airports: airports.length,
-      center: config.MAP_CONFIG.center,
       bounds: config.MAP_CONFIG.bounds,
       files,
     },
