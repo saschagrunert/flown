@@ -37,17 +37,20 @@ knows may be a date (``find_possible_date_tokens``), which the check
 leaves to a person.
 
 Names lose more than that (``strip_dates``): a day and month without the
-year ("16 Aug", "16. Mai", "16.08.", "16. 8.", "26.08", "16.8", "16/08",
-"16-08", "16_08", "16.III.", "16-III", "16 III") and a calendar week without
-it ("KW33", "CW33", "Week 33", "Wk 33", "Woche 33", "33. KW"), which the
-year of the flight completes, six digits that are a date ("260816",
-"log_260816", "260816-1430"), a month and year ("03/2026", "03.2026",
-"2026/03", "08-2026", "2026_08", "2026.08", "VII/2026"), a season, quarter
-or half of a year with it ("Summer 2026", "Sommer 2026", "Q3 2026", "H2
+year ("16 Aug", "16. Mai", "augusztus 16.", "16.08.", "16. 8.", "26.08",
+"16.8", "16/08", "16-08", "16_08", "16.III.", "16-III", "16 III") and a
+calendar week without it ("KW33", "KW-33", "KW33/26", "KW 33-34", "CW33",
+"Week 33", "Wk 33", "Woche 33", "33. KW", "33. týden"), which the year of
+the flight completes, six digits that are a date ("260816", "log_260816",
+"260816-1430"), a month and year ("03/2026", "03.2026", "2026/03",
+"08-2026", "2026_08", "2026.08", "VII/2026"), an ordinal date ("2026.228",
+"2026228"), a season, quarter or half of a year with it ("Summer 2026",
+"Summer '26", "Sommer 2026", "été 2026", "Q3 2026", "Q3/26", "3Q26", "H2
 2026"), a weekday abbreviated next to a date or a time ("Sat 16 Aug", "Sa.,
-16.08.2026", "Sat16Aug", "Sat 14:30") and a time of day ("14:30", "1430Z",
-"0930z", "1430L", "1513h" as in a Charterware file name, "14h30", "14h",
-"14.30 Uhr", "3pm", "0930Z-1045Z", the time after a date as in
+16.08.2026", "Sat16Aug", "Sat 14:30", "sáb 16 ago") and a time of day
+("14:30", "1430Z", "0930z", "1430L", "1513h" as in a Charterware file name,
+"14h30", "14H30", "9h30", "14h", "14.30 Uhr", "3pm", "930am", "0930Z-1045Z",
+the time after a date as in
 20260816T1430, 20260816T14Z, 2026-08-16_1430, 2026-08-16-14-30,
 2026-08-16T14-30-00Z or "2026-08-16 14-30" but not "2026-08-16 07-25 RWY"
 or "2026-08-16 14-30 min", and a range such as "14.30-15.45 Uhr" or "14.30
@@ -92,12 +95,14 @@ from .date_words import (
     ROMAN_MONTHS,
     SEASONS,
     WEEKDAY_ABBREVIATIONS,
+    WEEKDAY_ABBREVIATIONS_OTHER,
     WEEKDAYS_ENGLISH,
     WEEKDAYS_GERMAN,
     WEEKDAYS_OTHER,
     WITH_A_DAY_AND_YEAR_MONTHS,
     WITH_A_DAY_MONTHS,
 )
+from .helpers import CODE_SEPARATOR, ROUTE_SEPARATOR
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -106,8 +111,6 @@ __all__ = [
     "CHARTERWARE_DATE_PATTERN",
     "EPOCH_PATTERN",
     "MAX_DAYS_AFTER_JAN_1",
-    "MONTHS_LONG",
-    "MONTHS_SHORT",
     "any_month_number",
     "charterware_datetime",
     "epoch_is_obfuscated",
@@ -161,8 +164,8 @@ _DAYS_AFTER_JAN_1 = "|".join(f"{day:02d}" for day in range(1, MAX_DAYS_AFTER_JAN
 # Czech, Slovak and Slovenian ("semaine 33", "semana 33", "settimana 33",
 # "tydzień 33", "týden 33", "týždeň 33", "teden 33")
 _WEEK_WORD = (
-    r"(?:(?i:[KC]W)\s?|(?i:week|wk\.?|kalenderwoche|woche|semaine|semana|settimana"
-    r"|tydzie[nń]|t[yý]den|t[yý][zž]de[nň]|teden)\s*)"
+    r"(?:(?i:[KC]W)[\s_-]?|(?i:week|wk\.?|kalenderwoche|woche|semaine|semana|settimana"
+    r"|tydzie[nń]|t[yý]den|t[yý][zž]de[nň]|teden|hét)\s*)"
 )
 # A day and a month of the numeric shapes, and a week of the year
 _DAY = r"(?:0?[1-9]|[12]\d|3[01])"
@@ -176,8 +179,11 @@ _HHMM = r"(?:[01]\d|2[0-3])[0-5]\d(?:[0-5]\d)?"
 # What stands between the day and the month of a date written with spaces
 _SPACED = r"(?:\s+(?:[./_-]\s*)?|[./_-]\s+)"
 # The first day of a range of days in German notation, which goes with the
-# date after it: the "16.-" of "16.-18.08.2026", which left "16" behind
-_DAYS_BEFORE_DOTTED = r"(?:(?:0?[1-9]|[12]\d|3[01])\.\s?-\s?)?"
+# date after it: the "16.-" of "16.-18.08.2026", which left "16" behind, and
+# the "16./" of "16./17.08.2026" and the "16. u. " of "16. u. 17. 8."
+_DAYS_BEFORE_DOTTED = (
+    r"(?:(?:0?[1-9]|[12]\d|3[01])\.\s?(?:[-/&+]|u\.|(?i:und|bis))\s?)?"
+)
 # The dashes a date is written with besides the hyphen: the hyphen and the
 # non-breaking hyphen of Unicode, the figure dash, the en dash, the minus
 # sign and the small and the fullwidth hyphen-minus. The patterns read them
@@ -257,26 +263,28 @@ def _numeric_patterns(skip_near_jan_first: bool) -> tuple[re.Pattern[str], ...]:
             + r"\d{1,2}(?P<sep>[./_-])\d{1,2}(?P=sep)\d{4}(?!\d|\.\d)"
         ),
         # The same with a two-digit year, not right after a letter: in
-        # "DA40_16_08" or "DA40-16-08-2026" the type ends in 40
+        # "DA40_16_08" or "DA40-16-08-2026" the type ends in 40; with an
+        # apostrophe before the year as well ("08/16/'26")
         re.compile(
             rf"(?<![^\W_]|\.){_DAYS_BEFORE_DOTTED}"
-            + unless(r"0?1(?P<skip>[./_-])0?1(?P=skip)\d{2}(?!\d|\.\d)")
-            + r"\d{1,2}(?P<sep>[./_-])\d{1,2}(?P=sep)\d{2}(?!\d|\.\d)"
+            + unless(r"0?1(?P<skip>[./_-])0?1(?P=skip)['\u2019]?\d{2}(?!\d|\.\d)")
+            + r"\d{1,2}(?P<sep>[./_-])\d{1,2}(?P=sep)['\u2019]?\d{2}(?!\d|\.\d)"
         ),
         # German with a space after a dot, as DIN 5008 writes it: "16. 8.
         # 26", "16. 8.2026" and "16.8. 2026" ("16. 8. 2026" is the spaced
         # shape below)
         re.compile(
-            r"(?<![^\W_]|\.)"
+            rf"(?<![^\W_]|\.){_DAYS_BEFORE_DOTTED}"
             + unless(r"0?1\.\s?0?1\.\s?(?:19|20)?\d{2}(?!\d|[.,]\d)")
             + rf"{_DAY}\.(?:\s{_MONTH}\.(?:\s?\d{{2}}|(?:19|20)\d{{2}})"
             + rf"|{_MONTH}\.\s(?:\d{{2}}|(?:19|20)\d{{2}}))(?!\d|[.,]\d)"
         ),
         # The same with spaces, "16 08 2026" and "16 - 08 - 2026": only a
         # real day and month, not both of one digit, and a year of this or
-        # the last century, since numbers in a row are anything as often
+        # the last century, since numbers in a row are anything as often;
+        # the first day of a range before it too ("16. - 18. 8. 2026")
         re.compile(
-            r"(?<![\w.])"
+            rf"(?<![\w.]){_DAYS_BEFORE_DOTTED}"
             + unless(r"0?1\s*[./_-]?\s*0?1\s*[./_-]?\s*\d")
             + rf"(?=(?:{_DAY}{_SPACED}{_MONTH}|{_MONTH}{_SPACED}{_DAY})(?!\d))"
             + r"(?!\d\D+\d(?!\d))"
@@ -389,8 +397,10 @@ _SEP_RE = r"[\s_.,/-]"
 # Only years of this and the last century: "Juli 7000" is a squawk, and in
 # "16-AUG-26 1430L" the time is no year
 _YEAR_RE = r"(?:19|20)\d{2}"
-# "16th of August" as well
+# "16th of August" as well, and "August the 16th" (with the ending of the
+# day only: "May the 2 of us" is no date)
 _OF_RE = rf"(?:(?i:of){_SEP_RE}+)?"
+_THE_RE = rf"(?:(?i:the){_SEP_RE}+(?=\d{{1,2}}(?i:st|nd|rd|th)))?"
 # What joins the first of a range of days or months to the next ("16-18
 # Aug 2026", "16./17. Mai", "Jul/Aug 2026", "July to August 2026"), which
 # goes with the date: the first would be left behind otherwise. No comma
@@ -419,8 +429,8 @@ _APOSTROPHE_YEAR = (
 _TEXT_MONTH = re.compile(
     rf"{_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_RE}){_SEP_RE}*{_OF_RE}"
     rf"(?P<month1>{_MONTH_RE}){_SEP_RE}*(?P<year1>{_YEAR_RE})(?!\d)|"
-    rf"(?<![A-Za-z])(?P<month2>{_MONTH_RE}){_SEP_RE}*(?P<day2>{_DAY_RE}){_DAYS_AFTER}"
-    rf"{_SEP_RE}*(?P<year2>{_YEAR_RE})(?!\d)|"
+    rf"(?<![A-Za-z])(?P<month2>{_MONTH_RE}){_SEP_RE}*{_THE_RE}(?P<day2>{_DAY_RE})"
+    rf"{_DAYS_AFTER}{_SEP_RE}*(?P<year2>{_YEAR_RE})(?!\d)|"
     rf"(?<![A-Za-z]){_MONTHS_BEFORE}(?P<month3>{_MONTH_RE})"
     rf"(?:{_SEP_RE}+(?P<year3>{_YEAR_RE})(?!\d)|{_APOSTROPHE_YEAR})|"
     # The year first, "2026-Aug-16" and "2026/Aug/16"
@@ -437,7 +447,7 @@ _TEXT_MONTH_WITHOUT_YEAR = re.compile(
     rf"{_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_RE}){_SEP_RE}*{_OF_RE}"
     rf"(?P<month1>{_MONTH_NAME_RE})"
     rf"(?![A-Za-z])(?:{_SEP_RE}?\d{{2}}(?![\d:]))?|"
-    rf"(?<![A-Za-z])(?P<month2>{_MONTH_NAME_RE}){_SEP_RE}*(?P<day2>{_DAY_RE})"
+    rf"(?<![A-Za-z])(?P<month2>{_MONTH_NAME_RE}){_SEP_RE}*{_THE_RE}(?P<day2>{_DAY_RE})"
     rf"{_DAYS_AFTER}(?![A-Za-z\d])"
 )
 # The same in German and the other languages that write the day first: a day
@@ -460,10 +470,22 @@ _WITH_A_DAY_AND_YEAR_MONTH = (
 )
 _DAY_FIRST_DAY = r"\d{1,2}(?:er)?"
 _DE = r"(?:(?i:de)\s+)?"
+# The month first, as Hungarian writes it without the year ("augusztus
+# 16.", with the ending of the day "augusztus 16-án") and some write the
+# others ("agosto 16", "agosto 16, 2026"). Without the year only a name of
+# five letters or more: "Mars 2" is a probe and "Juli 5" a name as often.
+_LONG_DAY_FIRST_MONTH = (
+    r"(?<![^\W\d_])(?:"
+    + _names_re([name for name in _DAY_FIRST_MONTH_NUMBERS if len(name) >= 5])
+    + r")(?![^\W\d_])"
+)
+_MONTH_FIRST_DAY = rf"(?P<day2>{_DAY})(?!\d)(?:\.|-(?:j?[áéae]n|[ae]i?|ig|t[óőoö]l))?"
 _TEXT_MONTH_DAY_FIRST = re.compile(
     rf"{_DAY_FIRST_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_FIRST_DAY}){_SEP_RE}*{_DE}"
     rf"(?P<month1>{_WITH_A_DAY_AND_YEAR_MONTH}){_SEP_RE}*{_DE}"
     rf"(?P<year1>{_YEAR_RE})(?!\d)|"
+    rf"(?<![^\W\d_])(?P<month2>{_DAY_FIRST_MONTH})\s+{_MONTH_FIRST_DAY},?\s+"
+    rf"(?P<year2>{_YEAR_RE})(?!\d)|"
     rf"(?<![^\W\d_]){_MONTHS_BEFORE}(?P<month3>{_DAY_FIRST_MONTH})"
     rf"(?:{_SEP_RE}+{_DE}(?P<year3>{_YEAR_RE})(?!\d)|{_APOSTROPHE_YEAR})|"
     rf"(?<![\w.])(?P<year4>{_YEAR_RE})\.?\s+(?P<month4>{_DAY_FIRST_MONTH})\s+"
@@ -471,7 +493,8 @@ _TEXT_MONTH_DAY_FIRST = re.compile(
 )
 _TEXT_MONTH_DAY_FIRST_WITHOUT_YEAR = re.compile(
     rf"{_DAY_FIRST_DAY_START}{_DAYS_BEFORE}(?P<day1>{_DAY_FIRST_DAY}){_SEP_RE}*{_DE}"
-    rf"(?P<month1>{_WITH_A_DAY_MONTH})(?:{_SEP_RE}?\d{{2}}(?![\d:]))?"
+    rf"(?P<month1>{_WITH_A_DAY_MONTH})(?:{_SEP_RE}?\d{{2}}(?![\d:]))?|"
+    rf"(?P<month2>{_LONG_DAY_FIRST_MONTH})\s+{_MONTH_FIRST_DAY}(?![^\W_]|[.,:]?\d)"
 )
 # A day, a month name and a two-digit year: "16 Aug 26", "16-AUG-26",
 # "16AUG26" (the aviation form) and "16. Mai 26". The separators after the
@@ -612,21 +635,43 @@ _MONTH_YEAR = re.compile(
     r"(?<![^\W_]|[./-])(?P<year_first>(?:19|20)\d{2})(?P<sep>[._])(?:0[1-9]|1[0-2])"
     r"(?![^\W_]|[./-]|,\d)"
 )
+# An ordinal date with a dot or with nothing between the year and the day,
+# "2026.228" and "2026228" (2026-228 is one of the numeric shapes above),
+# which only names hold as often: in a coordinate "2026.228" is a height.
+# The dot not after a word that names a version (see _ordinal_spans).
+_ORDINAL_DATE = re.compile(
+    r"(?<![^\W_]|[./-])(?:19|20)\d{2}(?P<sep>\.?)"
+    r"(?P<day>00[1-9]|0[1-9]\d|[12]\d\d|3[0-5]\d|36[0-6])(?![^\W_]|[./-]?\d|,\d)"
+)
 # A season, a quarter or a half of a year with its year: "Summer 2026",
-# "summer of 2026", "Sommer 2026", "Frühjahr 2026", "Winter 2025/26", "Q3
-# 2026", "Q3/2026", "2026 Q3", "2026-Q3" and "H2 2026". Without the year
-# they stay: a "Summer camp" or the "Q3" of a code is no date.
-_SEASON_RE = "(?i:" + "|".join(sorted(SEASONS, key=len, reverse=True)) + ")"
+# "summer of 2026", "summer2026", "Summer '26", "Sommer26", "Sommer 2026",
+# "Spätsommer 2026", "Frühjahr 2026", "Winter 2025/26", "été 2026", "Q3
+# 2026", "Q3/2026", "Q3/26", "Q3-26", "2026 Q3", "2026-Q3", "3Q26", "H2
+# 2026", "H2/26", "2H/26" and "1H 2026". Without the year they stay: a
+# "Summer camp" or the "Q3" of a code is no date. A two-digit year goes
+# only with an apostrophe or a slash or a hyphen before it, or right after
+# a season or a quarter ("Sommer26", "3Q26"): "Summer 26 kt" is a wind,
+# "H125" a helicopter and "2H26" two hours and 26 minutes, as "1H30" is.
+_SEASON_RE = (
+    "(?i:(?:früh|frueh|spät|spaet|hoch)?(?:"
+    + "|".join(sorted(SEASONS, key=len, reverse=True))
+    + "))"
+)
 _PART_OF_YEAR = r"(?:(?i:q)[1-4]|H[12])"
+_QUARTER_FIRST = r"[1-4](?i:q)"
 _AFTER_A_YEAR = r"(?![^\W_]|[/-]|[.,]\d)"
 _SEASON_YEAR = re.compile(
-    rf"(?<![^\W\d_]){_SEASON_RE}[\s_/-]+(?:(?i:of)\s+)?{_YEAR_RE}"
-    rf"(?:/(?:\d{{2}}){{1,2}})?{_AFTER_A_YEAR}|"
-    rf"(?<![^\W_]){_PART_OF_YEAR}[\s_/'-]+{_YEAR_RE}{_AFTER_A_YEAR}|"
+    rf"(?<![^\W\d_]){_SEASON_RE}(?:[\s_/-]*(?:(?i:of)\s+)?{_YEAR_RE}"
+    rf"(?:/(?:\d{{2}}){{1,2}})?|\s?['\u2018\u2019]\d{{2}}|\d{{2}}){_AFTER_A_YEAR}|"
+    rf"(?<![^\W_]){_PART_OF_YEAR}(?:[\s_/'-]+{_YEAR_RE}|[/'-]\d{{2}}){_AFTER_A_YEAR}|"
+    rf"(?<![^\W_]|[./-])(?:{_QUARTER_FIRST}(?:[\s_/'-]*{_YEAR_RE}|[/'-]?\d{{2}})"
+    rf"|[12]H(?:[\s_/'-]*{_YEAR_RE}|[/'-]\d{{2}})){_AFTER_A_YEAR}|"
     rf"(?<![^\W_]|[./-]){_YEAR_RE}[\s_/-]?{_PART_OF_YEAR}(?![^\W_])"
 )
 # The first quarter and half, and the winter, hold January 1st
-_SEASON_NEAR_JAN_FIRST = re.compile(r"(?i:winter|[qh]1(?!\d))")
+_SEASON_NEAR_JAN_FIRST = re.compile(
+    r"(?i:winter|hiver|invierno|inverno|zima|[qh]1(?!\d)|(?<!\d)1[qh])"
+)
 
 
 def _month_year_spans(text: str) -> list[tuple[int, int]]:
@@ -638,6 +683,15 @@ def _month_year_spans(text: str) -> list[tuple[int, int]]:
         match.span()
         for match in _MONTH_YEAR.finditer(text)
         if match["sep"] != "." or not _VERSION_WORD.search(text, 0, match.start())
+    ]
+
+
+def _ordinal_spans(text: str) -> list[tuple[int, int]]:
+    """The ordinal dates of ``_ORDINAL_DATE``, but no version numbers."""
+    return [
+        match.span()
+        for match in _ORDINAL_DATE.finditer(text)
+        if not match["sep"] or not _VERSION_WORD.search(text, 0, match.start())
     ]
 
 
@@ -681,13 +735,14 @@ _TIME_OF_DAY = re.compile(
     rf"(?:{_OFFSET}|\s*{_ZONE_NAME}(?![A-Za-z])|{_HOURS}(?![A-Za-z]))?"
     r"(?![\d:])"
 )
-# The French and German forms: "14h30" and "14.30" with the hours or the
-# "L" of the local time ("14.30h", "14.30 hrs", "14.30L"; two digits for
-# the hour, "1h30" and "1.30 hrs" are durations), either with a zone
-# ("14h30Z", "9h30 UTC", "14.30Z", "9.30 CET"), anything with "Uhr" ("14.30
-# Uhr", "1430 Uhr", "14 Uhr"), the hour alone with its "h" ("14h", "14 h";
-# two digits as well, and in lowercase: "21H" is an airport in the US), and
-# the English "3pm", "3 p.m.", "10 AM" and
+# The French and German forms: "14h30" (and "14H30") and "14.30" with the
+# hours or the "L" of the local time ("14.30h", "14.30 hrs", "14.30L"; two
+# digits for the hour, or one from 4 on as in "9h30": "1h30" and "1.30 hrs"
+# are durations), either with a zone ("14h30Z", "9h30 UTC", "14.30Z", "9.30
+# CET"), anything with "Uhr" ("14.30 Uhr", "1430 Uhr", "14 Uhr"), the hour
+# alone with its "h" ("14h", "14 h"; two digits as well, and in lowercase:
+# "21H" is an airport in the US), and the English "3pm", "3 p.m.", "10 AM",
+# "930am", "0930a" (four digits for the letter alone) and
 # "11.30am" ("3 am" is German for "3 at the", while "10 AM" in capitals is
 # the time, and so is a German "2 AM RHEIN" written in capitals, which
 # cannot be told from one). After a hyphen it is a type or a registration
@@ -695,14 +750,14 @@ _TIME_OF_DAY = re.compile(
 # the end of a range ("10am-12pm", "10 AM-12 PM", "9 a.m.-5 p.m."), and a
 # lowercase "am" at either end of one is the time as well ("10 am-12 pm").
 # An underscore may stand before them, as in a file name ("1_DEHYL_14h30").
-# An hour of the clock with a half of the day ("3", "11.30")
-_HOUR_12 = r"(?:1[0-2]|0?[1-9])(?:\.[0-5]\d)?"
+# An hour of the clock with a half of the day ("3", "11.30", "930")
+_HOUR_12 = r"(?:1[0-2]|0?[1-9])(?:\.?[0-5]\d)?"
 # A hyphen with a time before it ("10am-", "9 a.m.-"), which makes the time
 # after it the end of a range rather than part of a name ("Mi-8AM")
 _AFTER_A_TIME = r"(?:(?<=[AaPp][Mm]-)|(?<=[AaPp]\.[Mm]\.-))"
 _NOT_AFTER_A_NAME = rf"(?:(?<!-)|{_AFTER_A_TIME})"
 # What ends a range after a time ("-12 pm", "-1:15pm")
-_RANGE_END = r"-(?:1[0-2]|0?[1-9])(?:[.:][0-5]\d)?\s?(?i:[ap]\.?m)"
+_RANGE_END = r"-(?:1[0-2]|0?[1-9])(?:[.:]?[0-5]\d)?\s?(?i:[ap]\.?m)"
 # A range of times with a dot ("14.30-15.45 Uhr", "14.30-15.45Z", "9-11
 # Uhr", "14.30 bis 15.45 Uhr", "14.30 to 15.45Z") goes whole when its end
 # makes it one, as "0930Z-1045Z" does: "14.30" alone stays, and taking out
@@ -718,8 +773,10 @@ _TIME_RANGE_WORDS = (
 _TIME_OF_DAY_WORDS = re.compile(
     r"(?<![^\W_]|[.:])"
     rf"(?:{_TIME_RANGE_WORDS}|"
-    rf"(?:[01]?\d|2[0-3])[h.][0-5]\d\s*{_ZONE_NAME}(?![A-Za-z])|"
-    rf"(?:[01]\d|2[0-3])(?:h[0-5]\d|\.[0-5]\d(?:L|{_HOURS})(?![A-Za-z]))|"
+    rf"(?:[01]?\d|2[0-3])[hH.][0-5]\d\s*{_ZONE_NAME}(?![A-Za-z])|"
+    rf"(?:[01]\d|2[0-3])(?:[hH][0-5]\d|\.[0-5]\d(?:L|{_HOURS})(?![A-Za-z]))|"
+    r"[4-9][hH][0-5]\d|"
+    rf"{_NOT_AFTER_A_NAME}(?:1[0-2]|0[1-9])[0-5]\d[ap]|"
     r"(?:[01]?\d|2[0-3])(?:[.:]?[0-5]\d)?\s*Uhr|"
     rf"{_NOT_AFTER_A_NAME}{_HOUR_12}(?i:p\.?m\.?|a\.m\.|am)|"
     rf"{_NOT_AFTER_A_NAME}{_HOUR_12}(?:\s(?i:p\.?m\.?|a\.m\.)|\sA\.?M\.?)|"
@@ -728,33 +785,40 @@ _TIME_OF_DAY_WORDS = re.compile(
     r"(?:[01]\d|2[0-3])\s?h)"
     r"(?![^\W_])"
 )
-# A calendar week without the year, "KW33", "CW33", "Week 33" and "Wk 33", which the
-# year of the flight completes ("Week 3" of a course goes as well), and the
-# German order with the number first, "33. KW" and "33. Woche" (only with
-# the dot: "50 KW" is the power of an engine). "W33" alone stays: it is the
-# code of an airport in the US as often.
+# A calendar week without the year, "KW33", "KW-33", "KW_33", "CW33", "Week
+# 33" and "Wk 33", which the year of the flight completes ("Week 3" of a
+# course goes as well), with a range of weeks or a two-digit year after it
+# ("KW 33-34", "KW33/26"), and the order with the number first of German,
+# Czech, Slovak, Polish, Slovenian and Hungarian, "33. KW", "33. Woche", "33.
+# týden" and "33. hét" (only with the dot: "50 KW" is the power of an
+# engine). "W33" alone stays: it is the code of an airport in the US as
+# often.
 _WEEK_ONLY = re.compile(
-    rf"(?<![A-Za-z\d]){_WEEK_WORD}{_WEEK}(?![\w])|"
-    rf"(?<![\w.]){_WEEK}\.\s?(?:KW|(?i:kalenderwoche|woche))(?![^\W\d_])"
+    rf"(?<![A-Za-z\d]){_WEEK_WORD}{_WEEK}(?:\s?[/&+-]\s?\d{{1,2}}(?!\d))?(?![\w])|"
+    rf"(?<![\w.]){_WEEK}\.\s?(?:KW|(?i:kalenderwoche|woche|h[ée]t|t[yý]den"
+    r"|t[yý][zž]de[nň]|tydzie[nń]|teden))(?![^\W\d_])"
 )
-# "KW05" is an airport in the US as well (Gettysburg), where a route side
-# starts: at the start of a route name or after its separator, or at the
+# Some of the weeks are airports in the US as well, by their code in
+# OurAirports or the code a GPS knows them by (KW05 is Gettysburg): those
+# below, and where a route side starts with one, at the start of a route
+# name or after its separator, with an airport code on the other side
+# ("KW05 - EDDF", "EDDF to KW05", "KW05 Gettysburg - KW22 Upshur"), or at the
 # start of a name that says it is an airport. The separators are those of
-# airport_lookup: a dash (or an en or em dash), an arrow or a "to" in any
-# case between spaces, and between two codes, of which one is all letters
-# (so that "KW33-KW34" stays a range of weeks), a dash, an arrow or a slash
-# without them ("KW05-EDDF", "EDDF/KW05")
-_AIRPORT_KW = re.compile(r"KW\d{2}")
-_SPACED_SEPARATOR = r"\s+(?:->|[-\u2013\u2014>]|(?i:to))\s+"
-_CODE_SEPARATOR = r"\s*(?:->|[-\u2013\u2014>/])\s*"
+# airport_lookup (helpers.ROUTE_SEPARATOR), and between two codes, of which
+# one is all letters (so that "KW33-KW34" stays a range of weeks), a dash,
+# an arrow or a slash without spaces ("KW05-EDDF", "EDDF/KW05"). Any other
+# week goes, a route side or not ("Trip - KW33", "EDDS-KW33").
+_AIRPORT_KW = frozenset(
+    f"KW{week:02d}" for week in (1, 3, 5, 11, 19, 22, 28, 31, 35, 38, 40, 41, 43, 45)
+)
 _ROUTE_SEPARATOR = re.compile(
-    rf"{_SPACED_SEPARATOR}|"
-    rf"(?<=\b[A-Z]{{4}}){_CODE_SEPARATOR}(?=[A-Z][A-Z\d]{{3}}\b)|"
-    rf"(?<=\b[A-Z][A-Z\d]{{3}}){_CODE_SEPARATOR}(?=[A-Z]{{4}}\b)"
+    rf"{ROUTE_SEPARATOR}|"
+    rf"(?<=\b[A-Z]{{4}}){CODE_SEPARATOR}(?=[A-Z][A-Z\d]{{3}}\b)|"
+    rf"(?<=\b[A-Z][A-Z\d]{{3}}){CODE_SEPARATOR}(?=[A-Z]{{4}}\b)"
 )
-_SIDE_START = re.compile(
-    rf"(?:{_SPACED_SEPARATOR}|(?<=\b[A-Z]{{4}}){_CODE_SEPARATOR})\Z"
-)
+_SIDE_START = re.compile(rf"(?:{ROUTE_SEPARATOR}|(?<=\b[A-Z]{{4}}){CODE_SEPARATOR})\Z")
+# The code of an airport at the start of the other side of a route
+_CODE_AT_START = re.compile(r"[A-Z][A-Z\d]{3}\b")
 _AIRPORT_WORD = re.compile(r"\b(?:Airport|Airfield|Airpark|Field|Strip|Heliport)\b")
 
 
@@ -775,16 +839,30 @@ def _six_digit_spans(text: str) -> list[tuple[int, int]]:
 
 def _week_only_spans(text: str) -> list[tuple[int, int]]:
     """The calendar weeks without a year (``_WEEK_ONLY``), no airport codes."""
-    spans = []
-    for match in _WEEK_ONLY.finditer(text):
-        if _AIRPORT_KW.fullmatch(match.group(0)):
-            before = text[: match.start()]
-            starts_side = not before.strip() or _SIDE_START.search(before)
-            is_route = _ROUTE_SEPARATOR.search(text) is not None
-            if starts_side and (is_route or _AIRPORT_WORD.search(text)):
-                continue
-        spans.append(match.span())
-    return spans
+    return [
+        match.span()
+        for match in _WEEK_ONLY.finditer(text)
+        if not (match.group(0) in _AIRPORT_KW and _is_airport(text, match))
+    ]
+
+
+def _is_airport(text: str, match: re.Match[str]) -> bool:
+    """Whether a week of ``_AIRPORT_KW`` is the airport (see there)."""
+    before = text[: match.start()]
+    if not before.strip():
+        separator = _ROUTE_SEPARATOR.search(text, match.end())
+        if separator is None:
+            return _AIRPORT_WORD.search(text) is not None
+        return _starts_with_code(text[separator.end() :])
+    return _SIDE_START.search(before) is not None and _starts_with_code(text)
+
+
+def _starts_with_code(text: str) -> bool:
+    """Whether a text starts with an airport code, which no week is."""
+    code = _CODE_AT_START.match(text)
+    return code is not None and (
+        code.group(0) in _AIRPORT_KW or not _WEEK_ONLY.fullmatch(code.group(0))
+    )
 
 
 # A time of day without a colon: "1430Z" (and "1430z"), "1430 UTC", "1430
@@ -907,16 +985,26 @@ _HOLIDAY = re.compile(
 # The abbreviations are words, codes and types of their own: "Sun" and
 # "Sat" are words, SAT and THU airports (IATA), "Do 27" a Dornier and "Mo"
 # a name. They only go right before a date or a time ("Sat 16 Aug 2026",
-# "Sa., 16.08.2026", "Sat 14:30") or after a date in brackets or at the end
-# of a name ("16.08.2026 (Sa)", "2026-08-16 Sat"); not after a letter or a
-# hyphen, as in the registrations D-EFRI and OE-SAT. Next to a time the
-# airport code goes as well ("KAUS to SAT 14:30" keeps "KAUS to"): it
-# cannot be told from a weekday there, and a weekday with a time is a leak.
+# "Sa., 16.08.2026", "Sat 14:30", "sáb 16 ago") or after a date in brackets
+# or at the end of a name ("16.08.2026 (Sa)", "2026-08-16 Sat", "16.08.2026
+# (sam.)"); not after a letter or a hyphen, as in the registrations D-EFRI
+# and OE-SAT. Next to a time the airport code goes as well ("KAUS to SAT
+# 14:30" keeps "KAUS to"): it cannot be told from a weekday there, and a
+# weekday with a time is a leak. Those of English and German in capitals
+# or with one, those of the other languages in lowercase or with one: in
+# capitals they are the codes of airports (VIE, TER, LUN, SAB), states and
+# countries (MA, ND, UT, ZA) as often, and "SZG - VIE 16.08.2026" kept no
+# arrival.
 _WEEKDAY_ABBREVIATION = (
     "(?:"
     + "|".join(
         sorted(
-            {form for name in WEEKDAY_ABBREVIATIONS for form in (name, name.upper())},
+            {form for name in WEEKDAY_ABBREVIATIONS for form in (name, name.upper())}
+            | {
+                form
+                for name in WEEKDAY_ABBREVIATIONS_OTHER
+                for form in (name, name.capitalize())
+            },
             key=len,
             reverse=True,
         )
@@ -934,7 +1022,7 @@ _WEEKDAY_AFTER_DATE = re.compile(
 )
 # What is left around a removed date: separators at either end, a separator
 # that now stands next to another one, and empty brackets
-_EDGE_SEPARATORS = re.compile(r"^[\s\-_,.:;/|]+|[\s\-_,.:;/|]+$")
+_EDGE_SEPARATORS = re.compile(r"^[\s\-_,.:;/|>\u2192]+|[\s\-_,.:;/|>\u2192]+$")
 _DOUBLE_SEPARATORS = re.compile(r"\s*([-_,;/|])(?:\s*[-_,;/|])+\s*")
 _EMPTY_BRACKETS = re.compile(r"\(\s*\)|\[\s*\]")
 _SPACES = re.compile(r"\s+")
@@ -1275,9 +1363,14 @@ def _partial_near_jan_first(kind: str, text: str) -> bool:
     if kind == "slashed":
         return numbers[:2] == [1, 1]
     if kind == "week":
-        return numbers[-1] == 1
+        # Of the first week, and so is a two-digit year after it ("KW01/26"),
+        # but not a range of weeks ("KW01-02")
+        week, *rest = numbers
+        return week == 1 and ("/" in text or all(number == 1 for number in rest))
     if kind == "season":
         return _SEASON_NEAR_JAN_FIRST.search(text) is not None
+    if kind == "ordinal":
+        return int(text[-3:]) <= 1 + MAX_DAYS_AFTER_JAN_1
     if kind == "six":
         digits = "".join(str(number) for number in numbers).zfill(6)
         return near_jan_first(int(digits[2:4]), int(digits[4:])) or near_jan_first(
@@ -1291,8 +1384,9 @@ def _partial_date_spans(text: str, skip_near_jan_first: bool) -> list[tuple[int,
     """The parts of dates that ``strip_dates`` takes out besides the dates.
 
     A day and a month without the year, a calendar week without it, six
-    digits that are a date, a month with its year and a season, quarter or
-    half of a year with it, found in ``text``
+    digits that are a date, a month with its year, an ordinal date with a
+    dot or without a separator and a season, quarter or half of a year with
+    it, found in ``text``
     (whose dashes are hyphens) once its dates are out. With
     ``skip_near_jan_first`` those of January 1st are left out.
     """
@@ -1318,6 +1412,7 @@ def _partial_date_spans(text: str, skip_near_jan_first: bool) -> list[tuple[int,
         ("week", _week_only_spans(rest)),
         ("six", _six_digit_spans(rest)),
         ("month", _month_year_spans(rest)),
+        ("ordinal", _ordinal_spans(rest)),
         ("season", _season_spans(rest)),
     ):
         spans.extend(
@@ -1468,13 +1563,16 @@ def find_possible_date_tokens(text: str) -> list[str]:
     ]
 
 
-def find_time_tokens(text: str) -> list[str]:
+def find_time_tokens(text: str, *, skip_midnight: bool = False) -> list[str]:
     """The times of day of a text, those ``strip_dates`` takes out.
 
     The obfuscator's check reports them in file names, which it keeps free
     of the time of a flight as it does of the date (the time of a
     Charterware name becomes a sequence number), and in the content of a
     file without its timestamps, which start every flight at midnight.
+    With ``skip_midnight`` midnight is left out ("00:00:00 UTC",
+    "12:00AM"): the time every obfuscated flight starts at, which a commit
+    message that speaks of the obfuscation names.
     """
     plain, positions = _plain(text)
     if positions is not None:
@@ -1492,7 +1590,25 @@ def find_time_tokens(text: str) -> list[str]:
         for pattern in (_TIME_OF_DAY, _TIME_OF_DAY_WORDS, _COMPACT_TIME)
         for match in pattern.finditer(rest)
     )
+    if skip_midnight:
+        return [token for token in found if not _is_midnight(token)]
     return found
+
+
+# The half of the day after a time, of which "12" is midnight in the first
+_BEFORE_NOON = re.compile(r"(?i:a\.?m)")
+
+
+def _is_midnight(token: str) -> bool:
+    """Whether a time of ``find_time_tokens`` is midnight ("T00:00Z", "12am").
+
+    Every digit of it is a zero, but for the 12 of a time before noon, an
+    offset from UTC as well: "00:00 +02:00" is no midnight UTC.
+    """
+    digits = "".join(re.findall(r"\d", token))
+    if digits.startswith("12") and _BEFORE_NOON.search(token):
+        digits = "0" + digits[2:]
+    return bool(digits) and set(digits) == {"0"}
 
 
 def strip_dates(text: str | None) -> str | None:
@@ -1545,6 +1661,7 @@ def _stripped_once(text: str | None) -> str | None:
         and not _week_only_spans(plain)
         and not _six_digit_spans(plain)
         and not _month_year_spans(plain)
+        and not _ordinal_spans(plain)
         and not _season_spans(plain)
         and not _TIME_OF_DAY.search(plain)
         and not _TIME_OF_DAY_WORDS.search(plain)
@@ -1586,6 +1703,7 @@ def _stripped_once(text: str | None) -> str | None:
                 )
                 + _six_digit_spans(stripped)
                 + _month_year_spans(stripped)
+                + _ordinal_spans(stripped)
                 + _season_spans(stripped),
             )
             + [match.span() for match in _TIME_OF_DAY.finditer(stripped)]

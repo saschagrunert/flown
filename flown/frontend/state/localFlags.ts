@@ -36,17 +36,22 @@ export function flightsKey(
   return keyedToPage(local ? `${base}:local` : base, pathname);
 }
 
+// The names below are made by calls marked pure: the build worker
+// (services/localWorker.ts), which takes localCacheDbName from here, kept
+// them all otherwise
 /** Where the page saves its state (ui/stateManager.ts) */
 export const STATE_KEY = "flown-state";
 /** The state saved for the visitor's flights, which Remove all lets go */
-export const LOCAL_STATE_KEY = flightsKey(STATE_KEY, true);
+export const LOCAL_STATE_KEY = /* @__PURE__ */ flightsKey(STATE_KEY, true);
 
 /** Set while the page shows the visitor's flights rather than the site's */
-export const LOCAL_FLIGHTS_KEY = keyedToPage("flown-local-flights");
+export const LOCAL_FLIGHTS_KEY = /* @__PURE__ */ keyedToPage(
+  "flown-local-flights",
+);
 /** Set across the reload that switches the flights, so the panel reopens */
-export const REOPEN_KEY = keyedToPage("flown-local-reopen");
+export const REOPEN_KEY = /* @__PURE__ */ keyedToPage("flown-local-reopen");
 /** The IndexedDB database of the files and the dataset (localStore.ts) */
-export const LOCAL_DB_NAME = keyedToPage("flown-local");
+export const LOCAL_DB_NAME = /* @__PURE__ */ keyedToPage("flown-local");
 /**
  * The worker's cache directory, mounted on IndexedDB under this name
  * (services/localWorker.ts): the airport database, the elevation tiles and

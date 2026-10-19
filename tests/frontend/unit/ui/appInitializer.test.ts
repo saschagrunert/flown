@@ -30,6 +30,7 @@ const toastMock = vi.hoisted(() => ({
   showToast: vi.fn(),
   announceStatus: vi.fn(),
   dismissToast: vi.fn(),
+  RELOAD_ACTION: { label: "Reload", run: vi.fn() },
 }));
 vi.mock("../../../../flown/frontend/utils/toast", () => toastMock);
 
@@ -1012,6 +1013,43 @@ describe("appInitializer", () => {
         expect(app.dataManager.dismissFailures).toHaveBeenCalled();
         expect(toastMock.dismissToast).not.toHaveBeenCalled();
         await vi.waitFor(() => expect(panel.hidden).toBe(true));
+      });
+
+      it("reloads the page from there when the site was published again", async () => {
+        const button = document.getElementById("map-empty-retry")!;
+        button.innerHTML = '<span class="control-label">Retry</span>';
+        app.dataManager.loadData.mockImplementation(() => {
+          app.dataManager.failureNote!(
+            "Could not load the flights of 2025. Reload the page to update it.",
+            toastMock.RELOAD_ACTION,
+          );
+          return Promise.resolve(null);
+        });
+        await loadInitialData(asMapApp(app));
+        const loadShownYear = vi.spyOn(filterManager, "loadShownYear");
+
+        // A Retry would fetch the same out-of-date files again
+        expect(button.textContent).toBe("Reload");
+        expect(button.getAttribute("aria-label")).toBe("Reload");
+        button.click();
+        expect(toastMock.RELOAD_ACTION.run).toHaveBeenCalledOnce();
+        expect(loadShownYear).not.toHaveBeenCalled();
+      });
+
+      it("keeps its Retry for any other failure", async () => {
+        const button = document.getElementById("map-empty-retry")!;
+        button.innerHTML = '<span class="control-label">Retry</span>';
+        app.dataManager.loadData.mockImplementation(() => {
+          app.dataManager.failureNote!("Could not load the flights of 2025", {
+            label: "Retry",
+            run: vi.fn(),
+          });
+          return Promise.resolve(null);
+        });
+        await loadInitialData(asMapApp(app));
+
+        expect(button.textContent).toBe("Retry");
+        expect(button.hasAttribute("aria-label")).toBe(false);
       });
 
       it("offers no second Retry on the toast of the failure", async () => {

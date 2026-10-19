@@ -1,8 +1,8 @@
 /* The phone's sheet (ui/mobileSheet.ts), which the tabs of its bar open:
    Layers, Filter and More. Fetched with phone.bundle.js, which brings the
    bar and the sheet, as search.css is with its bundle (see the header of
-   styles.css). The bar itself is styled there: the columns give way to it
-   by its rules, and it is never built where they are shown.
+   styles.css). The bar itself is laid out there, as the columns give way
+   to it by its rules, and its tabs are styled here.
 
    The dependency runs one way, as for the other lazily fetched sheets: this
    file may use the tokens styles.css defines, and nothing in styles.css may
@@ -33,6 +33,53 @@
 }
 
 @media (max-width: 767.98px), (max-height: 480px) {
+  /* The tabs of the bottom bar */
+  .mobile-tab {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    min-height: var(--mobile-bar-h);
+    min-width: 44px;
+    padding: var(--space-sm) var(--space-xs);
+    background: transparent;
+    border: none;
+    -webkit-appearance: none;
+    appearance: none;
+    box-shadow: none;
+    color: var(--color-text-muted);
+    /* The scale bottoms out at 12px; nothing in the UI reads smaller, only
+       the fine print (--text-fine) */
+    font-size: var(--text-sm);
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-sizing: border-box;
+    transition: color var(--duration-fast) ease;
+  }
+  .mobile-tab .icon {
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+  }
+  .mobile-tab:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: -2px;
+  }
+  .mobile-tab.active {
+    color: var(--color-accent-blue);
+  }
+  .mobile-tab[aria-disabled="true"] {
+    opacity: 0.5;
+    color: var(--color-text-dim);
+  }
+
+  .mobile-tab-label {
+    line-height: 1;
+  }
+
   /* Scrim behind the sheet; both sit below the bar so the tabs stay tappable */
   .sheet-scrim {
     position: fixed;
@@ -314,6 +361,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mobile-tab,
   .sheet-scrim,
   .sheet-row,
   .sheet-switch,
@@ -339,6 +387,9 @@
 }
 
 @media (forced-colors: active) {
+  .mobile-tab.active {
+    color: Highlight;
+  }
   /* Forced colours drop a gradient background, which left the chips as
      empty outlines: they are the colour key, so they keep their own
      colours, framed by the system's text colour (as styles.css does for

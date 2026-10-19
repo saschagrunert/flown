@@ -18,6 +18,7 @@ import {
   type Map as MockMap,
 } from "../../../mocks/maplibre-gl";
 import {
+  loadExtras,
   loadFeatures,
   loadPhone,
   loadWrapped,
@@ -27,7 +28,10 @@ import {
   MOBILE_BAR_UNAVAILABLE_MESSAGE,
 } from "../../../../flown/frontend/ui/lazyBundles";
 import * as motion from "../../../../flown/frontend/utils/motion";
-import { INPUT_EVENTS } from "../../../../flown/frontend/utils/constants";
+import {
+  INPUT_EVENTS,
+  PICK_INTENT_MS,
+} from "../../../../flown/frontend/utils/constants";
 import * as toast from "../../../../flown/frontend/utils/toast";
 
 // The instances the mocked manager constructors hand out live in the setup
@@ -1296,7 +1300,33 @@ describe("MapApp.initialize", () => {
       expect(mockWrappedManagerInstance.destroy).not.toHaveBeenCalled();
     });
 
-    it("gets Wrapped's intro ready as its button is pointed at or focused, unless motion is unwelcome", async () => {
+    /** A pointer of `pointerType` coming onto `element`, or leaving it */
+    const point = (
+      element: Element,
+      pointerType = "mouse",
+      type = "pointerenter",
+    ): void => {
+      element.dispatchEvent(new PointerEvent(type, { pointerType }));
+    };
+
+    /**
+     * Whether a focus is the keyboard's, as :focus-visible says, which
+     * jsdom works out from the events before it
+     */
+    const keyboardFocus = (visible: boolean): void => {
+      const matches = Element.prototype.matches;
+      vi.spyOn(Element.prototype, "matches").mockImplementation(function (
+        this: Element,
+        selector: string,
+      ) {
+        return selector === ":focus-visible"
+          ? visible
+          : matches.call(this, selector);
+      });
+    };
+
+    it("gets Wrapped's intro ready as its button is pointed at for a moment or focused, unless motion is unwelcome", async () => {
+      vi.useFakeTimers();
       const prepareWrappedIntro = vi.fn();
       const bundle = { prepareWrappedIntro } as never;
       vi.mocked(loadWrapped)
@@ -1306,45 +1336,133 @@ describe("MapApp.initialize", () => {
       button.id = "wrapped-btn";
       const other = document.createElement("button");
       document.body.append(button, other);
+      keyboardFocus(true);
       await initializeApp(app);
 
-      button.dispatchEvent(new Event("pointerenter"));
+      point(button);
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS - 1);
+      expect(loadWrapped).not.toHaveBeenCalled();
+      // Once the page has a moment after that
+      await vi.waitFor(() =>
+        expect(prepareWrappedIntro).toHaveBeenCalledExactlyOnceWith(app),
+      );
+      // The keyboard's focus at once
       button.focus();
-      other.dispatchEvent(new Event("pointerenter"));
+      point(other);
       await vi.waitFor(() =>
         expect(prepareWrappedIntro).toHaveBeenCalledTimes(2),
       );
-      expect(prepareWrappedIntro).toHaveBeenCalledWith(app);
 
       // No intro plays under reduced motion, so nothing is fetched for it
       vi.mocked(loadWrapped).mockClear();
       const reduced = vi
         .spyOn(motion, "prefersReducedMotion")
         .mockReturnValue(true);
-      button.dispatchEvent(new Event("pointerenter"));
+      point(button);
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
       reduced.mockRestore();
       expect(loadWrapped).not.toHaveBeenCalled();
     });
 
-    it("fetches the feature bundle as a control that needs it, or a flight's row, is pointed at or focused", async () => {
+    it("fetches the feature bundle as a control that needs it, or a flight's row, is pointed at for a moment or focused", async () => {
+      vi.useFakeTimers();
       const replay = document.createElement("button");
       replay.id = "replay-btn";
       const row = document.createElement("button");
       row.className = "flight-btn";
       const other = document.createElement("button");
       other.id = "heatmap-btn";
-      document.body.append(replay, row, other);
+      const held = document.createElement("button");
+      held.id = "hotspot-tour-btn";
+      held.setAttribute("aria-disabled", "true");
+      // A row of the phone's sheet stands for the button it names
+      const sheetRow = document.createElement("button");
+      sheetRow.dataset["row"] = "cross-section";
+      document.body.append(replay, row, other, held, sheetRow);
+      keyboardFocus(true);
       await initializeApp(app);
       vi.mocked(loadFeatures).mockClear();
 
-      other.dispatchEvent(new Event("pointerenter"));
+      point(other);
       other.focus();
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
       expect(loadFeatures).not.toHaveBeenCalled();
 
-      replay.dispatchEvent(new Event("pointerenter"));
+      // On its way past, a pointer leaves before the moment is up
+      point(replay);
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS - 1);
+      point(replay, "mouse", "pointerleave");
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
+      expect(loadFeatures).not.toHaveBeenCalled();
+      // A touch is followed by its tap, if it is one, and a control that
+      // cannot act needs nothing
+      point(replay, "touch");
+      point(held);
+      held.focus();
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
+      expect(loadFeatures).not.toHaveBeenCalled();
+
+      point(replay);
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
       expect(loadFeatures).toHaveBeenCalledTimes(1);
-      row.focus();
+      point(sheetRow);
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
       expect(loadFeatures).toHaveBeenCalledTimes(2);
+      row.focus();
+      expect(loadFeatures).toHaveBeenCalledTimes(3);
+    });
+
+    it("fetches the code of share tokens as Copy link, or its row of the phone's sheet, is pointed at", async () => {
+      vi.useFakeTimers();
+      const link = document.createElement("button");
+      link.id = "share-btn";
+      const sheetRow = document.createElement("button");
+      sheetRow.dataset["row"] = "share";
+      document.body.append(link, sheetRow);
+      await initializeApp(app);
+      vi.mocked(loadExtras).mockClear();
+
+      point(link);
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
+      point(sheetRow);
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
+      expect(loadExtras).toHaveBeenCalledTimes(2);
+    });
+
+    it("passes over the document, which a pointer enters as well", async () => {
+      vi.useFakeTimers();
+      await initializeApp(app);
+      vi.mocked(loadFeatures).mockClear();
+      const errors: unknown[] = [];
+      const onError = (event: ErrorEvent): void => {
+        errors.push(event.error);
+      };
+      window.addEventListener("error", onError);
+
+      for (const type of ["pointerenter", "pointerleave", "focus"]) {
+        document.dispatchEvent(
+          new PointerEvent(type, { pointerType: "mouse" }),
+        );
+      }
+      await vi.advanceTimersByTimeAsync(PICK_INTENT_MS);
+      window.removeEventListener("error", onError);
+
+      expect(errors).toEqual([]);
+      expect(loadFeatures).not.toHaveBeenCalled();
+      expect(loadExtras).not.toHaveBeenCalled();
+    });
+
+    it("leaves a focus that is not the keyboard's to the press that made it", async () => {
+      const replay = document.createElement("button");
+      replay.id = "replay-btn";
+      document.body.append(replay);
+      await initializeApp(app);
+      vi.mocked(loadFeatures).mockClear();
+      keyboardFocus(false);
+
+      replay.focus();
+
+      expect(loadFeatures).not.toHaveBeenCalled();
     });
 
     it("restores the map view from saved center and zoom", async () => {

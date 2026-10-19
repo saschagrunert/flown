@@ -9,7 +9,7 @@ refuse is marked as one.
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from .airport_lookup import load_airport_database, load_runway_database
+from .airport_lookup import load_airport_database, pin_runway_database
 from .airports import deduplicate_airports
 from .data_exporter import ExportSelection, select_exported_paths
 from .date_tokens import strip_dates
@@ -139,7 +139,7 @@ def list_flights(kml_files: Sequence[str], trim_ends: float = 0) -> Listing:
     # Once, before the files: its download messages come first, and the
     # parse cache keys see the same database as a build
     airports_database = load_airport_database()
-    load_runway_database()
+    pin_runway_database()
     valid_files = []
     for kml_file in kml_files:
         is_valid, error_msg = validate_kml_file(kml_file)

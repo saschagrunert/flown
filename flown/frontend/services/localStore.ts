@@ -64,8 +64,8 @@ export interface LocalInfo {
   terrain?: boolean | undefined;
   /**
    * What the build went without for want of a connection, the airport
-   * names or the ground ("airports", "terrain"), which the panel offers to
-   * build again for (absent: nothing)
+   * names, the runways alone or the ground ("airports", "runways",
+   * "terrain"), which the panel offers to build again for (absent: nothing)
    */
   degraded?: string[] | undefined;
 }
@@ -207,12 +207,19 @@ export function removeFile(name: string): Promise<void> {
   });
 }
 
-/** Replace the dataset and what is known about it */
+/**
+ * Replace the dataset and what is known about it, unless the files are
+ * gone: another tab's Remove all while it was built, which may clear them
+ * before this or after (CACHE_GONE_MESSAGE then)
+ */
 export function putDataset(
   files: DatasetFile[],
   info: LocalInfo,
 ): Promise<void> {
-  return withStores([DATASET, INFO], "readwrite", (t) => {
+  return withStores([FILES, DATASET, INFO], "readwrite", async (t) => {
+    if (!(await settle(t.objectStore(FILES).count()))) {
+      throw new Error(CACHE_GONE_MESSAGE);
+    }
     const dataset = t.objectStore(DATASET);
     dataset.clear();
     for (const file of files) dataset.put(file);

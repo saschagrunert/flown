@@ -38,6 +38,8 @@ vor = "vor"
 # flown/date_words.py lists, "sie" a German word as well
 sie = "sie"
 bre = "bre"
+# The abbreviation of Monday in Polish, which flown/date_words.py lists
+pn = "pn"
 
 [default.extend-identifiers]
 # The plural of the image format, which typos would split into "PN" and "Gs"

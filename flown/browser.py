@@ -144,9 +144,9 @@ MAX_WARNINGS = 10
 # The warnings of a build that went on without what it could not fetch,
 # by the line each is logged with: what it went without (``degraded`` of
 # the outcome, which the page offers to build again once the connection is
-# back), and what the page says instead of a line that gives the command
-# line's way out (an environment variable), or None to say the line itself
-DEGRADED: dict[str, tuple[str, str | None]] = {
+# back), and what the page says instead of the command line's line, which
+# gives its way out (an environment variable) or guesses at the cause
+DEGRADED: dict[str, tuple[str, str]] = {
     "Airport database unavailable: the airports keep the names the files "
     "give them (set %s=1 to stop instead)": (
         "airports",
@@ -156,23 +156,39 @@ DEGRADED: dict[str, tuple[str, str | None]] = {
         ),
     ),
     "Runway database unavailable - touchdowns get no runway": (
-        "airports",
+        "runways",
         (
             "The runways could not be fetched: the landings are counted "
             "without their runways"
         ),
     ),
     "Terrain: %d of %d elevation tile(s) are unavailable (offline?); "
-    "%d flight(s) keep the ground between their airfields": ("terrain", None),
+    "%d flight(s) keep the ground between their airfields": (
+        "terrain",
+        (
+            "The ground under some of your flights could not be fetched: the "
+            "3D view draws it as a straight line between their airfields"
+        ),
+    ),
 }
 # Warnings of the command line's that say nothing in the page: of the names
-# a site would publish, which nothing of a build in the browser is
+# a site would publish, which nothing of a build in the browser is; the
+# downloads that failed, with their URLs, of a database the page then says
+# is missing in its own words (DEGRADED); and the landings not counted
+# without the airports, which those words say already
 UNSAID = frozenset(
     {
         (
             "Cannot check the published airport names for free text: the "
             "airport database is empty"
-        )
+        ),
+        "✗ Failed to download the %s: %s",
+        "✗ Refusing the %s from %s: redirected off %s",
+        "✗ The %s exceeds %d MB, refusing to cache it",
+        "✗ The %s download is incomplete (%d of %s bytes)",
+        "✗ The %s download has only %d rows, expected at least %d",
+        "✗ The downloaded %s is empty or invalid",
+        "No airport database: the landings are not counted",
     }
 )
 
@@ -187,6 +203,9 @@ class _Relay(logging.Handler):
     build that fails raises, and a file it skips is named with its reason
     (see ``build``).
     """
+
+    #: What the page says of the runways missing (DEGRADED)
+    RUNWAYS_SAID = DEGRADED["Runway database unavailable - touchdowns get no runway"][1]
 
     def __init__(self, report: Callable[[str, str], None], input_dir: str) -> None:
         super().__init__(logging.INFO)
@@ -213,6 +232,19 @@ class _Relay(logging.Handler):
             if phase is not None and phase != self._phase:
                 self._phase = phase
                 self._report("info", phase)
+
+    def outcome(self) -> dict[str, list[str]]:
+        """The warnings and what the build went without, as ``build`` answers.
+
+        Without the airports no landing is counted at all: that the runways
+        are missing too says nothing more, and seemed to say that some were.
+        """
+        degraded = set(self.degraded)
+        warnings = self.warnings
+        if "airports" in degraded and "runways" in degraded:
+            degraded.discard("runways")
+            warnings = [w for w in warnings if w != self.RUNWAYS_SAID]
+        return {"warnings": warnings, "degraded": sorted(degraded)}
 
 
 @contextlib.contextmanager
@@ -241,10 +273,13 @@ def input_files(input_dir: str | Path) -> tuple[list[str], list[Path]]:
     out, as the site build leaves them out (``validation.list_kml_files``).
 
     The aircraft files are ``aircraft.json`` and those the page numbers
-    after it, ``aircraft-2.json`` and on, for the folders of one drop that
-    each have one (ui/localFlights.ts): all of them, in that order, which
-    ``merge_aircraft_data`` lets the first win in, as the site build merges
-    those of its directories.
+    after it, ``aircraft-2.json`` and on, for every one dropped: on from
+    the ones kept, and in a drop each folder's after those of the folders
+    around it (aircraftName in ui/localMessages.ts). All of them, the
+    highest number first, which ``merge_aircraft_data`` lets win: the one
+    dropped last, so a changed aircraft.json dropped again wins over the
+    one before, and of a drop the one nearest the flights, as the site
+    build merges those of its directories.
     """
     root = Path(input_dir)
     files = [path for path in root.iterdir() if path.is_file()]
@@ -261,7 +296,7 @@ def input_files(input_dir: str | Path) -> tuple[list[str], list[Path]]:
         for path in files
         if (match := _AIRCRAFT_FILE.fullmatch(path.name))
     }
-    return kml_files, sorted(numbered, key=numbered.__getitem__)
+    return kml_files, sorted(numbered, key=numbered.__getitem__, reverse=True)
 
 
 def build(
@@ -284,9 +319,9 @@ def build(
     ``skipped``: the visitor sees the rest, and which file to look at.
     Answers with the years, the extent the map opens on, what was found,
     the warnings of the build and what it went without for want of a
-    connection (``degraded``: "airports", "terrain"); raises the errors of
-    ``export_flight_data`` for inputs that make no site at all, and a
-    ``MemoryError`` for one that ran out of memory on the way, which a
+    connection (``degraded``: "airports", "runways", "terrain"); raises the
+    errors of ``export_flight_data`` for inputs that make no site at all,
+    and a ``MemoryError`` for one that ran out of memory on the way, which a
     failed year says only as its cause.
 
     A database the last build could not fetch is loaded again, and said
@@ -313,7 +348,9 @@ def build(
     # No processes in the page: every pool works here, without trying
     configure_workers(1, processes=False)
     kml_files, aircraft_files = input_files(input_dir)
-    tiles = TerrariumTiles(get=_xhr_tile_get, workers=1, keep_ground=False)
+    # One attempt a tile: offline, the pauses before the others would hold up
+    # every build, which Build again tries once the connection is back
+    tiles = TerrariumTiles(get=_xhr_tile_get, workers=1, keep_ground=False, attempts=1)
     built = False
     try:
         with _relayed(report, input_dir) as relay:
@@ -348,8 +385,7 @@ def build(
             {"file": Path(entry.kml_file).name, "reason": entry.reason}
             for entry in result.skipped
         ],
-        "warnings": relay.warnings,
-        "degraded": sorted(relay.degraded),
+        **relay.outcome(),
     }
 
 

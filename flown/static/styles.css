@@ -1774,15 +1774,6 @@ main > #map .maplibregl-ctrl-bottom-right {
 }
 
 /* ==========================================================================
-   Wrapped, stacked (narrow and medium viewports)
-
-   Side by side the dialog needs the 500px cards, the gap, the 400px map
-   minimum and both gutters: 1004px. Below that the map was cut off, which
-   covers iPads in either orientation and landscape phones, so the dialog
-   stacks until the row fits.
-   ========================================================================== */
-
-/* ==========================================================================
    Mobile layout (narrow viewports)
    ========================================================================== */
 @media (max-width: 767.98px), (max-height: 480px) {
@@ -1832,52 +1823,6 @@ main > #map .maplibregl-ctrl-bottom-right {
     z-index: var(--z-controls);
     box-sizing: border-box;
   }
-  .mobile-tab {
-    flex: 1 1 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-xs);
-    min-height: var(--mobile-bar-h);
-    min-width: 44px;
-    padding: var(--space-sm) var(--space-xs);
-    background: transparent;
-    border: none;
-    -webkit-appearance: none;
-    appearance: none;
-    box-shadow: none;
-    color: var(--color-text-muted);
-    /* The scale bottoms out at 12px; nothing in the UI reads smaller, only
-       the fine print (--text-fine) */
-    font-size: var(--text-sm);
-    font-weight: 500;
-    line-height: 1;
-    cursor: pointer;
-    touch-action: manipulation;
-    box-sizing: border-box;
-    transition: color var(--duration-fast) ease;
-  }
-  .mobile-tab .icon {
-    width: var(--icon-lg);
-    height: var(--icon-lg);
-  }
-  .mobile-tab:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: -2px;
-  }
-  .mobile-tab.active {
-    color: var(--color-accent-blue);
-  }
-  .mobile-tab[aria-disabled="true"] {
-    opacity: 0.5;
-    color: var(--color-text-dim);
-  }
-
-  .mobile-tab-label {
-    line-height: 1;
-  }
-
   /* The two columns sit side by side across the top */
   .control-column {
     width: calc(50% - var(--edge-gap) - var(--space-xs));
@@ -2273,7 +2218,6 @@ main > #map .maplibregl-ctrl-bottom-right {
   #github-footer a,
   #github-footer .github-icon,
   .toast-notification,
-  .mobile-tab,
   #stats-rail,
   #compass-float-btn {
     transition: none;
@@ -2373,8 +2317,5 @@ main > #map .maplibregl-ctrl-bottom-right {
     background-color: Canvas;
     color: GrayText;
     box-shadow: inset 2px 0 0 0 GrayText;
-  }
-  .mobile-tab.active {
-    color: Highlight;
   }
 }

@@ -607,6 +607,17 @@ class TestKeptOverlaps:
         }
         assert calls == []
 
+    def test_the_new_year_key_covers_the_paths_left_out_before(self):
+        """The comparison around New Year leaves out what the years dropped."""
+        key = duplicates_module._new_year_key
+        assert key(2026, "a", "b", [3, 4, 5], {4}) != key(
+            2026, "a", "b", [3, 4, 5], set()
+        )
+        # By their places, as the entry keeps its pairs
+        assert key(2026, "a", "b", [3, 4, 5], {4}) == key(
+            2026, "a", "b", [6, 7, 8], {7}
+        )
+
     def test_an_entry_of_other_paths_is_compared_again(self, monkeypatch):
         """Places beyond the paths of the year are no pairs of them."""
         paths = self._twice()

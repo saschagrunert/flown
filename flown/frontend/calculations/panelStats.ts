@@ -10,8 +10,8 @@
 import {
   CRUISE_ALTITUDE_THRESHOLD_FT,
   FEET_TO_METERS,
-  KM_TO_NAUTICAL_MILES,
   METERS_TO_FEET,
+  NAUTICAL_MILES_TO_KM,
 } from "../utils/constants";
 import { formatFlightTime } from "../utils/statsFormat";
 import {
@@ -371,7 +371,7 @@ function* statisticsSteps(
   const maxAltitudeFt = altitudeStats.max * METERS_TO_FEET;
   const minAltitudeFt = altitudeStats.min * METERS_TO_FEET;
   const totalAltitudeGainFt = altitudeStats.gain * METERS_TO_FEET;
-  const longestFlightNm = longestFlight * KM_TO_NAUTICAL_MILES;
+  const longestFlightNm = longestFlight / NAUTICAL_MILES_TO_KM;
 
   // Format flight time
   const flightTimeStr =
@@ -406,7 +406,7 @@ function* statisticsSteps(
         seg.groundspeed_knots &&
         seg.groundspeed_knots > 0
       ) {
-        const distanceNm = distanceKm * KM_TO_NAUTICAL_MILES;
+        const distanceNm = distanceKm / NAUTICAL_MILES_TO_KM;
         const timeHours = distanceNm / seg.groundspeed_knots;
 
         totalDistanceNm += distanceNm;
@@ -456,7 +456,7 @@ function* statisticsSteps(
     num_aircraft: aircraftList.length,
     aircraft_list: aircraftList,
     total_distance_km: totalDistanceKm,
-    total_distance_nm: totalDistanceKm * KM_TO_NAUTICAL_MILES,
+    total_distance_nm: totalDistanceKm / NAUTICAL_MILES_TO_KM,
     max_altitude_m: hasAltitude ? altitudeStats.max : undefined,
     min_altitude_m: hasAltitude ? altitudeStats.min : undefined,
     total_altitude_gain_m: hasAltitude ? altitudeStats.gain : undefined,

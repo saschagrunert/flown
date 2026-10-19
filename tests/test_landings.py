@@ -542,6 +542,27 @@ class TestExport:
             assert key not in untimed_info
 
 
+_RUNWAY_HEADER = (
+    "airport_ident,closed,le_ident,le_latitude_deg,le_longitude_deg,"
+    "le_heading_degT,he_ident,he_latitude_deg,he_longitude_deg,"
+    "he_heading_degT\n"
+)
+
+
+def _read_runways(tmp_path, rows):
+    """The runways of ``rows`` of a list, read as the cache is.
+
+    See AirportDatabases.load_runways.
+    """
+    path = tmp_path / "runways.csv"
+    path.write_text(_RUNWAY_HEADER + "\n".join(rows) + "\n", encoding="utf-8")
+    loaded = lookup_module._read_database(
+        path, lookup_module._runway_rows, lookup_module.RUNWAY_COLUMNS
+    )
+    assert loaded is not None
+    return loaded[0]
+
+
 class TestRunwayDatabase:
     def test_the_fixture_runways(self):
         runways = load_runway_database()
@@ -551,11 +572,6 @@ class TestRunwayDatabase:
         assert all(end.designator != "09" for end in runways["EDAU"])
 
     def test_designators_and_headings(self, tmp_path):
-        header = (
-            "airport_ident,closed,le_ident,le_latitude_deg,le_longitude_deg,"
-            "le_heading_degT,he_ident,he_latitude_deg,he_longitude_deg,"
-            "he_heading_degT\n"
-        )
         rows = [
             # Headings from the list
             "AAAA,0,8L,,,84,26R,,,264",
@@ -584,15 +600,7 @@ class TestRunwayDatabase:
             "NNNN,0,09W,,,,27W,,,",
             "OOOO,0,ALL,,,,WAY,,,",
         ]
-        path = tmp_path / "runways.csv"
-        path.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
-
-        # Read as the cache is (see AirportDatabases.load_runways)
-        loaded = lookup_module._read_database(
-            path, lookup_module._runway_rows, lookup_module.RUNWAY_COLUMNS
-        )
-        assert loaded is not None
-        runways = loaded[0]
+        runways = _read_runways(tmp_path, rows)
 
         assert runways["AAAA"] == (RunwayEnd("08L", 84.0), RunwayEnd("26R", 264.0))
         (low, high) = runways["BBBB"]
@@ -621,6 +629,89 @@ class TestRunwayDatabase:
             "LLLL",
             "MMMM",
         }
+
+    def test_a_strip_beside_a_runway_is_left_out(self, tmp_path):
+        """No track tells them apart: the runway keeps its name (LSZG, EDST)."""
+        runways = _read_runways(
+            tmp_path,
+            [
+                "AAAA,0,08,,,84,26,,,264",
+                "AAAA,0,08G,,,86,26G,,,266",
+                "AAAA,0,08L,,,86,26R,,,266",
+                # Beside by the designators: a strip without thresholds or
+                # headings has the magnetic heading of its designator
+                "BBBB,0,12,,,135,30,,,315",
+                "BBBB,0,12G,,,,30G,,,",
+                # A water lane named by compass point
+                "CCCC,0,01,,,5,19,,,185",
+                "CCCC,0,N,,,,S,,,",
+                # A strip across the runway stays, and so do the strips of a
+                # field without a runway
+                "DDDD,0,07,,,70,25,,,250",
+                "DDDD,0,11U,,,,29U,,,",
+                "EEEE,0,09G,,,,27G,,,",
+                "FFFF,0,NE,,,,SW,,,",
+            ],
+        )
+
+        def designators(ident):
+            return [end.designator for end in runways[ident]]
+
+        assert designators("AAAA") == ["08", "26", "08L", "26R"]
+        assert designators("BBBB") == ["12", "30"]
+        assert designators("CCCC") == ["01", "19"]
+        assert designators("DDDD") == ["07", "25", "11U", "29U"]
+        assert designators("EEEE") == ["09G", "27G"]
+        assert designators("FFFF") == ["NE", "SW"]
+
+        field = FIELD._replace(runways=runways["AAAA"])
+        flight = Flight().takeoff().circuit().final().stop()
+        found = _detect(flight, FieldIndex([field]))
+        assert found.touchdowns == [("EXMP", "26R")]
+        # A field of strips alone counts its landings on them
+        field = FIELD._replace(runways=runways["EEEE"])
+        found = _detect(flight, FieldIndex([field]))
+        assert (found.landings, found.touchdowns) == (1, [("EXMP", "27G")])
+
+    def test_a_wrong_heading_of_the_list_is_left_out(self, tmp_path):
+        runways = _read_runways(
+            tmp_path,
+            [
+                # The other end's (LKCE): the thresholds say which is which
+                "AAAA,0,13,50.7115,14.5629,309,31,50.7074,14.5705,129",
+                # Without thresholds, far off its designator (EGCJ)
+                "BBBB,0,01,,,1,19,,,19",
+                # ... where the number of the designator stands in for both
+                # (EPKR), or a heading 90 off for one (IS41): neither end
+                # takes the other's reversed
+                "EEEE,0,16,,,16,34,,,34",
+                "FFFF,0,09,,,,27,,,360",
+                # Near the designator but not the thresholds: those are wrong
+                "CCCC,0,09,50.0,8.01,92,27,50.0,8.0,272",
+                # Off the thresholds by a little: the list is kept
+                "DDDD,0,09,50.0,8.0,93,27,50.0,8.01,273",
+            ],
+        )
+
+        (low, high) = runways["AAAA"]
+        assert low.heading == pytest.approx(130.4, abs=0.1)
+        assert high.heading == pytest.approx(310.4, abs=0.1)
+        assert runways["BBBB"] == (RunwayEnd("01", 1.0), RunwayEnd("19", 181.0))
+        assert runways["EEEE"] == (RunwayEnd("16", 160.0), RunwayEnd("34", 340.0))
+        assert runways["FFFF"] == (RunwayEnd("09", 90.0), RunwayEnd("27", 270.0))
+        assert runways["CCCC"] == (RunwayEnd("09", 92.0), RunwayEnd("27", 272.0))
+        assert runways["DDDD"] == (RunwayEnd("09", 93.0), RunwayEnd("27", 273.0))
+
+    def test_ends_that_name_two_strips_keep_their_headings(self, tmp_path):
+        """EBHC: arrivals on 04, departures on 13."""
+        runways = _read_runways(
+            tmp_path,
+            ["AAAA,0,04A,,,,13D,,,", "BBBB,0,04A,,,42,13D,,,", "CCCC,0,,,,,13D,,,"],
+        )
+
+        assert runways["AAAA"] == (RunwayEnd("04A", 40.0), RunwayEnd("13D", 130.0))
+        assert runways["BBBB"] == (RunwayEnd("04A", 42.0), RunwayEnd("13D", 130.0))
+        assert runways["CCCC"] == (RunwayEnd("13D", 130.0),)
 
     def test_a_missing_list_leaves_the_runways_out(self, monkeypatch, tmp_path):
         monkeypatch.setattr(lookup_module, "RUNWAYS_CACHE_FILE", tmp_path / "no.csv")

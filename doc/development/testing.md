@@ -116,14 +116,14 @@ for no glyphs or sprite, every map tile with a transparent pixel, and any other
 cross-origin request fails the test that made it (see `tests/e2e/fixtures.ts`,
 which every spec imports `test` and `expect` from). So does an uncaught error of
 the page, an exception or a rejected promise nothing handled (`pageErrors` in
-the same file; a test that raises one on purpose sets `uncaughtErrors` to
-`"allow"` with `test.use`). Console errors are checked by the specs that collect
-them (`attachErrorCollectors` in `tests/e2e/helpers.ts`), since the page logs
-the failures it handles, which many specs provoke. What the specs know about the
-map library is in `tests/e2e/map.ts`: a spec asks it for the map's locators,
-zoom, layers and popups instead of naming a `.maplibregl-*` class or reaching
-into `window.mapApp.map`. Its zoom levels are the ones of shared links, one
-higher than MapLibre's own (see `ZOOM_OFFSET` in `utils/constants.ts`).
+the same file), so no spec checks for those itself. Console errors are checked
+by the specs that collect them (`attachErrorCollectors` in
+`tests/e2e/helpers.ts`), since the page logs the failures it handles, which many
+specs provoke. What the specs know about the map library is in
+`tests/e2e/map.ts`: a spec asks it for the map's locators, zoom, layers and
+popups instead of naming a `.maplibregl-*` class or reaching into
+`window.mapApp.map`. Its zoom levels are the ones of shared links, one higher
+than MapLibre's own (see `ZOOM_OFFSET` in `utils/constants.ts`).
 
 ### In CI
 
@@ -152,12 +152,15 @@ in the `desktop` project the last two of them (`HEAVY_SECOND`, tagged
 `@heavy-2`) run in a second heavy job. The real build of Your flights with
 Pyodide (`local-flights-pyodide.spec.ts`, `FLOWN_E2E_PYODIDE=1`) runs in the
 `pyodide` job: on every push to main, weekly, and in a pull request that changes
-the Python of the package, `services/local*.ts`, `state/localFlags.ts`, the
-template or the spec. It needs Pyodide's CDN, so it gates nothing. In CI a
-failed test of the `desktop` project is retried once, which only tells a flaky
-failure from a steady one: `failOnFlakyTests` fails the run either way. The
-`mobile`, `visual`, `visual-phone`, `webkit` and `webkit-desktop` projects do
-not retry, and neither do the heavy tests, where one attempt takes minutes.
+any of its inputs: the Python of the package, the template, the worker and what
+it imports, the panel of Your flights, the build of the bundles, the
+dependencies, the workflow and its actions, `playwright.config.ts` or the spec,
+the modules of `tests/e2e` it imports and the flights it drops. It needs
+Pyodide's CDN, so it gates nothing. In CI a failed test of the `desktop` project
+is retried once, which only tells a flaky failure from a steady one:
+`failOnFlakyTests` fails the run either way. The `mobile`, `visual`,
+`visual-phone`, `webkit` and `webkit-desktop` projects do not retry, and neither
+do the heavy tests, where one attempt takes minutes.
 
 ### The site under test
 
@@ -224,21 +227,23 @@ share of their timeout they took (see
 
 The published site is built on every push to `main` by the `site` job of the
 `test` workflow, alongside the tests, and published to GitHub Pages by the
-`deploy` job, which waits for every test job but `security` to pass (a new
-advisory for a test dependency must not hold back new flights, and the weekly
-run reports it anyway) and skips a commit that is no longer the head of `main`.
-The `site` job runs the same steps as `make build`: the frontend bundle, then
-`python -m flown "$FLOWN_INPUT_DIR"` (`data/` unless the repository variable
-names another directory), with the airport database and the ground of every
-flight required (`FLOWN_REQUIRE_AIRPORT_DB`, `FLOWN_REQUIRE_TERRAIN`), stable
-modification times (`FLOWN_STABLE_MTIMES`) and the site's address for the link
-previews (`FLOWN_SITE_URL`). See
+`deploy` job, which waits for every test job but `security` and `pyodide` to
+pass (a new advisory for a test dependency or an outage of Pyodide's CDN must
+not hold back new flights, and the weekly run reports either anyway) and skips a
+commit that is no longer the head of `main`. The `site` job runs the same steps
+as `make build`: the frontend bundle, then `python -m flown "$FLOWN_INPUT_DIR"`
+(`data/` unless the repository variable names another directory), with the
+airport database and the ground of every flight required
+(`FLOWN_REQUIRE_AIRPORT_DB`, `FLOWN_REQUIRE_TERRAIN`), stable modification times
+(`FLOWN_STABLE_MTIMES`) and the site's address for the link previews
+(`FLOWN_SITE_URL`). See
 [Repository rules](../../CONTRIBUTING.md#repository-rules) for what is not
 committed. The `checks` job is the one status a merge needs (the ruleset on
 `main` requires it, see
 [Repository rules](../../CONTRIBUTING.md#repository-rules)), because it needs
-every job a pull request runs and fails when any of them failed, was cancelled
-or was skipped where its own condition does not skip it.
+every job a pull request runs but `security` and `pyodide` and fails when any of
+them failed, was cancelled or was skipped where its own condition does not skip
+it.
 
 ## Test data generation
 

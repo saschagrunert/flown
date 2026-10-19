@@ -19,6 +19,7 @@ __all__ = [
     "WEEKDAYS_GERMAN",
     "WEEKDAYS_OTHER",
     "WEEKDAY_ABBREVIATIONS",
+    "WEEKDAY_ABBREVIATIONS_OTHER",
     "WITH_A_DAY_AND_YEAR_MONTHS",
     "WITH_A_DAY_MONTHS",
 ]
@@ -248,7 +249,10 @@ ROMAN_MONTHS = (
     "XII",
 )
 
-# The seasons, in English and German (see date_tokens._SEASON_YEAR)
+# The seasons, in English, German and some of the languages of
+# MONTHS_DAY_FIRST: French, Spanish, Portuguese, Italian, Dutch and Polish,
+# with the letters without their accents as well (see
+# date_tokens._SEASON_YEAR, which reads them with a year only)
 SEASONS = (
     "spring",
     "summer",
@@ -261,6 +265,36 @@ SEASONS = (
     "fruehjahr",
     "sommer",
     "herbst",
+    # French
+    "printemps",
+    "été",
+    "ete",
+    "automne",
+    "hiver",
+    # Spanish, Portuguese and Italian
+    "primavera",
+    "verano",
+    "verão",
+    "verao",
+    "estate",
+    "otoño",
+    "otono",
+    "outono",
+    "autunno",
+    "invierno",
+    "inverno",
+    # Dutch
+    "lente",
+    "voorjaar",
+    "zomer",
+    "najaar",
+    "herfst",
+    # Polish
+    "wiosna",
+    "lato",
+    "jesień",
+    "jesien",
+    "zima",
 )
 
 # The weekdays named in full (see date_tokens._WEEKDAY), in English ...
@@ -538,6 +572,78 @@ WEEKDAY_ABBREVIATIONS = (
     "Fr",
     "Sa",
     "So",
+)
+
+# ... and in the other languages of MONTHS_DAY_FIRST but Slovenian, as they
+# write them, in lowercase: French, Spanish, Italian, Portuguese, Dutch,
+# Czech, Polish and Hungarian, with the letters without their accents as
+# well. Not the "pa" of Czech, which is a Piper as often ("PA 28"), nor the
+# letters of Hungarian that stand alone (h, k, p, v). These only count with
+# a separator between them and the date ("lun. 16 août 2026", "16.08.2026
+# (sam.)"), not stuck to it as "Sat16Aug" is.
+WEEKDAY_ABBREVIATIONS_OTHER = (
+    # French
+    "lun",
+    "mar",
+    "mer",
+    "jeu",
+    "ven",
+    "sam",
+    "dim",
+    # Spanish and Italian
+    "mié",
+    "mie",
+    "jue",
+    "vie",
+    "sáb",
+    "sab",
+    "dom",
+    "gio",
+    # Portuguese
+    "seg",
+    "ter",
+    "qua",
+    "qui",
+    "sex",
+    # Dutch, and the "di" and "do" of German in lowercase
+    "ma",
+    "di",
+    "wo",
+    "do",
+    "vr",
+    "za",
+    "zo",
+    # Czech
+    "po",
+    "út",
+    "ut",
+    "st",
+    "čt",
+    "ct",
+    "pá",
+    "so",
+    "ne",
+    # Polish
+    "pn",
+    "pon",
+    "wt",
+    "wto",
+    "śr",
+    "sr",
+    "śro",
+    "sro",
+    "czw",
+    "pt",
+    "pią",
+    "pia",
+    "sob",
+    "nd",
+    "ndz",
+    "niedz",
+    # Hungarian
+    "sze",
+    "cs",
+    "szo",
 )
 
 # The words that stand between a number and a year as often as a month

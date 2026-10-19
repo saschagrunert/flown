@@ -13,6 +13,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   CACHE_BUSY_MESSAGE,
+  CACHE_GONE_MESSAGE,
   clearAll,
   closeStore,
   deleteCache,
@@ -137,6 +138,7 @@ describe("the dataset", () => {
   });
 
   it("keeps the files and what is known about them", async () => {
+    await putFiles([file("a.kml", 10)]);
     await putDataset(
       [
         { path: "metadata.json", bytes: bytes("{}") },
@@ -150,7 +152,22 @@ describe("the dataset", () => {
     await expect(readDatasetFile("2024/data.json")).resolves.toBeNull();
   });
 
+  it("keeps nothing once the files are gone, removed in another tab", async () => {
+    await putFiles([file("a.kml", 10)]);
+    await putDataset([{ path: "2024/data.json", bytes: bytes("old") }], INFO);
+    // That tab's Remove all came first
+    await clearAll();
+
+    await expect(
+      putDataset([{ path: "2025/data.json", bytes: bytes("new") }], INFO),
+    ).rejects.toThrow(CACHE_GONE_MESSAGE);
+
+    await expect(readInfo()).resolves.toBeNull();
+    await expect(readDatasetFile("2025/data.json")).resolves.toBeNull();
+  });
+
   it("replaces the dataset before it whole", async () => {
+    await putFiles([file("a.kml", 10)]);
     await putDataset([{ path: "2024/data.json", bytes: bytes("old") }], {
       ...INFO,
       years: [2024],

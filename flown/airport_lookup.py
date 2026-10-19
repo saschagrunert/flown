@@ -35,8 +35,13 @@ from .cache import (
 )
 from .constants import FEET_TO_METERS, ICAO_REGION_PREFIXES
 from .exceptions import AirportDatabaseError
-from .geometry import true_bearing
-from .helpers import DATE_PATTERN
+from .geometry import heading_difference, true_bearing
+from .helpers import (
+    CODE_SEPARATOR,
+    DATE_PATTERN,
+    PLAIN_ROUTE_SEPARATOR,
+    ROUTE_SEPARATOR,
+)
 from .logger import logger
 
 if TYPE_CHECKING:
@@ -48,14 +53,14 @@ if TYPE_CHECKING:
 # which would make a route name with a date look like one with a code.
 _ICAO_PATTERN = re.compile(r"\b(?!VIII\b)([A-Z]{4})\b")
 
-# Route names: "EDDS Stuttgart - EDDP Leipzig" or "EDDS to EDDP - 16 Aug 2026",
-# with a dash, an arrow or a "to" in any case between spaces
-_ROUTE_SEPARATOR = re.compile(r"\s+(?:->|[-\u2013\u2014>]|(?i:to))\s+")
+# Route names: "EDDS Stuttgart - EDDP Leipzig" or "EDDS to EDDP - 16 Aug 2026"
+# (see helpers.ROUTE_SEPARATOR): the hyphen and the "to" first, then the
+# other dashes, the arrows and a "to" in any case
+_PLAIN_ROUTE_SEPARATOR = re.compile(PLAIN_ROUTE_SEPARATOR)
+_ROUTE_SEPARATOR = re.compile(ROUTE_SEPARATOR)
 # Between two codes the spaces may be left out, and a slash separates them
 # too: "EDDF-EDDM", "EDDF->EDDM", "EDDF/EDDM"
-_CODE_SEPARATOR = re.compile(
-    r"(?<=\b[A-Z]{4})(?:\s*(?:->|[-\u2013\u2014>/])\s*|\s+(?i:to)\s+)(?=[A-Z]{4}\b)"
-)
+_CODE_SEPARATOR = re.compile(rf"(?<=\b[A-Z]{{4}}){CODE_SEPARATOR}(?=[A-Z]{{4}}\b)")
 _ROUTE_DATE_SUFFIX = re.compile(rf"\s+-\s+{DATE_PATTERN.pattern}\s*$")
 
 __all__ = [
@@ -73,6 +78,7 @@ __all__ = [
     "lookup_airport_coordinates",
     "lookup_airport_country",
     "lookup_airport_elevation",
+    "pin_runway_database",
     "refresh_airport_databases",
     "retry_missing_databases",
     "split_route_name",
@@ -140,6 +146,25 @@ _COMPASS_POINTS = (
 )
 _COMPASS_DESIGNATOR = re.compile(r"^([NESW]{1,3})([LCR]?)$")
 _BEARING_DESIGNATOR = re.compile(r"^([NS])([0-8]?[0-9])([EW])$")
+# A strip for gliders or ultralights, or one named by a compass point (often
+# a water lane), beside a runway with a number (06G next to 06, 12G next to
+# 13, NE next to 02) lines up with it within this, and no track tells the
+# two apart: it is left out, so a landing there keeps the runway's name.
+# One across the runways stays, as do the strips of a field without others
+_BESIDE_RUNWAY_DEGREES = 10.0
+# The list gives some ends a wrong heading, often the other end's. One
+# further than this from the bearing between the thresholds disagrees with
+# them, and the one nearer the heading the designator names is taken
+_THRESHOLDS_MAX_OFF_DEGREES = 20.0
+# Without thresholds, one further than this from the heading its designator
+# names is wrong: more than any magnetic variation where designators are
+# magnetic (the far north has true ones, T). The headings the thresholds
+# confirm are all within 40 of it; a wider margin let through the number
+# of the designator (16 at 16 and 34 at 34) and a heading 90 off (27 at 360)
+_DESIGNATOR_MAX_OFF_DEGREES = 45.0
+# The two designators of a runway name opposite headings within this; ends
+# that do not (04A/13D) are two strips, and neither takes the other's heading
+_RECIPROCAL_MAX_OFF_DEGREES = 30.0
 
 # The databases as this module reads them, kept by the digest of the file
 # they were read from (see _read_database): reading the CSV files took
@@ -482,7 +507,7 @@ def _stored_path(stored: _StoredRows[Any], digest: bytes) -> Path:
 
 
 def _read_database[T](
-    path: Path,
+    path: Path | bytes,
     rows: Callable[[IO[str]], T],
     columns: tuple[str, ...] | None,
     stored: _StoredRows[T] | None = None,
@@ -499,9 +524,10 @@ def _read_database[T](
 
     With ``stored``, what was read of a file is kept under its digest and
     the code that read it (see ``PARSED_DATABASE_DIR``), and read from there
-    the next time; the digest is of the file still.
+    the next time; the digest is of the file still. ``path`` may be the
+    bytes of a file read before (see ``AirportDatabases.pin_runways``).
     """
-    with open(path, "rb") as f:
+    with open(path, "rb") if isinstance(path, Path) else io.BytesIO(path) as f:
         digest = hashlib.file_digest(f, "sha256").digest()
         if columns is not None and not _is_valid_open_csv(f, columns):
             return None
@@ -619,24 +645,8 @@ def _float(text: str | None) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def _runway_ends(row: dict[str, str]) -> list[RunwayEnd]:
-    """The two ends of a runway row with their true headings.
-
-    The heading of an end is the one the list gives, else the bearing from
-    its threshold to the other one, else the one its designator names (see
-    ``_designator``).
-    """
-    low_end = _designator(row.get("le_ident"))
-    high_end = _designator(row.get("he_ident"))
-    if low_end is not None:
-        low, named = low_end
-    elif high_end is not None:
-        low, named = None, high_end[1] + 180
-    else:
-        return []
-    high = high_end[0] if high_end is not None else None
-    low_heading = _float(row.get("le_heading_degT"))
-    high_heading = _float(row.get("he_heading_degT"))
+def _threshold_bearing(row: dict[str, str]) -> float | None:
+    """The true bearing from the low end's threshold to the high end's."""
     coordinates = [
         _float(row.get(key))
         for key in (
@@ -646,21 +656,110 @@ def _runway_ends(row: dict[str, str]) -> list[RunwayEnd]:
             "he_longitude_deg",
         )
     ]
-    if low_heading is None and None not in coordinates:
-        lat0, lon0, lat1, lon1 = (value or 0.0 for value in coordinates)
-        if (lat0, lon0) != (lat1, lon1):
-            low_heading = true_bearing(lat0, lon0, lat1, lon1)
-    if low_heading is None and high_heading is not None:
+    if None in coordinates:
+        return None
+    lat0, lon0, lat1, lon1 = (value or 0.0 for value in coordinates)
+    if (lat0, lon0) == (lat1, lon1):
+        return None
+    return true_bearing(lat0, lon0, lat1, lon1)
+
+
+def _listed_heading(
+    text: str | None, bearing: float | None, named: float
+) -> float | None:
+    """The heading the list gives an end, None for none and a wrong one.
+
+    ``bearing`` is the end's along the thresholds, None without them, and
+    ``named`` the one its designator names (see ``_THRESHOLDS_MAX_OFF_DEGREES``
+    and ``_DESIGNATOR_MAX_OFF_DEGREES``).
+    """
+    heading = _float(text)
+    if heading is None:
+        return None
+    if bearing is None:
+        off = heading_difference(heading, named)
+        return heading if off <= _DESIGNATOR_MAX_OFF_DEGREES else None
+    if heading_difference(heading, bearing) <= _THRESHOLDS_MAX_OFF_DEGREES:
+        return heading
+    nearer = heading_difference(heading, named) < heading_difference(bearing, named)
+    return heading if nearer else None
+
+
+def _runway_ends(row: dict[str, str]) -> list[RunwayEnd]:
+    """The two ends of a runway row with their true headings.
+
+    The heading of an end is the one the list gives, else the bearing from
+    its threshold to the other one, else the other end's reversed, else the
+    one its designator names (see ``_designator``); a wrong one of the list
+    (13 at 309) is none (see ``_listed_heading``). Ends whose designators
+    do not name opposite headings (04A/13D) are two strips, and neither
+    takes the other's heading.
+    """
+    low_end = _designator(row.get("le_ident"))
+    high_end = _designator(row.get("he_ident"))
+    # An end without a designator names the other's heading reversed
+    if low_end is not None:
+        low, low_named = low_end
+    elif high_end is not None:
+        low, low_named = None, high_end[1] + 180
+    else:
+        return []
+    high, high_named = high_end or (None, low_named + 180)
+    bearing = _threshold_bearing(row)
+    low_heading = _listed_heading(row.get("le_heading_degT"), bearing, low_named)
+    high_heading = _listed_heading(
+        row.get("he_heading_degT"),
+        None if bearing is None else bearing + 180,
+        high_named,
+    )
+    one_strip = bearing is not None or (
+        heading_difference(low_named + 180, high_named) <= _RECIPROCAL_MAX_OFF_DEGREES
+    )
+    if low_heading is None:
+        low_heading = bearing
+    if low_heading is None and high_heading is not None and one_strip:
         low_heading = high_heading + 180
     if low_heading is None:
-        low_heading = named
+        low_heading = low_named
     if high_heading is None:
-        high_heading = low_heading + 180
+        high_heading = low_heading + 180 if one_strip else high_named
     return [
         RunwayEnd(designator, heading % 360)
         for designator, heading in ((low, low_heading), (high, high_heading))
         if designator is not None
     ]
+
+
+def _named_heading(end: RunwayEnd) -> float:
+    """The heading the designator of ``end`` names (see ``_designator``)."""
+    named = _designator(end.designator)
+    return end.heading if named is None else named[1]
+
+
+def _is_strip(end: RunwayEnd) -> bool:
+    """Whether ``end`` is a strip of ``_BESIDE_RUNWAY_DEGREES``."""
+    return end.designator.endswith(("G", "U")) or not end.designator[0].isdigit()
+
+
+def _beside_a_runway(end: RunwayEnd, ends: list[RunwayEnd]) -> bool:
+    """Whether ``end`` is a strip beside a runway of ``ends``.
+
+    By the true headings or by those the designators name: a strip the list
+    gives neither thresholds nor headings has the magnetic one of its
+    designator (12G at 120 beside 12 at 135). See ``_BESIDE_RUNWAY_DEGREES``.
+    """
+    if not _is_strip(end):
+        return False
+    named = _named_heading(end)
+    return any(
+        not _is_strip(other)
+        and min(
+            heading_difference(end.heading, other.heading),
+            heading_difference(named, _named_heading(other)),
+        )
+        <= _BESIDE_RUNWAY_DEGREES
+        for other in ends
+    )
 
 
 def _runway_rows(text: IO[str]) -> dict[str, tuple[RunwayEnd, ...]]:
@@ -673,7 +772,10 @@ def _runway_rows(text: IO[str]) -> dict[str, tuple[RunwayEnd, ...]]:
         ends = _runway_ends(row)
         if ends:
             runways.setdefault(ident, []).extend(ends)
-    return {ident: tuple(ends) for ident, ends in runways.items()}
+    return {
+        ident: tuple(end for end in ends if not _beside_a_runway(end, ends))
+        for ident, ends in runways.items()
+    }
 
 
 class AirportDatabases:
@@ -705,6 +807,9 @@ class AirportDatabases:
         self._airport_digest: bytes | None = None
         self._runway_digest: bytes | None = None
         self._given_fingerprint: str | None = None
+        # The runway file ``pin_runways`` read, until ``load_runways`` reads
+        # the database of it
+        self._pinned_runways: bytes | None = None
 
     def use(self, airports: dict[str, AirportRecord]) -> None:
         """Use a database another process loaded instead of loading it here."""
@@ -715,6 +820,7 @@ class AirportDatabases:
         """Use runways another process loaded instead of loading them here."""
         self.runways = runways
         self._read_here["runways"] = False
+        self._pinned_runways = None
 
     def use_fingerprint(self, fingerprint: str) -> None:
         """The fingerprint of the databases ``use`` and ``use_runways`` gave."""
@@ -730,6 +836,7 @@ class AirportDatabases:
             self._airport_digest = None
             self._runway_digest = None
             self._given_fingerprint = None
+            self._pinned_runways = None
 
     def load(self) -> dict[str, AirportRecord]:
         """The airport database, from the cache, downloading it when needed.
@@ -810,6 +917,8 @@ class AirportDatabases:
         with self._lock:
             if self.runways is not None:
                 return self.runways
+            if self._pinned_runways is not None:
+                return self._read_pinned_runways()
             database = _runways_csv()
             _ensure_cache_file(database)
             required = _database_required()
@@ -838,6 +947,57 @@ class AirportDatabases:
             self.runways = runways
             self._read_here["runways"] = True
             return runways
+
+    def pin_runways(self) -> None:
+        """Settle on the runway file of this process without reading it yet.
+
+        The fingerprint takes its digest as ``load_runways`` would (see
+        ``fingerprint``), and ``load_runways`` reads the database of these
+        bytes when a landing is first looked for: a build that finds every
+        file in the parse cache never looks for one, and reading the
+        runways took 40 ms of it. Where the databases are required they are
+        read here, as the run fails at the start without them.
+        """
+        if self.runways is not None or self._pinned_runways is not None:
+            return
+        if not _database_required():
+            with self._lock:
+                if self.runways is not None or self._pinned_runways is not None:
+                    return
+                database = _runways_csv()
+                _ensure_cache_file(database)
+                with contextlib.suppress(OSError):
+                    data = database.cache_file.read_bytes()
+                    self._pinned_runways = data
+                    self._runway_digest = hashlib.sha256(data).digest()
+                    self._read_here["runways"] = True
+                    return
+        # No file to pin: load_runways says what is missing
+        self.load_runways()
+
+    def runways_pinned(self) -> bool:
+        """Whether ``pin_runways`` read a file ``load_runways`` has not yet."""
+        return self._pinned_runways is not None
+
+    def _read_pinned_runways(self) -> dict[str, tuple[RunwayEnd, ...]]:
+        """``load_runways`` of the file ``pin_runways`` read, under the lock.
+
+        The digest stays the one the fingerprint took, of the same bytes,
+        even where they hold no runways.
+        """
+        data, self._pinned_runways = self._pinned_runways or b"", None
+        runways: dict[str, tuple[RunwayEnd, ...]] = {}
+        try:
+            loaded = _read_database(data, _runway_rows, None, stored=_STORED_RUNWAYS)
+        except (csv.Error, ValueError, UnicodeDecodeError) as e:
+            logger.warning("Failed to load the runway cache: %s", e)
+        else:
+            if loaded is not None:
+                runways = loaded[0]
+        if not runways:
+            logger.warning("Runway database unavailable - touchdowns get no runway")
+        self.runways = runways
+        return runways
 
     def fingerprint(self) -> str:
         """A short token that changes whenever a cached database does.
@@ -908,6 +1068,11 @@ def load_runway_database() -> dict[str, tuple[RunwayEnd, ...]]:
     return databases.load_runways()
 
 
+def pin_runway_database() -> None:
+    """See ``AirportDatabases.pin_runways``."""
+    databases.pin_runways()
+
+
 def use_airport_database(airports: dict[str, AirportRecord]) -> None:
     """Use a database another process loaded instead of loading it here."""
     databases.use(airports)
@@ -964,7 +1129,8 @@ def retry_missing_databases(download: bool = True) -> None:
     is kept where not asked (a slow line would wait for the timeout at
     every build). Databases that loaded are kept as they are.
     """
-    if databases.airports and databases.runways:
+    # A runway file pinned is there, whatever it holds
+    if databases.airports and (databases.runways or databases.runways_pinned()):
         return
     if download:
         for database in (_airports_csv(), _runways_csv()):
@@ -1084,12 +1250,13 @@ def split_route_name(name: str | None) -> tuple[str, str] | None:
 
     A trailing date ("EDDS to EDDP - 16 Aug 2026") is not part of the route.
     Airport names may contain " - " themselves (LFBN "Niort - Marais
-    Poitevin"), so in a name with ICAO codes only a separator (" - ", " to ",
-    " > ", see ``_ROUTE_SEPARATOR``) followed by a code can split it, and
-    exactly one such separator must exist; without one, a separator between
-    two codes ("EDDF-EDDM", see ``_CODE_SEPARATOR``) can, exactly one as
-    well. A standardized single airport name is never a route. A name
-    without any code splits at its only " - ".
+    Poitevin"), so in a name with ICAO codes only a separator (" - " or
+    " to ", else " > " and the others of ``helpers.ROUTE_SEPARATOR``)
+    followed by a code can split it, and exactly one such separator must
+    exist; without one, a separator between two codes ("EDDF-EDDM", see
+    ``_CODE_SEPARATOR``) can, exactly one as well. A standardized single
+    airport name is never a route. A name without any code splits at its
+    only " - ".
     """
     if not name:
         return None
@@ -1105,7 +1272,13 @@ def split_route_name(name: str | None) -> tuple[str, str] | None:
     if icao_code is not None and database_airport_name(icao_code) == name:
         return None
 
+    # The other separators only where the hyphen and the "to" split
+    # nothing: "EDDF - EDFE > EDDS" goes to "EDFE > EDDS", as it always did
     separators = [
+        match
+        for match in _PLAIN_ROUTE_SEPARATOR.finditer(name)
+        if _starts_with_icao_code(name[match.end() :])
+    ] or [
         match
         for match in _ROUTE_SEPARATOR.finditer(name)
         if _starts_with_icao_code(name[match.end() :])

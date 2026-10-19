@@ -64,9 +64,9 @@ Nor are times of day or weekdays: the type is published, so a `TYPE` that is one
 (`1_DEHYL_1513h.kml`, `1_DEHYL_15h13.kml`, `1_DEHYL_Saturday.kml`) is left out
 of the site, like a date (`1_DEHYL_2026-08-16.kml`), and
 `make check-obfuscation` fails on the name. A type that names a day, a week, a
-part of the year or an hour with the shape of a designator (`SAT16`, `FRI13`,
-`W33`, `Q3`, `H2`, `AM10`) is dropped with a warning as well; `DO27` and `MI8`
-stay.
+part of the year or an hour with the shape of a designator (`SAT16`, `SAT-16`,
+`FRI13`, `LUN16`, `W33`, `W33-2`, `Q3`, `Q326`, `H2`, `AM10`) is dropped with a
+warning as well; `DO27`, `MI8`, `W3`, `Q400` and `H125` stay.
 
 ### Charterware format
 
@@ -508,15 +508,16 @@ Look for these lines:
   from a `<TimeSpan>`, then from a date in the track's placemark name
   (`EDDS to EDDP - 16 Aug 2026`), then from a Charterware `<description>`, then
   from a `<TimeStamp>` or `<TimeSpan>` of the enclosing `<Folder>` or
-  `<Document>`, and finally from the `Point` placemarks of the file when the
-  times or dates they have all fall into one year (Flightradar24 puts the times
-  of a flight on a trail of points next to its line, SkyDemon a
-  `Log Start: 03 Mar 2025 08:58 Z` marker), never from the file name. A time
-  that cannot be read (neither ISO 8601, `YYYY-MM-DD HH:MM:SSZ` nor a date
-  without a time of day such as `2026-08-16`, `2026-08` or `2026`) does not
-  count. Export the flight again with its times. This only leaves out a track of
-  a file that has another one to export; a file none of whose tracks has a year
-  stops the run (see below).
+  `<Document>`, and finally from the `Point` placemarks of the file
+  (Flightradar24 puts the times of a flight on a trail of points next to its
+  line, SkyDemon a `Log Start: 03 Mar 2025 08:58 Z` marker) when the times or
+  dates they have all fall into one year, or their times lie within seven days
+  of each other (a flight across New Year takes the year of the earliest); never
+  from the file name. A time that cannot be read (neither ISO 8601,
+  `YYYY-MM-DD HH:MM:SSZ` nor a date without a time of day such as `2026-08-16`,
+  `2026-08` or `2026`) does not count. Export the flight again with its times.
+  This only leaves out a track of a file that has another one to export; a file
+  none of whose tracks has a year stops the run (see below).
 - A `gx:Track` time more than seven days from the track's median, or out of
   order with its neighbours, is a logger glitch: that point loses its time (and
   so its groundspeed), the rest of the track keeps theirs. A position of exactly
@@ -607,13 +608,15 @@ looked up in the [OurAirports](https://ourairports.com/) database:
   `--refresh-airports`, or delete `airports.csv`, `runways.csv` and the
   `.download-failed` markers from the
   [cache directory](output.md#cache-directory).
-- A route name is split where a hyphen, an en or em dash, `>`, `->` or the word
-  `to` (in any case) stands between spaces and an ICAO code follows
-  (`EDDS Stuttgart - EDDP Leipzig`), or, in a name without such a place, where a
-  hyphen, a dash, `>`, `->` or `/` stands between two codes without spaces
-  (`EDDF-EDDM`). Airport names may hold a hyphen between spaces themselves
-  (`LFBN Niort - Marais Poitevin`), so a name with more than one such place is
-  no route: it is shown as written, and the flight gets no arrival.
+- A route name is split where a hyphen or the word `to` stands between spaces
+  and an ICAO code follows (`EDDS Stuttgart - EDDP Leipzig`); in a name without
+  such a place, where an en or em dash, `>`, `->`, `→` or `to` in any case does
+  (`EDDF > EDDM`); and in a name without either, where a hyphen, a dash, `>`,
+  `->`, `→` or `/` stands between two codes without spaces (`EDDF-EDDM`). So
+  `EDDF - EDFE > EDDS` goes from `EDDF` to `EDFE > EDDS`. Airport names may hold
+  a hyphen between spaces themselves (`LFBN Niort - Marais Poitevin`), so a name
+  with more than one such place is no route: it is shown as written, and the
+  flight gets no arrival.
 - A code OurAirports does not know keeps the name from the file. A name without
   an ICAO code is shown as an airport only as an end of a route
   (`Home strip - Aunt farm`), and not as a single word (`Home`). Any other
@@ -662,9 +665,11 @@ name, the one before did not end on the ground, and the line starts within 50 m
 of its end, at the same `<TimeSpan>` or within 30 minutes of its end. Without
 times, only the point of the split written twice joins them. The `gx:Track`s of
 placemarks are joined the same way, when the times of the one after begin no
-earlier than those of the one before end (the tracks of one `gx:MultiTrack` are
-one flight anyway). Give the pieces of a flight one name, and flights of their
-own different names or times.
+earlier than those of the one before end, and also further than 50 m away when
+the aircraft could have flown there in the time between them at 600 kt (a logger
+that lost its fix for a while); the tracks of one `gx:MultiTrack` are one flight
+anyway. Give the pieces of a flight one name, and flights of their own different
+names or times.
 
 ### The flights show but the map behind them is black
 
@@ -701,18 +706,20 @@ is one flight that runs past the days after January 1st: split the file into one
 per day of flying, as the check says. The pre-push hook also refuses a commit
 message that dates a flight it adds or changes (`Add flight 16 Aug 2026`), or
 gives its time of day (`Add flight 1430Z`): reword it with `git commit --amend`
-or a rebase. Four digits that are a year and a time at once, such as
-`2026 local` (20:26), count as a time. A duration written like a time of day
-(`Flight time 1:25`) cannot be told from one and has to go as well. A place
-named after a weekday other than `Friday Harbor`, `Thursday Island` and
-`Sunday Creek`, or after a holiday other than `Christmas Island`,
-`Christmas Creek`, `Easter Island`, `Pentecost Island`, `Weihnachtsinsel`,
-`Christmas Flying Service` and the others followed by `Harbour`, `Island`,
-`Creek`, `Valley`, `Coast`, `Hill`, `Township`, `Province`, `Field`, `Airfield`,
-`Airport` or `Airstrip` (or their plurals), needs another name as well. That
-takes the Scottish `Easter` (eastern) of `Easter Nether Cabra Farm Airstrip` and
-the first name `Silvester` (`Silvester Meier`) along, and `SAT` (San Antonio)
-right before a time goes as a weekday (`KAUS to SAT 14:30` becomes `KAUS to`).
+or a rebase. Midnight passes there (`moved to 00:00:00 UTC`, `12:00AM`), as the
+time every obfuscated flight starts at. Four digits that are a year and a time
+at once, such as `2026 local` (20:26), count as a time. A duration written like
+a time of day (`Flight time 1:25`) cannot be told from one and has to go as
+well. A place named after a weekday other than `Friday Harbor`,
+`Thursday Island` and `Sunday Creek`, or after a holiday other than
+`Christmas Island`, `Christmas Creek`, `Easter Island`, `Pentecost Island`,
+`Weihnachtsinsel`, `Christmas Flying Service` and the others followed by
+`Harbour`, `Island`, `Creek`, `Valley`, `Coast`, `Hill`, `Township`, `Province`,
+`Field`, `Airfield`, `Airport` or `Airstrip` (or their plurals), needs another
+name as well. That takes the Scottish `Easter` (eastern) of
+`Easter Nether Cabra Farm Airstrip` and the first name `Silvester`
+(`Silvester Meier`) along, and `SAT` (San Antonio) right before a time goes as a
+weekday (`KAUS to SAT 14:30` becomes `KAUS to`).
 
 A number of ten or thirteen digits in the text of an element (not in an
 attribute, and not the id after the `#` of a reference such as

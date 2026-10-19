@@ -33,6 +33,7 @@ from flown.airport_lookup import (
     lookup_airport_coordinates,
     lookup_airport_country,
     lookup_airport_elevation,
+    pin_runway_database,
     split_route_name,
     standardize_airport_names,
 )
@@ -593,6 +594,101 @@ class TestFingerprintOfTheLoadedDatabases:
         assert database_fingerprint() == "nodb"
 
 
+class TestPinnedRunways:
+    """A build settles on the runway file at its start (``pin_runways``),
+    and reads the database of it only when a landing is looked for."""
+
+    @pytest.fixture
+    def cached(self, tmp_path, monkeypatch):
+        database = tmp_path / "airports.csv"
+        database.write_bytes(VALID_CSV)
+        runways = tmp_path / "runways.csv"
+        runways.write_text("airport_ident,le_ident,he_ident,closed\nTEST,09,27,0\n")
+        monkeypatch.setattr(lookup_module, "CACHE_FILE", database)
+        monkeypatch.setattr(lookup_module, "RUNWAYS_CACHE_FILE", runways)
+        monkeypatch.setattr(lookup_module, "_ensure_cache_file", lambda *_: None)
+        lookup_module.databases.reset()
+        yield database, runways
+        lookup_module.databases.reset()
+
+    def test_pinning_reads_no_runways(self, cached, monkeypatch):
+        def read(*_args, **_kwargs):
+            raise AssertionError("read the runways")
+
+        load_airport_database()
+        monkeypatch.setattr(lookup_module, "_read_database", read)
+        pin_runway_database()
+
+        assert lookup_module.databases.runways is None
+
+    def test_the_fingerprint_of_the_file_pinned(self, cached):
+        """As that of the runways read from it: the parse cache keys agree."""
+        load_airport_database()
+        pin_runway_database()
+        pinned = database_fingerprint()
+
+        lookup_module.databases.reset()
+        load_airport_database()
+        lookup_module.load_runway_database()
+
+        assert database_fingerprint() == pinned
+
+    def test_the_runways_of_the_bytes_pinned(self, cached):
+        """A download that replaces the file meanwhile changes neither."""
+        _, runways = cached
+        load_airport_database()
+        pin_runway_database()
+        fingerprint = database_fingerprint()
+        runways.write_text("airport_ident,le_ident,he_ident,closed\nTEST,08,26,0\n")
+
+        assert lookup_module.load_runway_database() == {
+            "TEST": (RunwayEnd("09", 90.0), RunwayEnd("27", 270.0))
+        }
+        assert database_fingerprint() == fingerprint
+
+    def test_required_runways_are_read_at_once(self, cached, monkeypatch):
+        """The run fails at its start without them, not at its first landing."""
+        _, runways = cached
+        monkeypatch.setenv(REQUIRE_DATABASE_ENV, "1")
+        runways.write_text("airport_ident,le_ident,he_ident,closed\n")
+
+        with pytest.raises(AirportDatabaseError, match="runways"):
+            pin_runway_database()
+
+    def test_a_missing_file_is_loaded_as_none(self, cached, caplog):
+        _, runways = cached
+        runways.unlink()
+
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            pin_runway_database()
+
+        assert lookup_module.databases.runways == {}
+        assert "Runway database unavailable" in caplog.text
+
+    def test_unreadable_runways_are_none(self, cached, caplog):
+        _, runways = cached
+        load_airport_database()
+        pin_runway_database()
+        fingerprint = database_fingerprint()
+        runways.unlink()
+
+        with patch.object(lookup_module, "_runway_rows", side_effect=csv.Error("bad")):
+            assert lookup_module.load_runway_database() == {}
+
+        assert "Runway database unavailable" in caplog.text
+        assert database_fingerprint() == fingerprint
+
+    def test_a_pinned_file_is_not_given_up_for_another_build(self, cached):
+        """The build in the page loads again only what it went without."""
+        airports = load_airport_database()
+        pin_runway_database()
+
+        lookup_module.retry_missing_databases(download=False)
+
+        assert lookup_module.databases.airports is airports
+        assert lookup_module.databases.runways_pinned()
+
+
 class TestKeptDatabases:
     """What was read of a database file is kept by its digest, and read
     from there by the next run (see airport_lookup.PARSED_DATABASE_DIR)."""
@@ -908,8 +1004,14 @@ class TestSplitRouteName:
             ("EDDF->EDDM", ("EDDF", "EDDM")),
             ("EDDF/EDDM", ("EDDF", "EDDM")),
             ("EDDF TO EDDM", ("EDDF", "EDDM")),
+            ("EDDF\u2192EDDM", ("EDDF", "EDDM")),
+            ("EDDF \u2192 EDDM", ("EDDF", "EDDM")),
             # A separator with spaces goes first, as before the others
             ("EDDS - EDDF/EDDM", ("EDDS", "EDDF/EDDM")),
+            # The hyphen and the "to" before the other separators: these
+            # split at the hyphen before there were others (regression)
+            ("EDDF - EDFE > EDDS", ("EDDF", "EDFE > EDDS")),
+            ("EDDF to EDFE \u2013 EDDS", ("EDDF", "EDFE \u2013 EDDS")),
             (
                 "EDDS Stuttgart \u2013 EDDP Leipzig/Halle",
                 ("EDDS Stuttgart", "EDDP Leipzig/Halle"),

@@ -130,6 +130,7 @@ class TerrariumTiles:
         get: Callable[[str], tuple[int, bytes]] | None = None,
         workers: int | None = None,
         keep_ground: bool = True,
+        attempts: int = FETCH_ATTEMPTS,
     ) -> None:
         """Keep the tiles in ``cache_dir`` (by default ``TERRAIN_CACHE_DIR``).
 
@@ -141,12 +142,15 @@ class TerrariumTiles:
         ``keep_ground``, the ground sampled under each flight is kept in
         ``ground_dir`` (see ``terrain.sample_path_elevations``); the build
         in the page keeps none, which prunes the tiles of the flights it
-        no longer has (see ``prune_except``).
+        no longer has (see ``prune_except``). ``attempts`` is how often a
+        tile is tried (``FETCH_ATTEMPTS`` by default); the build in the page
+        tries each once, which is offline more often than a build of a site.
         """
         self.cache_dir = cache_dir if cache_dir is not None else TERRAIN_CACHE_DIR
         self.ground_dir = self.cache_dir / "ground" if keep_ground else None
         self._get_url = get if get is not None else self._get
         self.workers = workers
+        self.attempts = max(1, attempts)
         self._offline = threading.Event()
         # Tiles in a row that used up their attempts on server errors (see
         # SERVER_ERROR_TILES_TO_GIVE_UP), across the fetch threads
@@ -307,7 +311,7 @@ class TerrariumTiles:
         """
         error: Exception | str | None = None
         unreachable = False
-        for attempt in range(FETCH_ATTEMPTS):
+        for attempt in range(self.attempts):
             if attempt:
                 time.sleep(FETCH_RETRY_SECONDS * 2 ** (attempt - 1))
             if self._offline.is_set():
@@ -341,7 +345,7 @@ class TerrariumTiles:
                 "Elevation tile %s, attempt %d of %d: %s",
                 url,
                 attempt + 1,
-                FETCH_ATTEMPTS,
+                self.attempts,
                 error,
             )
         if unreachable and not self._offline.is_set():

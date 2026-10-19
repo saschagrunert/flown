@@ -50,8 +50,6 @@ from .date_tokens import (
     CHARTERWARE_DATE_PATTERN,
     EPOCH_PATTERN,
     MAX_DAYS_AFTER_JAN_1,
-    MONTHS_LONG,
-    MONTHS_SHORT,
     any_month_number,
     charterware_datetime,
     epoch_is_obfuscated,
@@ -66,6 +64,7 @@ from .date_tokens import (
     stray_date_spans,
     without_spans,
 )
+from .date_words import MONTHS_LONG, MONTHS_SHORT
 from .helpers import normalize_timestamp_text, parse_iso_timestamp
 from .logger import logger
 from .validation import KmlListing, list_kml_files

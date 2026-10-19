@@ -377,6 +377,17 @@ class TestParseWithoutAPool:
         with patch("flown.workers.ProcessPoolExecutor", _NoPool):
             assert _parse_kml_files(files) == first
 
+    def test_a_warm_cache_reads_no_runways(self, tmp_path):
+        """The parse cache keeps the landings, which are all they are for:
+        the build settles on their file without reading it (40 ms)."""
+        files = [_write_kml(tmp_path / f"{i}_DEAGJ_DA20.kml", 2025) for i in (1, 2)]
+        first = _parse_kml_files(files)
+        lookup_module.databases.reset()
+
+        assert _parse_kml_files(files) == first
+        assert lookup_module.databases.runways is None
+        assert lookup_module.databases.runways_pinned()
+
     def test_an_uncached_file_is_hashed_once(self, tmp_path):
         """The cache key of the lookup is where the parse is stored."""
         from flown import parser_cache
@@ -1046,6 +1057,8 @@ class TestExportSite:
         both = [metadata[0], metadata[0]]
         trimmed = [taxi[:1], flight]
         assert trimmed_away_files([taxi, flight], trimmed, both) == []
+        # ... also when it comes first
+        assert trimmed_away_files([flight, taxi], trimmed[::-1], both) == []
         assert trimmed_away_files([taxi, flight], trimmed, metadata) == [
             "in/1_DEAGJ_DA20.kml"
         ]
@@ -1308,6 +1321,27 @@ class TestCreateProgressiveHeatmap:
         assert "JavaScript bundle not found" in str(failure.value)
         assert "npm run build" in str(failure.value)
         assert not out.exists()
+
+    @pytest.mark.usefixtures("bundle")
+    @pytest.mark.parametrize(
+        ("years", "started"), [((2025,), False), ((2025, 2026), True)]
+    )
+    def test_the_worker_server_starts_before_an_export_in_a_pool(
+        self, tmp_path, years, started
+    ):
+        """Its process imports the package while this one plans the export;
+        a year file written here needs none."""
+        files = [
+            _write_kml(tmp_path / "input" / f"{index}_DEAGJ_DA20.kml", year)
+            for index, year in enumerate(years, 1)
+        ]
+        out = tmp_path / "out"
+        configure_workers(None, processes=False)
+
+        with patch("flown.pipeline.start_worker_server") as start:
+            assert build_site(files, str(out / "index.html"), str(out / "data"))
+
+        assert start.called is started
 
     @pytest.mark.usefixtures("bundle")
     def test_the_build_time_is_read_once(self, tmp_path, monkeypatch, caplog):

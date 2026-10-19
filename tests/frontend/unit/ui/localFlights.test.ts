@@ -7,19 +7,30 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  BUILDING_MESSAGE,
-  BUILT_MESSAGE,
-  FRAMED_MESSAGE,
   LOCAL_BUTTON_ID,
   LOCAL_DATA_DIR,
   LOCAL_PANEL_ID,
+  CONFIRM_CLEAR_MS,
+  LocalFlights,
+  NO_TERRAIN_KEY,
+  OWN_TAB_KEY,
+  localStartConfig,
+  reopenAfterSwitch,
+  siteBuild,
+  toggleLocalFlights,
+  upToDate,
+} from "../../../../flown/frontend/ui/localFlights";
+import {
+  BUILDING_MESSAGE,
+  BUILT_MESSAGE,
+  FRAMED_MESSAGE,
   CANCELLED_MESSAGE,
   BUILD_AGAIN_LABEL,
   CONFIRM_CLEAR_LABEL,
   CONFIRM_CLEAR_MESSAGE,
-  CONFIRM_CLEAR_MS,
   CONFIRM_LAPSED_MESSAGE,
   aircraftName,
+  aircraftNumber,
   degradedMessage,
   duplicateMessage,
   MAX_FILE_BYTES,
@@ -28,25 +39,17 @@ import {
   STORAGE_FULL_MESSAGE,
   TOO_LARGE_MESSAGE,
   LINK_OPENED_SITE_MESSAGE,
-  LocalFlights,
   NO_FILES_MESSAGE,
-  NO_TERRAIN_KEY,
-  OWN_TAB_KEY,
   READY_MESSAGE,
   REBUILDING_MESSAGE,
   REMOVED_MESSAGE,
   SITE_FLIGHTS_MESSAGE,
   STORAGE_FAILED_MESSAGE,
   UNSUPPORTED_FILES_MESSAGE,
-  localStartConfig,
-  reopenAfterSwitch,
   replacedMessage,
   shownMessage,
-  siteBuild,
-  toggleLocalFlights,
   unreadableMessage,
-  upToDate,
-} from "../../../../flown/frontend/ui/localFlights";
+} from "../../../../flown/frontend/ui/localMessages";
 import {
   LOCAL_FLIGHTS_KEY,
   LOCAL_STATE_KEY,
@@ -228,8 +231,11 @@ beforeEach(() => {
   store.clearAll.mockResolvedValue(undefined);
   store.requestPersistence.mockResolvedValue(true);
   store.readDatasetFile.mockResolvedValue(null);
+  // A file's bytes are its name, but an aircraft file's: {} (file())
   store.readFileBytes.mockImplementation((name: string) =>
-    Promise.resolve(new TextEncoder().encode(name).buffer),
+    Promise.resolve(
+      new TextEncoder().encode(aircraftNumber(name) ? "{}" : name).buffer,
+    ),
   );
   // The site's metadata.json, which the build asks for its flags: offline
   vi.stubGlobal(
@@ -285,6 +291,11 @@ describe("degradedMessage", () => {
     expect(degradedMessage(["airports", "terrain"])).toBe(
       "Your flights were built without the airport names and the ground " +
         "under the flights, which could not be fetched",
+    );
+    // The runways alone, not the airport names the build has
+    expect(degradedMessage(["runways", "terrain"])).toBe(
+      "Your flights were built without the runways and the ground under " +
+        "the flights, which could not be fetched",
     );
     expect(degradedMessage(["other"])).toContain("some of their data");
   });
@@ -645,10 +656,11 @@ describe("adding files", () => {
     });
     expect(inputs.map((i) => i.name)).toEqual(["1.KMZ", "aircraft.json"]);
     // The bytes are read from the store by name: the build takes them
-    // over, and the store keeps its own
+    // over, and the store keeps its own; the aircraft file kept first, to
+    // tell the one dropped by
     expect(
       (store.readFileBytes.mock.calls as [string][]).map(([name]) => name),
-    ).toEqual(["1.KMZ", "aircraft.json"]);
+    ).toEqual(["aircraft.json", "1.KMZ", "aircraft.json"]);
     expect(new TextDecoder().decode(inputs[0]!.bytes)).toBe("1.KMZ");
 
     fake.settlers[0]!.progress("  Parsing 1 KML file(s)...");
@@ -1097,11 +1109,12 @@ describe("adding files", () => {
     await settle();
     await settle();
 
+    // The files dropped before the folders, each folder's before those in it
     const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
     expect(kept.map((f) => f.name)).toEqual([
+      "aircraft.json",
       "1.kml",
       "2.KMZ",
-      "aircraft.json",
     ]);
     // What the folder holds besides is no mistake; what it could not read is
     expect(alert().textContent).toBe(unreadableMessage(["locked"]));
@@ -1131,35 +1144,95 @@ describe("adding files", () => {
     store.listFiles.mockResolvedValue([stored("1.kml", 6)]);
     const local = makePanel();
 
-    // A folder from a foreign disk on macOS, with ._ files beside each
+    // A folder from a foreign disk on macOS, with ._ files beside each; the
+    // folder in it listed first, as a browser may
     const adding = local.add([
       folder(
         "logs",
-        entry("aircraft.json"),
-        entry("._aircraft.json"),
         folder(
           "2025",
           entry("1.kml", "<kml/>"),
           entry("._1.kml", "\u0000\u0005"),
           entry("aircraft.json", '{"D-EAGJ": {}}'),
         ),
+        entry("aircraft.json"),
+        entry("._aircraft.json"),
       ),
     ] as unknown as FileSystemEntry[]);
     await settle();
     await settle();
     await settle();
 
+    // The one nearest the flights numbered last, which the build lets win
     const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
-    expect(kept.map((f) => f.name)).toEqual([
-      aircraftName(0),
-      "1.kml",
-      aircraftName(1),
+    expect(kept.map((f) => [f.name, f.size])).toEqual([
+      [aircraftName(1), 2],
+      ["1.kml", 6],
+      [aircraftName(2), 14],
     ]);
-    expect(aircraftName(1)).toBe("aircraft-2.json");
+    expect(aircraftName(1)).toBe("aircraft.json");
+    expect(aircraftName(2)).toBe("aircraft-2.json");
     // Neither is a mistake of the visitor's
     expect(alert().textContent).toBe("");
     fake.settlers[0]!.resolve(OUTCOME);
     await adding;
+  });
+
+  it("numbers an aircraft.json on from those kept, and takes one dropped again for itself", async () => {
+    store.listFiles.mockResolvedValue([
+      stored("aircraft.json", 2),
+      stored("aircraft-3.json", 5),
+      stored("1.kml", 6),
+    ]);
+    const local = makePanel();
+
+    // The first as kept, the second changed since: it wins over the others;
+    // the third of the size of one kept, but another (a model renamed)
+    const adding = local.add([
+      file("aircraft.json", "{}"),
+      file("aircraft.json", '{"D-EAGJ": {}}'),
+      file("aircraft.json", "[]"),
+    ]);
+    await settle();
+    await settle();
+
+    const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
+    expect(kept.map((f) => f.name)).toEqual([
+      "aircraft.json",
+      "aircraft-4.json",
+      "aircraft-5.json",
+    ]);
+    // None replaced a file of another size, nor took the place of another
+    expect(alert().textContent).toBe("");
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
+  it("tells an aircraft file kept by its number", () => {
+    expect(aircraftNumber("aircraft.json")).toBe(1);
+    expect(aircraftNumber("aircraft-12.json")).toBe(12);
+    expect(aircraftNumber("aircraft-2.kml")).toBe(0);
+    expect(aircraftNumber("1_DEAGJ_DA20.KMZ")).toBe(0);
+  });
+
+  it("leaves the AppleDouble files out of what is picked or dropped loose", async () => {
+    store.listFiles.mockResolvedValue([stored("1.kml", 6)]);
+    const local = makePanel();
+
+    const adding = local.add([file("._1.kml", "\u0000\u0005"), file("1.kml")]);
+    await settle();
+
+    const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
+    expect(kept.map((f) => f.name)).toEqual(["1.kml"]);
+    expect(alert().textContent).toBe("");
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+
+    // Alone, it is no file to show, not one refused
+    store.putFiles.mockClear();
+    await local.add([file("._2.kml")]);
+    expect(store.putFiles).not.toHaveBeenCalled();
+    expect(alert().textContent).toBe(NO_FILES_MESSAGE);
   });
 
   it("keeps the first of files of one name in different folders, and says so", async () => {
@@ -2134,6 +2207,27 @@ describe("Build again", () => {
     reopenAfterSwitch(asMapApp(createMockApp(config)));
     expect(said()).toBeNull();
   });
+
+  it("is not built again from the toast while the map is held, which keeps it", async () => {
+    sessionStorage.clear();
+    const mock = createMockApp({ config: { localFlights: DEGRADED } });
+    const build = vi
+      .spyOn(LocalBuilder.prototype, "build")
+      .mockReturnValue(new Promise<BuildOutcome>(() => {}));
+    reopenAfterSwitch(asMapApp(mock));
+    const toast = document.querySelector<HTMLElement>(
+      `.toast-notification[data-message="${degradedMessage(DEGRADED.degraded!)}"]`,
+    )!;
+    toast.classList.add("toast-visible");
+    mock.replayActive = true;
+
+    toast.querySelector<HTMLButtonElement>(".toast-button")!.click();
+    await settle();
+
+    expect(build).not.toHaveBeenCalled();
+    expect(toast.classList.contains("toast-visible")).toBe(true);
+    build.mockRestore();
+  });
 });
 
 describe("a build that fails", () => {
@@ -2182,6 +2276,68 @@ describe("a build that fails", () => {
 
     expect(alert().textContent).toBe(CACHE_GONE_MESSAGE);
     expect(names()).toEqual([]);
+  });
+
+  it("builds again, saying nothing, when another tab let go of the cache and not of the files", async () => {
+    // That tab's Remove all could not remove them: a third held them
+    store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
+    const local = makePanel();
+    local.open();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+
+    fake.settlers[0]!.reject(new Error(CACHE_GONE_MESSAGE));
+    await settle();
+
+    expect(alert().textContent).toBe("");
+    expect(fake.build).toHaveBeenCalledTimes(2);
+    expect(status().textContent).toBe(BUILDING_MESSAGE);
+    // And shows them as the first would have
+    fake.settlers[1]!.resolve(OUTCOME);
+    await adding;
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps nothing it built when another tab removed the files meanwhile", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    local.open();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    // Its Python ran before the cache went: done, but the files are gone
+    store.putDataset.mockRejectedValue(new Error(CACHE_GONE_MESSAGE));
+    store.listFiles.mockResolvedValue([]);
+
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+
+    expect(alert().textContent).toBe(CACHE_GONE_MESSAGE);
+    expect(names()).toEqual([]);
+    expect(reload).not.toHaveBeenCalled();
+    expect(fake.build).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps its toast while the map is held, whose Show cannot open the panel", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = makePanel();
+    const adding = local.add([file("a.kml")]);
+    await settle();
+    app.replayActive = true;
+
+    fake.settlers[0]!.reject(new Error("No valid KML files to process!"));
+    await adding;
+
+    const toast = document.querySelector<HTMLElement>(
+      '.toast-notification.toast-error[data-message="No valid KML files to process!"]',
+    )!;
+    // Shown, as the next frame makes it; a toast taken away loses the class
+    toast.classList.add("toast-visible");
+    toast.querySelector<HTMLButtonElement>(".toast-button")!.click();
+    expect(local.isOpen()).toBe(false);
+    expect(toast.classList.contains("toast-visible")).toBe(true);
+    app.replayActive = false;
+    toast.querySelector<HTMLButtonElement>(".toast-button")!.click();
+    expect(local.isOpen()).toBe(true);
   });
 });
 

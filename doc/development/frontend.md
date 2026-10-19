@@ -110,13 +110,17 @@ before it hands the clipboard a promise of the link with its token); the export
 of the map as an image (`ui/mapExport.ts`), which the first export fetches, the
 Export control's busy state staying in the app; and the list of flights of an
 airport's popup (`ui/airportFlights.ts`). The feature bundle is fetched ahead of
-a press as well, while a control that needs it (Replay, the tour, the
-cross-section, 3D, Satellite) or a row that picks a flight is pointed at or
-focused, and once a pointer rests on a flight on the map or a tap shows one's
-values (`prepareOnIntent` in `ui/lazyBundles.ts`, `PathHover.prepare`), rather
-than ahead of every visit. The reading of a token (`state/shareToken.ts`) is the
-first visit's: a link with one is read before anything else reads it.
-`local.bundle.js` holds Your flights (`ui/localFlights.ts`): the panel that
+a press as well, once a pointer has rested for 300 ms on a control that needs it
+(Replay, the tour, the cross-section, 3D, Satellite, in the columns or the
+phone's sheet) or on a row that picks a flight, or the keyboard focuses one, and
+once a pointer rests on a flight on the map or a tap shows one's values
+(`prepareOnIntent` in `ui/lazyBundles.ts`, `HoverPaths.prepare`), rather than
+ahead of every visit. A touch on a control fetches nothing ahead, as its tap
+follows, and neither does a control that cannot act (`aria-disabled`); the same
+rules hold for Wrapped's button and the share controls. The reading of a token
+(`state/shareToken.ts`) is the first visit's: a link with one is read before
+anything else reads it. `local.bundle.js` holds Your flights
+(`ui/localFlights.ts`, what it says in `ui/localMessages.ts`): the panel that
 takes the KML files a visitor drops on the page, the store of those files and of
 what is built from them in the browser (`services/localStore.ts`), the page's
 side of the build (`services/localBuild.ts`), the sheet over the map while files
@@ -200,10 +204,11 @@ when it names Wrapped or what the statistics rail renders, its tabs and the
 flight list included, in `search.css` when it names the search panel or its
 pulse on the map, in `local.css` when it names the panel of Your flights or the
 sheet over the map while files are dragged, in `phone.css` when it names the
-phone's sheet (`.mobile-sheet`, `.sheet-*`, the sheet's `.gradient-chip`), and
-in `extras.css` when it names an airport popup's list of flights
-(`.popup-flight*`, `.popup-runways`); the file headers spell out the rest,
-including the one-way dependency on `styles.css`.
+phone's sheet or the tabs of its bar (`.mobile-sheet`, `.sheet-*`,
+`.mobile-tab*`, the sheet's `.gradient-chip`), and in `extras.css` when it names
+an airport popup's list of flights (`.popup-flight*`, `.popup-runways`); the
+file headers spell out the rest, including the one-way dependency on
+`styles.css`.
 
 A surface across the whole width of the map on a phone (the tab bar, its sheet)
 takes `--color-bg-edge`, the secondary surface at an alpha of 0.99: Chrome

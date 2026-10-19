@@ -4,6 +4,6 @@
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
-    "types": ["vitest/globals", "@playwright/test", "node"]
+    "types": ["@playwright/test", "node"]
   }
 }

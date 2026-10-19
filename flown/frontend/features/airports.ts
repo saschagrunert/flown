@@ -5,7 +5,7 @@
 
 import type { Airport, PathInfo } from "../types";
 import { siteData } from "../state/siteData";
-import { KM_TO_NAUTICAL_MILES } from "../utils/constants";
+import { NAUTICAL_MILES_TO_KM } from "../utils/constants";
 
 /** Class of the element MapLibre positions */
 export const AIRPORT_MARKER_CLASS = "airport-marker-root";
@@ -311,7 +311,7 @@ export function flightRoute(path: PathInfo): string {
 export function flightLabel(path: PathInfo, km = 0): string {
   // Under half a mile says nothing a row could tell apart: none rather
   // than "0 nm"
-  const nm = Math.round(km * KM_TO_NAUTICAL_MILES);
+  const nm = Math.round(km / NAUTICAL_MILES_TO_KM);
   return [
     flightRoute(path),
     path.aircraft_registration,

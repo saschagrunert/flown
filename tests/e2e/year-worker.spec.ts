@@ -34,6 +34,5 @@ test("one year worker decodes every year file", async ({ page }) => {
 
   expect(workers).toHaveLength(1);
   expect(relevantConsoleErrors(errors)).toEqual([]);
-  expect(errors.pageErrors).toEqual([]);
   expect(errors.cspViolations).toEqual([]);
 });

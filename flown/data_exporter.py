@@ -29,6 +29,7 @@ The files are written into the staging directories of a ``SiteOutput`` (see
 import json
 import math
 import shutil
+from array import array
 from concurrent.futures import (
     FIRST_COMPLETED,
     Executor,
@@ -39,7 +40,7 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import IO, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Any, cast
 
 from .aircraft import resolve_aircraft_models
 from .cache import atomic_write
@@ -72,6 +73,7 @@ from .terrain import (
     ground_profile_ft,
     sample_path_elevations,
 )
+from .types import TrackPoint
 from .workers import WorkerPool, default_worker_count
 
 if TYPE_CHECKING:
@@ -90,6 +92,7 @@ __all__ = [
     "GroundspeedRange",
     "YearExportResult",
     "export_all_data",
+    "export_needs_a_pool",
     "process_year_chunk",
     "select_exported_paths",
 ]
@@ -219,6 +222,61 @@ class _ChunkPlan:
     landings: list[FlightLandings | None] = field(default_factory=list)
 
 
+@dataclass
+class _PackedPaths:
+    """Paths as a column of doubles per field of their points, to pickle.
+
+    A list of TrackPoints pickles point by point: the chunks of data/ took
+    90 ms to pickle, in the parent, one after the other, and 20 ms to pack
+    (``of``), which pickle in a fraction of a millisecond. The worker gets
+    the same points back (``paths``): floats, and None where a point has no
+    altitude or time, which is NaN here, as in the parse cache (see
+    ``parser_cache``); no point of a parse is NaN otherwise.
+    """
+
+    lengths: list[int]
+    # lat, lon, alt and ts, the fields of TrackPoint
+    columns: list[array[float]]
+
+    @classmethod
+    def of(cls, paths: FlightPathGroup) -> _PackedPaths:
+        """``paths`` packed."""
+        points = [point for path in paths for point in path]
+        columns = [
+            array(
+                "d",
+                [math.nan if v is None else v for v in values]
+                if None in values
+                else values,
+            )
+            for values in (zip(*points, strict=True) if points else [()] * 4)
+        ]
+        return cls([len(path) for path in paths], columns)
+
+    def paths(self) -> FlightPathGroup:
+        """The paths ``of`` packed."""
+        lat, lon, alt, ts = (column.tolist() for column in self.columns)
+        points = list(
+            map(TrackPoint, lat, lon, _optional(alt), _optional(ts), strict=True)
+        )
+        paths: FlightPathGroup = []
+        position = 0
+        for length in self.lengths:
+            paths.append(points[position : position + length])
+            position += length
+        return paths
+
+
+def _optional(values: list[float]) -> list[float | None]:
+    """A column of ``_PackedPaths``, None for NaN."""
+    # The sum is NaN when a value is (or two infinities cancel, which only
+    # costs the slower way): one pass in C rather than one call per value
+    if math.isnan(sum(values)) and any(map(math.isnan, values)):
+        return [None if math.isnan(value) else value for value in values]
+    # No None in it: the list itself, as list is invariant to mypy
+    return cast("list[float | None]", values)
+
+
 # The fragments a chunk writes: its path_info entries, then one per array of
 # the segments object (see segment_codec, format 8): the start points, the
 # five encoded columns and the ground
@@ -325,6 +383,13 @@ def process_year_chunk(
         original_points=original_points,
         groundspeed=groundspeed,
     )
+
+
+def _process_packed_chunk(
+    year: int, packed: _PackedPaths, *arguments: Any
+) -> ChunkResult:
+    """``process_year_chunk`` in a worker, of its paths packed for the pool."""
+    return process_year_chunk(year, packed.paths(), *arguments)
 
 
 def _copy_fragments(out: IO[str], parts: list[Path]) -> None:
@@ -434,14 +499,51 @@ def _group_paths_by_year(
 
 def _chunk_count(points: int, target: int, path_count: int) -> int:
     """How many chunks a year of ``points`` is split into, ``target`` points
-    each at least (see ``_chunk_target``), with at least one path each."""
-    return max(1, min(path_count, points // max(1, target)))
+    each at most (see ``_chunk_target``), with at least one path and
+    ``MIN_POINTS_PER_CHUNK`` each.
+
+    At most, rather than at least: years of 1.3 and 2.7 shares of a worker
+    were cut into one and two chunks, and the worker of the first took a
+    third longer than the others (a build of four copies of data/ in eight
+    years took 5 % less time with 16 workers once the count was rounded up).
+    """
+    return max(
+        1,
+        min(
+            path_count,
+            math.ceil(points / max(1, target)),
+            points // MIN_POINTS_PER_CHUNK,
+        ),
+    )
 
 
 def _chunk_target(total_points: int, max_workers: int) -> int:
     """The points a chunk should get: every worker gets about the same share
     of all the years, and no chunk less than ``MIN_POINTS_PER_CHUNK``."""
     return max(MIN_POINTS_PER_CHUNK, math.ceil(total_points / max(1, max_workers)))
+
+
+def export_needs_a_pool(
+    all_path_groups: FlightPathGroup, all_path_metadata: list[PathMetadata]
+) -> bool:
+    """Whether the export of these paths cuts them into more than one chunk,
+    which a process pool writes (see ``_plan_chunks``).
+
+    Before the paths it leaves out are known (see ``select_exported_paths``),
+    for ``workers.start_worker_server``: a duplicate counts as well.
+    """
+    weights: dict[int, list[int]] = {}
+    for path, metadata in zip(all_path_groups, all_path_metadata, strict=True):
+        year = metadata.get("year")
+        if year is not None:
+            weights.setdefault(year, []).append(max(1, len(path)))
+    target = _chunk_target(
+        sum(sum(year) for year in weights.values()), default_worker_count()
+    )
+    chunks = sum(
+        _chunk_count(sum(year), target, len(year)) for year in weights.values()
+    )
+    return chunks > 1
 
 
 def _split_by_weight(
@@ -562,6 +664,11 @@ class _ChunkJob:
             plan.landings,
         )
 
+    def packed_arguments(self, plan: _ChunkPlan) -> tuple[Any, ...]:
+        """The arguments of ``_process_packed_chunk`` for ``plan``."""
+        year, paths, *arguments = self.arguments(plan)
+        return (year, _PackedPaths.of(paths), *arguments)
+
     def describe(self, plan: _ChunkPlan) -> str:
         """The chunk as the progress lines name it."""
         parts = len(self.parts_per_year[plan.year])
@@ -624,26 +731,27 @@ def _run_pooled(
         # Submitting every chunk at once would pickle the whole dataset into
         # the executor's queue while the main process still holds it; a
         # bounded number of chunks is in flight at any time
-        pending: dict[Future[ChunkResult], _ChunkPlan] = {}
+        # With the arguments handed to the pool, for a task that is done
+        # again here (see WorkerPool.result): packing them again for every
+        # chunk took as long as packing them for the pool
+        pending: dict[Future[ChunkResult], tuple[_ChunkPlan, tuple[Any, ...]]] = {}
         queued = iter(plans)
 
         def submit_next() -> None:
             plan = next(queued, None)
             if plan is not None:
-                pending[executor.submit(process_year_chunk, *job.arguments(plan))] = (
-                    plan
-                )
+                arguments = job.packed_arguments(plan)
+                future = executor.submit(_process_packed_chunk, *arguments)
+                pending[future] = (plan, arguments)
 
         for _ in range(workers * MAX_QUEUED_CHUNKS_PER_WORKER):
             submit_next()
         while pending:
             done, _ = wait(pending, return_when=FIRST_COMPLETED)
             for future in done:
-                plan = pending.pop(future)
+                plan, arguments = pending.pop(future)
                 try:
-                    result = executor.result(
-                        future, process_year_chunk, *job.arguments(plan)
-                    )
+                    result = executor.result(future, _process_packed_chunk, *arguments)
                 except Exception as exc:
                     raise _fail(job, plan, exc, executor) from exc
                 chunk_results.append(result)

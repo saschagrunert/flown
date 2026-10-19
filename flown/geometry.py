@@ -27,6 +27,7 @@ __all__ = [
     "TERRAIN_MAX_LATITUDE",
     "CoordinateExtent",
     "haversine_distance",
+    "heading_difference",
     "longitude_difference",
     "planar_km",
     "planar_metres",
@@ -293,6 +294,11 @@ def longitude_difference(lon0: float, lon1: float) -> float:
     difference = (lon1 - lon0 + 180) % 360 - 180
     # A sum just below a multiple of 360 rounds up to it, and leaves 180
     return -180.0 if difference >= 180 else difference
+
+
+def heading_difference(a: float, b: float) -> float:
+    """The angle between two headings, 0 to 180 degrees."""
+    return abs(longitude_difference(a, b))
 
 
 def planar_km(lat0: float, lon0: float, lat1: float, lon1: float) -> float:

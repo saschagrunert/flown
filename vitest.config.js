@@ -17,7 +17,6 @@ export default defineConfig({
     },
   ],
   test: {
-    globals: true,
     environment: "jsdom",
     // One jsdom per worker instead of one per test file. vmThreads keeps the
     // per-file module isolation the suite relies on and drops the environment

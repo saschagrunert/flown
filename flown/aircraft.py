@@ -158,13 +158,21 @@ _SPECIAL_TYPES = frozenset(
 )
 # What has the shape of a type designator but names a day, a week, a part of
 # the year or an hour, which every path would publish: a weekday with the
-# day ("SAT16", "SA16", "FRI13"), a calendar week ("W33"), a quarter or a
-# half ("Q3", "H2") and an hour of the clock ("PM3", "AM10"). Not the German
-# Do and Mi, which start the Dornier and Mil types (DO27, MI8).
+# day ("SAT16", "SAT-16", "SA16", "FRI13", and in French, Spanish, Italian
+# and Portuguese "LUN16", "SAB16", "DOM16"), a calendar week of two digits
+# with or without its day ("W33", "W33-2"), a quarter or a half with or
+# without its year ("Q3", "Q3-26", "Q326", "H2", "H2-26") and an hour of the
+# clock ("PM3", "AM10"). Not the German Do and Mi, which start the Dornier
+# and Mil types (DO27, MI8), a hyphen after the weekdays of two letters
+# ("SA-16" is a Grumman), a week of one digit (W3 is the PZL Sokol), the
+# year 00 after a quarter (Q400 is a Dash 8) or a year after a half without
+# a hyphen (H125 and H225 are Airbus helicopters).
 _DATED_TYPE = re.compile(
-    r"(?:MON|TUES?|WED|THU(?:RS?)?|FRI|SAT|SUN|MO|DI|FR|SA|SO)"
+    r"(?:(?:MON|TUES?|WED|THU(?:RS?)?|FRI|SAT|SUN|LUN|MAR|MER|MIE|JEU|JUE|VEN|VIE"
+    r"|SAM|SAB|DIM|DOM|GIO|SEG|TER|QUA|QUI|SEX)-?|MO|DI|FR|SA|SO)"
     r"(?:0?[1-9]|[12]\d|3[01])|"
-    r"W(?:0?[1-9]|[1-4]\d|5[0-3])|Q[1-4]|H[12]|[AP]M(?:0?[1-9]|1[0-2])"
+    r"W(?:0[1-9]|[1-4]\d|5[0-3])(?:-[1-7])?|Q[1-4](?:-?(?!00)\d{2})?|H[12](?:-\d{2})?"
+    r"|[AP]M(?:0?[1-9]|1[0-2])"
 )
 
 

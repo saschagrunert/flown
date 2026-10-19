@@ -49,7 +49,7 @@ def _ts_evaluate(node, lookup):
 
     Numbers, the four operators and ``**``, the names of other constants of
     the same file and arrays of them: ``2 ** 40``, ``1.0 /
-    NAUTICAL_MILES_TO_KM`` or ``[0.04, 0.26, 0.62]`` (a tuple here). Anything
+    METERS_TO_FEET`` or ``[0.04, 0.26, 0.62]`` (a tuple here). Anything
     else fails the test rather than being guessed at.
     """
     match node:
@@ -107,7 +107,7 @@ def _ts_constant(relative, name):
         ("calculations/liftZoom.ts", "TERRAIN_TILE_MAX_ZOOM", TERRAIN_ZOOM),
         # The units the altitudes and distances are exported and shown in
         ("utils/constants.ts", "METERS_TO_FEET", METERS_TO_FEET),
-        ("utils/constants.ts", "KM_TO_NAUTICAL_MILES", KM_TO_NAUTICAL_MILES),
+        ("utils/constants.ts", "NAUTICAL_MILES_TO_KM", 1 / KM_TO_NAUTICAL_MILES),
         # A link names its flights by id, and ids are content hashes
         ("state/urlState.ts", "PATH_ID_LIMIT", 2**PATH_ID_BITS),
         # The selection a flight page links to, which the page has to read
@@ -115,7 +115,7 @@ def _ts_constant(relative, name):
         # The previews colour their heat as the heat cloud does
         ("ui/heatCloudShaders.ts", "CLOUD_COLOUR", previews.CLOUD_COLOUR),
         # Your flights refuses a file the build in the page would skip
-        ("ui/localFlights.ts", "MAX_FILE_BYTES", MAX_KML_FILE_SIZE),
+        ("ui/localMessages.ts", "MAX_FILE_BYTES", MAX_KML_FILE_SIZE),
     ],
 )
 def test_the_frontend_reads_what_the_exporter_writes(relative, name, value):

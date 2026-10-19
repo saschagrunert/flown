@@ -15,7 +15,12 @@ import { setUnavailable, setUnavailableFor } from "./utils/buttonState";
 import { domCache } from "./utils/domCache";
 import { applyMetricColors } from "./utils/htmlGenerators";
 import { createActivationFilter, toLngLat } from "./utils/mapHelpers";
-import { announceStatus, dismissToast, showToast } from "./utils/toast";
+import {
+  announceStatus,
+  dismissToast,
+  RELOAD_ACTION,
+  showToast,
+} from "./utils/toast";
 import { NO_CODE_LABEL } from "./ui/airportLabels";
 import { NO_DATA_MESSAGE, NO_TIMING_MESSAGE } from "./ui/actions";
 import type { MapApp } from "./mapApp";
@@ -343,8 +348,17 @@ function followLoadFailure(
   const say = (): void => {
     if (text?.textContent) announceStatus(text.textContent);
   };
-  app.dataManager.failureNote = (message) => {
+  /** The Reload a load asked for, which its button does in place of Retry */
+  let press: (() => unknown) | undefined;
+  app.dataManager.failureNote = (message, action) => {
     if (text) text.textContent = message;
+    // The site was published again since the page was loaded (DataManager):
+    // a Retry would fetch the same out-of-date files
+    if (action === RELOAD_ACTION) {
+      press = action.run;
+      retryButton!.ariaLabel = retryButton!.lastElementChild!.textContent =
+        action.label;
+    }
     if (panel && !panel.hidden) say();
   };
   let settled = false;
@@ -421,7 +435,7 @@ function followLoadFailure(
       sync();
     }
   };
-  retryButton?.addEventListener("click", () => void retry(), {
+  retryButton?.addEventListener("click", () => void (press ?? retry)(), {
     signal: app.signal,
   });
   app.filterManager.onLoadChange = sync;

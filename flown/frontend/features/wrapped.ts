@@ -3,7 +3,7 @@
  * Generate year-end statistics and fun facts from flight data
  */
 
-import { KM_TO_NAUTICAL_MILES } from "../utils/constants";
+import { NAUTICAL_MILES_TO_KM } from "../utils/constants";
 import { formatNumber } from "../utils/formatters";
 import { pluralize } from "../utils/htmlGenerators";
 import { formatFlightTime } from "../utils/statsFormat";
@@ -125,7 +125,7 @@ export function calculateYearStats(
   aircraftModels: AircraftModels,
   filtered: FilteredStatistics,
 ): YearStats {
-  const totalDistanceNm = filtered.total_distance_km * KM_TO_NAUTICAL_MILES;
+  const totalDistanceNm = filtered.total_distance_km / NAUTICAL_MILES_TO_KM;
   const flightTime = formatFlightTime(filtered.total_flight_time_seconds ?? 0);
   // Copies: the model is added below, and the statistics are kept
   const aircraftList = filtered.aircraft_list.map((ac) => ({ ...ac }));
@@ -189,7 +189,7 @@ export function generateFunFacts(
   // said again here it only repeated it.
   const distanceNm = yearStats.total_distance_nm;
   const earthCircumferenceNm =
-    (EARTH_CIRCUMFERENCE_M / 1000) * KM_TO_NAUTICAL_MILES;
+    EARTH_CIRCUMFERENCE_M / 1000 / NAUTICAL_MILES_TO_KM;
 
   if (distanceNm > earthCircumferenceNm * 0.5) {
     const ratio = (distanceNm / earthCircumferenceNm).toFixed(1);

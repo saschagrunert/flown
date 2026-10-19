@@ -112,9 +112,10 @@ export class DataManager {
    * Where a failure is said while the page has no flights at all, in place
    * of a toast: the note on the empty map with its Retry (see
    * followLoadFailure in appInitializer.ts). The two at once said the same
-   * thing twice, in two places, styled apart.
+   * thing twice, in two places, styled apart. `action` is what the toast
+   * would have offered: a Reload there is the note's as well.
    */
-  failureNote: ((message: string) => void) | null = null;
+  failureNote: ((message: string, action?: ToastAction) => void) | null = null;
   /**
    * Told when metadata.json arrives after the first load went without it
    * (see loadInitialData): a load of all years asks for it again
@@ -731,7 +732,7 @@ export class DataManager {
   private fail(message: string, retry: ToastAction | undefined): void {
     if (this.failureNote && !this.app.currentData) {
       this.noted.push([message, retry]);
-      this.failureNote(message);
+      this.failureNote(message, retry);
       return;
     }
     this.toastFailure(message, retry);

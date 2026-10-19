@@ -25,12 +25,14 @@ from .airport_lookup import (
     database_fingerprint,
     load_airport_database,
     load_runway_database,
+    pin_runway_database,
 )
 from .airports import deduplicate_airports
 from .data_exporter import (
     ExportResult,
     ExportSelection,
     export_all_data,
+    export_needs_a_pool,
     select_exported_paths,
 )
 from .exceptions import (
@@ -70,6 +72,7 @@ from .workers import (
     default_worker_count,
     parse_worker_count,
     processes_allowed,
+    start_worker_server,
 )
 
 if TYPE_CHECKING:
@@ -98,9 +101,11 @@ __all__ = [
 
 # Files that are not in the parse cache are parsed in this process up to
 # this many bytes in total, and in a process pool beyond. Starting the pool
-# costs about as much as parsing 4 MB of KML, and 4 MB take about 60 MB of
-# memory to parse, which the main process can well afford.
-INLINE_PARSE_MAX_BYTES = 4 * 1024 * 1024
+# costs about as much as parsing 4.5 MiB of KML (4.6 MiB of data/ built in
+# 890 ms either way with 16 workers; 4 MiB 15 to 20 ms faster here, 5 MiB
+# 50 ms faster in the pool, with 4 workers as with 16), and 4.5 MiB take
+# about 70 MB of memory to parse, which the main process can well afford.
+INLINE_PARSE_MAX_BYTES = 9 * 512 * 1024
 # Files the parse cache holds are read in this process, unless there is this
 # much KML and at least POOLED_CACHE_MIN_WORKERS cores to read their entries
 # in the pool: 3090 files (494 MB, 4.7 million points) took 3.4 s here and
@@ -305,7 +310,7 @@ def _parse_in_pool(
     cache_paths = dict(uncached)
     level = logger.getEffectiveLevel()
     database = pickle.dumps(airports, protocol=pickle.HIGHEST_PROTOCOL)
-    # Loaded already, as the cache keys cover them (see _parse_kml_files)
+    # Pinned already, as the cache keys cover them (see _parse_kml_files)
     runways = pickle.dumps(load_runway_database(), protocol=pickle.HIGHEST_PROTOCOL)
     # Of the two as read here, which the workers' cache keys take as well
     fingerprint = database_fingerprint()
@@ -487,8 +492,9 @@ def _parse_kml_files(
     # cache keys below see the same database as they do
     airports = load_airport_database()
     # The runways as well: the landings of a parse are found at the fields
-    # of both, and the cache keys cover both (see database_fingerprint)
-    load_runway_database()
+    # of both, and the cache keys cover both (see database_fingerprint).
+    # Read once a landing is looked for, which a parse cache hit never does
+    pin_runway_database()
     if not airports:
         logger.warning("No airport database: the landings are not counted")
     prune_stale_cache_entries()
@@ -921,6 +927,10 @@ def _export_site(
     see ``previews.normalize_site_url``) to the link previews,
     ``trim_metres`` to ``_plan``.
     """
+    # The workers of the export fork from a process that imports the
+    # package first, while this one plans (see start_worker_server)
+    if export_needs_a_pool(all_path_groups, all_path_metadata):
+        start_worker_server()
     plan = _plan(all_path_groups, all_path_metadata, landings, trim_metres=trim_metres)
     all_path_groups, all_path_metadata = plan.path_groups, plan.path_metadata
     extent, unique_airports, countries = (

@@ -55,6 +55,7 @@ updates:
           - "mypy"
           - "zizmor"
           - "pre-commit-hooks"
+          - "typos"
       # The type stubs of lxml, bumped together with it
       core:
         patterns:

@@ -17,10 +17,16 @@ import { isNode, VISITOR_KEYS } from "@babel/types";
  * line without its indentation and the spaces around the punctuation that
  * separates tokens anyway. Not around + and -, where "a - -b" would become
  * a decrement, and not in a directive, where "#define A (b)" would become a
- * macro of a parameter. The lines stay lines, for the preprocessor and for
- * the line numbers a compiler's error names. `open` and `close` say
- * whether the text starts or ends a line rather than meets an
- * interpolation, whose value a space may separate from a word.
+ * macro of a parameter. The lines run together, with a space between two
+ * words and nothing where one side is punctuation that no character can
+ * join to a longer token; a directive keeps a line of its own, as the
+ * preprocessor needs, the lines it is continued on included, and so do
+ * the text before and after an
+ * interpolation, whose value may be one. A compiler's error then names
+ * the line of a shipped shader, not of its source: a development build
+ * ships the shaders as they are written. `open` and `close` say whether
+ * the text starts or ends a line rather than meets an interpolation,
+ * whose value a space may separate from a word.
  * @param {string} text
  * @param {boolean} open
  * @param {boolean} close
@@ -28,23 +34,48 @@ import { isNode, VISITOR_KEYS } from "@babel/types";
  */
 export function tightenGlsl(text, open, close) {
   const lines = text
-    // Whichever comment opens first, a block one as a space or the breaks
-    // of the lines it spans
+    // Whichever comment opens first, a block one as a space: one across
+    // lines of a directive is still part of it
     .replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (comment) =>
-      comment.startsWith("//") ? "" : comment.replace(/[^\n]+/g, " "),
+      comment.startsWith("//") ? "" : " ",
     )
     .split("\n");
-  return lines
-    .map((line, i) => {
-      let tight = line.replace(/[ \t]+/g, " ");
-      if (!/^ ?#/.test(tight)) {
-        tight = tight.replace(/ ?([=,;(){}[\]*/<>?:&|!]) ?/g, "$1");
+  const last = lines.length - 1;
+  let glsl = "";
+  // Whether the next line has to start a line of its own
+  let ownLine = false;
+  // Whether it goes on with a directive, after a backslash
+  let continued = false;
+  lines.forEach((line, i) => {
+    let tight = line.replace(/[ \t]+/g, " ");
+    const directive = continued || /^ ?#/.test(tight);
+    if (!directive) {
+      tight = tight.replace(/ ?([=,;(){}[\]*/<>?:&|!]) ?/g, "$1");
+    }
+    // The space a continued line starts with may be all that separates
+    // two of its words
+    if ((i > 0 || open) && !continued) tight = tight.trimStart();
+    if (i < last || close) tight = tight.trimEnd();
+    if (i > 0) {
+      if (ownLine || directive || (i === last && !close)) {
+        glsl += "\n";
+        ownLine = false;
+      } else if (!tight) {
+        return;
+      } else if (
+        glsl &&
+        !glsl.endsWith("\n") &&
+        !/[;{}(),[\]?:]$/.test(glsl) &&
+        !/^[;{}(),[\]?:]/.test(tight)
+      ) {
+        glsl += " ";
       }
-      if (i > 0 || open) tight = tight.trimStart();
-      if (i < lines.length - 1 || close) tight = tight.trimEnd();
-      return tight;
-    })
-    .join("\n");
+    }
+    glsl += tight;
+    continued = directive && tight.endsWith("\\");
+    if (directive || (i === 0 && !open)) ownLine = true;
+  });
+  return glsl;
 }
 
 /**

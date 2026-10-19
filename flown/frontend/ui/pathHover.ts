@@ -28,6 +28,7 @@ import type {
 } from "../types";
 import { isTouchDevice } from "../utils/device";
 import { frameCoalescer } from "../utils/frameCoalescer";
+import { PICK_INTENT_MS } from "../utils/constants";
 import {
   closeWhenBehindGlobe,
   isInMarker,
@@ -53,12 +54,6 @@ const TOUCH_HIT_PADDING_PX = 12;
 
 /** Distance of the tooltip from the pointer, in pixels */
 const TOOLTIP_OFFSET_PX = 10;
-
-/**
- * How long a pointer rests on one flight before it counts as about to pick
- * it: a pointer on its way across the map passes over flights for less
- */
-const PICK_INTENT_MS = 300;
 
 /** A run of segments of one path, which a feature of a layer stands for */
 export interface HoverRun {

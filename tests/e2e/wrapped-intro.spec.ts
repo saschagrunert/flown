@@ -33,8 +33,9 @@ const CLOSED = { timeout: 20_000 };
 /**
  * Open Wrapped from its button, as a user does, which plays the intro.
  *
- * The button fetches the heat cloud's code as the pointer comes onto it
- * (prepareWrappedIntro), and the intro waits for that code only so long
+ * The button fetches the heat cloud's code once the pointer has rested on
+ * it a moment (prepareWrappedIntro, PICK_INTENT_MS), and the intro waits
+ * for that code only so long
  * (INTRO_WAIT_MS, a second) before Wrapped opens without it. A click at
  * once raced that fetch, which on a busy CI runner took longer, and the
  * intro then never flew. So the pointer rests on the button until the

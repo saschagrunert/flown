@@ -126,14 +126,14 @@ _ENDS_SLACK_S = 30.0
 _ENDS_SHARE = 0.15
 
 # The recordings drop_overlapping_paths found to be of one flight, kept by a
-# digest of everything it reads of its inputs (see _overlaps_key): comparing
-# the 105 flights of data/ took 470 ms, a fifth of a build that found every
-# file in the parse cache, and a build of the same flights finds the same
-# (in 30 ms, mostly for the digest). One entry for each year and one for
-# each New Year (see drop_overlapping_paths), so that a flight added to a
-# year compares that year alone again. In a directory of this user's alone,
-# as the parse cache (see cache.store_entry); an entry holds the places of
-# the paths in their year and nothing of them.
+# digest of everything it reads of its inputs (see _year_key and
+# _new_year_key): comparing the 105 flights of data/ took 470 ms, a fifth of
+# a build that found every file in the parse cache, and a build of the same
+# flights finds the same (in 30 ms, mostly for the digest). One entry for
+# each year and one for each New Year (see drop_overlapping_paths), so that
+# a flight added to a year compares that year alone again. In a directory of
+# this user's alone, as the parse cache (see cache.store_entry); an entry
+# holds the places of the paths in their year and nothing of them.
 OVERLAPS_CACHE_DIR = CACHE_DIR / "overlaps"
 # Bump whenever what an entry holds changes
 _OVERLAPS_FORMAT = 2
@@ -144,6 +144,7 @@ _OVERLAPS_MODULES = (
     "date_words",
     "duplicates",
     "geometry",
+    "helpers",
     "path_content",
     "types",
 )

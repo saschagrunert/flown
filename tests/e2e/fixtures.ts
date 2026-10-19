@@ -330,13 +330,6 @@ export const THREE_D_TIP_KEY = "flown-3d-tip";
  */
 export type ThreeDTip = "shown" | "fresh";
 
-/**
- * What the `pageErrors` fixture does with an uncaught error of the page, an
- * exception or a rejected promise nothing handled: "fail" the test, the
- * default, or "allow" it, for a test that raises one on purpose
- */
-export type UncaughtErrors = "fail" | "allow";
-
 export const test = base.extend<
   {
     hermetic: void;
@@ -344,7 +337,6 @@ export const test = base.extend<
     terrain: TerrainFixture;
     threeDTip: ThreeDTip;
     threeDTipState: void;
-    uncaughtErrors: UncaughtErrors;
   },
   SiteOptions & { currentSite: void }
 >({
@@ -372,23 +364,24 @@ export const test = base.extend<
     },
     { auto: true },
   ],
-  // An uncaught error fails the test it happened in, in every spec: most
+  // An uncaught error of the page, an exception or a rejected promise
+  // nothing handled, fails the test it happened in, in every spec: most
   // only wait for the state they look for, which the page can reach with a
   // frame callback or a listener throwing on the way. Not the console
   // errors, which the specs that collect them (attachErrorCollectors in
   // helpers.ts) check for themselves: the page logs every failure it
   // handles, which many specs provoke, and WebKit logs the tile requests a
   // page left open as failed when a spec loads the next one. A test that
-  // failed already is left alone, so its report shows its own failure.
-  uncaughtErrors: ["fail", { option: true }],
+  // did not end as expected is left alone, so its report shows its own
+  // failure.
   pageErrors: [
-    async ({ page, uncaughtErrors }, use, testInfo) => {
+    async ({ page }, use, testInfo) => {
       const errors: string[] = [];
       page.on("pageerror", (error) =>
         errors.push(error.stack ?? `${error.name}: ${error.message}`),
       );
       await use();
-      if (uncaughtErrors === "fail" && testInfo.status === "passed") {
+      if (testInfo.status === testInfo.expectedStatus) {
         expect(errors, "the page threw an error that nothing caught").toEqual(
           [],
         );

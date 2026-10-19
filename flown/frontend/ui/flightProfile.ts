@@ -67,7 +67,7 @@ import { pluralFlights } from "../utils/htmlGenerators";
 import { formatSpeed, formatTime } from "../utils/replayFormatters";
 import type { Coordinate } from "../utils/geometry";
 import { setControlIcon } from "../utils/icons";
-import { toLngLat } from "../utils/mapHelpers";
+import { toLngLat, unwrapLng } from "../utils/mapHelpers";
 import { storedFlag, storeFlag } from "../utils/storedFlag";
 import { showToast } from "../utils/toast";
 import { crossSectionOpen, followCrossSection } from "./crossSection";
@@ -388,6 +388,8 @@ export function followFlightProfile(app: MapApp): HTMLElement {
     const [[lat1, lon1], [lat2, lon2]] = segment.coords;
     const { fraction } = point;
     const lat = lat1 + (lat2 - lat1) * fraction;
+    // The short way across the antimeridian, as the line is drawn
+    const lon = lon1 + (unwrapLng(lon2, lon1) - lon1) * fraction;
     marker ??= new Marker({
       element: Object.assign(document.createElement("div"), {
         className: "profile-map-dot",
@@ -397,9 +399,7 @@ export function followFlightProfile(app: MapApp): HTMLElement {
     const lift = app.threeDVisible
       ? airplaneLiftPx(map, lat, heightFt, liftExaggeration(app.reliefLevel))
       : 0;
-    marker
-      .setLngLat(toLngLat([lat, lon1 + (lon2 - lon1) * fraction]))
-      .setOffset([0, -lift]);
+    marker.setLngLat(toLngLat([lat, lon])).setOffset([0, -lift]);
     // Put on the map once and moved after that: MapLibre takes a marker
     // off the map and puts it on again for every addTo, which was at every
     // move of a pointer or a finger over the chart

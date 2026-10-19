@@ -194,8 +194,8 @@ class TestInputFiles:
 
         assert [Path(f).name for f in kml_files] == ["1_DEAGJ_DA20.kml"]
 
-    def test_every_aircraft_file_the_page_numbered_in_order(self, tmp_path):
-        """The first wins in merge_aircraft_data, as the page kept them."""
+    def test_every_aircraft_file_the_page_numbered_the_last_first(self, tmp_path):
+        """The first wins in merge_aircraft_data: the one the page kept last."""
         for name in (
             "aircraft-10.json",
             "aircraft-2.json",
@@ -208,9 +208,9 @@ class TestInputFiles:
         _, aircraft = browser.input_files(tmp_path)
 
         assert [path.name for path in aircraft] == [
-            "aircraft.json",
-            "aircraft-2.json",
             "aircraft-10.json",
+            "aircraft-2.json",
+            "aircraft.json",
         ]
 
 
@@ -256,7 +256,8 @@ class TestBuild:
         monkeypatch.setattr(
             "flown.terrain_fetch.TERRAIN_CACHE_DIR", tmp_path / "cache" / "terrain"
         )
-        monkeypatch.setattr("flown.terrain_fetch.time.sleep", lambda _: None)
+        pauses: list[float] = []
+        monkeypatch.setattr("flown.terrain_fetch.time.sleep", pauses.append)
         inputs = tmp_path / "input"
         inputs.mkdir()
         (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
@@ -264,14 +265,22 @@ class TestBuild:
         outcome = browser.build(str(inputs), str(tmp_path / "site"), terrain=True)
 
         assert outcome["years"] == [2025]
-        assert js.sent, "no tile was asked for"
+        # Once, without a pause: offline, the attempts would hold up every
+        # build, and the other tiles are not asked for
+        assert len(js.sent) == 1, "not one tile asked for once"
+        assert pauses == []
         assert all(url.startswith("https://s3.amazonaws.com/") for url in js.sent)
         assert set(js.timeouts) == {int(browser.TILE_TIMEOUT_SECONDS * 1000)}
         data = json.loads((tmp_path / "site" / "2025" / "data.json").read_text())
         assert data["segments"]["ground"] == [None]
         # Which the page offers to build again once the connection is back
         assert outcome["degraded"] == ["terrain"]
-        assert any("elevation tile" in w for w in outcome["warnings"])
+        assert outcome["warnings"] == [
+            (
+                "The ground under some of your flights could not be fetched: the 3D "
+                "view draws it as a straight line between their airfields"
+            )
+        ]
 
     def test_an_empty_directory_is_refused(self, tmp_path, js):
         (tmp_path / "input").mkdir()
@@ -370,6 +379,29 @@ class TestBuild:
             for warning in outcome["warnings"]
         ), outcome["warnings"]
         assert not any(str(inputs) in warning for warning in outcome["warnings"])
+
+    def test_offline_the_databases_missing_are_said_once_in_plain_words(
+        self, tmp_path, js, monkeypatch
+    ):
+        """No download URL, no landings said twice, no runways beside them."""
+        monkeypatch.setattr(lookup_module, "CACHE_FILE", tmp_path / "airports.csv")
+        monkeypatch.setattr(
+            lookup_module, "RUNWAYS_CACHE_FILE", tmp_path / "runways.csv"
+        )
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+
+        outcome = browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+
+        assert any(url.endswith("airports.csv") for url in js.sent)
+        assert outcome["degraded"] == ["airports"]
+        assert outcome["warnings"] == [
+            (
+                "The airport names could not be fetched: the airports keep the names "
+                "your files give them, and no landings are counted"
+            )
+        ]
 
     def test_the_flags_are_those_of_the_page(self, tmp_path, js):
         """The package in the page has no flags of its own to look at."""
@@ -508,22 +540,46 @@ class TestBuild:
         assert logged >= browser.UNSAID
 
     def test_what_a_build_went_without_is_said_in_the_page_s_words(self):
-        """Offline: the airports and the ground, without the env variable."""
+        """Offline: the airports and the ground, once each and in plain words.
+
+        Not the downloads that failed, with their URLs, nor the landings not
+        counted, nor the runways, which say nothing more without the
+        airports and seemed to say that some landings were counted.
+        """
+        airports, runways, terrain = browser.DEGRADED
         with browser._relayed(None, "/input") as relay:
-            airports, runways, terrain = browser.DEGRADED
-            (unsaid,) = browser.UNSAID
+            logger.warning(
+                "✗ Failed to download the %s: %s",
+                "airport database",
+                "https://davidmegginson.github.io/ourairports-data/airports.csv: "
+                "no response",
+            )
             logger.warning(airports, "FLOWN_REQUIRE_AIRPORT_DB")
+            logger.warning("✗ Failed to download the %s: %s", "runways", "offline")
             logger.warning(runways)
-            logger.warning(unsaid)
+            for unsaid in sorted(browser.UNSAID):
+                logger.warning(unsaid)
             logger.warning(terrain, 5, 5, 2)
 
-        assert relay.degraded == {"airports", "terrain"}
-        assert relay.warnings == [
-            browser.DEGRADED[airports][1],
-            browser.DEGRADED[runways][1],
-            terrain % (5, 5, 2),
-        ]
-        assert not any("FLOWN_" in warning for warning in relay.warnings)
+        assert relay.outcome() == {
+            "warnings": [browser.DEGRADED[airports][1], browser.DEGRADED[terrain][1]],
+            "degraded": ["airports", "terrain"],
+        }
+        assert not any(
+            "FLOWN_" in warning or "offline?" in warning or "http" in warning
+            for warning in relay.outcome()["warnings"]
+        )
+
+    def test_the_runways_alone_missing_are_said_as_such(self):
+        """Not as the airport names, which the build has."""
+        _, runways, _ = browser.DEGRADED
+        with browser._relayed(None, "/input") as relay:
+            logger.warning(runways)
+
+        assert relay.outcome() == {
+            "warnings": [browser.DEGRADED[runways][1]],
+            "degraded": ["runways"],
+        }
 
     def test_a_build_tries_again_what_the_last_could_not_fetch(
         self, tmp_path, js, monkeypatch

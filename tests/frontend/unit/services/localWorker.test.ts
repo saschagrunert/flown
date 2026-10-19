@@ -93,8 +93,27 @@ class FakePyodide implements PyodideLike {
   inputsAtRun = new Map<string, Uint8Array>();
   /** What a write of a file fails with, if anything: memory run out */
   writeError: Error | null = null;
-  /** IDBFS's connections, by the mount's path (watchCache) */
-  readonly idbfs = { dbs: {} as Record<string, FakeConnection | undefined> };
+  /** Whether the cache's opening waits: a deletion holds it up */
+  openHangs = false;
+  /** Lets the opening that waits come */
+  openLate: (() => void) | null = null;
+  /** Called as a sync reads the cache in, before it is done */
+  onRead: (() => void) | null = null;
+  /** Called as a sync writes the cache back, before it is done */
+  onWrite: (() => void) | null = null;
+  /** IDBFS's connections, by the mount's path, and its opening of one */
+  readonly idbfs = {
+    dbs: {} as Record<string, FakeConnection | undefined>,
+    getDB: (
+      name: string,
+      callback: (error: unknown, db?: FakeConnection) => void,
+    ): void => {
+      const open = () =>
+        callback(null, (this.idbfs.dbs[name] ??= new FakeConnection()));
+      if (this.openHangs) this.openLate = open;
+      else open();
+    },
+  };
   readonly ffi = { PythonError };
   /** Where the cache is mounted */
   mountedAt: string | null = null;
@@ -119,10 +138,15 @@ class FakePyodide implements PyodideLike {
     },
     syncfs: (populate: boolean, callback: (error: unknown) => void): void => {
       this.synced.push(populate);
-      // Opened by the first sync, and kept, as IDBFS.getDB does
+      // Opened by the first sync if it is not yet, and kept, as IDBFS does
+      let connection: FakeConnection | undefined;
       if (this.mountedAt) {
-        this.idbfs.dbs[this.mountedAt] ??= new FakeConnection();
+        this.idbfs.getDB(this.mountedAt, (_, db) => (connection = db));
       }
+      (populate ? this.onRead : this.onWrite)?.();
+      // IDBFS reads and then writes with the connection it began with,
+      // which throws once closed: the sync never comes back then
+      if (connection?.closed) return;
       if (!this.syncHangs) callback(this.syncError);
     },
     writeFile: (path: string, data: Uint8Array): void => {
@@ -509,6 +533,34 @@ describe("Runtime", () => {
     expect(pyodide.synced).toEqual([]);
   });
 
+  it("watches the cache from its opening, before it is read in", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime } = runtimeOf(pyodide);
+    const gone = vi.fn();
+    runtime.onCacheGone = gone;
+    // Another tab's Remove all while the cache is read in, which takes a
+    // while on a slow phone: it waits on this connection, which the read
+    // keeps until it is done
+    let connection: FakeConnection | undefined;
+    pyodide.onRead = () => {
+      connection = pyodide.idbfs.dbs["/flown-cache"];
+      connection!.onversionchange!();
+    };
+
+    await expect(runtime.build([], true, vi.fn())).rejects.toThrow(
+      CACHE_GONE_MESSAGE,
+    );
+
+    expect(gone).toHaveBeenCalledTimes(1);
+    expect(connection?.closed).toBe(1);
+    expect(pyodide.idbfs.dbs["/flown-cache"]).toBeUndefined();
+    // Nothing was built, nor written back
+    expect(pyodide.synced).toEqual([true]);
+    expect(pyodide.python.some((code) => code.includes("browser.build"))).toBe(
+      false,
+    );
+  });
+
   it("lets the runtime go when lxml did not come, which its load does not say", async () => {
     const pyodide = new FakePyodide();
     pyodide.parserMissing = true;
@@ -623,6 +675,31 @@ describe("serveBuilds", () => {
       { id: 8, error: CACHE_GONE_MESSAGE, lost: true },
       undefined,
     ]);
+  });
+
+  it("answers a build whose Python ran before it says the cache is gone", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime } = runtimeOf(pyodide);
+    const { posted, send } = scopeOf(runtime);
+    await runtime.ready(vi.fn());
+    const connection = pyodide.idbfs.dbs["/flown-cache"]!;
+    // The deletion comes as the cache is written back after the run, which
+    // keeps the connection until it is done
+    pyodide.onWrite = () => connection.onversionchange!();
+
+    send({ id: 9, build: { files: [], terrain: true } });
+    await vi.waitFor(() =>
+      expect(posted.some(([m]) => "cacheGone" in m)).toBe(true),
+    );
+
+    // The page keeps what was built, unless the files are gone too
+    // (putDataset), and only then lets the worker go
+    const answers = posted.map(([m]) => m).filter((m) => !("progress" in m));
+    expect(answers.map((m) => Object.keys(m).sort().join())).toEqual([
+      "done,id",
+      "cacheGone",
+    ]);
+    expect(connection.closed).toBe(1);
   });
 
   it("answers a parser that did not come as a runtime that could not load, and lost", async () => {
@@ -1034,13 +1111,13 @@ describe("a start of the runtime that never comes", () => {
   it("says another tab holds the files when the cache does not open in time", async () => {
     vi.useFakeTimers();
     const pyodide = new FakePyodide();
+    // A deletion waiting on another tab holds the opening up
+    pyodide.openHangs = true;
     const runtime = new Runtime(
       () => Promise.resolve(() => Promise.resolve(pyodide)),
       () => Promise.resolve(new ArrayBuffer(8)),
       "/flown-cache",
       runtimeWatch,
-      // A deletion waiting on another tab holds the opening up
-      () => new Promise<void>(() => {}),
     );
 
     const build = runtime.build([], true, vi.fn());
@@ -1049,6 +1126,14 @@ describe("a start of the runtime that never comes", () => {
 
     await failed;
     expect(pyodide.synced).toEqual([]);
+
+    // Opened once that tab let go, which IDBFS keeps: watched all the same,
+    // or the next Remove all of another tab would wait on it for good
+    const gone = vi.fn();
+    runtime.onCacheGone = gone;
+    pyodide.openLate!();
+    pyodide.idbfs.dbs["/flown-cache"]!.onversionchange!();
+    expect(gone).toHaveBeenCalledTimes(1);
   });
 
   it("gives reading the cache in a longer while, and says so when it takes longer", async () => {

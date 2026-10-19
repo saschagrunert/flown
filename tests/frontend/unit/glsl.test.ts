@@ -58,22 +58,41 @@ describe("the shaders of the custom layers, tightened", () => {
   });
 
   it.each(LAYERS)(
-    "%s: are the same tokens as written, line for line",
+    "%s: are the same tokens as written, each directive on a line of its own",
     (name) => {
       const source = readFileSync(join(UI_DIR, name), "utf8");
       for (const { raw } of glslLiterals(source)) {
         const { text, open, close } = parts(raw);
         const tight = tightenGlsl(text, open, close);
         expect(tokens(tight)).toEqual(tokens(text));
-        // The line numbers a compiler's error names stay where they were
-        expect(tight.split("\n")).toHaveLength(text.split("\n").length);
-        // A directive still starts its own line
+        // A directive is a line, the same as written, and nothing else is
+        // on it
+        const directives = (glsl: string): string[] =>
+          glsl
+            .split("\n")
+            .map((line) => line.trim().replace(/[ \t]+/g, " "))
+            .filter((line) => line.includes("#"));
+        expect(directives(tight)).toEqual(directives(text));
         for (const line of tight.split("\n")) {
           if (line.includes("#")) expect(line).toMatch(/^#/);
         }
       }
     },
   );
+
+  it("are shorter by their line breaks", () => {
+    // What the joined lines saved, in the shaders of the heat cloud
+    const source = readFileSync(join(UI_DIR, "heatCloudShaders.ts"), "utf8");
+    const breaks = (glsl: string): number => glsl.split("\n").length - 1;
+    let written = 0;
+    let shipped = 0;
+    for (const { raw } of glslLiterals(source)) {
+      const { text, open, close } = parts(raw);
+      written += breaks(text);
+      shipped += breaks(tightenGlsl(text, open, close));
+    }
+    expect(shipped).toBeLessThan(written / 4);
+  });
 
   it.each(LAYERS)("%s: is left as it is outside its shaders", (name) => {
     const source = readFileSync(join(UI_DIR, name), "utf8");
@@ -214,13 +233,12 @@ describe("tightenGlsl", () => {
     );
   });
 
-  it("keeps the lines of a block comment that spans them", () => {
-    expect(tightenGlsl("a;/* one\ntwo */b;\nc;", true, true)).toBe(
-      "a;\nb;\nc;",
-    );
+  it("takes out the comments, a block one across lines included", () => {
+    expect(tightenGlsl("a;/* one\ntwo */b;\nc;", true, true)).toBe("a;b;c;");
+    expect(tightenGlsl("a/* one\ntwo */b;", true, true)).toBe("a b;");
     // The comment that opens first wins, a // inside a block one included
     expect(tightenGlsl("a; /* // */ b; // c */\nd;", true, true)).toBe(
-      "a;b;\nd;",
+      "a;b;d;",
     );
   });
 
@@ -228,6 +246,55 @@ describe("tightenGlsl", () => {
     // `uniform ${type} u;`: the text around the value is not a line's end
     expect(tightenGlsl("uniform ", true, false)).toBe("uniform ");
     expect(tightenGlsl(" u;\n  v;", false, true)).toBe(" u;\nv;");
+  });
+
+  it("runs the lines together, with a space only between two words", () => {
+    expect(
+      tightenGlsl(
+        "void main() {\n  float a = 1.0;\n  a = a\n    - b;\n}",
+        true,
+        true,
+      ),
+    ).toBe("void main(){float a=1.0;a=a - b;}");
+    expect(tightenGlsl("uniform\nfloat u;", true, true)).toBe(
+      "uniform float u;",
+    );
+    // Neither side punctuation of one character: "a\n-b" and "a\n.5"
+    // stay apart, "-\n-" never becomes a decrement
+    expect(tightenGlsl("a\n-b;\nc = d -\n-e;", true, true)).toBe(
+      "a -b;c=d - -e;",
+    );
+    // Empty lines, and the comments that leave one, go
+    expect(tightenGlsl("a;\n\n  // b\n\nc;", true, true)).toBe("a;c;");
+  });
+
+  it("keeps a directive on a line of its own", () => {
+    expect(
+      tightenGlsl(
+        "#version 300 es\nprecision highp float;\n#define A (b)\nout vec4 c;\n\n#ifdef A\nx;\n#endif\n",
+        true,
+        true,
+      ),
+    ).toBe(
+      "#version 300 es\nprecision highp float;\n#define A (b)\nout vec4 c;\n#ifdef A\nx;\n#endif\n",
+    );
+  });
+
+  it("keeps a directive's continued lines in it, and nothing else", () => {
+    expect(
+      tightenGlsl("#define A(x) x\\\n  + 1\nfloat y = A(2);\n", true, true),
+    ).toBe("#define A(x) x\\\n + 1\nfloat y=A(2);");
+    // A comment across lines does not end it either
+    expect(
+      tightenGlsl("#define A 1 /* x\n y */ + 2\nfloat y;", true, true),
+    ).toBe("#define A 1 + 2\nfloat y;");
+  });
+
+  it("keeps the line breaks next to an interpolation, whose value may be a directive", () => {
+    // `${MARKS_VERTEX}` on a line of its own
+    expect(tightenGlsl("\n  a;\n  b;\n", false, true)).toBe("\na;b;");
+    expect(tightenGlsl("a;\n  b;\n", true, false)).toBe("a;b;\n");
+    expect(tightenGlsl("a;\nb;", false, false)).toBe("a;\nb;");
   });
 });
 

@@ -118,6 +118,10 @@ addopts = [
     "--tb=short",
     "--strict-markers",
 ]
+# A test that hangs (a pool waiting for a worker that never answers) dumps
+# every thread's stack after five minutes, rather than silently using up
+# the job's time
+faulthandler_timeout = 300
 markers = [
     # A copy of the repository with flights of its own skips them with
     # FLOWN_OWN_FLIGHTS=1 (see tests/conftest.py and doc/hosting.md)

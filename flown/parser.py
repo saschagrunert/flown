@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING, Any
 from lxml import etree
 
 from .aircraft import parse_aircraft_from_filename
-from .constants import KML_NAMESPACE, KML_NAMESPACES
+from .constants import KML_NAMESPACE, KML_NAMESPACES, MAX_TIMESTAMP_DISTANCE_SECONDS
 from .exceptions import KMLParseError
+from .helpers import parse_timestamp_epoch
 from .logger import logger
 from .parser_cache import (
     CachedParse,
@@ -567,18 +568,32 @@ def _date_lines_by_points(
     Some exports draw the flight as a line without times and put its times
     on Point placemarks next to it: Flightradar24 a "Trail" of positions,
     each with a <TimeStamp>, SkyDemon a "Log Start: 03 Mar 2025 08:58 Z"
-    marker. Only when all of those Points fall into one year.
+    marker. Only when all of those Points fall into one year, or have times
+    within ``MAX_TIMESTAMP_DISTANCE_SECONDS`` of each other (a flight across
+    New Year): then the year of the earliest, as a track goes by its start.
     """
     if all(metadata.get("year") is not None for metadata in path_metadata):
         return
-    years = {
-        placemark["year"]
+    dated = [
+        (placemark["timestamp"], year)
         for elem in coord_elements
         if (parent := elem.getparent()) is not None
         and local_name(parent.tag) == "Point"
         and (placemark := coord_to_metadata.get(id(elem))) is not None
-        and placemark["year"] is not None
-    }
+        and (year := placemark["year"]) is not None
+    ]
+    years = {year for _, year in dated}
+    if len(years) > 1:
+        timed = sorted(
+            (time, year)
+            for timestamp, year in dated
+            if (time := parse_timestamp_epoch(timestamp)) is not None
+        )
+        if len(timed) < len(dated) or (
+            timed[-1][0] - timed[0][0] > MAX_TIMESTAMP_DISTANCE_SECONDS
+        ):
+            return
+        years = {timed[0][1]}
     if len(years) != 1:
         return
     (year,) = years
