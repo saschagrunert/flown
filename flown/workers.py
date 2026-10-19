@@ -2,14 +2,17 @@
 
 Python 3.14 starts workers with the ``forkserver`` method, so the parent's
 logging configuration is not inherited. The initializer restores the log
-level (debug, the default or --quiet). The export workers never look up an
-airport and do not get the airport database; the parse workers get the one
-the parent loaded, which takes a tenth of the time of reading the CSV again
-in every worker. ``--jobs`` caps every pool (see ``configure_workers``).
+level (debug, the default or --quiet). The forkserver imports the package
+before it forks the first worker (see ``_preload_worker_modules``). The
+export workers never look up an airport and do not get the airport
+database; the parse workers get the one the parent loaded, which takes a
+tenth of the time of reading the CSV again in every worker. ``--jobs`` caps
+every pool (see ``configure_workers``).
 """
 
 import contextlib
 import math
+import multiprocessing
 import os
 import pickle
 from concurrent.futures import Executor, Future, ProcessPoolExecutor
@@ -34,6 +37,7 @@ __all__ = [
     "init_worker",
     "parse_worker_count",
     "processes_allowed",
+    "start_worker_server",
 ]
 
 # Peak memory of a parse worker per byte of its KML file, with the landings
@@ -47,6 +51,11 @@ WORKER_BASE_BYTES = 100 * 1024 * 1024
 # this many bytes of KML. The 17 MB of data/ parsed in 630 ms with 6 to 8
 # workers and in 810 ms with 16
 MIN_PARSE_BYTES_PER_WORKER = 2_500_000
+
+# What the forkserver imports before it forks a worker: every function a
+# pool runs is in a module that flown.pipeline imports, and "__main__" is
+# what it imports by default
+_WORKER_MODULES = ("__main__", f"{__package__}.pipeline")
 
 # The most workers any pool of the run gets (--jobs), None for every CPU
 _worker_limit: int | None = None
@@ -147,9 +156,47 @@ def init_worker(
         use_database_fingerprint(database_fingerprint)
 
 
+def _preload_worker_modules() -> bool:
+    """Have the forkserver import the package before it forks a worker.
+
+    Each worker imported it again otherwise, for the function it runs, all
+    of them at once, and so did those of every later pool: a build of
+    data/ that parsed every file in a pool of 16 took a fifth longer. Only
+    where the workers start from a forkserver (Linux), which this tells:
+    with ``spawn`` (macOS and Windows) every worker is a new interpreter
+    that imports what it needs. The forkserver starts with the first pool
+    of the process (or ``start_worker_server``) and keeps what it imported
+    then; this changes nothing once it runs.
+    """
+    context = multiprocessing.get_context()
+    if context.get_start_method() != "forkserver":
+        return False
+    context.set_forkserver_preload(list(_WORKER_MODULES))
+    return True
+
+
 # What starting a process pool raises where it cannot start one: a sandbox
 # without POSIX semaphores, or a system out of processes or memory
 _CANNOT_START = (OSError, NotImplementedError, ImportError)
+
+
+def start_worker_server() -> None:
+    """Start the process the workers of the pools to come fork from, now.
+
+    For a caller that knows a pool will start: the forkserver imports the
+    package (see ``_preload_worker_modules``) while this process goes on,
+    instead of while the pool waits for its first worker, which took 80 ms
+    of a build of data/ that found every file in the parse cache. Nothing
+    where no pool may start processes (see ``configure_workers``) or the
+    workers start otherwise; where it cannot start, the pool says so.
+    """
+    if not _processes_allowed:
+        return
+    with contextlib.suppress(*_CANNOT_START):
+        if _preload_worker_modules():
+            from multiprocessing import forkserver  # noqa: PLC0415 - POSIX only
+
+            forkserver.ensure_running()
 
 
 class WorkerPool(Executor):
@@ -176,6 +223,7 @@ class WorkerPool(Executor):
         if self._given_up:
             return
         try:
+            _preload_worker_modules()
             self._pool = ProcessPoolExecutor(
                 max_workers=max_workers, initializer=init_worker, initargs=initargs
             )

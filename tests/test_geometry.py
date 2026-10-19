@@ -13,6 +13,7 @@ from flown.geometry import (
     METRES_PER_DEGREE,
     TERRAIN_MAX_LATITUDE,
     haversine_distance,
+    heading_difference,
     longitude_difference,
     planar_km,
     planar_metres,
@@ -103,6 +104,14 @@ class TestLongitudeDifference:
     @given(longitudes, longitudes)
     def test_bounded(self, lon0, lon1):
         assert -180.0 <= longitude_difference(lon0, lon1) < 180.0
+
+
+class TestHeadingDifference:
+    def test_the_angle_between_two_headings(self):
+        assert heading_difference(10.0, 350.0) == pytest.approx(20.0)
+        assert heading_difference(350.0, 10.0) == pytest.approx(20.0)
+        assert heading_difference(90.0, 270.0) == 180.0
+        assert heading_difference(84.0, 444.0) == pytest.approx(0.0)
 
 
 class TestTrueBearing:

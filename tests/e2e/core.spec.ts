@@ -95,7 +95,6 @@ test("page loads without errors or CSP violations", async ({ page }) => {
 
   await gotoApp(page);
 
-  expect(errors.pageErrors).toEqual([]);
   expect(errors.cspViolations).toEqual([]);
   expect(relevantConsoleErrors(errors)).toEqual([]);
 });

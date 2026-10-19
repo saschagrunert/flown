@@ -123,3 +123,18 @@ def test_the_catch_all_excludes_every_named_group():
     }
     assert len(groups) > 2
     assert set(groups[CATCH_ALL].get("exclude-patterns", [])) == named
+
+
+def test_every_python_dependency_is_in_a_uv_group():
+    """A dependency outside every group got a pull request of its own each
+    bump, as typos did before it joined the linter group"""
+    groups = _group_lists("uv")
+    patterns = [
+        pattern for lists in groups.values() for pattern in lists.get("patterns", [])
+    ]
+    ungrouped = [
+        name
+        for name in _python_dependencies()
+        if not any(fnmatchcase(name, pattern) for pattern in patterns)
+    ]
+    assert ungrouped == []

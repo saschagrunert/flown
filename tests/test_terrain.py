@@ -9,7 +9,6 @@ test_png.py and the numbers the frontend shares in test_frontend_parity.py.
 
 import logging
 import math
-import struct
 from array import array
 
 import pytest
@@ -29,7 +28,13 @@ from flown.terrain import (
 )
 from flown.types import TrackPoint
 from tests.conftest import FlatTiles
-from tests.tiles import FunctionTiles, encode_png, global_pixel, terrarium_png
+from tests.tiles import (
+    FunctionTiles,
+    encode_png,
+    global_pixel,
+    path_contents,
+    terrarium_png,
+)
 
 
 def _lon_of_pixel(gx, zoom=TERRAIN_ZOOM):
@@ -158,7 +163,7 @@ class TestSamplePathElevations:
             7: [TrackPoint(51.0, 9.0, 100.0)],
         }
 
-        by_path = sample_path_elevations(paths, FlatTiles(42.0))
+        by_path = sample_path_elevations(paths, FlatTiles(42.0), path_contents(paths))
 
         assert {index: list(values) for index, values in by_path.items()} == {
             3: [42.0, 42.0],
@@ -216,7 +221,9 @@ class TestSamplePathElevations:
 
         with caplog.at_level(logging.WARNING, logger="flown"):
             by_path = sample_path_elevations(
-                paths, FunctionTiles(lambda gx, gy: 5.0, missing=[missing])
+                paths,
+                FunctionTiles(lambda gx, gy: 5.0, missing=[missing]),
+                path_contents(paths),
             )
 
         assert list(by_path) == [1]
@@ -239,14 +246,6 @@ class _KeptGround(FunctionTiles):
         return super().pixels(wanted)
 
 
-def _content(path):
-    """The content of a path as path_content.exported_contents packs it."""
-    return struct.pack(
-        f"<{3 * len(path)}d",
-        *(value for p in path for value in (round(p.lat, 6), round(p.lon, 6), p.alt)),
-    )
-
-
 _KEPT_PATHS = {
     3: [TrackPoint(50.0000004, 8.0, 100.0), TrackPoint(50.1, 8.1, 200.0)],
     7: [TrackPoint(51.0, 9.0, 100.0)],
@@ -255,7 +254,7 @@ _KEPT_PATHS = {
 
 class TestKeptGround:
     def _contents(self, paths=None):
-        return {index: _content(path) for index, path in (paths or _KEPT_PATHS).items()}
+        return path_contents(paths or _KEPT_PATHS)
 
     def test_a_build_reads_the_ground_the_last_one_sampled(self, tmp_path):
         tiles = _KeptGround(tmp_path / "ground")
@@ -271,17 +270,15 @@ class TestKeptGround:
         }
         assert len(list((tmp_path / "ground").iterdir())) == 2
 
-    def test_the_same_ground_as_sampled_from_the_points(self, tmp_path):
+    def test_the_ground_at_the_coordinates_as_the_rows_carry_them(self, tmp_path):
         """The contents hold the coordinates as the exporter rounds them."""
         tiles = _KeptGround(tmp_path / "ground")
-        from_contents = sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
-        from_points = sample_path_elevations(
-            _KEPT_PATHS, FunctionTiles(tiles.elevation)
-        )
+        by_path = sample_path_elevations(_KEPT_PATHS, tiles, self._contents())
 
-        assert {i: list(v) for i, v in from_contents.items()} == {
-            i: list(v) for i, v in from_points.items()
-        }
+        for index, path in _KEPT_PATHS.items():
+            rounded = [(round(p.lat, 6), round(p.lon, 6)) for p in path]
+            expected, _, _ = sample_elevations(rounded, FunctionTiles(tiles.elevation))
+            assert list(by_path[index]) == list(expected)
 
     def test_a_changed_flight_is_sampled_again(self, tmp_path):
         tiles = _KeptGround(tmp_path / "ground")
@@ -316,13 +313,6 @@ class TestKeptGround:
 
         assert tiles.pixels_asked == 2 * asked
         assert len(again[3]) == 2
-
-    def test_nothing_is_kept_without_the_contents(self, tmp_path):
-        tiles = _KeptGround(tmp_path / "ground")
-
-        sample_path_elevations(_KEPT_PATHS, tiles)
-
-        assert not (tmp_path / "ground").exists()
 
     def test_another_sampling_code_misses(self, tmp_path, monkeypatch):
         tiles = _KeptGround(tmp_path / "ground")

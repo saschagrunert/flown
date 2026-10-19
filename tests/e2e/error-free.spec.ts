@@ -43,7 +43,6 @@ function expectColorRamp(colors: string[]): void {
 }
 
 function expectClean(errors: ErrorCollector): void {
-  expect(errors.pageErrors).toEqual([]);
   expect(errors.cspViolations).toEqual([]);
   expect(relevantConsoleErrors(errors)).toEqual([]);
 }

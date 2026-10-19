@@ -68,8 +68,8 @@ export default defineConfig<object, SiteOptions>({
   retries: isCI ? 1 : 0,
   failOnFlakyTests: isCI,
   // One browser per core of the runner, each drawing WebGL in software. The
-  // e2e job of .github/workflows/test.yml splits the desktop, mobile and
-  // webkit projects into shards, and runs the heavy tests of the desktop and
+  // e2e job of .github/workflows/test.yml splits the desktop and mobile
+  // projects into shards, and runs the heavy tests of the desktop and
   // webkit-desktop projects, the slowest to draw, on a runner of their own
   // with two browsers (--workers=2) in either engine.
   ...(isCI ? { workers: "100%" } : {}),

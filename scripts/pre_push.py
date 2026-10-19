@@ -383,7 +383,9 @@ def dated_messages(
             + find_partial_date_tokens(message)
             + find_weekday_tokens(message)
             + find_holiday_tokens(message)
-            + find_time_tokens(message)
+            # Midnight is the time of every obfuscated flight, which a
+            # message may say ("moved to 00:00:00 UTC")
+            + find_time_tokens(message, skip_midnight=True)
         )
     return found
 

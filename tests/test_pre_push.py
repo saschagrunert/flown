@@ -366,6 +366,8 @@ class TestCommitMessages:
             "Add flight EDDS-EDDF 1430Z",
             "Add flight 14:30",
             "Flug 33. KW",
+            # Midnight with an offset is no midnight UTC
+            "Add flight 00:00 +02:00",
         ],
     )
     def test_refuses_what_dates_a_flight(self, repo, message):
@@ -378,6 +380,19 @@ class TestCommitMessages:
             {"data/2.kml": CLEAN_KML, "data/3.kml": CLEAN_KML},
             "KW05 Gettysburg - KW22 Upshur",
         )
+        assert run_check(repo, push_of(sha)) == 0
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Obfuscate: every flight starts at 00:00:00 UTC",
+            "Charterware descriptions at 12:00AM",
+            "Move the flights to 2026-01-01T00:00:00Z",
+        ],
+    )
+    def test_passes_midnight(self, repo, message):
+        """The time of every obfuscated flight gives none away."""
+        sha = commit(repo, {"data/2.kml": CLEAN_KML, "data/3.kml": CLEAN_KML}, message)
         assert run_check(repo, push_of(sha)) == 0
 
     def test_passes_an_undated_message(self, repo):

@@ -47,6 +47,8 @@ from flown.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
 # 7,603 B after). The airport popup's list of flights went to extras.css
 # and the sheet's gradient chip to phone.css, with the code that draws
 # them (39,093 B and 7,665 B gzipped before, 37,801 B and 7,452 B after).
+# The tabs of the phone's bar went to phone.css too, which only phones
+# fetch (37,857 B and 7,464 B gzipped before, 37,033 B and 7,352 B after).
 #
 # features.css and wrapped.css are fetched with their lazy bundles, not by a
 # first visit, so they are the more forgiving. The two were one 28.8 KB sheet
@@ -73,14 +75,15 @@ from flown.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
 # of room. extras.css, the phone's sheet, fetched with the extras bundle, was
 # set at 5,651 B. The sheet moved to phone.css with the phone's bundle, set
 # at 5,994 B with its gradient chip, and extras.css kept the airport popup's
-# list of flights, set at 1,158 B.
+# list of flights, set at 1,158 B. phone.css was raised from 6.25 KB for the
+# tabs of the bar, which left styles.css (6,818 B after).
 STYLESHEET_BUDGET_BYTES = {
     "styles.css": 40 * 1024,
     "features.css": int(21.5 * 1024),
     "wrapped.css": 36 * 1024,
     "search.css": int(5.75 * 1024),
     "local.css": int(6.5 * 1024),
-    "phone.css": int(6.25 * 1024),
+    "phone.css": 7 * 1024,
     "extras.css": int(1.5 * 1024),
 }
 
@@ -93,13 +96,14 @@ STYLESHEET_BUDGET_BYTES = {
 # (wrapped.css), with the print styles taken out of the first two, and at
 # 1,192 B for search.css and 1,514 B for extras.css, which became phone.css
 # at 1,585 B, and extras.css again at 524 B for the popup's list of flights.
+# phone.css raised to 1.75 KB for the tabs of the bar (1,685 B after).
 STYLESHEET_GZIP_BUDGET_BYTES = {
     "styles.css": 8 * 1024,
     "features.css": int(3.875 * 1024),
     "wrapped.css": int(6.125 * 1024),
     "search.css": int(1.25 * 1024),
     "local.css": int(1.5 * 1024),
-    "phone.css": int(1.625 * 1024),
+    "phone.css": int(1.75 * 1024),
     "extras.css": int(0.625 * 1024),
 }
 

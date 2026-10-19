@@ -235,6 +235,15 @@ class TestAircraftType:
             "DO27",
             "MI8",
             "MI24",
+            # A week of one digit, a quarter of the year 00 and a half with
+            # digits after it name no day (see _DATED_TYPE)
+            "W3",
+            "W-3",
+            "Q400",
+            "Q300",
+            "H25B",
+            "H125",
+            "H225",
             # The designators without a digit
             "GLID",
             "ULAC",
@@ -293,13 +302,38 @@ class TestAircraftType:
 
     @pytest.mark.parametrize(
         "raw",
-        ["SAT16", "sun16", "MO16", "SA16", "FRI13", "W33", "Q3", "H2", "PM3", "AM10"],
+        [
+            "SAT16",
+            "sun16",
+            "MO16",
+            "SA16",
+            "FRI13",
+            "W33",
+            "Q3",
+            "H2",
+            "PM3",
+            "AM10",
+            # With a hyphen, a year or a day after it, and the weekdays of
+            # French, Spanish, Italian and Portuguese
+            "SAT-16",
+            "MON-16",
+            "W33-2",
+            "Q326",
+            "LUN16",
+            "DOM16",
+            "SAB16",
+            "SEG16",
+        ],
     )
     def test_a_day_week_or_hour_is_no_type(self, raw, caplog):
         """These passed as types and were published with every path (regression)."""
         assert _parsed(f"1_DEAGJ_{raw}.kml").type is None
         assert f"Ignoring the aircraft type {raw!r}" in caplog.text
         assert "names a day, a week or an hour" in caplog.text
+
+    @pytest.mark.parametrize("raw", ["Q3-26", "H2-26"])
+    def test_a_quarter_with_its_year_is_no_type(self, raw):
+        assert _parsed(f"1_DEAGJ_{raw}.kml").type is None
 
 
 class TestParseAircraftFromFilenameCharterware:

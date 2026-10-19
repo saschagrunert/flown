@@ -262,8 +262,12 @@ export const KEYED_FIELDS =
   "input:not([type=range]):not([type=checkbox]):not([type=radio])," +
   "textarea,select,[contenteditable]";
 
-/** KEYED_FIELDS for the `besides` of isPageEscape */
-export const FIELDS = "," + KEYED_FIELDS;
+/**
+ * KEYED_FIELDS for the `besides` of isPageEscape. Made by a call marked
+ * pure: the year worker, which takes the helpers of the heat lines from
+ * here, kept both selectors otherwise.
+ */
+export const FIELDS = /* @__PURE__ */ (() => "," + KEYED_FIELDS)();
 
 /**
  * Whether `event` is an Escape for what the page has open: not one a

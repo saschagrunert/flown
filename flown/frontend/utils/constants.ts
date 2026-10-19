@@ -1,7 +1,6 @@
 export const METERS_TO_FEET = 3.28084;
 export const FEET_TO_METERS = 1.0 / METERS_TO_FEET;
 export const NAUTICAL_MILES_TO_KM = 1.852;
-export const KM_TO_NAUTICAL_MILES = 1.0 / NAUTICAL_MILES_TO_KM;
 /** A knot in metres per second */
 export const KNOTS_TO_METRES_PER_SECOND = (NAUTICAL_MILES_TO_KM * 1000) / 3600;
 /** AGL threshold for cruise statistics */
@@ -19,6 +18,13 @@ export const MOBILE_BREAKPOINT_PX = 768;
  * width (ui/flightProfile.ts, ui/replayAll.ts). Replay all plays more.
  */
 export const DAY_MAX_FLIGHTS = 8;
+
+/**
+ * How long a pointer rests on a flight on the map, or on a control, before
+ * it counts as about to pick it (ui/pathHover.ts, prepareOnIntent in
+ * ui/lazyBundles.ts): one on its way across passes over them for less
+ */
+export const PICK_INTENT_MS = 300;
 
 /**
  * The input of a visitor that the intro of a link to shared flights gives
@@ -69,9 +75,13 @@ export const ZOOM_OFFSET = 1;
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 20;
 
-/** Zoom limits of the map itself, in map units: the two above, translated */
-export const MAP_MIN_ZOOM = MIN_ZOOM - ZOOM_OFFSET;
-export const MAP_MAX_ZOOM = MAX_ZOOM - ZOOM_OFFSET;
+/**
+ * Zoom limits of the map itself, in map units: the two above, translated.
+ * Made by calls marked pure, as HEATMAP_LAYER_IDS is: the year worker,
+ * which uses none of them, kept the differences.
+ */
+export const MAP_MIN_ZOOM = /* @__PURE__ */ (() => MIN_ZOOM - ZOOM_OFFSET)();
+export const MAP_MAX_ZOOM = /* @__PURE__ */ (() => MAX_ZOOM - ZOOM_OFFSET)();
 
 /**
  * How far the map tilts, in degrees: MapLibre's limit, all but level with

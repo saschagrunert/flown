@@ -736,6 +736,10 @@ class TestTimeSpanPlacemark:
             ("10:30:00Z", "8.3 48.6 1500", True),
             # A few minutes later, a few metres on
             ("10:32:00Z", "8.3002 48.6001 1500", True),
+            # After the logger lost its fix for two minutes, kilometres on
+            ("10:32:00Z", "8.33 48.61 1500", True),
+            # A minute later, but further than any light aircraft flies in it
+            ("10:31:00Z", "9.5 48.6 1500", False),
             # Back in time: another recording of the same flight
             ("10:20:00Z", "8.3 48.6 1500", False),
             # Hours later: another flight of that name
@@ -770,6 +774,50 @@ class TestTimeSpanPlacemark:
         if joined:
             assert len(paths[0]) == (4 if second_start == "8.3 48.6 1500" else 5)
             assert metadata[0]["end_timestamp"] == f"2025-06-15T{later}"
+
+    @pytest.mark.parametrize(
+        ("second", "joined"),
+        [
+            # Standing at the field, then off: the next flight
+            (["8.0 48.5 300", "8.0 48.5 300", "8.0 48.5 300", "8.3 48.7 1500"], False),
+            # Its takeoff roll, then the climb away
+            (
+                ["8.0 48.5 300", "8.01 48.5 300", "8.03 48.5 320", "8.3 48.7 1500"],
+                False,
+            ),
+            # Down the rest of the final, to taxi in: the same flight
+            (
+                [
+                    "8.02 48.503 350",
+                    "8.01 48.501 300",
+                    "8.005 48.5 300",
+                    "8.0 48.5 300",
+                ],
+                True,
+            ),
+        ],
+    )
+    def test_a_track_after_one_cut_on_final(self, tmp_path, second, joined):
+        """The recording stopped 2 km out; the next one starts at the field."""
+
+        def placemark(whens, coords):
+            return (
+                "<Placemark><name>D-EAGJ</name><gx:Track>"
+                + "".join(f"<when>2025-06-15T{when}</when>" for when in whens)
+                + "".join(f"<gx:coord>{coord}</gx:coord>" for coord in coords)
+                + "</gx:Track></Placemark>"
+            )
+
+        first = placemark(
+            ["10:00:00Z", "10:10:00Z", "10:20:00Z", "10:30:00Z"],
+            ["8.0 48.5 300", "8.2 48.55 1500", "8.1 48.55 1000", "8.027 48.505 400"],
+        )
+        after = placemark(["10:45:00Z", "10:45:10Z", "10:45:20Z", "11:00:00Z"], second)
+        kml = f"{KML_HEADER}<Document>{first}{after}</Document></kml>"
+
+        _, paths, _ = parse_kml_coordinates(_write(tmp_path, "c.kml", kml))
+
+        assert len(paths) == (1 if joined else 2)
 
     def test_a_return_flight_under_one_timespan_stays_apart(self, tmp_path):
         """Out and back in a document of one TimeSpan: two routes, two flights."""
@@ -1024,6 +1072,49 @@ class TestLinesDatedByPoints:
             ]
         )
         _, _, metadata = parse_kml_coordinates(_write(tmp_path, "two.kml", kml))
+        assert metadata[0]["year"] is None
+
+    def test_points_across_new_year_take_the_year_of_the_earliest(self, tmp_path):
+        """A flight from 2025 into 2026 belongs to 2025, as the obfuscator has it."""
+        from pathlib import Path
+
+        from flown.obfuscate import obfuscate_kml_file
+
+        kml = self._kml(
+            [
+                (
+                    "2",
+                    "<TimeStamp><when>2026-01-01T00:30:00Z</when></TimeStamp>",
+                    "8.2,48.6,1500",
+                ),
+                (
+                    "1",
+                    "<TimeStamp><when>2025-12-31T23:40:00Z</when></TimeStamp>",
+                    "8.0,48.5,300",
+                ),
+            ]
+        )
+        kml_file = _write(tmp_path, "ny.kml", kml)
+        _, _, before = parse_kml_coordinates(kml_file)
+        assert obfuscate_kml_file(Path(kml_file)) is True
+        _, _, after = parse_kml_coordinates(kml_file)
+
+        assert before[0]["year"] == after[0]["year"] == 2025
+
+    def test_a_dated_marker_without_a_time_in_another_year_dates_nothing(
+        self, tmp_path
+    ):
+        kml = self._kml(
+            [
+                (
+                    "1",
+                    "<TimeStamp><when>2025-12-31T23:40:00Z</when></TimeStamp>",
+                    "8.0,48.5,300",
+                ),
+                ("Log Start: 01 Jan 2026", "", "8.2,48.6,1500"),
+            ]
+        )
+        _, _, metadata = parse_kml_coordinates(_write(tmp_path, "mixed.kml", kml))
         assert metadata[0]["year"] is None
 
 

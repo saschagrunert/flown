@@ -1,3 +1,0 @@
-# Prettier reads .gitignore as well, so this only lists tracked files that
-# must keep their own formatting
-*.lock

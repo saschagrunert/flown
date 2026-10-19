@@ -23,6 +23,7 @@ import {
   siteData,
 } from "../../../../flown/frontend/state/siteData";
 import type { PathSegment } from "../../../../flown/frontend/types";
+import type { Marker as MockMarker } from "../../../mocks/maplibre-gl";
 import {
   asMapApp,
   createDataset,
@@ -30,6 +31,20 @@ import {
   type MockApp,
   type MockAppOverrides,
 } from "../../testHelpers";
+
+// The shared fake, keeping the markers the code under test made
+const markers = vi.hoisted((): unknown[] => []);
+vi.mock("maplibre-gl", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../mocks/maplibre-gl")>();
+  class Marker extends actual.Marker {
+    constructor(options: Record<string, unknown> = {}) {
+      super(options);
+      markers.push(this);
+    }
+  }
+  return { ...actual, Marker, default: { ...actual.default, Marker } };
+});
 
 /** Ten segments due north, a minute apart, over ground at 300 ft */
 const ALTITUDES = [800, 1500, 2500, 1100, 1200, 3000, 3000, 1800, 600, 300];
@@ -472,6 +487,35 @@ describe("flight profile", () => {
       expect(
         app.map!.getCanvasContainer().querySelector(".profile-map-dot"),
       ).toBeNull();
+    });
+
+    it("marks the map the short way across the antimeridian", () => {
+      // Due north, and east across the antimeridian in the fifth segment
+      const lon = (i: number): number => {
+        const east = 179.9775 + i * 0.005;
+        return east > 180 ? east - 360 : east;
+      };
+      const across = flight(7).map((segment, i) => ({
+        ...segment,
+        coords: [
+          [50 + i / 100, lon(i)],
+          [50 + (i + 1) / 100, lon(i + 1)],
+        ] as PathSegment["coords"],
+      }));
+      markers.length = 0;
+      const { plot } = setup([7], {
+        currentData: createDataset([{ id: 7, max_altitude_ft: 3040 }], across),
+      });
+
+      for (let share = 0; share <= 1; share += 0.01) {
+        plot.dispatchEvent(pointer("pointermove", share));
+        const dot = (markers as MockMarker[]).find((marker) =>
+          marker.getElement().classList.contains("profile-map-dot"),
+        )!;
+        const { lng } = dot.getLngLat()!;
+        // Within a few hundredths of a degree of it, on either side
+        expect(180 - Math.abs(lng)).toBeLessThan(0.05);
+      }
     });
 
     it("leaves the groundspeed out where there is none", () => {

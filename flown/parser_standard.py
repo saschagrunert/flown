@@ -5,6 +5,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .constants import KM_TO_NAUTICAL_MILES, MAX_GROUNDSPEED_KNOTS, SECONDS_PER_HOUR
 from .geometry import haversine_distance
 from .helpers import parse_timestamp_epoch
 from .logger import logger
@@ -31,6 +32,9 @@ _SPACE_AFTER_COMMA = re.compile(r",\s+")
 JOIN_DISTANCE_KM = 0.05
 # ... unless its time begins this long after the end of the one before
 JOIN_MAX_GAP_SECONDS = 30 * 60
+# A timed track also continues further away, as far as MAX_GROUNDSPEED_KNOTS
+# covers in the gap between the two (see _continues)
+_MAX_KM_PER_SECOND = MAX_GROUNDSPEED_KNOTS / KM_TO_NAUTICAL_MILES / SECONDS_PER_HOUR
 # A line whose last point is this close above its lowest one (metres), after
 # it was this much higher (metres), came down to land; so did one whose last
 # GROUND_FIXES points stand within GROUND_SPREAD_KM of each other: at a
@@ -171,6 +175,15 @@ def _ends_on_ground(path: FlightPath) -> bool:
     )
 
 
+def _starts_on_ground(path: FlightPath) -> bool:
+    """Whether a line starts on the ground, as the next flight does.
+
+    ``_ends_on_ground`` the other way round: it climbs well above where it
+    starts, or its first points stand still.
+    """
+    return _ends_on_ground(path[::-1])
+
+
 def _continues(
     before: FlightPath,
     before_meta: PathMetadata,
@@ -192,13 +205,18 @@ def _continues(
 
     ``timed`` is for tracks whose points have their own times (see
     ``join_split_lines``): the one after must begin when the one before has
-    ended, or later, so that the times of the flight go on in order.
+    ended, or later, so that the times of the flight go on in order. It may
+    begin further away by what the aircraft can fly in the gap between them
+    (at ``MAX_GROUNDSPEED_KNOTS``): a logger that lost its fix for a minute
+    and starts a new track. Not on the ground (see ``_starts_on_ground``):
+    that is the next flight, after one whose recording stopped on final.
     """
     name = before_meta.get("airport_name")
     if name != after_meta.get("airport_name") or _ends_on_ground(before):
         return False
     end, start = before[-1], after[0]
-    if haversine_distance(end.lat, end.lon, start.lat, start.lon) > JOIN_DISTANCE_KM:
+    distance_km = haversine_distance(end.lat, end.lon, start.lat, start.lon)
+    if distance_km > JOIN_DISTANCE_KM and (not timed or _starts_on_ground(after)):
         return False
     repeated = (end.lat, end.lon, end.alt) == (start.lat, start.lon, start.alt)
     span = (before_meta.get("timestamp"), before_meta.get("end_timestamp"))
@@ -210,10 +228,13 @@ def _continues(
     begin = parse_timestamp_epoch(span[0])
     if before_end is None or after_begin is None or begin is None:
         return repeated and not timed
+    gap = after_begin - before_end
+    reach_km = JOIN_DISTANCE_KM + (gap * _MAX_KM_PER_SECOND if timed else 0.0)
     return (
         (bool(name) or repeated)
         and (after_begin >= before_end if timed else begin <= after_begin)
-        and after_begin - before_end <= JOIN_MAX_GAP_SECONDS
+        and gap <= JOIN_MAX_GAP_SECONDS
+        and distance_km <= reach_km
     )
 
 

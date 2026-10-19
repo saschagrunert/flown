@@ -66,7 +66,7 @@ from .constants import (
     METERS_TO_FEET,
     SECONDS_PER_HOUR,
 )
-from .geometry import METRES_PER_DEGREE, planar_km, true_bearing
+from .geometry import METRES_PER_DEGREE, heading_difference, planar_km, true_bearing
 from .logger import logger
 
 if TYPE_CHECKING:
@@ -146,11 +146,6 @@ class Field(NamedTuple):
     elevation_ft: float | None
     # The runway ends: designator and true heading, see RunwayEnd
     runways: tuple[RunwayEnd, ...] = ()
-
-
-def _angle_off(a: float, b: float) -> float:
-    """The angle between two headings, 0 to 180 degrees."""
-    return abs((a - b + 180) % 360 - 180)
 
 
 class FieldIndex:
@@ -394,7 +389,8 @@ def _runway(
         return None
     track = true_bearing(start.lat, start.lon, end.lat, end.lon)
     off, designator = min(
-        (_angle_off(track, runway.heading), runway.designator) for runway in at.runways
+        (heading_difference(track, runway.heading), runway.designator)
+        for runway in at.runways
     )
     return designator if off <= RUNWAY_MAX_OFF_DEGREES else None
 

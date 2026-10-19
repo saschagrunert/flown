@@ -186,8 +186,17 @@ describe("FlightList", () => {
     expect(
       header("landings").querySelector("button")!.getAttribute("title"),
     ).toBe("Full-stop landings");
-    // What a screen reader names the column's cells by, not "Ldg"
-    expect(header("landings").getAttribute("abbr")).toBe("Full-stop landings");
+    // What a screen reader names the button and the column's cells by,
+    // not "Ldg" alone: the full name, unseen, after the short label, which
+    // the name has to start with for voice control
+    const button = header("landings").querySelector("button")!;
+    expect(button.textContent).toBe("Ldg, Full-stop landings");
+    expect(button.querySelector(".visually-hidden")!.textContent).toBe(
+      ", Full-stop landings",
+    );
+    // A column whose label is its name says it once
+    expect(header("route").textContent).toBe("Route");
+    expect(header("route").querySelector(".visually-hidden")).toBeNull();
   });
 
   it("sorts by the landings, the flights without them last", () => {

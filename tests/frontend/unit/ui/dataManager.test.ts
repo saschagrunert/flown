@@ -738,6 +738,7 @@ describe("DataManager", () => {
       // Once, where its Retry is: the toast beside it said it twice
       expect(note).toHaveBeenCalledExactlyOnceWith(
         "Could not load the flights of 2025",
+        undefined,
       );
       expect(toastMock.showToast).not.toHaveBeenCalled();
 
@@ -879,6 +880,20 @@ describe("DataManager", () => {
         // A Retry would fetch the same out-of-date files again
         toastMock.RELOAD_ACTION,
       );
+    });
+
+    it("asks the note of an empty map for the reload as well", () => {
+      const note = vi.fn();
+      dataManager.failureNote = note;
+      mockApp.currentData = null;
+
+      loaderMocks.options!.onLoadError!(["2025"], true);
+
+      expect(note).toHaveBeenCalledExactlyOnceWith(
+        "Could not load the flights of 2025. Reload the page to update it.",
+        toastMock.RELOAD_ACTION,
+      );
+      expect(toastMock.showToast).not.toHaveBeenCalled();
     });
   });
 

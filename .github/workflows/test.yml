@@ -821,7 +821,14 @@ jobs:
       # a push to main the commits it pushed (the whole history took 80 to
       # 106 s a run); the weekly run and a manual one scan the whole history.
       # A push whose earlier head the clone does not have (a branch's first
-      # push, a force push) scans the whole history as well. The pull and the
+      # push, a force push) scans the whole history as well. A pull request
+      # is scanned with the .gitleaks.toml of its base, so it cannot
+      # allowlist a secret it adds there: a change of the allowlist applies
+      # from the pull requests after the one that merged it (the built-in
+      # rules alone should the base have none). A .gitleaksignore or a
+      # gitleaks:allow comment of its own still hides one, as gitleaks reads
+      # both from the tree it scans; either shows in its diff. Pushes, the
+      # weekly run and a manual one read the checkout's. The pull and the
       # scan have time limits: a weekly scan once sat silent until the job
       # timed out, and that week's audit never ran.
       - name: Scan the commit history for secrets
@@ -838,13 +845,19 @@ jobs:
             exit 1
           }
           range=()
+          config="$PWD/.gitleaks.toml"
           if [ -n "$BASE_SHA" ]; then
             range=(--log-opts="$BASE_SHA..HEAD")
+            config="$RUNNER_TEMP/gitleaks.toml"
+            if ! git show "$BASE_SHA:.gitleaks.toml" > "$config"; then
+              echo "::warning::the base has no .gitleaks.toml; scanning with the built-in rules alone"
+              printf '[extend]\nuseDefault = true\n' > "$config"
+            fi
           elif [ -n "$BEFORE_SHA" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
             range=(--log-opts="$BEFORE_SHA..HEAD")
           fi
-          timeout 600 docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" \
-            git --redact --verbose --config /repo/.gitleaks.toml "${range[@]}" /repo
+          timeout 600 docker run --rm -v "$PWD:/repo:ro" -v "$config:/config.toml:ro" "$GITLEAKS_IMAGE" \
+            git --redact --verbose --config /config.toml "${range[@]}" /repo
 
   # The real build of Your flights: Pyodide, lxml and the site's Python from
   # flown-src.zip, fetched by the page's worker from their hosts
@@ -852,8 +865,9 @@ jobs:
   # since the hermetic suite blocks every host but the site's and a build
   # takes a minute or two. It runs on every push to main, weekly and in a
   # manual run, so a Pyodide release the pinned version stops resolving to
-  # shows within a week, and in a pull request that changes the Python of
-  # the site, the worker that runs it or this spec, so Python that does not
+  # shows within a week, and in a pull request that changes any of its
+  # inputs (the Python of the site, the worker that runs it, this spec and
+  # what builds and runs them; see the first step), so Python that does not
   # run there shows before it merges. It gates nothing (checks leaves it
   # out): it depends on the CDN, whose outage must not hold back the
   # flights, and a failure on main shows in the run. The site is built as
@@ -875,23 +889,34 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      # flown/*.py takes in every Python module of the package (a pathspec's
-      # * crosses directories), which is what flown-src.zip ships;
-      # services/local*.ts the worker, the page's side of the build and the
-      # store both read, and localFlags.ts the cache's name; the template
-      # holds the page's CSP. What else the worker imports changes rarely,
-      # and the next push to main builds anyway. A diff that cannot be made (no parent) builds as well: the
-      # step fails closed. Every step after it skips when it sets
-      # PYODIDE_BUILD to false, the ones of the image pull among them (see
-      # the e2e job).
+      # Every input of this job: flown/*.py takes in every Python module of
+      # the package (a pathspec's * crosses directories), which is what
+      # flown-src.zip ships; */local*.ts the worker, the page's side of the
+      # build, the store and the panel the spec drops its files on, and the
+      # rest of what esbuild bundles into the worker or the page's side of
+      # the build (`node build.js --metafile` lists the inputs of the app's
+      # bundles only; build the entry point with metafile: true for the
+      # worker's); the template holds the page's CSP. Then what builds the
+      # bundles and the site, installs them and runs the spec, this workflow
+      # and its actions among it, and the spec with the modules of tests/e2e
+      # it imports and the flights it drops. A diff that cannot be made (no
+      # parent) builds as well: the step fails closed. Every step after it
+      # skips when it sets PYODIDE_BUILD to false, the ones of the image pull
+      # among them (see the e2e job).
       - name: Check whether the build in the page changed
         if: github.event_name == 'pull_request'
         run: |
-          if git diff --quiet HEAD^1 HEAD -- 'flown/*.py' 'flown/frontend/services/local*.ts' \
-            flown/frontend/state/localFlags.ts flown/templates \
-            tests/e2e/local-flights-pyodide.spec.ts; then
+          if git diff --quiet HEAD^1 HEAD -- 'flown/*.py' flown/templates \
+            'flown/frontend/*/local*.ts' flown/frontend/services/lazyImport.ts \
+            flown/frontend/utils/withTimeout.ts \
+            build.js scripts/build-helpers.js scripts/source-hash.js scripts/vendor.js \
+            package.json package-lock.json tsconfig.json pyproject.toml uv.lock \
+            .github/workflows/test.yml .github/actions playwright.config.ts \
+            tests/e2e/local-flights-pyodide.spec.ts tests/e2e/fixtures.ts tests/e2e/helpers.ts \
+            tests/e2e/map.ts tests/e2e/site-check.ts tests/e2e/sites.ts \
+            tests/fixtures/visual/1_DEAGJ_DA20.kml tests/fixtures/visual/49_DEHYL_DA40.kml; then
             echo "PYODIDE_BUILD=false" >> "$GITHUB_ENV"
-            echo "::notice::neither the Python of the site nor its worker changed; skipping the Pyodide build"
+            echo "::notice::none of the inputs of the Pyodide build changed; skipping it"
           fi
       - *start-image-pull
       - name: Set up the site build
@@ -1025,9 +1050,9 @@ jobs:
           fi
 
   # Publishing waits for every test job, through the one job that checks
-  # them all. The security job is not a gate: a new advisory for a test
-  # dependency must not hold back new flights, and the weekly run reports it
-  # anyway.
+  # them all. The security and pyodide jobs are not gates: a new advisory
+  # for a test dependency or an outage of Pyodide's CDN must not hold back
+  # new flights, and the weekly run reports either anyway.
   publishable:
     needs: checks
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')

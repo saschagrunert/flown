@@ -37,24 +37,22 @@ interface SegmentClickPosition {
 }
 
 export interface ErrorCollector {
-  pageErrors: string[];
   consoleErrors: string[];
   cspViolations: string[];
 }
 
 /**
- * Collect uncaught errors, console errors and Content Security Policy
- * violations for the lifetime of the page. Call before page.goto().
+ * Collect console errors and Content Security Policy violations for the
+ * lifetime of the page. Call before page.goto(). Uncaught errors fail every
+ * test already (the `pageErrors` fixture in fixtures.ts).
  */
 export async function attachErrorCollectors(
   page: Page,
 ): Promise<ErrorCollector> {
   const collector: ErrorCollector = {
-    pageErrors: [],
     consoleErrors: [],
     cspViolations: [],
   };
-  page.on("pageerror", (err) => collector.pageErrors.push(err.message));
   page.on("console", (msg) => {
     if (msg.type() === "error") collector.consoleErrors.push(msg.text());
   });

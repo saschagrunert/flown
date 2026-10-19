@@ -99,7 +99,7 @@ export interface BuildOutcome {
   skipped?: SkippedFile[] | undefined;
   /** What the build warned of, for the panel to show */
   warnings?: string[] | undefined;
-  /** What it went without for want of a connection ("airports", "terrain") */
+  /** What it went without, offline ("airports", "runways", "terrain") */
   degraded?: string[] | undefined;
   files: { path: string; bytes: ArrayBuffer }[];
 }
@@ -148,12 +148,16 @@ export interface PyodideLike {
 }
 
 /**
- * What IDBFS is besides a file system: it keeps the connection a sync
- * opens to the database of a mount, by the mount's path, for as long as
- * the worker lives, and never closes it
+ * What IDBFS is besides a file system: it keeps the connection to the
+ * database of a mount, by the mount's path, that `getDB` opens (as every
+ * sync does first), for as long as the worker lives, and never closes it
  */
 interface IdbfsConnections {
-  dbs?: Record<string, IDBDatabase | undefined>;
+  dbs: Record<string, IDBDatabase | undefined>;
+  getDB(
+    name: string,
+    callback: (error: unknown, db?: IDBDatabase) => void,
+  ): void;
 }
 
 export type ProgressReport = (message: string) => void;
@@ -291,20 +295,24 @@ function syncfs(pyodide: PyodideLike, populate: boolean): Promise<void> {
 }
 
 /**
- * Open the IndexedDB database `name` and let it go again: this is what
- * waits on another tab that holds it, or on a deletion of it that waits on
- * one (localStore.ts, deleteCache), before the cache in it is read
+ * Open the database of the cache mounted at `name` as IDBFS opens it, for
+ * the syncs to use (IdbfsConnections), and hand it to `opened` as soon as
+ * it is open, also after a wait for it was given up: this is what waits on
+ * another tab that holds it, or on a deletion of it that waits on one
+ * (localStore.ts, deleteCache), before the cache in it is read
  */
-function openDatabase(name: string): Promise<void> {
-  if (typeof indexedDB === "undefined") return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name);
-    request.onsuccess = () => {
-      request.result.close();
+function openCache(
+  idbfs: IdbfsConnections,
+  name: string,
+  opened: (db: IDBDatabase) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) =>
+    idbfs.getDB(name, (error, db) => {
+      if (!db) return reject(new Error("IndexedDB", { cause: error }));
+      opened(db);
       resolve();
-    };
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB"));
-  });
+    }),
+  );
 }
 
 /** Remove `path` and everything in it, if it exists */
@@ -395,6 +403,8 @@ export class Runtime {
   private watched: IDBDatabase | null = null;
   /** Set once another tab deleted the cache: nothing goes into it again */
   private cacheGone = false;
+  /** The sync of the cache on its way, settled either way (sync) */
+  private syncing: Promise<unknown> = Promise.resolve();
   /** Told that another tab deleted the cache (serveBuilds tells the page) */
   onCacheGone: () => void = () => undefined;
 
@@ -406,8 +416,6 @@ export class Runtime {
     private readonly cacheDir: string = localCacheDbName(),
     /** What watches each start, a new one for every try (runtimeWatch) */
     private readonly watchStart: () => RuntimeWatch = runtimeWatch,
-    /** Opens the cache's database and lets it go (openDatabase) */
-    private readonly openCache: (name: string) => Promise<void> = openDatabase,
   ) {}
 
   ready(report: ProgressReport, version?: string): Promise<PyodideLike> {
@@ -456,14 +464,16 @@ export class Runtime {
       }
       // Held up for as long as another tab holds the cache open, or a
       // deletion of it waits on one (localStore.ts, deleteCache), which
-      // the opening alone tells; reading it all in has a limit of its own
+      // the opening alone tells, and watched from then on, before it is
+      // read (a deletion then would wait on it for good); reading it all
+      // in has a limit of its own
+      const idbfs = pyodide.FS.filesystems.IDBFS as IdbfsConnections;
       await within(
-        this.openCache(this.cacheDir),
+        openCache(idbfs, this.cacheDir, (db) => this.watchCache(idbfs, db)),
         CACHE_WAIT_MS,
         CACHE_BUSY_MESSAGE,
       );
-      await within(syncfs(pyodide, true), CACHE_LOAD_MS, CACHE_SLOW_MESSAGE);
-      this.watchCache(pyodide);
+      await within(this.sync(pyodide, true), CACHE_LOAD_MS, CACHE_SLOW_MESSAGE);
       pyodide.runPython(
         `import os, sys\n` +
           `sys.path.insert(0, ${JSON.stringify(SOURCES_DIR)})\n` +
@@ -493,18 +503,26 @@ export class Runtime {
    * Closed alone it would be opened again by the next sync, which would
    * write the cache back with the parses of the files removed: so nothing
    * syncs again, the next build refuses, and the page lets the worker go.
+   * A sync on its way keeps it until it is done: IDBFS writes what it read
+   * with the connection it read it with, which throws once closed, and that
+   * sync, and the build waiting on it, would never end.
    */
-  private watchCache(pyodide: PyodideLike): void {
-    const dbs = (pyodide.FS.filesystems.IDBFS as IdbfsConnections | null)?.dbs;
-    const db = dbs?.[this.cacheDir];
-    if (!dbs || !db || db === this.watched) return;
+  private watchCache(idbfs: IdbfsConnections, db: IDBDatabase): void {
+    if (db === this.watched) return;
     this.watched = db;
     db.onversionchange = () => {
       this.cacheGone = true;
-      db.close();
-      delete dbs[this.cacheDir];
+      delete idbfs.dbs[this.cacheDir];
+      void this.syncing.then(() => db.close());
       this.onCacheGone();
     };
+  }
+
+  /** Sync the cache, as watchCache knows of until it is done */
+  private sync(pyodide: PyodideLike, populate: boolean): Promise<void> {
+    const sync = syncfs(pyodide, populate);
+    this.syncing = sync.catch(() => undefined);
+    return sync;
   }
 
   /**
@@ -535,7 +553,6 @@ export class Runtime {
     report: ProgressReport,
     { flags, version, retry }: BuildOptions = {},
   ): Promise<BuildOutcome> {
-    if (this.cacheGone) throw new RuntimeLost(CACHE_GONE_MESSAGE);
     let pyodide: PyodideLike;
     try {
       pyodide = await this.ready(report, version);
@@ -547,6 +564,8 @@ export class Runtime {
         cause: error,
       });
     }
+    // Deleted before this build, or while the runtime started for it
+    if (this.cacheGone) throw new RuntimeLost(CACHE_GONE_MESSAGE);
     try {
       return await this.run(pyodide, files, terrain, report, flags, retry);
     } finally {
@@ -616,7 +635,7 @@ export class Runtime {
       // The tiles and the airports fetched on the way stay for the next
       // build, unless another tab deleted the cache meanwhile (watchCache)
       if (!this.cacheGone) {
-        await syncfs(pyodide, false).catch(() => undefined);
+        await this.sync(pyodide, false).catch(() => undefined);
       }
     }
     return { ...outcome, files: filesUnder(pyodide, OUTPUT_DIR) };
@@ -629,13 +648,29 @@ export interface LocalWorkerScope {
   location: { href: string };
 }
 
-/** Answer the page's build requests with `runtime` */
+/**
+ * Answer the page's build requests with `runtime`. That another tab deleted
+ * the cache is said once the builds on their way are answered: one whose
+ * Python ran is done, with the files the page handed over, and the page
+ * keeps it unless those are gone too (localStore.ts, putDataset).
+ */
 export function serveBuilds(scope: LocalWorkerScope, runtime: Runtime): void {
-  runtime.onCacheGone = () => scope.postMessage({ cacheGone: true });
+  let running = 0;
+  let gone = false;
+  const tell = (): void => {
+    if (!gone || running) return;
+    gone = false;
+    scope.postMessage({ cacheGone: true });
+  };
+  runtime.onCacheGone = () => {
+    gone = true;
+    tell();
+  };
   scope.onmessage = (event) => {
     const { id, build } = event.data;
     const report = (message: string) =>
       scope.postMessage({ id, progress: message });
+    running++;
     runtime
       .build(build.files, build.terrain, report, build)
       .then((done) => {
@@ -651,6 +686,10 @@ export function serveBuilds(scope: LocalWorkerScope, runtime: Runtime): void {
           error: message,
           ...(error instanceof RuntimeLost && { lost: true }),
         });
+      })
+      .finally(() => {
+        running--;
+        tell();
       });
   };
 }

@@ -2044,3 +2044,218 @@ class TestDatesThatPassedTheCheck:
     def test_holidays(self, holiday):
         assert find_holiday_tokens(f"Oma {holiday} EDDS") == [holiday]
         assert strip_dates(f"EDDS {holiday}") == "EDDS"
+
+
+class TestShapesThatStillPassed:
+    """Dates, weeks, seasons and times the check and the names let through."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Trip - KW33",
+            "EDDS-KW33",
+            "KW33 > Sylt",
+            # A week that is an airport, but with no code on the other side
+            "KW05 - Sylt",
+            "Trip - KW05",
+        ],
+    )
+    def test_a_week_at_a_route_side_is_a_week(self, text):
+        week = find_partial_date_tokens(text)
+        assert len(week) == 1
+        assert week[0].startswith("KW")
+        assert "KW" not in (strip_dates(text) or "")
+
+    @pytest.mark.parametrize("text", ["KW05 - KW22", "KW22 \u2192 EDDF", "EDDF/KW45"])
+    def test_weeks_that_are_airports_at_a_route_side(self, text):
+        assert find_partial_date_tokens(text) == []
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        ("text", "found"),
+        [
+            ("Trip Summer '26", "Summer '26"),
+            ("Trip Sommer26", "Sommer26"),
+            ("Trip summer2026", "summer2026"),
+            ("Trip Q3/26", "Q3/26"),
+            ("Trip Q3-26", "Q3-26"),
+            ("Trip 3Q26", "3Q26"),
+            ("Trip H2/26", "H2/26"),
+            ("Trip 2H/26", "2H/26"),
+            ("Trip 2H 2026", "2H 2026"),
+            ("Trip Spätsommer 2026", "Spätsommer 2026"),
+            ("Vol été 2026", "été 2026"),
+            ("Vuelo verano 2026", "verano 2026"),
+            ("Volo estate 2026", "estate 2026"),
+            ("Vlucht zomer 2026", "zomer 2026"),
+            ("Lot lato 2026", "lato 2026"),
+        ],
+    )
+    def test_seasons_quarters_and_halves(self, text, found):
+        assert find_partial_date_tokens(text) == [found]
+        assert strip_dates(text) == text.split()[0]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Trip Winter '26",
+            "Trip 1Q26",
+            "Trip 1H 2026",
+            "Vol hiver 2026",
+            "Lot zima 2026",
+        ],
+    )
+    def test_the_first_quarter_and_the_winter_pass_the_check(self, text):
+        assert find_partial_date_tokens(text) == []
+        assert strip_dates(text) == text.split()[0]
+
+    @pytest.mark.parametrize(
+        "text", ["Flight 1H30", "Flight 2H26", "H125", "Summer 26 kt", "Q400"]
+    )
+    def test_no_season_or_half(self, text):
+        assert find_partial_date_tokens(text) == []
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        "time", ["14H30", "9H30", "14H30Z", "930am", "0930a", "1130pm", "1030 AM"]
+    )
+    def test_times(self, time):
+        assert find_time_tokens(f"Vol {time} EDDS") == [time]
+        assert strip_dates(f"Vol {time}") == "Vol"
+
+    @pytest.mark.parametrize(
+        "text", ["Flight 1h30", "Flight 3H15", "Exit 115a", "N930a"]
+    )
+    def test_durations_and_names_are_no_times(self, text):
+        assert find_time_tokens(text) == []
+        assert strip_dates(text) == text
+
+    def test_a_range_of_compact_times(self):
+        assert strip_dates("Flight 1130 am-1230 pm") == "Flight"
+
+    @pytest.mark.parametrize(
+        ("text", "kept"),
+        [
+            ("Rep augusztus 16.", "Rep"),
+            ("Rep augusztus 16-án EDDS", "Rep EDDS"),
+            ("Vuelo agosto 16", "Vuelo"),
+            ("Vuelo agosto 16, 2026", "Vuelo"),
+            ("Flug Mai 16, 2026", "Flug"),
+        ],
+    )
+    def test_the_month_first_in_other_languages(self, text, kept):
+        assert strip_dates(text) == kept
+
+    def test_the_month_first_with_the_year_is_reported_whole(self):
+        assert find_date_tokens("Vuelo agosto 16, 2026") == ["agosto 16, 2026"]
+        assert find_partial_date_tokens("Rep augusztus 16-án") == ["augusztus 16-án"]
+
+    @pytest.mark.parametrize("text", ["Mars 2 crater", "Juli 5", "Mai 16:30"])
+    def test_a_short_month_first_without_the_year_stays(self, text):
+        assert find_partial_date_tokens(text) == []
+
+    def test_no_month_first_before_a_decimal(self):
+        # "16.5" is the day and the month of its own
+        assert find_partial_date_tokens("agosto 16.5") == ["16.5"]
+
+    @pytest.mark.parametrize(
+        ("text", "weekday"),
+        [
+            ("Vol lun. 16 août 2026", "lun"),
+            ("Vuelo sáb 16 ago 2026", "sáb"),
+            ("Vol 16.08.2026 (sam.)", "sam"),
+            ("Volo 16.08.2026 dom", "dom"),
+            ("Voo seg 16.08.2026", "seg"),
+            ("Vlucht za 16 aug 2026", "za"),
+            ("Let po 16. 8. 2026", "po"),
+            ("Lot sob. 16.08.2026", "sob"),
+            ("Repülés 2026. augusztus 16., sze", "sze"),
+        ],
+    )
+    def test_weekday_abbreviations_of_other_languages(self, text, weekday):
+        assert strip_dates(text) == text.split()[0]
+        jan_first = (
+            text.replace("16", "01", 1).replace("ago", "jan").replace("août", "janvier")
+        )
+        assert weekday in find_partial_date_tokens(jan_first.replace(".08.", ".01."))
+
+    def test_an_abbreviation_of_another_language_stuck_to_a_day_stays(self):
+        assert find_partial_date_tokens("lun16") == []
+
+    @pytest.mark.parametrize(
+        ("text", "kept"),
+        [
+            ("SZG - VIE 16.08.2026", "SZG - VIE"),
+            ("Trip 2026-08-16 VIE", "Trip VIE"),
+            ("Lajes TER 16.08.2026", "Lajes TER"),
+            ("Bedford MA 16 Aug 2026", "Bedford MA"),
+            ("Fargo, ND 2026-08-16", "Fargo, ND"),
+            ("Pretoria ZA 16.08.2026", "Pretoria ZA"),
+        ],
+    )
+    def test_codes_in_capitals_are_no_abbreviations_of_other_languages(
+        self, text, kept
+    ):
+        """An airport, a state or a country as often (regression)."""
+        assert strip_dates(text) == kept
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Trip 16./17.08.2026",
+            "Trip 16. \u2013 18. 8. 2026",
+            "Trip 16. u. 17. 8.",
+            "Trip KW33/26",
+            "Trip KW 33-34",
+            "Trip KW-33",
+            "Trip KW_33",
+            "Trip hét 33",
+            "Trip 33. hét",
+            "Trip 33. týden",
+            "Trip 2026.228",
+            "Trip 2026228",
+            "Trip August the 16th",
+            "Trip August the 16th, 2026",
+            "Trip 08/16/'26",
+        ],
+    )
+    def test_nothing_is_left(self, text):
+        assert strip_dates(text) == "Trip"
+        assert find_date_tokens(text, skip_near_jan_first=True) + (
+            find_partial_date_tokens(text)
+        )
+
+    @pytest.mark.parametrize(
+        "text", ["Trip KW01/26", "Trip 2026.002", "Trip 2026001", "Trip 01/01/'26"]
+    )
+    def test_january_first_passes_the_check(self, text):
+        assert find_date_tokens(text, skip_near_jan_first=True) == []
+        assert find_partial_date_tokens(text) == []
+
+    @pytest.mark.parametrize(
+        "text", ["firmware 2026.228", "Height 2026.2281", "May the 2 of us", "KW01-02"]
+    )
+    def test_what_stays(self, text):
+        if text == "KW01-02":
+            # A range of weeks is no week of January 1st
+            assert find_partial_date_tokens(text) == [text]
+        else:
+            assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Moved to 00:00:00 UTC",
+            "Charterware at 12:00AM",
+            "Start at T00:00Z",
+            "12am",
+            "2026-01-01T00:00:00Z",
+        ],
+    )
+    def test_midnight_only_when_asked(self, text):
+        assert find_time_tokens(text)
+        assert find_time_tokens(text, skip_midnight=True) == []
+
+    @pytest.mark.parametrize("text", ["00:00 +02:00", "12:30AM", "00:30", "12 pm"])
+    def test_no_midnight(self, text):
+        assert find_time_tokens(text, skip_midnight=True) == [text]

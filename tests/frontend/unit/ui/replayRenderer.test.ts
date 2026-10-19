@@ -1260,6 +1260,26 @@ describe("ReplayRenderer", () => {
       expect(lon).toBeCloseTo(8.505);
     });
 
+    it("moves the airplane the short way across the antimeridian", () => {
+      const airplane = makeAirplane();
+      mockReplayManager.state.airplaneMarker = airplane;
+      mockReplayManager.state.currentTime = 5;
+      const across: PathSegment["coords"] = [
+        [50.0, 179.99],
+        [50.01, -179.99],
+      ];
+      mockReplayManager.state.segments = [
+        makeSegment({ time: 0, coords: across }),
+        makeSegment({ time: 10 }),
+      ];
+
+      callUpdateDisplay();
+
+      // At the antimeridian, not half way round the world at 0 degrees
+      const [, lon] = airplane.position();
+      expect(lon).toBeCloseTo(180);
+    });
+
     it("draws with airspeed colors when airspeed is visible and altitude is not", () => {
       mockApp.airspeedVisible = true;
       mockApp.altitudeVisible = false;
@@ -1420,6 +1440,40 @@ describe("ReplayRenderer", () => {
 
         expect(state.trailTip!.heightFt).not.toBe(before);
         expect(state.trailDirty).toBe(true);
+      });
+
+      it("ends the trail at the airplane's new offsets when only the ground of the levels around changes", () => {
+        const state = mockReplayManager.state;
+        state.layerActive = true;
+        /** The curve over the same ground, with `levels` the ground around */
+        const curve = (levels: number): void => {
+          state.smoothed = replayFeature.replayCurve(
+            state.segments,
+            (i) => liftFt(state.segments[i]!.altitude_ft ?? 0, 1000),
+            () => 1000,
+            [Float64Array.from(state.segments, () => levels)],
+          );
+        };
+        curve(80);
+        callUpdateDisplay();
+        const before = state.trailTip!;
+        state.trailDirty = false;
+
+        // The same place, time and height: only the ground a level further
+        // out changed (a tile of the terrain came in)
+        curve(320);
+        callUpdateDisplay();
+
+        expect(state.trailTip!.position).toEqual(before.position);
+        expect(state.trailTip!.heightFt).toBe(before.heightFt);
+        expect(state.trailTip!.offsetsFt).not.toEqual(before.offsetsFt);
+        expect(state.trailDirty).toBe(true);
+
+        // The same offsets again, in a new array: nothing to write
+        state.trailDirty = false;
+        curve(320);
+        callUpdateDisplay();
+        expect(state.trailDirty).toBe(false);
       });
 
       it("lifts the airplane to its height on a tilted map, along its segment", () => {

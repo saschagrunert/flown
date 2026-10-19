@@ -2,9 +2,12 @@
 
 import logging
 import pickle
+import subprocess
+import sys
 import zipfile
 from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
+from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -341,3 +344,106 @@ class TestWorkerPool:
         pool_class.assert_called_once_with(
             max_workers=3, initializer=init_worker, initargs=(logging.DEBUG,)
         )
+
+    @pytest.mark.parametrize(
+        ("method", "preloaded"), [("forkserver", True), ("spawn", False)]
+    )
+    def test_the_forkserver_imports_the_package_for_the_workers(
+        self, method, preloaded
+    ):
+        """Each worker imported it again otherwise; with spawn (macOS and
+        Windows) every worker is a new interpreter, which has nothing to
+        preload."""
+        context = MagicMock()
+        context.get_start_method.return_value = method
+        with (
+            patch("multiprocessing.get_context", return_value=context),
+            patch.object(workers_module, "ProcessPoolExecutor", MagicMock()),
+        ):
+            workers_module.WorkerPool(2, "testing").shutdown()
+        if preloaded:
+            context.set_forkserver_preload.assert_called_once_with(
+                ["__main__", "flown.pipeline"]
+            )
+        else:
+            context.set_forkserver_preload.assert_not_called()
+
+    def test_no_forkserver_is_set_up_without_processes(self):
+        """The build in the page has no multiprocessing to speak of."""
+        get_context = MagicMock()
+        workers_module.configure_workers(None, processes=False)
+        with patch("multiprocessing.get_context", get_context):
+            workers_module.WorkerPool(2, "testing").shutdown()
+        get_context.assert_not_called()
+
+    def test_the_preloaded_package_has_what_every_pool_runs(self):
+        """A pool that runs a function of a module flown.pipeline does not
+        import would have its workers import it again."""
+        names = [name for name in workers_module._WORKER_MODULES if name != "__main__"]
+        code = (
+            "import sys\n"
+            f"for name in {names!r}:\n"
+            "    __import__(name)\n"
+            "print(' '.join(sorted(m for m in sys.modules if m.startswith('flown'))))"
+        )
+        done = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        imported = done.stdout.split()
+        for module in (
+            "flown.data_exporter",
+            "flown.pipeline",
+            "flown.previews",
+            "flown.terrain_fetch",
+            "flown.workers",
+        ):
+            assert module in imported
+
+
+class TestStartWorkerServer:
+    @staticmethod
+    def _context(method):
+        context = MagicMock()
+        context.get_start_method.return_value = method
+        return patch("multiprocessing.get_context", return_value=context)
+
+    def test_the_forkserver_starts_with_the_package(self):
+        with (
+            self._context("forkserver") as get_context,
+            patch("multiprocessing.forkserver.ensure_running") as ensure_running,
+        ):
+            workers_module.start_worker_server()
+        get_context.return_value.set_forkserver_preload.assert_called_once()
+        ensure_running.assert_called_once_with()
+
+    def test_nothing_starts_with_spawn(self):
+        with (
+            self._context("spawn"),
+            patch("multiprocessing.forkserver.ensure_running") as ensure_running,
+        ):
+            workers_module.start_worker_server()
+        ensure_running.assert_not_called()
+
+    def test_nothing_starts_without_processes(self):
+        workers_module.configure_workers(None, processes=False)
+        with (
+            self._context("forkserver") as get_context,
+            patch("multiprocessing.forkserver.ensure_running") as ensure_running,
+        ):
+            workers_module.start_worker_server()
+        get_context.assert_not_called()
+        ensure_running.assert_not_called()
+
+    def test_a_server_that_cannot_start_is_left_to_the_pool(self):
+        with (
+            self._context("forkserver"),
+            patch(
+                "multiprocessing.forkserver.ensure_running",
+                side_effect=OSError("no processes"),
+            ),
+        ):
+            workers_module.start_worker_server()

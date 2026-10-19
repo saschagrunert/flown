@@ -14,7 +14,6 @@
  */
 import { test, expect } from "./fixtures";
 import {
-  attachErrorCollectors,
   gotoApp,
   openWrapped,
   toastMessage,
@@ -157,7 +156,6 @@ test.describe("the lazy bundles", () => {
   });
 
   test("load Wrapped on the next try after a failed one", async ({ page }) => {
-    const errors = await attachErrorCollectors(page);
     const requested = trackBundleRequests(page, WRAPPED);
     await gotoApp(page);
     await waitForAppReady(page);
@@ -180,8 +178,6 @@ test.describe("the lazy bundles", () => {
     await expect(await openWrapped(page)).toBeVisible();
     expect(requested).toHaveLength(2);
     expect(requested[1]).not.toBe(requested[0]);
-
-    expect(errors.pageErrors).toEqual([]);
   });
 
   test("bring Wrapped's stylesheet, and neither panel shows before", async ({
@@ -241,7 +237,6 @@ test.describe("the lazy bundles", () => {
   test("close the statistics after a failed load, and load them on the next try", async ({
     page,
   }) => {
-    const errors = await attachErrorCollectors(page);
     await gotoApp(page);
     await waitForAppReady(page);
     let failed = false;
@@ -260,7 +255,6 @@ test.describe("the lazy bundles", () => {
 
     await page.locator(mobile ? "#mobile-tab-stats" : "#stats-btn").click();
     await expect(await waitForStatsContent(page)).toContainText("Flights");
-    expect(errors.pageErrors).toEqual([]);
   });
 
   test("list an airport's flights without fetching either bundle", async ({

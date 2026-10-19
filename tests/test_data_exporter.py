@@ -1,7 +1,9 @@
 """Tests for data_exporter module."""
 
 import errno
+import math
 import os
+import pickle
 import tempfile
 import threading
 import time
@@ -27,10 +29,12 @@ from flown.data_exporter import (
     _chunk_target,
     _export_chunks,
     _group_paths_by_year,
+    _PackedPaths,
     _part_paths,
     _plan_chunks,
     _split_by_weight,
     export_all_data,
+    export_needs_a_pool,
     process_year_chunk,
 )
 from flown.exceptions import FlownError, OutputRefusedError
@@ -677,6 +681,11 @@ class TestChunkPlanning:
             (25_000, 10_000, 10, 2),  # two chunks of at least 10,000
             (100_000, 10_000, 3, 3),  # never more chunks than paths
             (0, 10_000, 0, 1),
+            # A share and a half: two chunks, as no chunk takes more than
+            # a worker's share
+            (60_000, 40_000, 10, 2),
+            (100_000, 40_000, 10, 3),
+            (40_000, 40_000, 10, 1),
         ],
     )
     def test_chunk_count(self, points, target, paths, expected):
@@ -693,6 +702,37 @@ class TestChunkPlanning:
     )
     def test_chunk_target(self, total, workers, expected):
         assert _chunk_target(total, workers) == expected
+
+    @pytest.mark.parametrize(
+        ("years", "points", "pooled"),
+        [
+            ([2025, 2025], 3_000, False),
+            ([2025, 2026], 3_000, True),  # a chunk per year
+            ([2025, 2025], 10_000, True),  # a year of two chunks
+            ([2025, None], 3_000, False),  # a path without a year is left out
+            ([], 0, False),
+        ],
+    )
+    def test_an_export_needs_a_pool_for_more_than_one_chunk(
+        self, monkeypatch, years, points, pooled
+    ):
+        monkeypatch.setattr(exporter_module, "default_worker_count", lambda: 16)
+        paths = [[TrackPoint(50.0, 8.0, 100.0)] * points for _ in years]
+        metadata = _metadata([{"year": year} for year in years])
+
+        assert export_needs_a_pool(paths, metadata) is pooled
+        plans = _plan_chunks(
+            {
+                year: [i for i, y in enumerate(years) if y == year]
+                for year in years
+                if year is not None
+            },
+            {index: index for index in range(len(years))},
+            16,
+            point_counts={index: len(path) for index, path in enumerate(paths)},
+        )
+        # As the export cuts them
+        assert (len(plans) > 1) is pooled
 
     def test_runs_of_about_the_same_weight_in_order(self):
         assert _split_by_weight([0, 1, 2, 3, 4, 5], [1, 1, 1, 1, 1, 1], 3) == [
@@ -769,7 +809,7 @@ class TestChunkPlanning:
 
 
 def _failing_chunk(*args):
-    """A picklable process_year_chunk stand-in that always fails.
+    """A picklable stand-in for the chunk a worker runs that always fails.
 
     A MagicMock cannot be pickled, and a work item that fails to pickle can
     deadlock ProcessPoolExecutor.shutdown(wait=True).
@@ -810,6 +850,45 @@ class _RunningChunksPool:
         self.running = []
 
 
+class _PicklingPool:
+    """A process pool stand-in that runs each chunk here, on what the
+    process boundary would hand a worker, and records what it got."""
+
+    def __init__(self, *args, **kwargs):
+        self.tasks = []
+
+    def shutdown(self, *args, **kwargs):
+        pass
+
+    def submit(self, fn, *args):
+        fn, args = pickle.loads(pickle.dumps((fn, args)))  # noqa: S301
+        self.tasks.append((fn, args))
+        future: Future[ChunkResult] = Future()
+        future.set_result(fn(*args))
+        return future
+
+
+class TestPackedPaths:
+    def test_the_worker_gets_the_same_points(self):
+        paths = [
+            _timed_path(),
+            [],
+            [TrackPoint(-0.0, 180.0, None, None), TrackPoint(1e-9, -1.5, 0.0, None)],
+        ]
+
+        unpacked = pickle.loads(pickle.dumps(_PackedPaths.of(paths))).paths()  # noqa: S301
+
+        assert unpacked == paths
+        assert [[list(map(type, p)) for p in path] for path in unpacked] == [
+            [list(map(type, p)) for p in path] for path in paths
+        ]
+        assert math.copysign(1.0, unpacked[2][0].lat) == -1.0
+
+    def test_no_paths(self):
+        assert _PackedPaths.of([]).paths() == []
+        assert _PackedPaths.of([[], []]).paths() == [[], []]
+
+
 class _CountingPool:
     """A process pool stand-in that finishes each chunk on a thread shortly
     after it was submitted and records how many were in flight at once."""
@@ -847,7 +926,12 @@ class TestExportChunks:
         metadata = _metadata([{"year": 2025}, {"year": 2025}])
         plans = _plan_chunks({2025: [0, 1]}, {0: 0, 1: 1}, max_workers=4)
 
-        with patch("flown.workers.ProcessPoolExecutor") as pool:
+        # A pool fails the test rather than leaving it waiting for its mock
+        # futures
+        with patch(
+            "flown.workers.ProcessPoolExecutor",
+            side_effect=AssertionError("a single chunk started a pool"),
+        ) as pool:
             results = _export_chunks(plans, paths, metadata, str(tmp_path), 4)
 
         pool.assert_not_called()
@@ -937,7 +1021,7 @@ class TestExportChunks:
         stale = _part_paths(str(tmp_path), 2026, 0)[0]
         stale.write_text("partial")
         with (
-            patch("flown.data_exporter.process_year_chunk", _failing_chunk),
+            patch("flown.data_exporter._process_packed_chunk", _failing_chunk),
             pytest.raises(RuntimeError, match="Failed to process year"),
         ):
             _export_chunks(plans, paths, _metadata([{}, {}]), str(tmp_path), 4)
@@ -993,6 +1077,45 @@ class TestExportChunks:
         assert _leftover_parts(tmp_path) == []
         for year in (2025, 2026):
             assert len(parse_data(tmp_path / f"{year}/data.json")["path_info"]) == 1
+
+    def test_the_pool_gets_the_paths_packed(self, tmp_path):
+        """Pickled point by point, the chunks of data/ took 90 ms of the
+        parent's time; the year files are those of the paths themselves."""
+        paths = [_timed_path(), _two_point_path(1), _timed_path(0.5)]
+        metadata = _metadata([{"year": 2025}, {"year": 2026}, {"year": 2026}])
+        by_year = {2025: [0], 2026: [1, 2]}
+        ids = {0: 0, 1: 1, 2: 2}
+        pool = _PicklingPool()
+        pack = _PackedPaths.of
+
+        with (
+            patch("flown.workers.ProcessPoolExecutor", return_value=pool),
+            # Once for each chunk: the pool's arguments are those a task
+            # done again here gets as well
+            patch.object(_PackedPaths, "of", side_effect=pack) as packed,
+        ):
+            _export_chunks(
+                _plan_chunks(by_year, ids, 2),
+                paths,
+                metadata,
+                str(tmp_path / "pool"),
+                2,
+            )
+        assert packed.call_count == 2
+        for year, indices in by_year.items():
+            _export_chunks(
+                _plan_chunks({year: indices}, ids, 1),
+                paths,
+                metadata,
+                str(tmp_path / "here"),
+                1,
+            )
+
+        assert [type(args[1]) for _, args in pool.tasks] == [_PackedPaths] * 2
+        for year in by_year:
+            assert (tmp_path / f"pool/{year}/data.json").read_bytes() == (
+                tmp_path / f"here/{year}/data.json"
+            ).read_bytes()
 
     def test_no_plans(self, tmp_path):
         assert _export_chunks([], [], _metadata([]), str(tmp_path), 4) == []

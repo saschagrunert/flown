@@ -20,7 +20,7 @@ import type { MapApp } from "../mapApp";
 import type { PathInfo } from "../types";
 import { datasetIndex, type FilterView } from "../calculations/datasetIndex";
 import { flightTotals, type FlightTotals } from "../calculations/flightTotals";
-import { KM_TO_NAUTICAL_MILES } from "../utils/constants";
+import { NAUTICAL_MILES_TO_KM } from "../utils/constants";
 import { domCache } from "../utils/domCache";
 import { formatNumber } from "../utils/formatters";
 import { formatFlightTime } from "../utils/statsFormat";
@@ -83,7 +83,7 @@ function landingDetail(row: FlightRow): string | undefined {
 
 /** Nautical miles of a flight */
 function distanceNm(row: FlightRow): number | undefined {
-  return row.totals && row.totals.km * KM_TO_NAUTICAL_MILES;
+  return row.totals && row.totals.km / NAUTICAL_MILES_TO_KM;
 }
 
 /**
@@ -265,19 +265,22 @@ function rowsHtml(rows: FlightRow[]): string {
 function headerHtml(): string {
   let html = "<tr>";
   for (const column of COLUMNS) {
-    // Also what a screen reader names each cell of the column by, in place
-    // of the short label ("Ldg, 3")
-    const title = column.title ? '="' + escapeHtml(column.title) + '"' : "";
+    // The full name follows the short label, unseen: a screen reader says
+    // both, for the button and for each cell of the column ("Ldg, Full-stop
+    // landings, 3"), and the name starts with what is on screen, which is
+    // what a voice control user says. A header's abbr said it to none of
+    // them. The title shows it to a pointer.
+    const title = column.title && escapeHtml(column.title);
     html +=
       '<th scope="col" data-sort="' +
       column.key +
       '"' +
-      (title && " abbr" + title) +
       (column.numeric ? ' class="num"' : "") +
       '><button type="button"' +
-      (title && " title" + title) +
+      (title ? ' title="' + title + '"' : "") +
       ">" +
       escapeHtml(column.label) +
+      (title ? '<span class="visually-hidden">, ' + title + "</span>" : "") +
       "</button></th>";
   }
   return html + "</tr>";

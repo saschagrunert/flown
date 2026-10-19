@@ -128,10 +128,12 @@ here, not an oversight: adding the parentheses back is undone on the next
 - **The other settings made by hand.** A ruleset on `main` (Settings > Rules)
   requires a pull request, merged by rebase (the only merge method the
   repository allows), and the `checks` status, the last job of the `test`
-  workflow, which passes only when every test job a pull request runs did. It
-  blocks force pushes and deleting `main`, and it requires a branch to be up to
-  date with `main` before it merges (strict status checks; the merge queue is
-  not available to a repository a user owns), so `checks` passed on what `main`
+  workflow, which passes only when every test job a pull request runs did, but
+  `security` and `pyodide`, which gate nothing (see
+  [Testing](doc/development/testing.md#ci-and-deployment)). It blocks force
+  pushes and deleting `main`, and it requires a branch to be up to date with
+  `main` before it merges (strict status checks; the merge queue is not
+  available to a repository a user owns), so `checks` passed on what `main`
   becomes. "Update branch" on the pull request merges `main` into it, and the
   run of that push is the one that counts. Admins may bypass the ruleset.
   Settings > Actions > General requires every action to be pinned to a full

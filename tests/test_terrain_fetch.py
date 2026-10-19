@@ -36,7 +36,13 @@ from flown.terrain_pixels import has_current_pixels
 from flown.types import TrackPoint
 from flown.workers import init_worker
 from tests.conftest import FlatTiles
-from tests.tiles import FunctionTiles, encode_png, global_pixel, terrarium_png
+from tests.tiles import (
+    FunctionTiles,
+    encode_png,
+    global_pixel,
+    path_contents,
+    terrarium_png,
+)
 
 
 class FakeResponse:
@@ -502,6 +508,24 @@ class TestTerrariumTiles:
             for attempt in range(fetch_module.FETCH_ATTEMPTS - 1)
         ]
 
+    def test_one_attempt_waits_for_nothing(self, tmp_path, monkeypatch):
+        """The build in the page tries a tile once, offline more often than not."""
+        pauses: list[float] = []
+        asked = []
+
+        def get(url):
+            asked.append(url)
+            raise OSError("no response")
+
+        monkeypatch.setattr("flown.terrain_fetch.time.sleep", pauses.append)
+        tiles = TerrariumTiles(tmp_path, get=get, workers=1, attempts=1)
+        wanted = {TileKey(10, x, 1): [0] for x in range(3)}
+
+        assert tiles.pixels(wanted) == {}
+        # The first tile once, and none of the others: the host is given up
+        assert len(asked) == 1
+        assert pauses == []
+
     def test_a_tile_the_host_refuses_is_not_asked_again(self, tmp_path, connections):
         connections.answer = staticmethod(lambda path: FakeResponse(404, b"gone"))
 
@@ -872,7 +896,7 @@ class TestTerrariumTiles:
 
         monkeypatch.setattr(logger, "getEffectiveLevel", lambda: logging.DEBUG)
 
-        sample_path_elevations({1: points}, tiles)
+        sample_path_elevations({1: points}, tiles, path_contents({1: points}))
 
         kwargs = pool.call_args.kwargs
         assert kwargs["initializer"] is init_worker
@@ -905,7 +929,9 @@ class TestTerrariumTiles:
         monkeypatch.setattr(workers_module, "ProcessPoolExecutor", pool)
 
         with caplog.at_level(logging.WARNING, logger="flown"):
-            by_path = sample_path_elevations({1: points}, tiles)
+            by_path = sample_path_elevations(
+                {1: points}, tiles, path_contents({1: points})
+            )
 
         assert list(by_path[1]) == [7.0] * len(points)
         pool.assert_called_once()
@@ -930,7 +956,9 @@ class TestTerrariumTiles:
         )
 
         with caplog.at_level(logging.WARNING, logger="flown"):
-            by_path = sample_path_elevations({1: points}, tiles)
+            by_path = sample_path_elevations(
+                {1: points}, tiles, path_contents({1: points})
+            )
 
         assert by_path == {}
         warnings = [r.getMessage() for r in caplog.records]
@@ -944,10 +972,14 @@ class TestTerrariumTiles:
 
         with pytest.raises(TerrainUnavailableError, match="REQUIRE_TERRAIN"):
             sample_path_elevations(
-                paths, FunctionTiles(lambda gx, gy: 5.0, missing=[missing])
+                paths,
+                FunctionTiles(lambda gx, gy: 5.0, missing=[missing]),
+                path_contents(paths),
             )
         # Every tile there: nothing to complain about
-        assert list(sample_path_elevations(paths, FlatTiles(5.0))) == [1]
+        assert list(
+            sample_path_elevations(paths, FlatTiles(5.0), path_contents(paths))
+        ) == [1]
 
     def test_required_terrain_fails_without_a_decoder(self, tmp_path, monkeypatch):
         monkeypatch.setenv(terrain_module.REQUIRE_TERRAIN_ENV, "1")
@@ -956,8 +988,9 @@ class TestTerrariumTiles:
             def pixels(self, wanted):
                 raise terrain_module.DecodeFailedError("a worker died")
 
+        paths = {1: [TrackPoint(50.0, 8.0, 0.0)]}
         with pytest.raises(TerrainUnavailableError, match="could not be decoded"):
-            sample_path_elevations({1: [TrackPoint(50.0, 8.0, 0.0)]}, Broken())
+            sample_path_elevations(paths, Broken(), path_contents(paths))
 
     def test_a_download_in_a_test_fails_loudly(self, tmp_path):
         # conftest.py refuses every download; the tile code must not swallow

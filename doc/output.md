@@ -40,7 +40,7 @@ output-dir/
 ├── wrapped.css            # Wrapped, the statistics panel and the flight list, fetched with its bundle
 ├── search.css             # The search, fetched with its bundle
 ├── local.css              # Your flights, fetched with its bundle
-├── phone.css              # The phone's sheet, fetched with the phone bundle
+├── phone.css              # The phone's tabs and sheet, fetched with the phone bundle
 ├── extras.css             # An airport popup's list of flights, fetched with the extras bundle
 ├── manifest.json
 ├── favicon.svg
@@ -207,7 +207,13 @@ The runway is the track over the last 30 seconds, snapped to the nearest runway
 end of the field. A runway end is named by its number (`09`, `27L`, with the
 letter of a true heading, `16T`, or of a strip for gliders or ultralights,
 `09G`, `27U`), or, at many small strips, by the compass point it faces (`N`,
-`NE`); water lanes and helipads are no runways.
+`NE`); water lanes and helipads are no runways. A strip for gliders or
+ultralights, or one named by a compass point, that lies beside a numbered runway
+(within 10 degrees of it) is left out, as no track tells the two apart: a
+landing there keeps the runway's name. The heading of an end is the true one the
+list gives, unless that is far off the line between the thresholds or the
+heading the designator names (the list has the other end's for some), else the
+line between the thresholds, else the designator's.
 
 Without the database the site is still generated, with the airport names as the
 KML files spell them, without countries and without landings. Set
@@ -235,11 +241,12 @@ The tiles are downloaded on the first run, eight at a time, and kept in the
 take is in
 [Elevation tiles at build time](development/data.md#elevation-tiles-at-build-time).
 A tile never changes, so it is never fetched again. A download that fails is
-tried again a few times. Offline, or when a tile cannot be fetched, the build
-goes on without it: a flight with a position under a missing tile gets no ground
-and stands on the line between its airfields, and one warning says how many
-flights that affects. Set `FLOWN_REQUIRE_TERRAIN=1` to fail instead, as CI does
-for the published site. `--no-terrain` skips the tiles altogether.
+tried again a few times (the build of Your flights in the browser tries it
+once). Offline, or when a tile cannot be fetched, the build goes on without it:
+a flight with a position under a missing tile gets no ground and stands on the
+line between its airfields, and one warning says how many flights that affects.
+Set `FLOWN_REQUIRE_TERRAIN=1` to fail instead, as CI does for the published
+site. `--no-terrain` skips the tiles altogether.
 
 ### Attribution
 

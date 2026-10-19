@@ -3,6 +3,7 @@
  */
 import { vi, type Mock } from "vitest";
 import type { MapApp } from "../../flown/frontend/mapApp";
+import type { DataManager } from "../../flown/frontend/ui/dataManager";
 import type {
   PathInfo,
   PathSegment,
@@ -114,7 +115,7 @@ interface MockManagers {
     showHeatmap: Mock;
     dismissFailures: Mock;
     cachedData: Mock;
-    failureNote: ((message: string) => void) | null;
+    failureNote: DataManager["failureNote"];
     onMetadata: ((metadata: Metadata) => void) | null;
     heatRequests: number;
     writeSource: Mock;

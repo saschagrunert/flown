@@ -29,6 +29,7 @@ import {
   hasLostContext,
   panPopupIntoView,
   toLngLat,
+  unwrapLng,
 } from "../utils/mapHelpers";
 import { calculateBearing, turnOf } from "../utils/geometry";
 import {
@@ -786,9 +787,11 @@ export class ReplayRenderer {
     const onCurve = state.smoothed
       ? replayPoint(state.smoothed, index, fraction)
       : null;
+    // Off the curve the short way across the antimeridian, as the line is
+    // drawn
     const position: [number, number] = onCurve?.position ?? [
       lat1 + (lat2 - lat1) * fraction,
-      lon1 + (lon2 - lon1) * fraction,
+      lon1 + (unwrapLng(lon2, lon1) - lon1) * fraction,
     ];
     state.airplaneHeightFt = state.lifted ? (onCurve?.heightFt ?? null) : null;
     state.airplaneOffsetsFt = onCurve?.offsetsFt;

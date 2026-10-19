@@ -42,7 +42,10 @@ and altitude) joins them. A document `TimeSpan` over a flight out and one back,
 or two untimed flights of a placemark named after the aircraft, stay two
 flights. The `gx:Track`s of a file's placemarks go through it as well, with
 `timed`: a track continues the one before only when its times begin when the one
-before ended or later, so the times of the joined flight stay in order.
+before ended or later, so the times of the joined flight stay in order, and it
+may start further than 50 m away by what `MAX_GROUNDSPEED_KNOTS` covers in the
+gap between them, unless it starts on the ground: that is the next flight, after
+one whose recording stopped on final.
 
 After `drop_duplicate_paths` in `flown/path_content.py` has dropped the exact
 copies, `drop_overlapping_paths` in `flown/duplicates.py` drops a recording of a
@@ -207,19 +210,20 @@ with zstd, checked against its CRC), so a later build reads them in a fraction
 of a millisecond instead of decoding the PNG again. A tile is only cached once
 its every chunk checks out, so a download cut short is fetched again rather than
 kept. A failed request or a server error is tried again three times, with pauses
-of 1, 2 and 4 s. When the last attempt could not reach the host at all, the host
-is given up for the run. A server error only costs that tile, unless three tiles
-in a row (across the fetch threads, without a tile that got through between
-them) used up their attempts on server errors: then the host is given up as
-well, rather than every tile of the run spending its attempts and pauses. Each
-fetch thread keeps one connection to the host, through the proxy that
-`HTTPS_PROXY` names unless `NO_PROXY` exempts the host, and a redirect away from
-the host or from https is refused. Offline, or for a tile that cannot be
-fetched, the build goes on and the flights under it get no ground; one warning
-says how many. `FLOWN_REQUIRE_TERRAIN=1` fails it instead, which the CI job that
-deploys the site sets. The ground is sampled once in the main process and kept
-as one array of elevations per path, aligned with its points
-(`sample_path_elevations`), which is what the export chunks are handed: a
+of 1, 2 and 4 s (by the build in the page once, without a pause: offline, the
+pauses would hold up every build there). When the last attempt could not reach
+the host at all, the host is given up for the run. A server error only costs
+that tile, unless three tiles in a row (across the fetch threads, without a tile
+that got through between them) used up their attempts on server errors: then the
+host is given up as well, rather than every tile of the run spending its
+attempts and pauses. Each fetch thread keeps one connection to the host, through
+the proxy that `HTTPS_PROXY` names unless `NO_PROXY` exempts the host, and a
+redirect away from the host or from https is refused. Offline, or for a tile
+that cannot be fetched, the build goes on and the flights under it get no
+ground; one warning says how many. `FLOWN_REQUIRE_TERRAIN=1` fails it instead,
+which the CI job that deploys the site sets. The ground is sampled once in the
+main process and kept as one array of elevations per path, aligned with its
+points (`sample_path_elevations`), which is what the export chunks are handed: a
 million points take tens of megabytes this way, where a mapping of coordinates
 took more than a gigabyte. `--no-terrain` skips the tiles altogether, which
 `scripts/build_visual_site.py` does: its snapshots show no 3D view. The CI jobs

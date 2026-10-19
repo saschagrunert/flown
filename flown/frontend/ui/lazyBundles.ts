@@ -37,6 +37,7 @@ import {
 } from "../services/featureLoader";
 import { TRY_AGAIN } from "../services/lazyImport";
 import { logError } from "../utils/logger";
+import { PICK_INTENT_MS } from "../utils/constants";
 import { KEYED_FIELDS } from "../utils/mapHelpers";
 import { runAction } from "./actions";
 import { prefersReducedMotion } from "../utils/motion";
@@ -169,51 +170,83 @@ export async function loadLazyBundle<T>(
 }
 
 /**
- * What needs the feature bundle (features.ts) when it is pressed: replay,
- * the tour, the cross-section, the 3D view and the satellite imagery, and
- * the rows that pick a flight alone, of the flight list (ui/flightList.ts)
- * and of an airport's popup (ui/airportFlights.ts), whose profile, and the
- * frame the list moves the map to, come with it (MapApp.followFlightProfile,
- * PathSelection.bringIntoView)
+ * What needs the feature bundle (features.ts) when it is pressed, by the
+ * id of its button: replay, the tour, the cross-section, the 3D view and
+ * the satellite imagery. A row of the phone's sheet is named as the button
+ * it stands for, without "-btn" (its data-row, see ui/mobileSheet.ts); so
+ * are the panels of the tour and the cross-section, which come with the
+ * bundle.
  */
 const FEATURE_INTENT =
-  "#replay-btn,#replay-all-btn,#hotspot-tour-btn,#cross-section-btn," +
-  "#three-d-btn,#satellite-btn,#selection-replay-btn,.flight-btn,.popup-flight";
+  /^((selection-)?replay(-all)?|hotspot-tour|cross-section|three-d|satellite)(-btn)?$/;
+
+/** What needs the code of share tokens, named the same way */
+const EXTRAS_INTENT = /^(share|selection-link)(-btn)?$/;
 
 /**
  * Get ready for a control while it is pointed at or focused, on either
  * layout. Wrapped and its intro (see prepareWrappedIntro) once the page has
- * a moment (whenIdle) rather than in the task of the pointer's move, and
- * not under reduced motion, where no intro plays: Wrapped's code comes with
- * the click, as it always has. The code of share tokens for Copy link,
- * which writes the link in the moment of the press and cannot wait for it
- * (UIToggles.shareLink). The feature bundle for the controls that need it
- * and for a flight about to be picked, a bundle most visits never fetch:
- * not ahead of every visit, but ahead of the press that shows the visitor
- * wants it, so the wait for it starts some hundred milliseconds sooner. A
- * pointer that rests on a flight on the map does the same (see
- * HoverPaths.prepare).
+ * a moment (whenIdle), and not under reduced motion, where no intro plays:
+ * Wrapped's code comes with the click, as it always has. The code of share
+ * tokens for Copy link, which writes the link in the moment of the press
+ * and cannot wait for it (UIToggles.shareLink). The feature bundle for the
+ * controls that need it and for a flight about to be picked, the rows that
+ * pick a flight alone, of the flight list (ui/flightList.ts) and of an
+ * airport's popup (ui/airportFlights.ts), whose profile, and the frame the
+ * list moves the map to, come with it (MapApp.followFlightProfile,
+ * PathSelection.bringIntoView). That bundle most visits never fetch: not
+ * ahead of every visit, but ahead of the press that shows the visitor
+ * wants it, so the wait for it starts some hundred milliseconds sooner.
+ *
+ * A pointer has to rest on the control for PICK_INTENT_MS first, as on a
+ * flight on the map (see HoverPaths.prepare): one on its way across the
+ * columns or down the list passes over controls for less, and leaves
+ * before then. A touch is followed by its tap, if it is one, and a swipe
+ * over the list is none. A control that cannot act now (aria-disabled)
+ * needs nothing. The focus counts at once where it is the keyboard's
+ * (:focus-visible): a press or a tap focuses what it lands on, and fetches
+ * what it needs itself.
  */
 export function prepareOnIntent(app: MapApp): void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const prepare = (event: Event): void => {
-    const target = event.target as Partial<Element>;
-    const id = target.id;
-    if (id === "share-btn" || id === "selection-link-btn") void loadExtras();
-    if (target.matches?.(FEATURE_INTENT)) void loadFeatures();
-    if (
-      (id === "wrapped-btn" || id === "mobile-tab-wrapped") &&
-      !prefersReducedMotion()
+    // An element, or the document, which Chrome sends a pointer's
+    // pointerenter as well: it has no dataset, id or matches (an id of
+    // undefined, which no pattern here matches as "undefined")
+    const target = event.target as HTMLElement;
+    const id = target.dataset?.["row"] ?? target.id;
+    const load =
+      target.ariaDisabled === "true"
+        ? null
+        : EXTRAS_INTENT.test(id)
+          ? loadExtras
+          : FEATURE_INTENT.test(id) ||
+              target.matches?.(".flight-btn,.popup-flight")
+            ? loadFeatures
+            : /^(mobile-tab-)?wrapped(-btn)?$/.test(id) &&
+                !prefersReducedMotion()
+              ? () =>
+                  whenIdle(() => {
+                    if (app.signal.aborted) return;
+                    loadWrapped()
+                      .then((wrapped) => wrapped?.prepareWrappedIntro(app))
+                      .catch(logError);
+                  })
+              : null;
+    if (!load) return;
+    // Pointed at anew, or left: what was pointed at before is passed
+    clearTimeout(timer);
+    if (event.type === "focus") {
+      if (target.matches(":focus-visible")) void load();
+    } else if (
+      event.type === "pointerenter" &&
+      (event as PointerEvent).pointerType !== "touch"
     ) {
-      whenIdle(() => {
-        if (app.signal.aborted) return;
-        loadWrapped()
-          .then((wrapped) => wrapped?.prepareWrappedIntro(app))
-          .catch(logError);
-      });
+      timer = setTimeout(load, PICK_INTENT_MS);
     }
   };
-  // Neither event bubbles; both reach a listener that captures
-  for (const type of ["pointerenter", "focus"]) {
+  // None of these events bubbles; each reaches a listener that captures
+  for (const type of ["pointerenter", "pointerleave", "focus"]) {
     document.addEventListener(type, prepare, {
       capture: true,
       signal: app.signal,

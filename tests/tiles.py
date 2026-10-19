@@ -2,15 +2,25 @@
 
 A small PNG encoder, the decoder's counterpart, which writes every filter
 type, and the Terrarium tiles made with it; a tile source that answers every
-pixel from a function of its position. Not a test module: test_png.py,
-test_terrain.py and test_terrain_fetch.py import it.
+pixel from a function of its position; the contents of paths the ground is
+sampled at. Not a test module: test_png.py, test_terrain.py and
+test_terrain_fetch.py import it.
 """
 
 import math
 import struct
 import zlib
 
+from flown.path_content import _path_content
 from flown.terrain import TERRAIN_ZOOM, TILE_SIZE
+
+
+def path_contents(paths):
+    """The contents of ``paths`` as ``path_content.exported_contents`` packs
+    them, keyed alike: what ``sample_path_elevations`` samples the ground at.
+    """
+    return {index: _path_content(path) for index, path in paths.items()}
+
 
 # --- A PNG encoder, the decoder's counterpart ---------------------------
 

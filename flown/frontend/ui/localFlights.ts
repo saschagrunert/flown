@@ -59,6 +59,39 @@ import {
 import { trustedHtml } from "../utils/trustedHtml";
 import { droppedOf } from "./fileDropWatch";
 import { DROP_IN_WRAPPED_MESSAGE } from "./fileDrop";
+import {
+  ACCEPTED,
+  AIRCRAFT_FILE,
+  APPLE_DOUBLE,
+  aircraftName,
+  aircraftNumber,
+  BUILD_AGAIN_LABEL,
+  BUILDING_MESSAGE,
+  BUILT_MESSAGE,
+  CANCELLED_MESSAGE,
+  CONFIRM_CLEAR_LABEL,
+  CONFIRM_CLEAR_MESSAGE,
+  CONFIRM_LAPSED_MESSAGE,
+  degradedMessage,
+  duplicateMessage,
+  FRAMED_MESSAGE,
+  LINK_OPENED_SITE_MESSAGE,
+  MAX_FILE_BYTES,
+  MAX_KEPT_BYTES,
+  NO_FILES_MESSAGE,
+  oversizedMessage,
+  READING_MESSAGE,
+  READY_MESSAGE,
+  REBUILDING_MESSAGE,
+  REMOVED_MESSAGE,
+  replacedMessage,
+  shownMessage,
+  STORAGE_FAILED_MESSAGE,
+  storageMessage,
+  TOO_LARGE_MESSAGE,
+  unreadableMessage,
+  UNSUPPORTED_FILES_MESSAGE,
+} from "./localMessages";
 
 /** The button in the left column, and the row of the phone's More sheet */
 export const LOCAL_BUTTON_ID = "local-flights-btn";
@@ -68,21 +101,6 @@ export const LOCAL_DATA_DIR = "local";
 /** Pixels between the button and the panel beside it */
 const PANEL_GAP_PX = 8;
 
-const ACCEPTED = /\.(kml|kmz)$/i;
-const AIRCRAFT_FILE = "aircraft.json";
-/** The AppleDouble files macOS writes into a folder, which are no KML */
-const APPLE_DOUBLE = /^\._/;
-
-/**
- * The name the `index`th aircraft.json of a drop is kept under, from 0:
- * the store keeps one file a name, and the folders of a drop may each
- * have one, which the build merges as the site build merges those of its
- * directories, the first one's entries first (flown/browser.py,
- * input_files): aircraft.json, aircraft-2.json and on
- */
-export function aircraftName(index: number): string {
-  return index ? `aircraft-${index + 1}.json` : AIRCRAFT_FILE;
-}
 /** How a file is named for its aircraft, which the hint links to */
 const NAMING_DOCS_URL =
   "https://github.com/saschagrunert/flown/blob/main/doc/usage.md#kml-file-naming-convention";
@@ -98,55 +116,15 @@ export const NO_TERRAIN_KEY = keyedToPage("flown-local-no-terrain");
  */
 export const OWN_TAB_KEY = keyedToPage("flown-local-tab");
 
-export const SITE_FLIGHTS_MESSAGE = "Showing the site's flights";
-export const UNSUPPORTED_FILES_MESSAGE =
-  "Only KML and KMZ files, and an aircraft.json next to them, can be shown";
-export const BUILDING_MESSAGE = "Building your flights…";
-export const REBUILDING_MESSAGE =
-  "The site was updated: building your flights again…";
-export const BUILT_MESSAGE = "Built, opening your flights…";
-export const READY_MESSAGE = "Your flights are ready";
-export const LINK_OPENED_SITE_MESSAGE =
-  "This link opened the site's flights, which it is of";
-export const STORAGE_FAILED_MESSAGE =
-  "This browser does not let the page keep files";
-/** Said when the browser's storage for the page is full (QuotaExceededError) */
-export const STORAGE_FULL_MESSAGE =
-  "The browser's storage for this page is full; remove some files";
-export const REMOVED_MESSAGE = "Your files are removed from this browser";
 /**
- * What the files kept may come to in all: every build takes all of them,
- * and holds some copies of them while it runs
- */
-export const MAX_KEPT_BYTES = 200 * 1024 * 1024;
-export const TOO_LARGE_MESSAGE =
-  "Your files would come to more than 200 MB; remove some first";
-/** The largest file the build reads (MAX_KML_FILE_SIZE in flown/validation.py) */
-export const MAX_FILE_BYTES = 100 * 1024 * 1024;
-export const CANCELLED_MESSAGE = "The build is stopped; your files are kept";
-/** What Remove all says while it waits for the second press */
-export const CONFIRM_CLEAR_LABEL = "Remove all files?";
-/**
- * How long it waits for it, at the least, and on while the button has the
- * focus (askToClear): time enough to hear the question out and find the
- * button again (WCAG 2.2.1)
+ * How long Remove all waits for its second press (CONFIRM_CLEAR_LABEL), at
+ * the least, and on while the button has the focus (askToClear): time
+ * enough to hear the question out and find the button again (WCAG 2.2.1)
  */
 export const CONFIRM_CLEAR_MS = 15_000;
-/** Said as it asks, for a screen reader the label's change is not */
-export const CONFIRM_CLEAR_MESSAGE =
-  "Press Remove all again to remove all the files from this browser";
-/** Said when it stops asking without the second press */
-export const CONFIRM_LAPSED_MESSAGE = "Nothing was removed";
 /** A later click this soon after the first is of a triple-click, at the
  * 500 ms double-click time of most systems */
 const DOUBLE_CLICK_MS = 500;
-
-/**
- * Said in a page framed by another: Your flights does not open there (see
- * framed)
- */
-export const FRAMED_MESSAGE =
-  "Your flights opens only on the site itself, not inside another page";
 
 /**
  * Whether another page frames this one. Your flights is the one state of
@@ -159,60 +137,8 @@ function framed(): boolean {
   return window.parent !== window;
 }
 
-/**
- * Said of dropped files that took the place of others kept under their
- * names, which were of another size: the store keeps one file a name
- */
-export function replacedMessage(names: readonly string[]): string {
-  return `${names.join(", ")} replaced ${names.length === 1 ? "a file" : "files"} of the same name`;
-}
-
-/**
- * Said of files of one drop under the same name, in folders of their own:
- * the store keeps one file a name, the first
- */
-export function duplicateMessage(names: readonly string[]): string {
-  return `More than one file is named ${names.join(", ")}; the first is kept, rename the others`;
-}
-
-/**
- * Said of a dataset built without what the build could not fetch
- * (LocalInfo.degraded), with Build again beside it
- */
-export function degradedMessage(degraded: readonly string[]): string {
-  const missing = [
-    ...(degraded.includes("airports") ? ["the airport names"] : []),
-    ...(degraded.includes("terrain") ? ["the ground under the flights"] : []),
-  ];
-  return `Your flights were built without ${missing.join(" and ") || "some of their data"}, which could not be fetched`;
-}
-/** What offers to build them again */
-export const BUILD_AGAIN_LABEL = "Build again";
 /** Set in a tab once its start said so: once a tab, not at every reload */
 const DEGRADED_SAID_KEY = keyedToPage("flown-local-degraded-said");
-
-/** Said of a drop with nothing the build takes in it (a folder of others) */
-export const NO_FILES_MESSAGE =
-  "No KML or KMZ files were found in what was dropped";
-/** Said while the folders of a drop are read */
-const READING_MESSAGE = "Reading the folders…";
-
-/** Said of files the browser would not read (one moved since it was picked) */
-export function unreadableMessage(names: readonly string[]): string {
-  return `Could not read ${names.join(", ")}; pick ${names.length === 1 ? "it" : "them"} again`;
-}
-
-/** Said of files larger than the build reads (MAX_FILE_BYTES) */
-export function oversizedMessage(names: readonly string[]): string {
-  return `${names.join(", ")} ${names.length === 1 ? "is" : "are"} larger than 100 MB, which the build cannot read`;
-}
-
-/** What a failure to keep something in the store is said as */
-function storageMessage(error: unknown): string {
-  return error instanceof DOMException && error.name === "QuotaExceededError"
-    ? STORAGE_FULL_MESSAGE
-    : STORAGE_FAILED_MESSAGE;
-}
 
 /** What a drop hands over: files, and folders by their entries (dropped) */
 export type Dropped = FileList | readonly (File | FileSystemEntry)[];
@@ -237,11 +163,21 @@ async function entriesOf(
 }
 
 /**
+ * The files before the folders: an aircraft.json in a folder comes after
+ * the one around it, and wins over it (aircraftName)
+ */
+const foldersLast = (
+  a: File | FileSystemEntry,
+  b: File | FileSystemEntry,
+): number =>
+  +!!(a as FileSystemEntry).isDirectory - +!!(b as FileSystemEntry).isDirectory;
+
+/**
  * The files of a drop: those dropped, and those in the folders dropped,
- * however deep. Of a folder only what the build takes: it holds other
- * files too, which are no mistake of the visitor's, the AppleDouble files
- * of macOS among them (`._1_x.kml`, which the site build leaves out too).
- * What could not be read is named in `unreadable`.
+ * however deep, each folder's before those of the folders in it. Of a
+ * folder only what the build takes: it holds other files too, which are
+ * no mistake of the visitor's. What could not be read is named in
+ * `unreadable`.
  */
 async function filesOf(
   dropped: Dropped,
@@ -252,11 +188,11 @@ async function filesOf(
     try {
       if (entry.isDirectory) {
         const entries = await entriesOf(entry as FileSystemDirectoryEntry);
-        for (const inner of entries) await walk(inner, false);
+        for (const inner of entries.sort(foldersLast)) await walk(inner, false);
       } else if (
         top ||
-        (!APPLE_DOUBLE.test(entry.name) &&
-          (ACCEPTED.test(entry.name) || entry.name === AIRCRAFT_FILE))
+        ACCEPTED.test(entry.name) ||
+        entry.name === AIRCRAFT_FILE
       ) {
         files.push(await fileOf(entry as FileSystemFileEntry));
       }
@@ -265,25 +201,31 @@ async function filesOf(
       unreadable.push(entry.name);
     }
   };
-  for (const item of Array.from(dropped)) {
+  for (const item of Array.from(dropped).sort(foldersLast)) {
     if ("isDirectory" in item) await walk(item, true);
     else files.push(item);
   }
   return files;
 }
 
-/** What the panel says about what is shown */
-export function shownMessage(info: LocalInfo | null | undefined): string {
-  if (!info) return SITE_FLIGHTS_MESSAGE;
-  // The files the flights are of: not the aircraft files, nor the ones
-  // the build left out
-  const left = new Set((info.skipped ?? []).map((entry) => entry.file));
-  const count = info.files.filter(
-    (name) => ACCEPTED.test(name) && !left.has(name),
-  ).length;
-  const flights = `${info.flights} flight${info.flights === 1 ? "" : "s"}`;
-  const files = `${count} file${count === 1 ? "" : "s"}`;
-  return `Showing your ${flights} from ${files}`;
+/**
+ * The aircraft file kept that `file` is, dropped again: of the same bytes,
+ * not only of the same size, which one with a model renamed has as well
+ */
+async function keptAs(
+  file: File,
+  names: Iterable<string>,
+): Promise<string | undefined> {
+  try {
+    const text = await file.text();
+    for (const name of names) {
+      const kept = aircraftNumber(name) && (await readFileBytes(name));
+      if (kept && decode(kept) === text) return name;
+    }
+  } catch {
+    // Taken for another: one that cannot be read is said so as it is kept
+  }
+  return undefined;
 }
 
 /** The build of the page's frontend, which a dataset of another is not read by */
@@ -482,6 +424,19 @@ async function siteFlags(
   }
 }
 
+/**
+ * The panel's actions, by their data-local, with their labels; which are
+ * shown the panel decides as it draws (draw), from the start
+ */
+const ACTIONS = {
+  show: "Show my flights",
+  again: BUILD_AGAIN_LABEL,
+  cancel: "Stop the build",
+  site: "Show the site’s flights",
+  clear: "Remove all",
+};
+type Action = keyof typeof ACTIONS;
+
 const PANEL_HTML =
   '<div class="local-flights-head">' +
   `<h2 class="local-flights-title" id="${LOCAL_PANEL_ID}-title">` +
@@ -515,11 +470,12 @@ const PANEL_HTML =
   '<label class="local-flights-terrain"><input type="checkbox"> ' +
   "Without the ground under the flights</label>" +
   '<div class="local-flights-actions">' +
-  '<button type="button" class="btn-surface" data-local="show">Show my flights</button>' +
-  `<button type="button" class="btn-surface" data-local="again" hidden>${BUILD_AGAIN_LABEL}</button>` +
-  '<button type="button" class="btn-surface" data-local="cancel" hidden>Stop the build</button>' +
-  '<button type="button" class="btn-surface" data-local="site">Show the site’s flights</button>' +
-  '<button type="button" class="btn-surface" data-local="clear">Remove all</button>' +
+  Object.entries(ACTIONS)
+    .map(
+      ([action, label]) =>
+        `<button type="button" class="btn-surface" data-local="${action}">${label}</button>`,
+    )
+    .join("") +
   "</div>" +
   '<p class="local-flights-note">The files and the map built from them are ' +
   "kept in this browser’s storage, and the files never leave it. The build " +
@@ -537,10 +493,7 @@ export class LocalFlights {
   private readonly alert: HTMLElement;
   private readonly input: HTMLInputElement;
   private readonly terrainOff: HTMLInputElement;
-  private readonly actions: Record<
-    "show" | "again" | "cancel" | "site" | "clear",
-    HTMLButtonElement
-  >;
+  private readonly actions: Record<Action, HTMLButtonElement>;
   private files: StoredFile[] = [];
   private info: LocalInfo | null;
   private building = false;
@@ -607,13 +560,12 @@ export class LocalFlights {
     this.input = panel.querySelector(".local-flights-drop input")!;
     this.terrainOff = panel.querySelector(".local-flights-terrain input")!;
     this.terrainOff.checked = storedFlag(NO_TERRAIN_KEY);
-    this.actions = {
-      show: panel.querySelector('[data-local="show"]')!,
-      again: panel.querySelector('[data-local="again"]')!,
-      cancel: panel.querySelector('[data-local="cancel"]')!,
-      site: panel.querySelector('[data-local="site"]')!,
-      clear: panel.querySelector('[data-local="clear"]')!,
-    };
+    this.actions = Object.fromEntries(
+      Object.keys(ACTIONS).map((action) => [
+        action,
+        panel.querySelector(`[data-local="${action}"]`),
+      ]),
+    ) as Record<Action, HTMLButtonElement>;
     // Ahead of the map, as the controls are (see locationSearch.ts)
     const home = document.getElementById("map")?.closest("main");
     if (home) home.before(panel);
@@ -960,7 +912,7 @@ export class LocalFlights {
     if (this.confirming === undefined) return;
     clearTimeout(this.confirming);
     this.confirming = undefined;
-    this.actions.clear.textContent = "Remove all";
+    this.actions.clear.textContent = ACTIONS.clear;
     if (this.status.textContent === CONFIRM_CLEAR_MESSAGE) {
       this.say(lapsed ? CONFIRM_LAPSED_MESSAGE : "");
     }
@@ -1023,13 +975,31 @@ export class LocalFlights {
     if (folders && !this.building) this.say(READING_MESSAGE);
     const found = await filesOf(dropped, unreadable);
     if (folders && !this.building) this.say("");
-    // By the name each is kept under
-    let aircraft = 0;
+    // Every build takes all the files kept, these among them
+    let sizes: Map<string, number>;
+    try {
+      await this.clearing;
+      sizes = new Map(
+        (await listFiles()).map((kept) => [kept.name, kept.size]),
+      );
+    } catch (error) {
+      logError("Could not read the files kept:", error);
+      this.say(STORAGE_FAILED_MESSAGE, true);
+      return false;
+    }
+    // By the name each is kept under: an aircraft.json numbered on from
+    // those kept, unless it is one of them dropped again (keptAs)
+    let aircraft = Math.max(0, ...[...sizes.keys()].map(aircraftNumber));
     for (const file of found) {
+      // The AppleDouble files of macOS, which the site build leaves out too
+      if (APPLE_DOUBLE.test(file.name)) continue;
       if (!ACCEPTED.test(file.name) && file.name !== AIRCRAFT_FILE) refused++;
       else if (file.size > MAX_FILE_BYTES) oversized.push(file.name);
       else if (file.name === AIRCRAFT_FILE) {
-        taken.set(aircraftName(aircraft++), file);
+        taken.set(
+          (await keptAs(file, sizes.keys())) ?? aircraftName(++aircraft),
+          file,
+        );
       } else if (taken.has(file.name)) duplicates.add(file.name);
       else taken.set(file.name, file);
     }
@@ -1044,18 +1014,6 @@ export class LocalFlights {
         ...(unreadable.length ? [unreadableMessage(unreadable)] : []),
       ];
       this.say((all.length ? all : [NO_FILES_MESSAGE]).join(". "), true);
-      return false;
-    }
-    // Every build takes all the files kept, these among them
-    let sizes: Map<string, number>;
-    try {
-      await this.clearing;
-      sizes = new Map(
-        (await listFiles()).map((kept) => [kept.name, kept.size]),
-      );
-    } catch (error) {
-      logError("Could not read the files kept:", error);
-      this.say(STORAGE_FAILED_MESSAGE, true);
       return false;
     }
     // Kept by name: one of another size under it is said to be replaced
@@ -1359,9 +1317,18 @@ export class LocalFlights {
       // Let go of by a Remove all or the stop (the worker went with it),
       // which said what it left
       if (run !== this.run) return;
+      // Another tab let go of the cache for its Remove all: the files went
+      // with it, which the list then shows too, unless that tab could not
+      // remove them (a third held them), and those kept are built again
+      const gone = (error as Error | null)?.message === CACHE_GONE_MESSAGE;
+      if (gone) {
+        await this.refresh();
+        if (run !== this.run) return;
+        if (this.files.length) this.buildAgain = true;
+      }
       this.settle(generation !== this.generation);
       // Of files since removed: what it failed with is not of those kept
-      if (generation === this.generation) {
+      if (generation === this.generation && !(gone && this.files.length)) {
         logError("The build of the flights failed:", error);
         const message =
           error instanceof DOMException
@@ -1369,17 +1336,14 @@ export class LocalFlights {
             : error instanceof Error
               ? error.message
               : String(error);
-        // Another tab removed them, which the list then shows too
-        if (message === CACHE_GONE_MESSAGE) await this.refresh();
         this.say(message, true);
         // Unseen in a panel that is closed or held under Wrapped, where a
-        // build that got through says so with a toast as well
+        // build that got through says so with a toast as well; one that
+        // stays while the map is held, which holds the panel inert
         if (!this.isOpen() || this.app.mapHeld) {
           showToast(message, "error", {
             label: "Show",
-            run: () => {
-              if (!this.app.mapHeld) this.open();
-            },
+            run: () => (this.app.mapHeld ? false : this.open()),
           });
         }
       }
@@ -1467,12 +1431,15 @@ export function reopenAfterSwitch(
   const degraded = app.config.localFlights?.degraded;
   if (degraded?.length && !saidThisTab()) {
     // The connection may be back: the visitor is offered the build that
-    // gets what this one could not, once a tab
+    // gets what this one could not, once a tab; not while the map is held
+    // (Wrapped), which keeps the panel closed, and the toast stays
     showToast(degradedMessage(degraded), "info", {
       label: BUILD_AGAIN_LABEL,
       run: () => {
+        if (app.mapHeld) return false;
         if (current?.app !== app || !current.isOpen()) toggleLocalFlights(app);
         void current?.buildAgainNow();
+        return true;
       },
     });
   }

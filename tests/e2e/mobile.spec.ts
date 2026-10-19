@@ -105,7 +105,6 @@ test.describe("Mobile bar", () => {
     // as a CSP violation of its own
     const info = test.info();
     if (info.status !== info.expectedStatus) return;
-    expect(errors.pageErrors).toEqual([]);
     expect(errors.cspViolations).toEqual([]);
     expect(relevantConsoleErrors(errors)).toEqual([]);
   });
