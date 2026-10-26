@@ -154,7 +154,7 @@ describe("vendored third-party files", () => {
       ).toMatch(/(\w+)=Math\.max\(\w+\.maxElevation\?\?\1,\1\)/);
       // A tile that loads empty lets go of the raw data it held
       expect(patched).toMatch(
-        /this\.collisionBoxArray=new \w+,this\.latestRawTileData=null,this\.latestEncoding=null;return\}/,
+        /this\.collisionBoxArray=new \w+,this\.latestRawTileData=null,this\.latestEncoding=null;else\{/,
       );
     });
 
