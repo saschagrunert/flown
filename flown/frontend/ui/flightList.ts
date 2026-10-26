@@ -17,7 +17,7 @@
  * somebody flew.
  */
 import type { MapApp } from "../mapApp";
-import type { PathInfo } from "../types";
+import type { Airport, PathInfo } from "../types";
 import { datasetIndex, type FilterView } from "../calculations/datasetIndex";
 import { flightTotals, type FlightTotals } from "../calculations/flightTotals";
 import { NAUTICAL_MILES_TO_KM } from "../utils/constants";
@@ -30,6 +30,7 @@ import { flightLabel, flightRoute, pickBox } from "../features/airports";
 import type { PickList } from "./pathSelection";
 import { setStatsTitle } from "./statsPanel";
 import { trustedHtml } from "../utils/trustedHtml";
+import { siteData } from "../state/siteData";
 
 /** The tab panel the list is written into (templates/map_template.html) */
 const FLIGHT_LIST_PANEL_ID = "flight-list-panel";
@@ -294,6 +295,11 @@ export class FlightList {
   private readonly search: HTMLInputElement | null = null;
   /** The filter the rows were made for; another one makes them again */
   private view: FilterView | null = null;
+  /**
+   * The airports the rows were named with: airports.json that loads late
+   * (its Retry) names them by their codes, and searches by those
+   */
+  private airports: readonly Airport[] | null = null;
   private rows: FlightRow[] = [];
   /**
    * The flights of the rows shown, in their order, and the row of a Shift
@@ -425,11 +431,11 @@ export class FlightList {
   }
 
   /**
-   * Write the rows again if the list is open and its filter changed.
-   * Closed, a Shift range starts afresh: the click it began at is out of
-   * mind.
+   * Write the rows again if the list is open and its filter or the
+   * airports changed. Closed, a Shift range starts afresh: the click it
+   * began at is out of mind.
    */
-  private update(): void {
+  update(): void {
     const app = this.app;
     const data = app.currentData;
     if (!app.statsPanelVisible || !app.flightListVisible || !this.body) {
@@ -439,8 +445,15 @@ export class FlightList {
     const view = data
       ? datasetIndex(data).filter(app.selectedYear, app.selectedAircraft)
       : null;
-    if (view === this.view && this.view !== null) return;
+    if (
+      view === this.view &&
+      this.view !== null &&
+      siteData.airports === this.airports
+    ) {
+      return;
+    }
     this.view = view;
+    this.airports = siteData.airports;
     // No Year column while one year is shown (see wrapped.css)
     this.body.parentElement!.classList.toggle(
       "one-year",

@@ -369,7 +369,6 @@ function* statisticsSteps(
   // of one without carry 0 ft, like those at sea level.
   const hasAltitude = altitudeRangeFt(filteredSegments, filteredPaths) !== null;
   const maxAltitudeFt = altitudeStats.max * METERS_TO_FEET;
-  const minAltitudeFt = altitudeStats.min * METERS_TO_FEET;
   const totalAltitudeGainFt = altitudeStats.gain * METERS_TO_FEET;
   const longestFlightNm = longestFlight / NAUTICAL_MILES_TO_KM;
 
@@ -458,10 +457,7 @@ function* statisticsSteps(
     total_distance_km: totalDistanceKm,
     total_distance_nm: totalDistanceKm / NAUTICAL_MILES_TO_KM,
     max_altitude_m: hasAltitude ? altitudeStats.max : undefined,
-    min_altitude_m: hasAltitude ? altitudeStats.min : undefined,
-    total_altitude_gain_m: hasAltitude ? altitudeStats.gain : undefined,
     max_altitude_ft: hasAltitude ? maxAltitudeFt : undefined,
-    min_altitude_ft: hasAltitude ? minAltitudeFt : undefined,
     total_altitude_gain_ft: hasAltitude ? totalAltitudeGainFt : undefined,
     max_groundspeed_knots: speedStats.max,
     avg_groundspeed_knots: speedStats.avg,

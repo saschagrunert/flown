@@ -155,7 +155,6 @@ export function rawYear(
   pathInfo: RawYearData["path_info"] = Object.keys(paths).map((id) => ({
     id: Number(id),
   })),
-  originalPoints = 0,
 ): RawYearData {
   const listed = new Set(pathInfo.map((info) => String(info.id)));
   const unlisted = Object.keys(paths).filter((id) => !listed.has(id));
@@ -175,17 +174,12 @@ export function rawYear(
   return {
     format: DATA_FORMAT_VERSION,
     year,
-    original_points: originalPoints,
     path_info: pathInfo,
     segments,
   };
 }
 
-export function dataset(
-  segmentsCount: number,
-  pathIdStart = 1,
-  originalPoints = segmentsCount,
-): KMLDataset {
+export function dataset(segmentsCount: number, pathIdStart = 1): KMLDataset {
   const path_segments = Array.from({ length: segmentsCount }, (_, i) => ({
     path_id: pathIdStart + i,
     coords: [
@@ -198,7 +192,6 @@ export function dataset(
   return {
     path_segments,
     path_info: path_segments.map((s) => ({ id: s.path_id })),
-    original_points: originalPoints,
   };
 }
 

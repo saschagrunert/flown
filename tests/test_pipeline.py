@@ -84,11 +84,10 @@ UNDATED_KML = """<?xml version="1.0" encoding="UTF-8"?>
 # exported, the track left out
 PARTLY_DATED_KML = """<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
-  <Document><Placemark><name>EDAQ - EDDC</name><gx:Track>
-    <when>{year}-03-15T10:00:00Z</when><gx:coord>12.05 51.55 110</gx:coord>
-    <when>{year}-03-15T10:10:00Z</when><gx:coord>12.5 51.4 800</gx:coord>
-    <when>{year}-03-15T10:20:00Z</when><gx:coord>13.76 51.13 230</gx:coord>
-  </gx:Track></Placemark><Placemark>
+  <Document><Placemark><name>EDAQ - EDDC</name>
+  <TimeStamp><when>{year}-03-15</when></TimeStamp><LineString><coordinates>
+    12.05,51.55,110 12.5,51.4,800 13.76,51.13,230
+  </coordinates></LineString></Placemark><Placemark>
   <name>somewhere</name><LineString><coordinates>
     -3.70,40.41,700 -3.60,40.50,900 -3.50,40.60,1200
   </coordinates></LineString></Placemark></Document></kml>
@@ -913,7 +912,6 @@ class TestExportSite:
         assert site_metadata["aircraft_models"] == {"D-EAGJ": "Katana"}
         year = parse_data(out / "data" / "2025" / "data.json")
         assert len(year["path_info"]) == 1
-        assert year["original_points"] == 2
         airports = parse_data(out / "data" / "airports.json")["airports"]
         assert [airport["name"] for airport in airports] == [
             "EDDF Frankfurt Main",
@@ -992,6 +990,28 @@ class TestExportSite:
             "2 airport name(s) not from the airport database" in message
             and "'Anna Mueller', 'Bob Smith'" in message
             and "EDDF" not in message
+            for message in warnings
+        ), warnings
+
+    def test_names_the_airports_that_may_hold_a_date(self, tmp_path, caplog):
+        """A date in a language the patterns do not know stays in the name."""
+        path = [TrackPoint(50.0, 8.0, 100.0), TrackPoint(51.0, 9.0, 200.0)]
+        metadata: list[PathMetadata] = [
+            {
+                "year": 2025,
+                "start_point": [50.0, 8.0, 100.0],
+                "airport_name": "Polje 16 kolovoza 2025 - EDDK Cologne Bonn",
+            },
+        ]
+        out = tmp_path / "out"
+
+        _export_site([path], metadata, out / "index.html", out / "data")
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any(
+            "1 airport name(s) that may hold a date" in message
+            and "'Polje 16 kolovoza 2025'" in message
+            and "EDDK" not in message
             for message in warnings
         ), warnings
 

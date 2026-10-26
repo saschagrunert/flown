@@ -32,6 +32,11 @@ export interface StoredFile {
   size: number;
   /** When it was dropped, ms since the epoch */
   added: number;
+  /**
+   * When the file was last changed (File.lastModified), which a drop of it
+   * again tells an unchanged one by; absent for files kept before
+   */
+  modified?: number | undefined;
 }
 
 /** A dropped file with its bytes, as it is kept */

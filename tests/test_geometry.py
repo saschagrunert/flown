@@ -6,6 +6,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+import flown.geometry as geometry_module
 from flown.geometry import (
     EARTH_RADIUS_KM,
     KM_PER_DEGREE,
@@ -296,6 +297,23 @@ class TestTrimPathEndsOnTheFlight:
 
         assert not _within(trimmed, parked.lat, parked.lon, 300)
         assert recorder.fixes[-1] not in trimmed
+
+    def test_a_takeoff_roll_that_dips_below_the_speed_for_a_moment(self):
+        """Fast, below the speed for a moment, fast again: that moment ended
+        the wait on the ground, so the takeoff was none and the trim
+        measured from the parking spot (10 of the 210 ends of data/)."""
+        recorder = _Recorder().stand(60)
+        parked = recorder.fixes[0]
+        recorder.go(120, 10).go(15, 50).go(10, 25)
+        rolled = len(recorder.fixes)
+        recorder.go(30, 60).go(300, 90, 100.0, 1000.0).go(600, 100, 1000.0)
+        recorder.go(300, 90, 1000.0, 100.0).go(20, 50).go(120, 10)
+
+        start, _ = geometry_module._flight_span(recorder.fixes)
+
+        assert start is not None
+        assert start >= rolled - 20
+        self._drops_all_before_the_roll(recorder, parked, rolled - 20)
 
     def test_the_drive_home_is_not_published(self):
         recorder = _flight(_Recorder().stand(60)).stand(120)

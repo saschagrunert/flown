@@ -19,6 +19,8 @@ import { LOCAL_UNAVAILABLE_MESSAGE } from "../../../../flown/frontend/ui/lazyBun
 import { loadLocal } from "../../../../flown/frontend/services/featureLoader";
 import { showToast } from "../../../../flown/frontend/utils/toast";
 import { setLocalStateMode } from "../../../../flown/frontend/ui/stateManager";
+import { UNREAD_LINK_MESSAGE } from "../../../../flown/frontend/state/shareToken";
+import { SHARE_TOKEN_PARAM } from "../../../../flown/frontend/state/urlState";
 
 const loggerMock = vi.hoisted(() => ({ logDebug: vi.fn(), logError: vi.fn() }));
 vi.mock("../../../../flown/frontend/utils/logger", () => loggerMock);
@@ -105,6 +107,18 @@ afterEach(() => {
 });
 
 describe("startApp", () => {
+  it("says so when a shared link could not be read, as a chat client cut it short", async () => {
+    const original = window.location.pathname + window.location.search;
+    window.history.replaceState(null, "", `/?${SHARE_TOKEN_PARAM}=BAA`);
+    try {
+      await startApp(config);
+    } finally {
+      window.history.replaceState(null, "", original);
+    }
+
+    expect(showToast).toHaveBeenCalledWith(UNREAD_LINK_MESSAGE, "error");
+  });
+
   it("starts on the site's flights without the flag, asking no bundle", async () => {
     const app = await startApp(config);
 

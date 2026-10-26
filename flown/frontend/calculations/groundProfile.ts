@@ -42,8 +42,10 @@ const TAXI_MIN_FIXES = 3;
  * So does a segment without a time: its speed is the average of a line
  * without times, the same for every segment, and one below the taxiing
  * speed lifted the field of a flight of circuits to its circuit height.
+ * Exported for the cases it shares with the build
+ * (tests/fixtures/field-ground.json).
  */
-function fieldFt(
+export function fieldFt(
   segments: readonly PathSegment[],
   indices: readonly number[],
 ): number | null {
@@ -88,14 +90,23 @@ export function groundProfileFt(
   for (const [pathId, path] of pathsOf(segments)) {
     const { indices, samples } = path;
     if (sampled && samples) {
-      const smoothed =
-        level > TERRAIN_TILE_MAX_ZOOM
-          ? samples
-          : smoothAlong(
-              samples,
-              (path.along ??= alongMetres(segments, indices)),
-              reliefPixelM(level, segments[indices[0]!]!.coords[0][0]),
-            );
+      let smoothed = samples;
+      if (level <= TERRAIN_TILE_MAX_ZOOM) {
+        const first = segments[indices[0]!]!;
+        let byLevel = flightGround.get(first);
+        if (!byLevel) {
+          flightGround.set(first, (byLevel = new Map<number, number[]>()));
+        }
+        const kept = byLevel.get(level);
+        smoothed =
+          kept ??
+          smoothAlong(
+            samples,
+            (path.along ??= alongMetres(segments, indices)),
+            reliefPixelM(level, first.coords[0][0]),
+          );
+        if (!kept) byLevel.set(level, smoothed);
+      }
       smoothed.forEach((feet, i) => (ground[indices[i]!] = feet));
       continue;
     }
@@ -215,15 +226,57 @@ let sampledGround = new WeakMap<
 >();
 
 /**
+ * The sampled ground of each flight smoothed for a relief level, by its
+ * first segment and the level: the same in every dataset that has the
+ * flight (see chainCurves), so all years shown after their years, or a
+ * year again, smooths none of it anew. It goes with the ground of the
+ * datasets (releaseGroundProfiles).
+ */
+let flightGround = new WeakMap<PathSegment, Map<number, number[]>>();
+
+/**
  * Let go of the ground worked out for every level, and of the flights
  * smoothed on it, as the 3D view goes: a profile is a number per segment,
  * and a dataset of all years kept one for each level it was shown at, for
  * as long as it stayed on the flat map
  */
 export function releaseGroundProfiles(): void {
+  clearTimeout(releasing);
+  holding = false;
   sampledGround = new WeakMap();
+  flightGround = new WeakMap();
   groundPaths = new WeakMap();
+  chainCurves = new WeakMap();
   releaseGroundedFlights();
+}
+
+/**
+ * How long the ground of every level and the flights smoothed on it are
+ * kept once the 3D view goes, as long as the heat cloud keeps its points
+ * (CLOUD_IDLE_MS in ui/heatCloud.ts): turned off and on again within it,
+ * the view stands on them again. Smoothed anew, every flight of a year
+ * took 90 ms of a CPU four times slower than a laptop's.
+ */
+export const GROUND_IDLE_MS = 15_000;
+
+/** The release holdGroundProfiles put off */
+let releasing: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Whether the 3D view is on (see holdGroundProfiles): the curves of the
+ * flights of every dataset it showed are kept then (chainCurves)
+ */
+let holding = false;
+
+/**
+ * Follow the 3D view as `held` says whether it is on: let go of the ground
+ * and the flights smoothed on it once it has been off for GROUND_IDLE_MS
+ * (see releaseGroundProfiles), and keep them while it is on
+ */
+export function holdGroundProfiles(held: boolean): void {
+  clearTimeout(releasing);
+  holding = held;
+  if (!held) releasing = setTimeout(releaseGroundProfiles, GROUND_IDLE_MS);
 }
 
 /**
@@ -256,10 +309,26 @@ let grounded: {
  */
 function smoothedCurves(segments: readonly PathSegment[]): SmoothedFlights {
   if (curves?.segments !== segments) {
-    curves = { segments, flights: smoothAltitudes(segments) };
+    const flights = smoothFlights(segments, (i) => segments[i]!.altitude_ft, {
+      chains: {
+        get: (first) => chainCurves.get(segments[first]!),
+        set: (first, line) => chainCurves.set(segments[first]!, line),
+      },
+    });
+    curves = { segments, flights };
   }
   return curves.flights;
 }
+
+/**
+ * The curves smoothedCurves smoothed, by the first segment of their chain:
+ * the same in every dataset that has the flight, as a year's and all
+ * years' share their segments (combineYearData in services/yearDataset.ts).
+ * A year shown again, or all years after one of them, takes its flights'
+ * curves from here. Kept while the 3D view is on (holdGroundProfiles), and
+ * otherwise only as long as the curves of the dataset are.
+ */
+let chainCurves = new WeakMap<PathSegment, SmoothedLine>();
 
 /**
  * Every flight of `segments` smoothed at its altitude, see smoothedCurves;
@@ -405,6 +474,7 @@ export function onReleaseGrounded(release: () => void): void {
 export function releaseGroundedFlights(): void {
   grounded = null;
   curves = null;
+  if (!holding) chainCurves = new WeakMap();
   for (const release of alsoReleased) release();
 }
 

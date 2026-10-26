@@ -125,6 +125,52 @@ def test_the_catch_all_excludes_every_named_group():
     assert set(groups[CATCH_ALL].get("exclude-patterns", [])) == named
 
 
+def _entries() -> list[dict[str, str]]:
+    """The scalar keys of each entry of ``updates``, read line by line like
+    the groups above: package-ecosystem, directory, multi-ecosystem-group"""
+    entries: list[dict[str, str]] = []
+    for line in CONFIG.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- package-ecosystem:"):
+            entries.append({})
+            stripped = stripped[2:]
+        if not entries or not (item := re.fullmatch(r'([\w-]+): "([^"]*)"', stripped)):
+            continue
+        if len(line) - len(line.lstrip()) <= 4:
+            entries[-1][item.group(1)] = item.group(2)
+    return entries
+
+
+def test_the_gitleaks_hook_and_image_are_bumped_together():
+    """Either bumped alone failed the lint and secrets jobs until the other
+    was pushed by hand"""
+    grouped = {
+        (entry["package-ecosystem"], entry["directory"])
+        for entry in _entries()
+        if entry.get("multi-ecosystem-group") == "gitleaks"
+    }
+    text = CONFIG.read_text(encoding="utf-8")
+
+    assert grouped == {("pre-commit", "/"), ("docker", "/.github/images/gitleaks")}
+    assert re.search(r"^multi-ecosystem-groups:\n  gitleaks:\n", text, re.MULTILINE)
+
+
+def test_the_playwright_image_is_left_to_the_library_bump():
+    """A pull request of the image alone could only fail against the
+    library, which the npm entry bumps (see dependabot.yml)"""
+    directories = {entry["directory"] for entry in _entries() if "directory" in entry}
+    # A list of directories (directories:) is read here too, and a glob
+    # over the image directories would take the Playwright one in as well
+    listed = [
+        line.strip()
+        for line in CONFIG.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith('- "/')
+    ]
+
+    assert not any("playwright" in directory for directory in directories)
+    assert not any("playwright" in line or "images/*" in line for line in listed)
+
+
 def test_every_python_dependency_is_in_a_uv_group():
     """A dependency outside every group got a pull request of its own each
     bump, as typos did before it joined the linter group"""

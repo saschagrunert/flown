@@ -66,7 +66,10 @@ of the site, like a date (`1_DEHYL_2026-08-16.kml`), and
 `make check-obfuscation` fails on the name. A type that names a day, a week, a
 part of the year or an hour with the shape of a designator (`SAT16`, `SAT-16`,
 `FRI13`, `LUN16`, `W33`, `W33-2`, `Q3`, `Q326`, `H2`, `AM10`) is dropped with a
-warning as well; `DO27`, `MI8`, `W3`, `Q400` and `H125` stay.
+warning as well; `DO27`, `MI8`, `W3`, `Q400` and `H125` stay. A day and a month
+after a type and its hyphen are taken out of it (`DA20-2608` and `DA20-16-08`
+are `DA20`, `PA-28-1608` is `PA-28`), and the check fails on the name; groups of
+four digits that are no day and month stay (`A350-1000`).
 
 ### Charterware format
 
@@ -554,6 +557,10 @@ One broken file stops the whole run, so a site never silently misses a flight:
   with a warning. So is a track whose `altitudeMode` is `clampToGround` or
   `relativeToGround`, because its altitudes are not above sea level. A track
   without `altitudeMode` is read as absolute, which is what flight logs write.
+- `<file>: <n> line(s) without times next to a timed track ignored`: the file
+  holds a recording with times and, in another placemark, a `LineString` without
+  any (the planned route some apps add). Such a line is no flight. A line whose
+  placemark has a `TimeStamp` or `TimeSpan` stays.
 - `<file>: <reason>`, followed by `<n> of <m> file(s) hold no flight to export`:
   the file parsed, but nothing of it would reach the site. A file whose flight
   is only skipped as a copy of one in another file (see below) does not stop the
@@ -614,15 +621,25 @@ looked up in the [OurAirports](https://ourairports.com/) database:
   (`EDDF > EDDM`); and in a name without either, where a hyphen, a dash, `>`,
   `->`, `→` or `/` stands between two codes without spaces (`EDDF-EDDM`). So
   `EDDF - EDFE > EDDS` goes from `EDDF` to `EDFE > EDDS`. Airport names may hold
-  a hyphen between spaces themselves (`LFBN Niort - Marais Poitevin`), so a name
-  with more than one such place is no route: it is shown as written, and the
-  flight gets no arrival.
+  a hyphen between spaces themselves (`LFBN Niort - Marais Poitevin`), so only a
+  place followed by a code counts. A name with more than one such place that
+  starts with a code is a route of several legs and goes from the first stop to
+  the last (`EDAQ - EDAU - EDDC` from `EDAQ` to `EDDC`, shown as
+  `EDAQ … - EDDC …`; the stops in between get no marker). Any other name with
+  more than one is no route: it is shown as written, and the flight gets no
+  arrival from the name.
 - A code OurAirports does not know keeps the name from the file. A name without
   an ICAO code is shown as an airport only as an end of a route
   (`Home strip - Aunt farm`), and not as a single word (`Home`). Any other
-  placemark name without a code (`Flight with Anna`) is free text: its start
-  gets no marker and does not count as an airport in the statistics either,
-  since a route end counts only where it has a marker.
+  placemark name without a code (`Flight with Anna`) is free text: the flight's
+  airports are then the field of its first takeoff and that of its last
+  full-stop landing, where the landings found them (see
+  [Airport database](output.md#airport-database)), and it has none where they
+  did not (a first takeoff from a field the database lacks, or a takeoff after
+  the last full stop): a route end counts only where it has a marker. Codes in
+  lower case count in a route whose departure and arrival both start with a code
+  the database knows (`edaq - eddp`, `edaq - eddp 16 aug`), not as a single
+  word: `farm` is an airport in South Africa.
 - A recording that starts in the air (more than 400 m above the airport and
   level) gets no departure marker, and the arrival only gets one when the name
   is a route and the track ends in a landing. A name that is a single airport

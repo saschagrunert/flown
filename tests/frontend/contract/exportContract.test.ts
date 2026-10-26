@@ -265,8 +265,6 @@ function isRawYearData(value: unknown): value is RawYearData {
   if (!isRecord(value)) return false;
   if (value["format"] !== DATA_FORMAT_VERSION) return false;
   if (!isInteger(value["year"])) return false;
-  if (!isInteger(value["original_points"]) || value["original_points"] < 0)
-    return false;
   const pathInfo = value["path_info"];
   if (!Array.isArray(pathInfo) || !pathInfo.every(isPathInfo)) return false;
   return isRawSegments(value["segments"], pathInfo.length);
@@ -469,7 +467,6 @@ const sampleYear2025: RawYearData = rawYear(
     // A path without airports, aircraft or altitudes has only an id and a year
     { id: 5, year: 2025 },
   ],
-  3,
 );
 
 function serialize(value: unknown): string {

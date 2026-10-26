@@ -10,6 +10,15 @@ import { createDefaultState } from "../../../../flown/frontend/state/store";
 import { TOGGLE_KEYS } from "../../../../flown/frontend/state/toggles";
 import { createMockApp, asMapApp, type MockApp } from "../../testHelpers";
 
+const unreadLink = vi.hoisted(() => ({ followed: false }));
+vi.mock(
+  "../../../../flown/frontend/state/shareToken",
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    followedUnreadLink: () => unreadLink.followed,
+  }),
+);
+
 describe("sanitizeSavedState", () => {
   it("returns an empty object for non-objects", () => {
     expect(sanitizeSavedState(null)).toEqual({});
@@ -936,6 +945,21 @@ describe("StateManager", () => {
 
     it("returns null if no state is available", () => {
       expect(stateManager.loadState()).toBeNull();
+    });
+
+    it("does not open on the saved view after a shared link that could not be read", () => {
+      // The visitor's own view would pass for what was shared
+      mockLocalStorage[KEY] = JSON.stringify({
+        schemaVersion: 3,
+        selectedYear: "2024",
+      });
+      unreadLink.followed = true;
+      try {
+        expect(stateManager.loadState()).toBeNull();
+      } finally {
+        unreadLink.followed = false;
+      }
+      expect(stateManager.loadState()).toMatchObject({ selectedYear: "2024" });
     });
 
     it("does not restore the state of another map on the same origin (regression)", () => {

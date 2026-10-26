@@ -229,6 +229,18 @@
   font-size: var(--text-base);
   color: var(--color-text);
 }
+/* On the narrowest phones (320 px) the time of several flights lost its
+   clock to the ellipsis, and GROUNDSPEED ran into TRACK: the time wraps
+   onto a second line there, and the labels drop their spacing */
+@media (max-width: 339.98px) {
+  #replay-time-display {
+    white-space: normal;
+    max-width: 100%;
+  }
+  .replay-readout-label {
+    letter-spacing: 0;
+  }
+}
 /* The metric counterpart, the way every other surface pairs its units */
 .replay-readout-alt {
   font-family: var(--font-mono);

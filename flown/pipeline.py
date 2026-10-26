@@ -35,6 +35,7 @@ from .data_exporter import (
     export_needs_a_pool,
     select_exported_paths,
 )
+from .date_tokens import find_possible_date_tokens
 from .exceptions import (
     ExportError,
     FlownError,
@@ -743,6 +744,29 @@ def _warn_free_text_airports(unique_airports: list[AirportData]) -> None:
         )
 
 
+def _warn_possible_dates(unique_airports: list[AirportData]) -> None:
+    """Name the published airport names that may hold a date, if any.
+
+    A day, a word and a year in a language the date patterns do not know
+    ("16 setyembre 2026", see ``date_tokens.find_possible_date_tokens``)
+    stays in a name, as the obfuscator's check only warns of it: the build
+    warns as well, so it can be renamed.
+    """
+    names = sorted(
+        name
+        for name in exported_airport_names(unique_airports)
+        if find_possible_date_tokens(name)
+    )
+    if names:
+        logger.warning(
+            "Publishing %d airport name(s) that may hold a date in a language "
+            "the date checks do not know: %s. Rename a placemark whose name "
+            "holds one (see doc/privacy.md)",
+            len(names),
+            ", ".join(repr(name) for name in names),
+        )
+
+
 @dataclass(frozen=True)
 class _ExportPlan:
     """What both exports settle before the data is written (see ``_plan``)."""
@@ -821,6 +845,7 @@ def _plan(
     )
     logger.info("  Found %d unique airports", len(unique_airports))
     _warn_free_text_airports(unique_airports)
+    _warn_possible_dates(unique_airports)
     countries = exported_country_codes(unique_airports)
     return _ExportPlan(
         path_groups=path_groups,

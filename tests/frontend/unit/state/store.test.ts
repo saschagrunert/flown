@@ -607,7 +607,6 @@ describe("AppStore", () => {
         path_segments: [],
         path_info: [],
         resolution: "full",
-        original_points: 0,
       };
       store.set("currentData", data);
       expect(fn).toHaveBeenCalledWith(data, null);

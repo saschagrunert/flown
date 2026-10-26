@@ -1005,6 +1005,17 @@ test.describe("Mobile bar", () => {
       await expectNoA11yViolations(page, "mobile filter sheet");
     });
 
+    test("the More sheet has no WCAG A/AA violations", async ({ page }) => {
+      // Its rows carry hints shown under their labels (Replay's says what
+      // it needs), which the other two sheets' rows hardly show
+      await openMobileSheet(page, "more");
+      await expect(
+        page.locator("#mobile-sheet .sheet-row-hint:visible"),
+      ).not.toHaveCount(0);
+
+      await expectNoA11yViolations(page, "mobile More sheet");
+    });
+
     test("every mirrored dropdown is named by its own row label", async ({
       page,
     }) => {

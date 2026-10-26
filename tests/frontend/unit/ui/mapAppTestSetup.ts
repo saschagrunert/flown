@@ -481,7 +481,6 @@ export const defaultData: KMLDataset = {
       end_airport: "EDDM",
     },
   ],
-  original_points: 1000,
 };
 
 export async function initializeApp(

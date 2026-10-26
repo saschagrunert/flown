@@ -326,20 +326,28 @@ export class MobileSheet {
       textHost.append(chip);
     }
 
-    // A row that is a control is named by its label alone, and its hint
-    // describes it: from its contents its name was "Groundspeed No timing
-    // data in the flights"
+    // A row that is a control is named by its label, and its hint after it
+    // (below), rather than by everything inside it
     if (spec.kind !== "select") {
       element.setAttribute("aria-labelledby", label.id);
     }
 
+    // A control's hint goes on the end of its name: a name that leaves out
+    // text shown inside the control fails WCAG 2.5.3 (axe's
+    // label-content-name-mismatch), as Replay's "Pick flights with timing
+    // data…" did as its description. Empty while it is hidden. After a
+    // space, which the column of the two does not draw: without one the
+    // text of the row read "ReplayPick flights…".
     let hint: HTMLElement | null = null;
     if (spec.hint) {
       hint = document.createElement("span");
       hint.className = "sheet-row-hint";
       hint.id = this.id + "-" + spec.id + "-hint";
-      element.setAttribute("aria-describedby", hint.id);
-      textHost.append(hint);
+      element.setAttribute(
+        spec.kind === "select" ? "aria-describedby" : "aria-labelledby",
+        spec.kind === "select" ? hint.id : label.id + " " + hint.id,
+      );
+      textHost.append(" ", hint);
     }
 
     const control = document.createElement("span");

@@ -26,6 +26,7 @@ import {
   TERRAIN_TILE_MAX_ZOOM,
   TERRAIN_TILE_SIZE_PX,
 } from "../calculations/lift";
+import { holdGroundProfiles } from "../calculations/groundProfile";
 import { EXAGGERATION_STATE, ribbonHeights } from "../calculations/ribbonPaint";
 import { MAP_LAYERS, MAP_SOURCES } from "../utils/constants";
 import {
@@ -87,11 +88,17 @@ function paintRibbons(map: MapLibreMap): void {
  * builds the relief anew and throws away what the map drew onto it (a few
  * milliseconds), which is why it follows the level, once a zoom has
  * ended, and never the zoom itself. The ribbons switch their exaggeration
- * with it, in the same frame (see exaggerateRibbons).
+ * with it, in the same frame (see exaggerateRibbons). The ground the
+ * flights stand on, and the flights smoothed on it, are kept with the 3D
+ * view, and a while after it (holdGroundProfiles).
  */
 export function followTerrain(app: MapApp): void {
   const map = app.map;
   if (!map) return;
+  holdGroundProfiles(app.threeDVisible);
+  app.store.subscribe("threeDVisible", holdGroundProfiles, {
+    signal: app.signal,
+  });
   const apply = (): void => {
     const active = app.terrainActive;
     const shaded = app.reliefShaded;
@@ -310,14 +317,20 @@ function exaggerateRibbons(
       else given.set(id, exaggeration);
     }
   };
+  let cap: ReturnType<typeof setTimeout> | undefined;
+  const stopWaiting = (): void => {
+    clearTimeout(cap);
+    map.off("render", landed);
+    map.off("data", landed);
+  };
   const landed = (): void => {
     if (loading(map, awaitedRibbons(app))) return;
-    map.off("render", landed);
+    stopWaiting();
     cuts = [cutOf(app.reliefLevel)];
     given.clear();
   };
   // A map the app has let go of is waited on no longer
-  signal.addEventListener("abort", () => map.off("render", landed));
+  signal.addEventListener("abort", stopWaiting);
   return (level) => {
     if (level === null) {
       given.clear();
@@ -327,8 +340,16 @@ function exaggerateRibbons(
     const follow = cuts.every((drawn) => followsLevel(drawn.level, level));
     cuts.push(cutOf(level));
     give();
-    map.off("render", landed);
+    stopWaiting();
     map.on("render", landed);
+    // Past SETTLE_MAX_MS the frames are watched no more: a relief whose
+    // tiles never come (offline) kept this running in every frame for
+    // good. The tiles that do land still say so, through the map's data
+    // events.
+    cap = setTimeout(() => {
+      map.off("render", landed);
+      map.on("data", landed);
+    }, SETTLE_MAX_MS);
     return follow;
   };
 }

@@ -44,7 +44,6 @@ export { followsLevel } from "./calculations/lift";
 export {
   heldGroundedFlights,
   releaseGroundedFlights,
-  releaseGroundProfiles,
 } from "./calculations/groundProfile";
 export { ReplayAllPlayer } from "./ui/replayAllPlayer";
 export { toggleReplayAll } from "./ui/replayAll";

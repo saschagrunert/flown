@@ -17,15 +17,18 @@
 #
 # A bump of @playwright/test (the `playwright` group, branches starting with
 # dependabot/npm_and_yarn/playwright) needs a commit of its own for the jobs
-# that run in the Playwright image, e2e, visual and pyodide: its tag and
-# digest are bumped by hand on the branch (see the visual job), and until
-# then every one of them failed at once against the old image. They skip
-# Dependabot's own pushes there, and the lint job fails until the image
-# reference is pushed. `github.actor` is whoever pushed (a re-run keeps
-# it), so the push of the image reference runs all of them. zizmor calls
-# the actor spoofable: here it can only skip jobs, and only in a pull
-# request Dependabot opened (its author cannot be spoofed), whose lint job
-# still checks the image against the library.
+# that run in the Playwright image, e2e, visual and pyodide: the image of
+# .github/images/playwright/Dockerfile is bumped on the branch with
+# `python scripts/check_pins.py --fix` (see the visual job), and until then
+# every one of them failed at once against the old image. They skip
+# Dependabot's own pushes there, and so do unit, packaging and e2e-sites,
+# which the bump of a test library changes nothing for and which took six
+# minutes of runners on every rebase of the branch; the lint job fails
+# until the image reference is pushed. `github.actor` is whoever pushed (a
+# re-run keeps it), so the push of the image reference runs all of them.
+# zizmor calls the actor spoofable: here it can only skip jobs, and only in
+# a pull request Dependabot opened (its author cannot be spoofed), whose
+# lint job still checks the image against the library.
 name: test
 on:
   push:
@@ -59,6 +62,11 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # actions: read for the runs of main, see "Check that no commit pushed
+    # carries real dates"
+    permissions:
+      contents: read
+      actions: read
     steps:
       - &checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,9 +95,11 @@ jobs:
       - name: Check the spelling
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: typos
+      # With the digest of each image's tag, asked of its registry; a
+      # registry that cannot be reached is a warning, not a failure
       - name: Check the pins and versions that have to agree
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: python scripts/check_pins.py
+        run: python scripts/check_pins.py --online
       - name: Check Python formatting
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: ruff format --check .
@@ -174,6 +184,20 @@ jobs:
       # not checked commit by commit: the history a copy brings along holds
       # commits from before the checks of today, which they refuse, and the
       # checks above read its tree. A manual run adds no commits.
+      #
+      # A push to main is checked from the last commit of main whose push
+      # run ran to its end, when that is older than what main had before: a
+      # push that waited behind a running one is dropped when another comes
+      # (see concurrency at the top), and the next push names the dropped
+      # push's head as what came before it, so the dropped commits were
+      # checked by no run. A run that ended, passed or failed, checked the
+      # commits up to its own. Not the last run that passed: one commit
+      # that fails here, or a failing test anywhere, would then have every
+      # later push check it again, and keep main red and unpublished until
+      # history is rewritten. The admins' bypass of the ruleset lets a push
+      # with --no-verify through, so this is the check that holds for it.
+      # Without an answer from the API the push is checked from what came
+      # before it, as before.
       - name: Check that no commit pushed carries real dates
         if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'pull_request') }}
         env:
@@ -185,16 +209,31 @@ jobs:
             echo "::notice::The first push of the branch: its history is not checked commit by commit"
             exit 0
           fi
+          checked=""
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            checked=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?branch=main&event=push&status=completed&per_page=30" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure")][0].head_sha // empty') || checked=""
+          fi
           shas=("$HEAD_SHA" "$BASE_SHA")
           auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           GIT_CONFIG_COUNT=1 \
             GIT_CONFIG_KEY_0="http.$GITHUB_SERVER_URL/.extraheader" \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
             git fetch --quiet --no-tags --unshallow origin "${shas[@]}"
+          if [ -n "$checked" ] && [ "$checked" != "$BASE_SHA" ] &&
+            git merge-base --is-ancestor "$checked" "$BASE_SHA" 2>/dev/null; then
+            echo "::notice::checking from $checked, the last commit of main whose run ended"
+            BASE_SHA=$checked
+          fi
           python scripts/pre_push.py --range "$BASE_SHA" "$HEAD_SHA"
 
+  # Not for Dependabot's Playwright bumps either, see the top
   unit:
-    if: &not-weekly github.event_name != 'schedule'
+    if: &not-weekly-nor-playwright-bump >- # zizmor: ignore[bot-conditions]
+      github.event_name != 'schedule' &&
+      !(github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.actor == 'dependabot[bot]' &&
+      startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright'))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -245,9 +284,10 @@ jobs:
 
   # The wheel and the container image, each installed and run as a user
   # would. One job: either took about 35 s, most of it to set up a runner,
-  # and a job of its own waited for a runner of its own.
+  # and a job of its own waited for a runner of its own. Not for
+  # Dependabot's Playwright bumps, see the top.
   packaging:
-    if: *not-weekly
+    if: *not-weekly-nor-playwright-bump
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -338,9 +378,9 @@ jobs:
   # Both are built from data/, not from FLOWN_INPUT_DIR: the specs are
   # written against the flights of this repository, which a copy keeps in
   # data/ next to its own (see doc/hosting.md), so its pull requests get the
-  # e2e jobs as well.
+  # e2e jobs as well. Not for Dependabot's Playwright bumps, see the top.
   e2e-sites:
-    if: *not-weekly
+    if: *not-weekly-nor-playwright-bump
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -433,8 +473,6 @@ jobs:
     # each (the relief tests of 3d-relief.spec.ts three), so their jobs get
     # longer.
     timeout-minutes: ${{ matrix.timeout-minutes || 15 }}
-    env: &playwright-image
-      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
     strategy:
       fail-fast: false
       # Every project runs against the published setup, with the dummy key.
@@ -556,15 +594,20 @@ jobs:
       # that step prints: a background process that kept the step's output
       # open would hold the step until it ended. Both steps skip where the
       # pyodide job's check of what changed set PYODIDE_BUILD to false; no
-      # other job sets it.
+      # other job sets it. The image is the one of
+      # .github/images/playwright/Dockerfile (see the visual job), which the
+      # steps after this one run as PLAYWRIGHT_IMAGE.
       - &start-image-pull
         name: Start pulling the Playwright image
         if: env.PYODIDE_BUILD != 'false'
         run: |
+          image=$(sed -n 's/^FROM[[:space:]]\+//p' .github/images/playwright/Dockerfile)
+          test -n "$image" || { echo "::error::no image in .github/images/playwright/Dockerfile"; exit 1; }
+          echo "PLAYWRIGHT_IMAGE=$image" >> "$GITHUB_ENV"
           {
             status=1
             for attempt in 1 2; do
-              if timeout 120 docker pull --quiet "$PLAYWRIGHT_IMAGE"; then status=0; break; fi
+              if timeout 120 docker pull --quiet "$image"; then status=0; break; fi
               echo "::warning::pulling the Playwright image failed or took over two minutes (attempt $attempt)"
             done
             echo "$status" > "$RUNNER_TEMP/image-pull.tmp"
@@ -685,17 +728,17 @@ jobs:
   # it, since the package needs a Python the image does not carry. The image
   # is pulled and run as in the e2e job (see there).
   #
-  # The image tag has to match the
-  # @playwright/test version package-lock.json pins; scripts/check_pins.py
-  # fails the lint job when the two drift apart. Dependabot does not bump
-  # the image: with every @playwright/test bump set the new tag here and in
-  # the e2e job, with the digest of its multi-arch index (the
-  # Docker-Content-Digest header of
-  # https://mcr.microsoft.com/v2/playwright/manifests/<tag>), and the same
-  # reference in CONTRIBUTING.md and doc/development/testing.md
-  # (check_pins.py checks all of them). The e2e job holds the reference,
-  # which this job and the pyodide job take with it. A digest left behind
-  # keeps pulling the old image, whatever the tag next to it says.
+  # The image is the FROM line of .github/images/playwright/Dockerfile,
+  # which the e2e, visual and pyodide jobs read, and the commands of
+  # CONTRIBUTING.md and doc/development/testing.md too. Its tag has to match
+  # the @playwright/test version package-lock.json pins, and its digest has
+  # to be the one of that tag's multi-arch index: scripts/check_pins.py
+  # fails the lint job when either drifts (the digest it asks of the
+  # registry). Dependabot does not bump the image, since a pull request of
+  # its own could only fail against the library (see dependabot.yml): with
+  # every @playwright/test bump run `python scripts/check_pins.py --fix` on
+  # the branch, which writes the new tag with its digest. A digest left
+  # behind keeps pulling the old image, whatever the tag next to it says.
   visual:
     needs: e2e-sites
     # Not for Dependabot's Playwright bumps, see the top
@@ -706,7 +749,6 @@ jobs:
     runs-on: ubuntu-24.04
     # About 1.5 minutes on a green run, and the image pull's two attempts
     timeout-minutes: 10
-    env: *playwright-image
     steps:
       - *checkout
       - *start-image-pull
@@ -755,11 +797,13 @@ jobs:
         with:
           python: "true"
           npm-cache: "false"
-      # A pull request audits the dependencies only when it changes them: an
-      # advisory for a version the base already pins turned pull requests
-      # red that were fine, and the next push to main or the weekly run
-      # reports it anyway. A base the clone cannot compare with audits as
-      # well: the step fails closed
+      # A pull request audits the dependencies only when it changes them, and
+      # then fails only on an advisory its base does not have: one for a
+      # version the base already pins turned pull requests red that were
+      # fine (a bump of hypothesis, on advisories of filelock and setuptools
+      # that main had as well), and the next push to main or the weekly run
+      # reports it anyway. Those audit the whole lock files. A base the
+      # clone cannot compare with audits as well: the step fails closed
       - name: Check whether the dependencies changed
         id: deps
         env:
@@ -782,16 +826,53 @@ jobs:
       # exported with their hashes, so it reads the pins as they are, without
       # pip resolving anything: --no-deps warned on every call, and left out
       # a package (packaging) that the lock pinned. --quiet keeps the export
-      # out of the log, as in the packaging job.
+      # out of the log, as in the packaging job. In a pull request the lock
+      # of the base is exported and audited too, from its pyproject.toml and
+      # uv.lock alone (--frozen reads the lock as it is), and
+      # scripts/new_advisories.py fails on what the head adds. pip-audit
+      # exits with 1 on any advisory; a report it did not write fails that
+      # script.
       - name: Audit the Python lock file
         if: steps.deps.outputs.audit == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           uv export --locked --all-extras --all-groups --no-emit-project \
             --format requirements-txt --quiet --output-file "$RUNNER_TEMP/requirements.txt"
-          pip-audit --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+          if [ -z "$BASE_SHA" ]; then
+            pip-audit --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+            exit
+          fi
+          base="$RUNNER_TEMP/python-base"
+          mkdir -p "$base"
+          git show "$BASE_SHA:pyproject.toml" > "$base/pyproject.toml"
+          git show "$BASE_SHA:uv.lock" > "$base/uv.lock"
+          uv export --frozen --project "$base" --all-extras --all-groups --no-emit-project \
+            --format requirements-txt --quiet --output-file "$base/requirements.txt"
+          pip-audit --disable-pip --require-hashes -r "$base/requirements.txt" \
+            -f json -o "$base/audit.json" || true
+          pip-audit --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt" \
+            -f json -o "$RUNNER_TEMP/python-audit.json" || true
+          python scripts/new_advisories.py pip "$base/audit.json" "$RUNNER_TEMP/python-audit.json"
+      # The same for npm: in a pull request both lock files are audited
+      # without installing anything (--package-lock-only), and only a high
+      # or critical advisory the head adds fails it
       - name: Audit npm dependencies
         if: steps.deps.outputs.audit == 'true'
-        run: npm audit --audit-level=high
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE_SHA" ]; then
+            npm audit --audit-level=high
+            exit
+          fi
+          base="$RUNNER_TEMP/npm-base"
+          mkdir -p "$base"
+          git show "$BASE_SHA:package.json" > "$base/package.json"
+          git show "$BASE_SHA:package-lock.json" > "$base/package-lock.json"
+          npm audit --json --package-lock-only --prefix "$base" > "$base/audit.json" || true
+          npm audit --json --package-lock-only > "$RUNNER_TEMP/npm-audit.json" || true
+          python scripts/new_advisories.py npm "$base/audit.json" "$RUNNER_TEMP/npm-audit.json"
 
   # The scan for secrets, which checks requires: a commit that carries one
   # must not merge, and must not be published. A job of its own rather than
@@ -800,6 +881,10 @@ jobs:
   secrets:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # actions: read for the runs of main, see the scan
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -809,41 +894,55 @@ jobs:
           persist-credentials: false
       # The same gitleaks release as the pre-commit hook, whose rev Dependabot
       # bumps (a commit, with the release in its "# frozen:" comment), pulled
-      # by digest like every other image and action here, with its release
-      # in the comment after it. The digest is the multi-arch index of the
-      # tag; a bump of the hook rev has to update both by hand
-      # (`docker manifest inspect -v` or the registry's
-      # Docker-Content-Digest header). Until it does, scripts/check_pins.py
-      # fails the lint job, which compares the comment with the hook's rev,
-      # and this step, which compares the release the image reports. The
-      # config's [[allowlists]] needs gitleaks 8.25 or newer. A
-      # pull request scans only the commits it adds on top of its base, and
-      # a push to main the commits it pushed (the whole history took 80 to
-      # 106 s a run); the weekly run and a manual one scan the whole history.
-      # A push whose earlier head the clone does not have (a branch's first
-      # push, a force push) scans the whole history as well. A pull request
-      # is scanned with the .gitleaks.toml of its base, so it cannot
-      # allowlist a secret it adds there: a change of the allowlist applies
-      # from the pull requests after the one that merged it (the built-in
-      # rules alone should the base have none). A .gitleaksignore or a
-      # gitleaks:allow comment of its own still hides one, as gitleaks reads
-      # both from the tree it scans; either shows in its diff. Pushes, the
-      # weekly run and a manual one read the checkout's. The pull and the
-      # scan have time limits: a weekly scan once sat silent until the job
-      # timed out, and that week's audit never ran.
+      # by tag and digest like every other image and action here: the image
+      # of .github/images/gitleaks/Dockerfile, which Dependabot bumps in the
+      # same pull request as the hook (see dependabot.yml). Should the two
+      # drift apart, scripts/check_pins.py fails the lint job, which compares
+      # the tag with the hook's rev, and this step, which compares the
+      # release the image reports. The config's [[allowlists]] needs gitleaks
+      # 8.25 or newer. A pull request scans only the commits it adds on top
+      # of its base, and a push to main the commits since the last commit of
+      # main whose push run ran to its end, passed or failed (the whole
+      # history took 80 to 106 s a run). That is what main had before,
+      # unless a push in between was dropped: one that waited behind a
+      # running one is dropped when another comes, and its commits were
+      # scanned by no run (as in the lint job's check of the dates, which says
+      # why not the last run that passed). The weekly run and a manual one
+      # scan the whole history. A push whose earlier head the clone does not
+      # have (a branch's first push, a force push) scans the whole history as
+      # well. A pull request is scanned with the .gitleaks.toml of its base,
+      # so it cannot allowlist a secret it adds there: a change of the
+      # allowlist applies from the pull requests after the one that merged it
+      # (the built-in rules alone should the base have none). A
+      # .gitleaksignore or a gitleaks:allow comment of its own still hides
+      # one, as gitleaks reads both from the tree it scans; either shows in
+      # its diff. Pushes, the weekly run and a manual one read the checkout's.
+      # The pull and the scan have time limits: a weekly scan once sat silent
+      # until the job timed out, and that week's audit never ran.
       - name: Scan the commit history for secrets
         env:
-          GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f # v8.30.1
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          image=$(sed -n 's/^FROM[[:space:]]\+//p' .github/images/gitleaks/Dockerfile)
+          test -n "$image" || { echo "::error::no image in .github/images/gitleaks/Dockerfile"; exit 1; }
           version=$(awk '$3 == "https://github.com/gitleaks/gitleaks" { found = 1; next } found && $1 == "rev:" { print ($4 == "frozen:" ? $5 : $2); exit }' .pre-commit-config.yaml)
           test -n "$version" || { echo "::error::no gitleaks rev in .pre-commit-config.yaml"; exit 1; }
-          pulled=$(timeout 300 docker run --rm "$GITLEAKS_IMAGE" version)
+          pulled=$(timeout 300 docker run --rm "$image" version)
           test "${pulled#v}" = "${version#v}" || {
-            echo "::error::the pinned gitleaks image is $pulled, the pre-commit hook $version; update the digest in test.yml"
+            echo "::error::the pinned gitleaks image is $pulled, the pre-commit hook $version; run python scripts/check_pins.py --fix"
             exit 1
           }
+          if [ -n "$BEFORE_SHA" ]; then
+            checked=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?branch=main&event=push&status=completed&per_page=30" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure")][0].head_sha // empty') || checked=""
+            if [ -n "$checked" ] && [ "$checked" != "$BEFORE_SHA" ] &&
+              git merge-base --is-ancestor "$checked" "$BEFORE_SHA" 2>/dev/null; then
+              echo "::notice::scanning from $checked, the last commit of main whose run ended"
+              BEFORE_SHA=$checked
+            fi
+          fi
           range=()
           config="$PWD/.gitleaks.toml"
           if [ -n "$BASE_SHA" ]; then
@@ -856,7 +955,7 @@ jobs:
           elif [ -n "$BEFORE_SHA" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
             range=(--log-opts="$BEFORE_SHA..HEAD")
           fi
-          timeout 600 docker run --rm -v "$PWD:/repo:ro" -v "$config:/config.toml:ro" "$GITLEAKS_IMAGE" \
+          timeout 600 docker run --rm -v "$PWD:/repo:ro" -v "$config:/config.toml:ro" "$image" \
             git --redact --verbose --config /config.toml "${range[@]}" /repo
 
   # The real build of Your flights: Pyodide, lxml and the site's Python from
@@ -881,7 +980,6 @@ jobs:
       startsWith(github.head_ref, 'dependabot/npm_and_yarn/playwright'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env: *playwright-image
     steps:
       # The merge commit of a pull request and its first parent, the head of
       # the base branch, so the step below sees what the pull request changes
@@ -892,26 +990,30 @@ jobs:
       # Every input of this job: flown/*.py takes in every Python module of
       # the package (a pathspec's * crosses directories), which is what
       # flown-src.zip ships; */local*.ts the worker, the page's side of the
-      # build, the store and the panel the spec drops its files on, and the
-      # rest of what esbuild bundles into the worker or the page's side of
-      # the build (`node build.js --metafile` lists the inputs of the app's
-      # bundles only; build the entry point with metafile: true for the
-      # worker's); the template holds the page's CSP. Then what builds the
-      # bundles and the site, installs them and runs the spec, this workflow
-      # and its actions among it, and the spec with the modules of tests/e2e
-      # it imports and the flights it drops. A diff that cannot be made (no
-      # parent) builds as well: the step fails closed. Every step after it
-      # skips when it sets PYODIDE_BUILD to false, the ones of the image pull
-      # among them (see the e2e job).
+      # build, the store and the panel the spec drops its files on, local.ts
+      # the entry of their bundle (*/ does not match the top directory) and
+      # fileDrop*.ts the drop it starts from, and the rest of what esbuild
+      # bundles into the worker or the page's side of the build (`node
+      # build.js --metafile` lists the inputs of the app's bundles, the
+      # local bundle among them; build the worker's entry point with
+      # metafile: true for its own); the template holds the page's CSP. Then
+      # what builds the bundles and the site, installs them and runs the
+      # spec, this workflow, its actions and the image it runs in among it,
+      # and the spec with the modules of tests/e2e it imports and the
+      # flights it drops. A diff that cannot be made (no parent) builds as
+      # well: the step fails closed. Every step after it skips when it sets
+      # PYODIDE_BUILD to false, the ones of the image pull among them (see
+      # the e2e job).
       - name: Check whether the build in the page changed
         if: github.event_name == 'pull_request'
         run: |
           if git diff --quiet HEAD^1 HEAD -- 'flown/*.py' flown/templates \
-            'flown/frontend/*/local*.ts' flown/frontend/services/lazyImport.ts \
+            flown/frontend/local.ts 'flown/frontend/*/local*.ts' 'flown/frontend/ui/fileDrop*.ts' \
+            flown/frontend/services/lazyImport.ts \
             flown/frontend/utils/withTimeout.ts \
             build.js scripts/build-helpers.js scripts/source-hash.js scripts/vendor.js \
             package.json package-lock.json tsconfig.json pyproject.toml uv.lock \
-            .github/workflows/test.yml .github/actions playwright.config.ts \
+            .github/workflows/test.yml .github/actions .github/images/playwright playwright.config.ts \
             tests/e2e/local-flights-pyodide.spec.ts tests/e2e/fixtures.ts tests/e2e/helpers.ts \
             tests/e2e/map.ts tests/e2e/site-check.ts tests/e2e/sites.ts \
             tests/fixtures/visual/1_DEAGJ_DA20.kml tests/fixtures/visual/49_DEHYL_DA40.kml; then

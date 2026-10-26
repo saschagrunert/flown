@@ -31,7 +31,7 @@
   },
   "//dependencies": "Vendored into the page by scripts/vendor.js and published with the site",
   "dependencies": {
-    "flag-icons": "7.5.0",
+    "flag-icons": "7.6.0",
     "html-to-image": "1.11.13",
     "lucide": "1.55.0",
     "maplibre-gl": "6.15.0"

@@ -859,6 +859,19 @@ describe("ReplayManager activation", () => {
       expect(document.activeElement).toBe(el("replay-btn"));
     });
 
+    it("hands focus on from the airplane, which leaves as it closes", () => {
+      activate();
+      // Escape on the airplane with its popup closed ends the replay
+      const airplane = replayManager.state.airplaneMarker!.getElement();
+      if (!airplane.isConnected) document.body.append(airplane);
+      airplane.focus();
+      expect(document.activeElement).toBe(airplane);
+
+      replayManager.toggleReplay();
+
+      expect(document.activeElement).toBe(el("replay-btn"));
+    });
+
     it("leaves focus the user took elsewhere where it is as it closes", () => {
       activate();
       // The flight profile, say, outside the panel

@@ -133,6 +133,16 @@ test.describe("State Persistence", () => {
   });
 
   test.describe("URL and localStorage Combinations", () => {
+    // On a phone (the mobile and webkit projects, software WebGL at the
+    // phone's pixel ratio) the tests here load the page two or three times,
+    // or turn the globe on and off through the sheet: on green runs they
+    // took 17 to 20 s, and up to 38 s (63 % of the 60 s) when the runners
+    // slowed down, as on 2026-10-23, when the visual and webkit jobs ran
+    // out of time. Half a minute more for them alone, not the whole project.
+    test.beforeEach(({ isMobile }, testInfo) => {
+      if (isMobile) testInfo.setTimeout(testInfo.timeout + 30000);
+    });
+
     test("URL parameters take priority over localStorage", async ({ page }) => {
       await toggleLayer(page, "heatmap");
       await expect

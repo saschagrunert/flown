@@ -205,7 +205,7 @@ never going to match:
 ```bash
 podman run --rm --ipc=host --network host --userns=keep-id --user "$(id -u):$(id -g)" \
   --security-opt label=disable -v "$PWD:/work" -w /work -e HOME=/tmp \
-  mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea \
+  "$(sed -n 's/^FROM //p' .github/images/playwright/Dockerfile)" \
   npx playwright test --project=visual --project=visual-phone
 ```
 
@@ -240,24 +240,30 @@ The plain `--update-snapshots` only rewrites a snapshot whose comparison fails;
 `=all` rewrites every snapshot that is not identical. The diff of a failing CI
 run is in the `visual-diff` artifact.
 
-The image is pinned by tag and digest, in the `visual` and `e2e` jobs of
-`.github/workflows/test.yml` and in the command above alike. The tag has to
-match the `@playwright/test` version in `package-lock.json`, and
-`scripts/check_pins.py` fails the lint job when the workflow, this file,
+The image is pinned by tag and digest, in the FROM line of
+`.github/images/playwright/Dockerfile`, which nothing builds: the `e2e`,
+`visual` and `pyodide` jobs of `.github/workflows/test.yml`, the command above
+and the one of
 [`doc/development/testing.md`](doc/development/testing.md#running-them-locally)
-and the lock file disagree. Dependabot opens the `@playwright/test` bump as a
-pull request of its own and does not touch the image: on that branch, set the
-new tag with the digest of its multi-arch index in the two jobs and the two
-documents. Until you push that, the `visual` and `e2e` jobs skip Dependabot's
-own pushes to the branch rather than fail against the old image, and the lint
-job is the one that fails. The registry returns the digest in the
-`Docker-Content-Digest` header:
+all read the image from there. The tag has to match the `@playwright/test`
+version in `package-lock.json`, and the digest has to be the one of that tag's
+multi-arch index: `scripts/check_pins.py` fails the lint job when either drifts
+(it asks the registry for the digest). Dependabot opens the `@playwright/test`
+bump as a pull request of its own and does not touch the image: on that branch,
+run
 
 ```bash
-curl -sI -H "Accept: application/vnd.oci.image.index.v1+json" \
-  https://mcr.microsoft.com/v2/playwright/manifests/v1.64.1-noble |
-  grep -i docker-content-digest
+python scripts/check_pins.py --fix
 ```
+
+which writes the new tag with its digest into that file, and commit it. Until
+you push that, the jobs that run in the image (and the unit, packaging and
+e2e-sites jobs, which the bump changes nothing for) skip Dependabot's own pushes
+to the branch rather than fail against the old image, and the lint job is the
+one that fails. The gitleaks image of the secrets job
+(`.github/images/gitleaks/Dockerfile`) is bumped by Dependabot itself, in the
+same pull request as the gitleaks hook of `.pre-commit-config.yaml`; `--fix`
+writes it too, should the two have drifted apart.
 
 A new image may render differently; regenerate the snapshots on that branch if
 the visual job says so.

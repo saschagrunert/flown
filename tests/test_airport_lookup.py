@@ -1016,6 +1016,15 @@ class TestSplitRouteName:
                 "EDDS Stuttgart \u2013 EDDP Leipzig/Halle",
                 ("EDDS Stuttgart", "EDDP Leipzig/Halle"),
             ),
+            # Several legs with a code at every stop: the first to the last
+            ("EDDF - EDDM - EDDT", ("EDDF", "EDDT")),
+            ("EDDF-EDDM-EDDT", ("EDDF", "EDDT")),
+            ("LOWI-LOWS-LOWI", ("LOWI", "LOWI")),
+            ("EDAQ to EDDC to EDAU", ("EDAQ", "EDAU")),
+            (
+                "EDAQ Halle - EDAU Riesa - EDDC Dresden",
+                ("EDAQ Halle", "EDDC Dresden"),
+            ),
             # VIII is August in a Polish date, no airport code
             (
                 "Aunt farm 16.VIII.2026 - Home strip",
@@ -1036,9 +1045,9 @@ class TestSplitRouteName:
             "YSNW Naval Air Station Nowra - HMAS Albatross",
             "LFBN Niort - Marais Poitevin",
             "EDAQ Halle-Oppin - Private Strip",
-            "EDDF - EDDM - EDDT",
-            "EDDF-EDDM-EDDT",
             "A - B - C",
+            # Several legs with a departure that is no code
+            "Home strip - EDAU - EDDC",
             # A code next to a word or a registration is no route
             "EDDF-Tower",
             "EDDF D-EAGJ",
@@ -1078,6 +1087,65 @@ class TestStandardizeAirportNames:
 
     def test_single_airport_has_no_route(self):
         assert standardize_airport_names("EDDP") == AirportNames("EDDP Leipzig/Halle")
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            (
+                "edaq - eddp",
+                AirportNames(
+                    "EDAQ Halle-Oppin - EDDP Leipzig/Halle",
+                    "EDAQ Halle-Oppin",
+                    "EDDP Leipzig/Halle",
+                ),
+            ),
+            (
+                "edaq to eddp",
+                AirportNames(
+                    "EDAQ Halle-Oppin - EDDP Leipzig/Halle",
+                    "EDAQ Halle-Oppin",
+                    "EDDP Leipzig/Halle",
+                ),
+            ),
+            # With a date or a time, which are no words of the route
+            # (regression: they kept it in lower case, without its airports)
+            (
+                "edaq - eddp 16 aug",
+                AirportNames(
+                    "EDAQ Halle-Oppin - EDDP Leipzig/Halle",
+                    "EDAQ Halle-Oppin",
+                    "EDDP Leipzig/Halle",
+                ),
+            ),
+            (
+                "edaq - eddp 1430z",
+                AirportNames(
+                    "EDAQ Halle-Oppin - EDDP Leipzig/Halle",
+                    "EDAQ Halle-Oppin",
+                    "EDDP Leipzig/Halle",
+                ),
+            ),
+        ],
+    )
+    def test_codes_in_lower_case(self, name, expected):
+        assert standardize_airport_names(name) == expected
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            # Words, and a code the database does not know
+            "home - farm",
+            "home - farm 16 aug",
+            "Flight with Anna",
+            "edzz - eddp",
+            # A single word, even one that is a code: "Farm" and "Lima" are
+            # airports as well (regression)
+            "Eddp",
+            "eddp",
+        ],
+    )
+    def test_lower_case_words_stay_words(self, name):
+        assert standardize_airport_names(name).name == name
 
     def test_single_database_name_with_dash_stays_one_airport(self):
         names = standardize_airport_names("YSNW")

@@ -135,6 +135,62 @@ class TestExtractSegmentSpeeds:
         assert [s.timestamp for s in result] == [None, None]
 
 
+class TestShortSegments:
+    """Fixes written twice under one whole second (or a hundredth apart)."""
+
+    @staticmethod
+    def _doubled_track(knots, seconds=60):
+        """A fix every half second eastward, stamped with whole seconds."""
+        metres = knots * 1852 / 3600 / 2
+        points = []
+        for half in range(seconds * 2):
+            lon = 8.0 + half * metres / (111_320 * 0.6428)
+            points.append(TrackPoint(50.0, lon, 500.0, 1_000_000.0 + half // 2))
+        return points
+
+    def test_their_distance_counts_with_the_next_measured_segment(self):
+        segments = extract_segment_speeds(self._doubled_track(70.0), None)
+        short = [s for s in segments if s.time_delta < MIN_SEGMENT_TIME_SECONDS]
+        assert short
+        assert all(not s.valid for s in short)
+        measured = [s for s in segments if s.valid]
+        assert all(s.carried_distance > 0 for s in measured[1:])
+        assert measured[5].speed == pytest.approx(70.0, rel=0.02)
+
+    def test_the_window_flies_at_the_real_speed(self):
+        """It flew 69 kn; the window said 34 without the short segments."""
+        segments = extract_segment_speeds(self._doubled_track(70.0), None)
+        window = SpeedWindow(segments)
+        middle = segments[len(segments) // 2].timestamp
+        assert middle is not None
+        assert window.groundspeed(middle) == pytest.approx(70.0, rel=0.02)
+
+    def test_a_position_jump_after_them_carries_nothing(self):
+        points = [
+            TrackPoint(50.0, 8.0, 500.0, 0.0),
+            TrackPoint(50.0, 8.001, 500.0, 0.0),
+            # Five degrees in a second: no measurement, and nothing carried
+            TrackPoint(55.0, 8.001, 500.0, 1.0),
+        ]
+        jump = extract_segment_speeds(points, None)[1]
+        assert not jump.valid
+        assert (jump.carried_distance, jump.carried_time) == (0.0, 0.0)
+
+    def test_a_position_jump_among_them_leaves_the_next_segment_its_own(self):
+        """A logger that froze writes a kilometre in no time when it catches
+        up: carried, it made the good segment after it no measurement."""
+        points = [
+            TrackPoint(50.0, 8.0, 500.0, 0.0),
+            TrackPoint(50.0, 8.014, 500.0, 0.0),
+            # 200 m in 3 s, 130 kn
+            TrackPoint(50.0, 8.0168, 500.0, 3.0),
+        ]
+        after = extract_segment_speeds(points, None)[1]
+        assert after.valid
+        assert after.speed == pytest.approx(130.0, rel=0.01)
+        assert (after.carried_distance, after.carried_time) == (0.0, 0.0)
+
+
 class TestSpeedWindow:
     def test_empty(self):
         window = SpeedWindow([])
@@ -233,8 +289,8 @@ def _windowed_groundspeed_before_prefix_sums(current, timed):
             timestamps, current + half
         )
     ]:
-        distance += seg.distance
-        seconds += seg.time_delta
+        distance += seg.distance + seg.carried_distance
+        seconds += seg.time_delta + seg.carried_time
     if seconds < MIN_SEGMENT_TIME_SECONDS:
         return None
     speed = distance * KM_TO_NAUTICAL_MILES / seconds * SECONDS_PER_HOUR

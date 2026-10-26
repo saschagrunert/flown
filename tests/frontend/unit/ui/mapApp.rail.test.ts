@@ -468,7 +468,7 @@ describe("MapApp controls and map", () => {
       app.mobileBar = bar;
     });
 
-    it("leaves an Escape for a popup, a marker, the searches, Your flights or one taken before to them", async () => {
+    it("leaves an Escape for a popup, the searches, Your flights or one taken before to them", async () => {
       await initializeApp(app);
       const bar = app.mobileBar;
       app.mobileBar = {
@@ -494,7 +494,6 @@ describe("MapApp controls and map", () => {
       escapeIn(
         '<div class="maplibregl-popup"><button data-target></button></div>',
       );
-      escapeIn('<div class="maplibregl-marker" data-target></div>');
       escapeIn('<input type="search" data-target>');
       // Your flights and the search over the sheet close first
       escapeIn('<div id="local-flights"><button data-target></button></div>');
@@ -507,6 +506,12 @@ describe("MapApp controls and map", () => {
       expect(app.statsPanelVisible).toBe(true);
 
       escapeIn("<button data-target></button>");
+      expect(app.statsPanelVisible).toBe(false);
+
+      // On a marker whose popup is closed it is the page's too: a marker
+      // that closes its popup prevents it (appInitializer.ts)
+      app.store.set("statsPanelVisible", true);
+      escapeIn('<div class="maplibregl-marker" data-target></div>');
       expect(app.statsPanelVisible).toBe(false);
       app.mobileBar = bar;
     });

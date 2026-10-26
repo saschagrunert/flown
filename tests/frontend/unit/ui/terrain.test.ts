@@ -27,6 +27,7 @@ import {
 } from "../../../../flown/frontend/calculations/ribbonPaint";
 import { RIBBON_SOURCES } from "../../../../flown/frontend/ui/reliefState";
 import {
+  GROUND_IDLE_MS,
   groundedFlights,
   groundProfilesFt,
   heldGroundedFlights,
@@ -255,11 +256,15 @@ describe("the relief", () => {
       expect(app.relief.ribbonsShown).toBe(1);
       expect(trailOpacity()).toBe(TRAIL_OPACITY);
       // Only the ribbons' exaggeration waits on, for them to land (see
-      // exaggerateRibbons)
-      expect(map().listenerCount("render")).toBe(1);
-      map().isSourceLoaded.mockReturnValue(true);
-      map().emit("render");
+      // exaggerateRibbons), and no longer at every frame: tiles that never
+      // came (offline) kept it running in each one for good
       expect(map().listenerCount("render")).toBe(0);
+      expect(map().listenerCount("data")).toBe(1);
+      map().emit("data");
+      expect(map().listenerCount("data")).toBe(1);
+      map().isSourceLoaded.mockReturnValue(true);
+      map().emit("data");
+      expect(map().listenerCount("data")).toBe(0);
     });
   });
 
@@ -508,7 +513,7 @@ vi.mock("../../../../flown/frontend/services/featureLoader", async () => {
     await import("../../../../flown/frontend/ui/pathRibbons");
   const { followsLevel } =
     await import("../../../../flown/frontend/calculations/lift");
-  const { heldGroundedFlights, releaseGroundedFlights, releaseGroundProfiles } =
+  const { heldGroundedFlights, releaseGroundedFlights } =
     await import("../../../../flown/frontend/calculations/groundProfile");
   const { followHeatCloud, followSelectionRibbons } = featureBundle;
   const bundle = {
@@ -522,7 +527,6 @@ vi.mock("../../../../flown/frontend/services/featureLoader", async () => {
     followsLevel,
     heldGroundedFlights,
     releaseGroundedFlights,
-    releaseGroundProfiles,
   };
   return {
     loadedFeatures: () =>
@@ -787,7 +791,7 @@ describe("LayerManager on the relief", () => {
       );
     });
 
-    it("lets go of the ground of every level as the 3D view goes", async () => {
+    it("lets go of the ground of every level a while after the 3D view", async () => {
       await drawOverHills(11);
       const segments = mockApp.currentData!.path_segments;
       const level = mockApp.reliefLevel;
@@ -795,8 +799,22 @@ describe("LayerManager on the relief", () => {
       // Worked out once for the level, and kept while the 3D view is on
       expect(groundProfilesFt(segments, true, level).ground).toBe(ground);
 
-      mockApp.store.set("threeDVisible", false);
-      expect(groundProfilesFt(segments, true, level).ground).not.toBe(ground);
+      vi.useFakeTimers();
+      try {
+        // and a while after, for it to come back on to
+        mockApp.store.set("threeDVisible", false);
+        vi.advanceTimersByTime(GROUND_IDLE_MS - 1);
+        expect(groundProfilesFt(segments, true, level).ground).toBe(ground);
+        mockApp.store.set("threeDVisible", true);
+        vi.advanceTimersByTime(GROUND_IDLE_MS);
+        expect(groundProfilesFt(segments, true, level).ground).toBe(ground);
+
+        mockApp.store.set("threeDVisible", false);
+        vi.advanceTimersByTime(GROUND_IDLE_MS);
+        expect(groundProfilesFt(segments, true, level).ground).not.toBe(ground);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("switches the exaggeration and the ground at the level they are cut for, once", async () => {

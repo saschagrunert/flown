@@ -195,12 +195,11 @@ npm run test:e2e:mobile
 
 # On NixOS, use the system Chromium; Playwright's WebKit build does not run
 # there, but the Playwright container image carries it (the image the e2e
-# and visual jobs of .github/workflows/test.yml run; scripts/check_pins.py
-# keeps the reference here in step with it)
+# and visual jobs of .github/workflows/test.yml run, read from the same file)
 nix-shell -p chromium python3 --run 'CHROMIUM_PATH=$(which chromium) npm run test:e2e -- --project=desktop --project=mobile'
 podman run --rm --ipc=host --network host --userns=keep-id --user "$(id -u):$(id -g)" \
   --security-opt label=disable -v "$PWD:/work" -w /work -e HOME=/tmp \
-  mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea \
+  "$(sed -n 's/^FROM //p' .github/images/playwright/Dockerfile)" \
   npx playwright test --project=webkit --project=webkit-desktop
 ```
 

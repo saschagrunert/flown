@@ -407,7 +407,9 @@ export function stripControlStyles(content, published) {
  * A vendored file with its fixes (VENDOR_PATCHES) made and the styles of
  * the controls the app never adds left out (VENDOR_CSS_STRIPS). Matched as
  * latin1, one character per byte, like stripSourceMapComment, so every
- * other byte stays as it is.
+ * other byte stays as it is. Every fix that no longer matches once is
+ * named in one error, so a MapLibre bump that moves several of them shows
+ * all of them in one build.
  * @param {Buffer} content
  * @param {string} published - Path of the file inside vendor/
  * @returns {Buffer}
@@ -416,16 +418,22 @@ export function applyVendorPatches(content, published) {
   const patches = VENDOR_PATCHES[published];
   if (!patches) return stripControlStyles(content, published);
   let text = content.toString("latin1");
+  const broken = [];
   for (const { name, find, replace } of patches) {
     const found = [...text.matchAll(new RegExp(find.source, "g"))].length;
     if (found !== 1) {
-      throw new Error(
-        `scripts/vendor.js: the fix "${name}" matches ${found} places in ` +
-          `${published} instead of one. Has MapLibre changed there? See ` +
-          `VENDOR_PATCHES.`,
+      broken.push(
+        `the fix "${name}" matches ${found} places in ${published} instead of one`,
       );
+      continue;
     }
     text = text.replace(find, replace);
+  }
+  if (broken.length > 0) {
+    throw new Error(
+      `scripts/vendor.js: ${broken.join("; ")}. Has MapLibre changed there? ` +
+        `See VENDOR_PATCHES.`,
+    );
   }
   return Buffer.from(text, "latin1");
 }

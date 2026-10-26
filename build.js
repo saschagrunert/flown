@@ -424,17 +424,15 @@ function compareBundles(before, after, names) {
 // requests that each fit can still not fit together, since each is built
 // against the main branch of its day; the budget is checked again on main.
 //
-// The gzipped sizes depend on the zlib that Node.js was built with, not on
-// the Node.js version, and CI's differs from a local build's by up to about
-// 0.5 %, larger for the big files: MapLibre 6.10.0 is 312,146 B gzipped in
-// CI and 310,925 B on a NixOS machine (0.4 %), the first visit 0.4 % more
-// (48.64 KB against 48.45 KB). CI is what enforces the budgets, so size a
-// raise by the sizes CI prints (the "Build the JavaScript bundle" step of
-// any job), not by a local build.
+// The gzipped sizes depend on the zlib that Node.js was built with, and a
+// local build's can differ from CI's by up to about 0.5 %, more for the
+// big files. CI is what enforces the budgets, so size a raise by the sizes
+// CI prints (the "Build the JavaScript bundle" step of any job), or by a
+// build in the Node.js image of the Dockerfile, not by a local build.
 //
 // The comment of each budget says what it covers and how large that was
-// when the budget was last set. Every earlier raise and lowering, with what
-// it paid for and the sizes it was set by, is in the history of its line:
+// when the budget was last set, nothing more: what a raise or a lowering
+// paid for goes in its commit message, and is in the history of its line:
 // `git log -L '/^const BUDGET_APP/,+1:build.js'`, or the same for any other
 // budget.
 //
@@ -445,228 +443,50 @@ function compareBundles(before, after, names) {
 // lazy bundles, which the page loads together (mapApp.bundle.js only starts
 // the chunk, so the sum is what counts). What the map draws cannot move to a
 // lazy bundle, since a link may open turned, as a globe or in 3D; what only
-// a panel or a mode shows can. About 52.6 KB gzipped in CI when it was last
-// set, raised for the safe area of the home screen app (the popups and the
-// start view clear of the status bar, the island and the home indicator).
-// Raised for share mode on top of the replay of a day and the search
-// (159.35 KB and 54.22 KB gzipped in a local build after): the selection
-// it holds still, its chip, the flights a filter hides and a tap told from
-// a click. Raised by 256 B raw (161.67 KB and 54.99 KB gzipped in a local
-// build after) for the airports that a failed airports.json leaves out,
-// said over flights whenever they come and loaded again once per Retry,
-// and an export that waits for the heat sources, less long before the
-// share sheet. Raised again, by 0.75 KB raw and 0.25 KB gzipped (162.22 KB
-// and 55.17 KB gzipped in a local build after), for the intro of a link to
-// shared flights: the mark Copy link puts on such a link, taken off the
-// address bar as the page opens, the fetch of the intro, which lives in
-// the feature bundle, and the listening for input from the page open on,
-// as the intro is not to play over a view the visitor moved while the
-// data and the bundle were on their way. Raised by 0.75 KB raw and 0.75 KB
-// gzipped (163 KB and 55.49 KB gzipped in a local build after, the
-// gzipped budget about 1.4 % over that for CI's zlib) for the heat and the base
-// map's labels that dim across the aviation chart's band of zooms in their
-// paint, through a pinch, and the export that waits for the map within one
-// deadline from the tap to the share sheet. Lowered by 7.5 KB raw and 2 KB
-// gzipped (153.65 KB and 52.91 KB gzipped in a local build after) as the
-// sheet of the phone's bar and the export moved to the extras bundle and
-// each icon's paths became one. Raised by 10.25 KB raw and 4 KB gzipped
-// for the airport codes that glide round their dots to where there is room
-// (calculations/codePlacement.ts, ui/airportLabels.ts), clear of the other
-// markers' squares, placed again as panels come and go, the room they take
-// on the map as large on a tilted map, and drawn there as pins, by their
-// distance, and for the target each airport takes the pointer in, its
-// square or, where a neighbour's lies too close, its code's chip, so no
-// two overlap (setAirportTarget in features/airports.ts): 165.47 KB and
-// 57.71 KB gzipped in a local build. Raised by 5 KB raw and 2.25 KB gzipped
-// (170.72 KB and 59.86 KB gzipped in a local build after) for the token of
-// a copied link (state/shareToken.ts), which a shared link resolves before
-// anything reads it, so it cannot wait for a lazy bundle. Raised by 2 KB
-// raw and 0.5 KB gzipped (172.39 KB and 60.42 KB gzipped in a local build
-// after) for Your flights: the start of a page on the flights a visitor
-// dropped, which reads their dataset from the browser before the app starts
-// (startApp in mapApp.ts), the watch for files dragged over the page
-// (ui/fileDropWatch.ts), the button, its row in the phone's More sheet and
-// what Copy link says while those flights are shown. Lowered by 6.5 KB raw
-// and 2.25 KB gzipped (164.87 KB and 58.07 KB gzipped in a local build
-// after) as the phone's bar and the packing of the tokens of shared links
-// moved to the extras bundle, which a phone asks for as the page starts
-// (MapApp.followMobileBar) and every page once it has a moment, the still
-// of an export with them, and the icons only a lazy bundle draws to that
-// bundle (lazyIcon in utils/icons.ts). The reading of a token stays: a
-// link with one is read before anything else reads it. Lowered by 1 KB
-// raw as the airport popup's list of flights moved to the extras bundle
-// (164.07 KB and 57.74 KB gzipped in a local build after). Raised by 0.75
-// KB raw, the gzipped budget kept, for the first year decoded while the
-// map loads its style (DataLoader.preload), the heats of the last filters
-// kept, one heat and one set of lines asked of the year worker at a time,
-// and the ribbons cut for a new level in a task after the zoom's end
-// (165.84 KB and 58.41 KB gzipped in a local build). Raised again by 0.5
-// KB raw and 0.25 KB gzipped with the fixes of the same analysis: the
-// tapped flight's popup closed on a filter change, 3D switched back off
-// when its code cannot come, the link shown when it cannot be copied, the
-// cross-section in Reset view, and dropped folders passed on to Your
-// flights (166.42 KB and 58.56 KB gzipped in a local build). Raised by
-// 0.25 KB raw for the fixes of its review: the link of a failed Copy link
-// beside its message, the heats that failed not asked for in turn, the
-// worker's next lines asked for after a write that threw, and the
-// cross-section's line let go of by Reset view before it has opened
-// (166.81 KB and 58.68 KB gzipped in a local build). Raised to 167.75 KB
-// and 59.25 KB gzipped for the fixes of the second review: the link of a
-// failed Copy link in a field of its own, bytes of a preload counted before
-// the metadata, a throw while writing a heat, and 3D's tilt taken back when
-// its code cannot come (167.33 KB and 59.02 KB gzipped with CI's Node
-// 26.12.0). Raised by 0.5 KB raw, the gzipped budget kept, for the loader
-// of the phone bundle, which took the phone's bar out of the extras bundle
-// every page fetches, and the fetch of the feature bundle ahead of a press
-// that needs it (prepareOnIntent in ui/lazyBundles.ts, HoverPaths.prepare):
-// 167.98 KB and 59.03 KB gzipped in a local build. Raised to 168.5 KB and
-// 59.5 KB gzipped for the fixes of the 2026-10-19 analysis: Reload on the
-// messages that ask for one, the long fallback of Copy link without debug,
-// and the drop sheet kept away from Wrapped (168.24 KB and 59.34 KB
-// gzipped with CI's Node 26.12.0).
-const BUDGET_APP = { raw: 168.5 * 1024, gzip: 59.5 * 1024 };
+// a panel or a mode shows can. The reading of a shared link's token stays
+// here too: it is resolved before anything reads the state. 169.01 KB and
+// 59.7 KB gzipped.
+const BUDGET_APP = { raw: 169.25 * 1024, gzip: 60 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
-// heat cloud), the imagery, the flight profile, the cross-section and the
-// hotspot tour. Fetched only when one of them is first used, so no part of
-// a first visit, but budgeted so it cannot grow unnoticed. About 56.8 KB
-// gzipped in CI when it was last set (56.39 KB in a local build, some
-// 0.8 % smaller than CI's), raised for the profile and the replay of
-// several selected flights one after another. Of the last raise, some
-// 110 B raw are code (the cursor and the hint over a flight without
-// times, the hover kept inside a flight); the rest of the 0.36 KB gzipped
-// came with the replay manager no longer importing ui/replayAll, which
-// moved that module and its own imports elsewhere in the bundle. Raised by
-// 1.75 KB raw and 0.75 KB gzipped for the intro of a link to shared flights
-// (ui/shareIntro.ts, and a layer id and lasting trails for the player of
-// the replay of all flights): 151.21 KB and 57.14 KB gzipped in a local
-// build, 57.43 KB gzipped in CI. Raised by 1.25 KB raw and 0.5 KB gzipped
-// for the replay of one flight playing two to eight selected ones one
-// after another on one clock (the legs of the curve, the timeline's parts,
-// the clock naming the flight, the camera across the legs and the
-// profile's cursor on them), which took the place of the panel of the
-// replay of all flights playing them: some 1.2 KB raw more than that path,
-// 152.46 KB and 57.73 KB gzipped in a local build. Raised by 0.5 KB raw and
-// 0.25 KB gzipped for its review: a frame that stops at the start of each
-// flight, the camera held only for a move to it, and the time of each
-// flight as wide as the longest: 152.78 KB and 57.85 KB gzipped in a local
-// build, some 58.14 KB in CI. Raised by 2 KB raw and 1 KB gzipped for
-// the intro of a link to shared flights in the 3D view and with the heatmap
-// on, and for trails in the colours of the colour layer that is on: a fit
-// at the tilt and the bearing of the map measured at every fix of the
-// flights, the heat cloud built up by the intro's clock and handed back
-// without a jump, a colour per point of the replay's curves, the glow round
-// its trails and no trail where the Groundspeed layer draws no line
-// (154.73 KB and 58.65 KB gzipped in a local build, about 58.95 KB in CI,
-// which leaves 1.3 % of the gzipped budget). Raised by 1 KB raw, the
-// gzipped budget kept, for the frame of share mode and of a flight picked
-// from a list at the tilt of the map, which moved here from the first
-// visit (ui/frameFlights.ts, which the intro and the replay of all flights
-// frame with too), and for a few shared flights smoothed alone rather
-// than every flight of the dataset (keptGrounded): 155.69 KB and 58.99 KB
-// gzipped in a local build. Raised by 0.25 KB raw, the gzipped budget
-// kept, for the hotspots kept by filter view and isolated selection, which
-// a tour started again found by walking every segment once more (some
-// 45 ms on a desktop; ui/hotspotTour.ts): 156.07 KB and 59.32 KB gzipped
-// in a local build. Raised by 1.5 KB raw and 0.5 KB gzipped for the
-// replay's trail in the 3D view written in two sources, the runs behind
-// the airplane as they change and the one it is on in every frame (some
-// 0.95 MB a frame less at the end of the longest flight of 2025), and for
-// the index of the segments by cell the cross-section measures a corridor
-// with: 157.39 KB and 59.82 KB gzipped in a local build. Raised by 0.25
-// KB raw for a run the airplane has just finished kept in the source of
-// the run it is on until the tiles of the runs behind show it, and for
-// Reset view following the cross-section as it opens without a line:
-// 157.88 KB and 60.03 KB gzipped in a local build. Raised to 158.5 KB and
-// 60.5 KB gzipped for the runs behind the airplane written at most every
-// 250 ms: 158 KB and 60.35 KB gzipped with CI's Node 26.12.0.
-const BUDGET_FEATURES = { raw: 158.5 * 1024, gzip: 60.5 * 1024 };
+// heat cloud), the imagery, the flight profile, the cross-section, the
+// hotspot tour and the intro of a link to shared flights. Fetched only when
+// one of them is first used (or ahead of a press that needs it), so no part
+// of a first visit. 158.4 KB and 60.57 KB gzipped.
+const BUDGET_FEATURES = { raw: 158.5 * 1024, gzip: 60.75 * 1024 };
 // The Wrapped bundle: the Wrapped dialog with its intro, and the statistics
 // rail, fetched the first time either opens. It shares nothing with the
-// feature bundle that the app does not have as well. Raised by 0.5 KB raw
-// for the rail's note of the year and aircraft it counts, the distance in
-// the names of the flight list's rows and the intro played once a year per
-// session: 43.28 KB and 14.87 KB gzipped in a local build after. Raised
-// by 0.25 KB gzipped for the dialog's name with its year, the focus on
-// Skip intro while the intro plays, an intro seen apart for the visitor's
-// own flights and the statistics of a selection worked out in slices:
-// 43.33 KB and 14.97 KB gzipped in a local build. Raised by 0.25 KB raw
-// for the markers that come while the dialog is open, made inert as they
-// come, and the failure of the cards' statistics said in place of
-// "Preparing": 43.64 KB and 15.07 KB gzipped in a local build. Raised to
-// 44 KB raw for facts that hold under an aircraft filter, a Facts card
-// hidden when it has none, the hover of the intro's list let go of on a
-// heading, and the build line of your flights: 43.85 KB and 15.18 KB
-// gzipped with CI's Node 26.12.0.
+// feature bundle that the app does not have as well. 43.98 KB and 15.21 KB
+// gzipped.
 const BUDGET_WRAPPED = { raw: 44 * 1024, gzip: 15.25 * 1024 };
 // The search bundle: the panel of the search of airports and places, the
 // matching of the site's airports and the client of Photon, fetched the
-// first time the search opens. About 5.3 KB gzipped (13.25 KB raw) in a
-// local build when it was set.
+// first time the search opens. 13.39 KB and 5.35 KB gzipped.
 const BUDGET_SEARCH = { raw: 14 * 1024, gzip: 5.75 * 1024 };
 // The extras bundle: the packing of the tokens of shared links, the
 // export of the map as an image and the airport popup's list of flights,
-// fetched by every page once it has a moment. It had the phone's bar and
-// its sheet too, and a phone fetched it as its page started.
-// 8.88 KB and 3.39 KB gzipped in a local build when it was set, for the
-// sheet and the export alone. Raised by 10 KB raw and 3.5 KB gzipped for
-// the phone's bar itself, the packing of the tokens, which Copy link waits
-// for should it come first, and the still of the map an export takes:
-// 18.96 KB and 6.95 KB gzipped in a local build. Raised by 1 KB raw, the
-// room the first visit gave up, for the airport popup's list of flights
-// (ui/airportFlights.ts), loaded when a popup first opens, and the busy
-// state of an export: 21.03 KB and 7.71 KB gzipped in a local build.
-// Lowered to 8 KB and 4 KB gzipped as the phone's bar and sheet, two
-// thirds of it, moved to a bundle of their own (BUDGET_PHONE), which a
-// desktop does not fetch: 7.48 KB and 3.66 KB gzipped in a local build.
+// fetched by every page once it has a moment. 7.52 KB and 3.67 KB gzipped.
 const BUDGET_EXTRAS = { raw: 8 * 1024, gzip: 4 * 1024 };
-// The phone bundle: the phone's bar and its sheet, fetched as a phone's
-// page starts and as a window turns into the phone layout, and by no
-// other page. Moved out of the extras bundle, which every page fetches
-// once it has a moment: 13.65 KB and 4.46 KB gzipped in a local build when
-// it was set.
-const BUDGET_PHONE = { raw: 14 * 1024, gzip: 4.75 * 1024 };
+// The phone bundle: the phone's bar and its sheets, fetched as a phone's
+// page starts and as a window turns into the phone layout, and by no other
+// page. 14.36 KB and 4.67 KB gzipped.
+const BUDGET_PHONE = { raw: 14.5 * 1024, gzip: 4.75 * 1024 };
 // Your flights: the panel that takes the KML files a visitor drops, the
 // store in the browser and the page's side of the build worker, fetched
 // the first time the panel opens or a file is dragged over the page, and at
-// start by a page that shows those flights. Set with about 10 % of room,
-// then raised to 21 KB and 7.75 KB gzipped for dropped folders, the cap on
-// the files kept in all, Stop the build, Remove all asking twice and the
-// focus kept through a redraw: 20.76 KB and 7.44 KB gzipped in a local
-// build. Raised to 22 KB and 8 KB gzipped for what the review of those
-// found: drops kept one at a time, files of one name in folders, Stop not
-// once the dataset is kept, Show my flights after a stop, a drop that
-// finds nothing: 21.62 KB and 7.73 KB gzipped in a local build. Raised to
-// 22.5 KB raw for the second review's: a failed Remove all redrawn, Show my
-// flights for a dataset the page does not show yet, Remove all's question
-// said in the status: 22.06 KB and 7.84 KB gzipped with CI's Node 26.12.0.
-// Raised to 24.25 KB and 8.75 KB gzipped for Build again after a build
-// that could not fetch the airports or the ground, every aircraft.json of
-// a drop, macOS's AppleDouble files left out, a failed build said in a
-// toast while the panel is closed, Remove all waiting longer for its second
-// press and the focus put back where it can be seen: 24.06 KB and 8.51 KB
-// gzipped with CI's Node 26.12.0.
-const BUDGET_LOCAL = { raw: 24.25 * 1024, gzip: 8.75 * 1024 };
-// The worker of Your flights, which runs the site's Python in Pyodide;
-// the runtime itself comes from its CDN and is no part of this. Raised to
-// 7 KB and 3.5 KB gzipped for the check of the runtime's files against
-// their hashes, part by part, and the watch on their downloads and its
-// start (services/localWorker.ts): 6.05 KB and 3.09 KB gzipped in a local
-// build then, which CI's zlib makes a little larger. Raised to 7.75 KB and
-// 3.75 KB gzipped for the watch on the parser's load and the check that it
-// came, the cache's opening and reading bounded apart, and the files let
-// go of after a build: 7.56 KB and 3.64 KB gzipped in a local build.
-// Raised to 8.25 KB and 4 KB gzipped for the cache another tab removed,
-// a runtime out of memory taken for lost and Build again's retry of the
-// downloads: 8.07 KB and 3.82 KB gzipped with CI's Node 26.12.0.
-const BUDGET_LOCAL_WORKER = { raw: 8.25 * 1024, gzip: 4 * 1024 };
+// start by a page that shows those flights. 25.24 KB and 9.05 KB gzipped.
+const BUDGET_LOCAL = { raw: 25.25 * 1024, gzip: 9.25 * 1024 };
+// The worker of Your flights, which runs the site's Python in Pyodide and
+// fetches and decodes the elevation tiles for it (services/localTiles.ts);
+// the runtime itself comes from its CDN and is no part of this. 10.13 KB
+// and 4.78 KB gzipped.
+const BUDGET_LOCAL_WORKER = { raw: 10.25 * 1024, gzip: 5 * 1024 };
 // The year worker (services/yearWorker.ts): fetched by every visit, preloaded
 // in the page head beside the app and started with the first year file. It
 // decodes the year files and draws the heat sources off the main thread,
 // and the lines along the flights: the heat lines and the colour layers'
 // lines, with the smoothing of the curves they run along
 // (services/flightLines.ts) and the curves it keeps of the flights shown.
-// About 15.48 KB and 6.79 KB gzipped in a local build when it was last
-// set, raised for those from 9.77 KB and 4.49 KB.
+// 15.53 KB and 6.83 KB gzipped.
 const BUDGET_WORKER = { raw: 16 * 1024, gzip: 7 * 1024 };
 
 // The vendored files are copied as they are but for a few bytes of fixes
@@ -675,16 +495,11 @@ const BUDGET_WORKER = { raw: 16 * 1024, gzip: 7 * 1024 };
 // it is there so a Dependabot bump that makes them noticeably larger fails
 // the build and gets looked at. Raise it in the pull request of the bump.
 // MapLibre, which every visit loads before the map can draw, leaves a minor
-// release about 1 % of room each way: maplibre-gl 6.12.0 came to 1,144,034
-// B raw and 308,413 B gzipped with the fixes and the strip, as CI measures it
-// (an older Node's zlib packs it about 1.3 KB smaller). 6.13.0 gave the
-// worker its own copy of the code the two modules shared (about 140 KB
-// gzipped of it), and came to 1,598,347 B raw and 431,124 B gzipped under
-// Node 24. 6.15.0 came to 1,627,089 B raw and 443,394 B gzipped under
-// Node 26.
+// release about 1 % of room each way: maplibre-gl 6.15.0 comes to
+// 1,627,089 B raw and 443,394 B gzipped with the fixes and the strip.
 const BUDGET_MAPLIBRE = { raw: 1605 * 1024, gzip: 438 * 1024 };
 // html-to-image 1.11.13, bundled into one module and loaded on the first
-// export only: 13,667 B raw and 5.3 KB gzipped.
+// export only: 13,667 B raw and 5,430 B gzipped.
 const BUDGET_HTML_TO_IMAGE = { raw: 14 * 1024, gzip: 5.5 * 1024 };
 
 const APP_BUNDLE = "mapApp.bundle.js";

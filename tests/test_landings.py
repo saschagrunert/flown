@@ -7,7 +7,9 @@ fixture airport and runway databases check that it reads a real log.
 
 import math
 import os
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 from hypothesis import given, settings
@@ -33,7 +35,10 @@ from flown.landings import (
     detect_landings,
     detect_path_landings,
     field_index,
+    name_airports,
+    path_landings,
 )
+from flown.parser import parse_and_cache
 from flown.types import PathMetadata, TrackPoint
 from tests.conftest import parse_data, parse_kml_coordinates
 
@@ -125,7 +130,11 @@ class TestTheRules:
         flight = Flight().takeoff().circuit().final().stop()
 
         assert _detect(flight) == FlightLandings(
-            takeoffs=1, landings=1, touchdowns=[("EXMP", "27")]
+            takeoffs=1,
+            landings=1,
+            touchdowns=[("EXMP", "27")],
+            departure="EXMP",
+            arrival="EXMP",
         )
 
     def test_a_touch_and_go_climbs_away_without_stopping(self):
@@ -136,6 +145,36 @@ class TestTheRules:
 
         assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 1, 0)
         assert found.touchdowns == [("EXMP", "27"), ("EXMP", "27")]
+        # A touch-and-go is no arrival; the full stop after it is
+        assert (found.departure, found.arrival) == ("EXMP", "EXMP")
+
+    def test_the_departure_is_the_field_of_the_first_takeoff_alone(self):
+        """A takeoff 14 km east of the field, where the database has none,
+        then a full stop at the field and a takeoff from it (regression: the
+        second takeoff was the departure)."""
+        flight = (
+            Flight(lon=8.204)
+            .takeoff()
+            .leg(310, 90, 0, 270)
+            .circuit()
+            .final()
+            .stop()
+            .takeoff()
+        )
+
+        found = _detect(flight)
+
+        assert (found.takeoffs, found.landings) == (2, 1)
+        assert found.departure is None
+
+    def test_a_takeoff_after_the_last_full_stop_leaves_no_arrival(self):
+        """It left for a field the landings never saw (regression)."""
+        flight = Flight().takeoff().circuit().final().stop().takeoff().leg(600, 100)
+
+        found = _detect(flight)
+
+        assert (found.takeoffs, found.landings) == (2, 1)
+        assert (found.departure, found.arrival) == ("EXMP", None)
 
     def test_a_touch_and_go_slower_than_the_contact_speed_is_a_go_around(self):
         """Between STOP_KNOTS and CONTACT_KNOTS no contact is recorded.
@@ -329,7 +368,11 @@ class TestTheRules:
         assert min(point.lon for point in points) < 0 < max(p.lon for p in points)
 
         assert _detect(points, FieldIndex([field])) == FlightLandings(
-            takeoffs=1, landings=1, touchdowns=[("ANTI", "27")]
+            takeoffs=1,
+            landings=1,
+            touchdowns=[("ANTI", "27")],
+            departure="ANTI",
+            arrival="ANTI",
         )
 
     def test_the_first_fixes_of_a_receiver_share_a_time(self):
@@ -503,6 +546,76 @@ class TestDetectLandings:
         found = detect_landings({1: timed, 2: untimed}, FIELDS)
 
         assert list(found) == [1]
+
+
+class TestNameAirports:
+    """The airports of a path whose name tells none (fixture databases)."""
+
+    LANDED = FlightLandings(takeoffs=1, landings=1, departure="EDAQ", arrival="EDDP")
+
+    def _named(self, name, landings=LANDED, **keys):
+        metadata = cast("PathMetadata", {"airport_name": name, **keys})
+        name_airports(metadata, landings)
+        return metadata.get("start_airport"), metadata.get("end_airport")
+
+    def test_a_name_without_an_airport_gets_the_fields(self):
+        assert self._named("Flight with Anna") == (
+            "EDAQ Halle-Oppin",
+            "EDDP Leipzig/Halle",
+        )
+
+    def test_a_field_the_database_does_not_name_keeps_its_code(self):
+        found = FlightLandings(takeoffs=1, departure="EXMP")
+        assert self._named("Flight", found) == ("EXMP", None)
+
+    def test_a_recording_that_starts_in_the_air_gets_the_arrival_alone(self):
+        found = FlightLandings(landings=1, arrival="EDDP")
+        assert self._named("Flight", found) == (None, "EDDP Leipzig/Halle")
+
+    @pytest.mark.parametrize(
+        ("name", "keys"),
+        [
+            # A single airport, a route with codes and one without
+            ("EDDS", {}),
+            ("EDDS - EDDF", {"start_airport": "EDDS", "end_airport": "EDDF"}),
+            ("Home strip - Aunt farm", {"start_airport": "Home strip"}),
+        ],
+    )
+    def test_a_name_that_tells_its_airports_keeps_them(self, name, keys):
+        assert self._named(name, **keys) == (
+            keys.get("start_airport"),
+            keys.get("end_airport"),
+        )
+
+    def test_a_parse_names_them(self, tmp_path):
+        """Through the parse, which keeps them with its landings."""
+        lat, lon = 51.552223, 12.053889
+        flight = Flight(lat, lon + 0.004).takeoff().circuit().final().stop()
+        whens = "".join(
+            f"<when>{datetime.fromtimestamp(1742032800 + p.ts, UTC):%Y-%m-%dT%H:%M:%SZ}"
+            f"</when><gx:coord>{p.lon} {p.lat} {p.alt}</gx:coord>"
+            for p in flight.points
+        )
+        kml_file = tmp_path / "1_DEAGJ_DA20.kml"
+        kml_file.write_text(
+            '<kml xmlns="http://www.opengis.net/kml/2.2" '
+            'xmlns:gx="http://www.google.com/kml/ext/2.2"><Document><Placemark>'
+            f"<name>Flight</name><gx:Track>{whens}</gx:Track></Placemark>"
+            "</Document></kml>",
+            encoding="utf-8",
+        )
+
+        (_, _, metadata), _ = parse_and_cache(str(kml_file), None, path_landings)
+
+        assert metadata[0]["airport_name"] == "Flight"
+        assert (metadata[0]["start_airport"], metadata[0]["end_airport"]) == (
+            "EDAQ Halle-Oppin",
+            "EDAQ Halle-Oppin",
+        )
+
+    def test_without_landings_nothing_changes(self):
+        assert self._named("Flight", None) == (None, None)
+        assert self._named("Flight", FlightLandings()) == (None, None)
 
 
 class TestExport:

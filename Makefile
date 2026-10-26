@@ -212,7 +212,7 @@ LINT_BASE ?= origin/main
 
 lint: ## Run the linters, formatters (check only), type checkers, file checks and typos of the CI lint job
 	$(UV) lock --check
-	python scripts/check_pins.py
+	python scripts/check_pins.py --online
 	ruff check .
 	ruff format --check .
 	mypy .

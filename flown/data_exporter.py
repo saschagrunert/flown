@@ -46,7 +46,12 @@ from .aircraft import resolve_aircraft_models
 from .cache import atomic_write
 from .duplicates import drop_overlapping_paths
 from .exceptions import FlownError
-from .export_pipeline import build_path_info, path_duration, process_path_segments
+from .export_pipeline import (
+    build_path_info,
+    path_duration,
+    process_path_segments,
+    without_altitude_spikes,
+)
 from .export_writers import (
     export_airports_data,
     export_metadata,
@@ -342,9 +347,13 @@ def process_year_chunk(
             if path_id is None:
                 continue
 
-            start, rows = process_path_segments(path, path_duration(metadata))
+            # Smoothed for the statistics and the drawing alone: the ground
+            # was sampled at its positions, which stay, and the landings
+            # read the path as recorded
+            smoothed = without_altitude_spikes(path)
+            start, rows = process_path_segments(smoothed, path_duration(metadata))
             info = build_path_info(
-                path, metadata, path_id, year, airport_names, landings
+                smoothed, metadata, path_id, year, airport_names, landings
             )
 
             # json.dumps rather than json.dump: only the one-shot encoder is
@@ -419,11 +428,7 @@ def _assemble_year_file(
     original_points = sum(chunk.original_points for chunk in chunks)
     output_file = Path(output_dir) / str(year) / YEAR_FILE
 
-    header: YearFileHeader = {
-        "format": FORMAT_VERSION,
-        "year": year,
-        "original_points": original_points,
-    }
+    header: YearFileHeader = {"format": FORMAT_VERSION, "year": year}
     # The object stays open for the paths that follow
     head = json.dumps(header, separators=JSON_SEPARATORS).removesuffix("}")
 

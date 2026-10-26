@@ -41,8 +41,12 @@ export const BUILT_MESSAGE = "Built, opening your flights…";
 export const READY_MESSAGE = "Your flights are ready";
 export const LINK_OPENED_SITE_MESSAGE =
   "This link opened the site's flights, which it is of";
+/**
+ * Said when the browser refuses the storage: a private window, most often,
+ * or site data blocked in its settings
+ */
 export const STORAGE_FAILED_MESSAGE =
-  "This browser does not let the page keep files";
+  "This browser does not let the page keep files; leave private browsing, or allow this site to store data";
 /** Said when the browser's storage for the page is full (QuotaExceededError) */
 export const STORAGE_FULL_MESSAGE =
   "The browser's storage for this page is full; remove some files";
@@ -54,8 +58,11 @@ export const REMOVED_MESSAGE = "Your files are removed from this browser";
 export const MAX_KEPT_BYTES = 200 * 1024 * 1024;
 export const TOO_LARGE_MESSAGE =
   "Your files would come to more than 200 MB; remove some first";
-/** The largest file the build reads (MAX_KML_FILE_SIZE in flown/validation.py) */
-export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/**
+ * The largest file the build in the browser reads (MAX_KML_BYTES in
+ * flown/browser.py, which says why): a third of what the site build reads
+ */
+export const MAX_FILE_BYTES = 32 * 1024 * 1024;
 export const CANCELLED_MESSAGE = "The build is stopped; your files are kept";
 /** What Remove all says while it waits for the second press */
 export const CONFIRM_CLEAR_LABEL = "Remove all files?";
@@ -122,7 +129,7 @@ export function unreadableMessage(names: readonly string[]): string {
 
 /** Said of files larger than the build reads (MAX_FILE_BYTES) */
 export function oversizedMessage(names: readonly string[]): string {
-  return `${names.join(", ")} ${names.length === 1 ? "is" : "are"} larger than 100 MB, which the build cannot read`;
+  return `${names.join(", ")} ${names.length === 1 ? "is" : "are"} larger than ${MAX_FILE_BYTES / 1024 / 1024} MB, which the build in the browser cannot read`;
 }
 
 /** What a failure to keep something in the store is said as */

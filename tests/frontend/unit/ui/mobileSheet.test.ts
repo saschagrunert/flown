@@ -705,7 +705,7 @@ describe("MobileSheet", () => {
       expect(hint.hidden).toBe(true);
     });
 
-    it("names a row by its label, and describes it by its hint", () => {
+    it("names a row by its label and its hint", () => {
       sheet.openWith("Layers", [
         {
           kind: "switch",
@@ -722,9 +722,11 @@ describe("MobileSheet", () => {
       const element = row(sheet, "speed");
       const label = element.querySelector(".sheet-row-label")!;
       const hint = element.querySelector(".sheet-row-hint")!;
-      // From its contents its name ran the two together
-      expect(element.getAttribute("aria-labelledby")).toBe(label.id);
-      expect(element.getAttribute("aria-describedby")).toBe(hint.id);
+      // The text shown in a control is all in its name (WCAG 2.5.3)
+      expect(element.getAttribute("aria-labelledby")).toBe(
+        label.id + " " + hint.id,
+      );
+      expect(element.hasAttribute("aria-describedby")).toBe(false);
       expect(hint.textContent).toBe("No timing data in the flights");
     });
   });

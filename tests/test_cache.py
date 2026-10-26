@@ -19,6 +19,7 @@ import flown.cache as cache_module
 from flown.cache import (
     CACHE_DIR,
     ENTRY_MAX_AGE_DAYS,
+    TOUCH_AFTER_SECONDS,
     atomic_bytes_write,
     atomic_data_write,
     atomic_text_write,
@@ -541,6 +542,21 @@ class TestBytesEntries:
         assert load_bytes(tmp_path / "missing") is None
         (tmp_path / "a directory").mkdir()
         assert load_bytes(tmp_path / "a directory") is None
+
+    def test_a_read_touches_an_entry_once_a_day(self, tmp_path):
+        """Often enough for the pruning; a build in the page writes back
+        every entry whose time changed (IDBFS)."""
+        path = tmp_path / "kept" / "entry"
+        store_bytes(path, b"1")
+        recent = time.time() - TOUCH_AFTER_SECONDS / 2
+        os.utime(path, (recent, recent))
+        assert load_bytes(path) == b"1"
+        assert path.stat().st_mtime == recent
+
+        old = time.time() - TOUCH_AFTER_SECONDS - 60
+        os.utime(path, (old, old))
+        assert load_bytes(path) == b"1"
+        assert path.stat().st_mtime > time.time() - 60
 
     def test_many_entries_are_pruned_once(self, tmp_path):
         """A caller that stores an entry per flight prunes after the last."""

@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   CACHE_LOAD_MS,
   CACHE_SLOW_MESSAGE,
+  FETCHING_GROUND_MESSAGE,
   fetchSources,
   importPyodide,
   importVerified,
@@ -410,7 +411,7 @@ describe("Runtime", () => {
     expect(inputs.map((input) => input.bytes.byteLength)).toEqual([0, 0]);
     const run = pyodide.python.at(-1)!;
     expect(run).toContain(
-      'browser.build("/input", "/site", report, terrain=True, retry=False, flags=json.loads("null"))',
+      'browser.build("/input", "/site", report, terrain=True, retry=False, tiles_dir=None, flags=json.loads("null"))',
     );
     expect(outcome).toMatchObject(OUTCOME);
     expect(outcome.files.map((f) => f.path).sort()).toEqual([
@@ -420,6 +421,60 @@ describe("Runtime", () => {
     const metadata = outcome.files.find((f) => f.path === "metadata.json")!;
     expect(new Uint8Array(metadata.bytes)).toEqual(new Uint8Array([1, 2]));
     // The cache went out after the build
+    expect(pyodide.synced).toEqual([true, false]);
+  });
+
+  it("fetches the tiles the build asks for, and builds again with them", async () => {
+    const pyodide = new FakePyodide();
+    const tiles = [
+      { url: "https://tiles.example/10/1/2.png", name: "10-1-2" },
+      { url: "https://tiles.example/10/1/3.png", name: "10-1-3" },
+    ];
+    const run = vi.spyOn(pyodide, "runPythonAsync");
+    const answers = [JSON.stringify({ tiles }), JSON.stringify(OUTCOME)];
+    const handedIn: string[][] = [];
+    run.mockImplementation((code: string) => {
+      pyodide.python.push(code);
+      handedIn.push(
+        [...pyodide.files.keys()].filter((path) => path.startsWith("/tiles/")),
+      );
+      pyodide.FS.mkdirTree("/site/2025");
+      pyodide.files.set("/site/metadata.json", new Uint8Array([1, 2]));
+      return Promise.resolve(answers.shift()!);
+    });
+    const fetchTile = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        (input as string).endsWith("3.png")
+          ? new Response(null, { status: 404 })
+          : new Response(new Uint8Array([7, 7])),
+      ),
+    );
+    const runtime = new Runtime(
+      vi.fn(() => Promise.resolve(vi.fn(() => Promise.resolve(pyodide)))),
+      vi.fn(() => Promise.resolve(new ArrayBuffer(8))),
+      undefined,
+      undefined,
+      fetchTile,
+    );
+    const progress = vi.fn();
+
+    const outcome = await runtime.build(
+      [{ name: "a.kml", bytes: bytes(1) }],
+      true,
+      progress,
+      { retry: true },
+    );
+
+    expect(fetchTile).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenCalledWith(FETCHING_GROUND_MESSAGE);
+    // The one it got, handed in to the second run, which downloads nothing
+    // again of what the first could not
+    expect(handedIn).toEqual([[], ["/tiles/10-1-2.png"]]);
+    const [first, second] = pyodide.python.slice(-2);
+    expect(first).toContain("retry=True, tiles_dir=None");
+    expect(second).toContain('retry=False, tiles_dir="/tiles"');
+    expect(outcome).toMatchObject(OUTCOME);
+    expect([...pyodide.dirs].filter((d) => d.startsWith("/tiles"))).toEqual([]);
     expect(pyodide.synced).toEqual([true, false]);
   });
 

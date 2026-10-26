@@ -159,6 +159,19 @@ describe("FlightList", () => {
     expect(count()).toBe("2 flights");
   });
 
+  it("names the airports by their codes once airports.json comes late", () => {
+    // Its Retry: nothing the list follows in the store changes with it
+    const airports = siteData.airports;
+    siteData.airports = null;
+    mockApp.selectedYear = "2024";
+    expect(routes()).toEqual(["EDDP Leipzig → EDAQ Halle-Oppin"]);
+
+    siteData.airports = airports;
+    list.update();
+
+    expect(routes()).toEqual(["EDDP → EDAQ"]);
+  });
+
   it("leaves the Year column out while one year is shown", () => {
     const table = (): HTMLElement => panel().querySelector("table")!;
     expect(table().classList.contains("one-year")).toBe(false);

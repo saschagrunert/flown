@@ -129,9 +129,16 @@ worker in the browser. The files dropped and everything built from them stay in
 the browser's storage; the requests carry nothing of them beyond which elevation
 tiles the flights touch, as a build's do, so AWS learns roughly where they went.
 **Without the ground under the flights**, a choice of the panel, asks AWS for
-none. On a site at `<user>.github.io`, every Pages site of that account can read
-the storage the files are kept in (see
-[Hosting](hosting.md#your-flights-and-the-origin)).
+none, and stops a build on its way that would. Once they are shown, the map
+moves to them, so the servers of the map in view (CARTO, and AWS, EOX and open
+flightmaps while their layers are on) learn roughly where the visitor's own
+flights are, as they learn where any visitor looks. On a site at
+`<user>.github.io`, every Pages site of that account can read the storage the
+files are kept in (see [Hosting](hosting.md#your-flights-and-the-origin)).
+
+**An airport's popup links its coordinates to Google Maps**: nothing is sent
+unless the visitor follows the link, which opens Google Maps at the airport in a
+new tab, without the address of the page.
 
 ## Obfuscating the KML files themselves
 
@@ -171,47 +178,55 @@ rewritten. Obfuscated KML files still contain:
 `python -m flown.obfuscate <dir> --check` verifies a directory: the first
 timestamp of every flight must be 00:00:00 on January 1st (a fraction of a
 second may follow), and no other date may appear anywhere in a file or its name
-(numeric, also with the year first and spaces such as `2026 08 16` or with en
-dashes, with a month name in English, German, French, Spanish, Portuguese,
-Italian, Dutch, Czech, Slovak, Polish, Slovenian or Hungarian such as
-`16 Aug 2026`, `16. Mai 2026`, `16 août 2026`, `16. srpna 2026` or
-`2026. augusztus 16.` and their abbreviations such as `16 ago 2026` or
-`16 kwi 2026` (those that are words of English or German as well, `16 out 2026`
-or `16 set 2026`, only with a day and a year of four digits, so `3 out of 5`
-stays), with a space after the dots as DIN 5008 writes them (`16. 8. 26`), or
-with the month in Roman numerals such as `16.VII.2026` or `2026. VII. 16.`),
-except the two days after January 1st that a flight past midnight runs into. The
-text of an element and the name of the file hold no part of a date either, which
-the year of the flight completes (`16 Aug`, `16.08.`, `16. 8.`, `16 lug`,
-`augusztus 16.`, `agosto 16`, `16/08`, `16.VII.`, `KW33`, `KW-33`, `KW33/26`,
-`KW 33-34`, `CW33`, `33. KW`, `Woche 33`, `semaine 33`, `33. týden`, `33. hét`,
-`260816`, `log_260816`, `03/2026`, `08-2026`, `2026.08`, `2026.228`, `2026228`,
-`VII/2026`, `Summer 2026`, `Summer '26`, `Sommer26`, `Spätsommer 2026`,
-`été 2026`, `Q3 2026`, `Q3/26`, `3Q26`, `H2/26`, and `Sat` next to a date, also
-stuck to it as in `Sat16Aug`, or `sáb`, `lun.` or `za` of the other languages
-next to one); a number alone outside a name or a description is a number
-(`<value>16.8</value>`, the `<heading>` of a view), and the rewrite only takes a
-part of a date out of the elements of free text, so one anywhere else has to go
-by hand. Nor may a weekday named in full, in those languages (`Saturday`,
-`Samstag`, `sonntags`, `samedi`, `sobota`): the timestamps no longer fall on it;
-the places named after one keep it (`Friday Harbor`, `Murska Sobota`,
-`Santo Domingo`, `Dunajská Streda`). Nor may a holiday, in English or German and
-a few of the other languages (`Christmas Eve`, `Easter Monday`, `Thanksgiving`,
-`Columbus Day`, `May Day`, `July Fourth`, `Groundhog Day`, `Bastille Day`,
-`Heiligabend`, `Ostermontag`, `Pfingsten`, `Pfingstsamstag`, `Nikolaustag`,
-`Walpurgisnacht`, `3. Advent`, `Tag der Deutschen Einheit`, `Nationalfeiertag`,
-`Ferragosto`, `Wigilia`), which names the day as well; the places named after
-one keep it (`Christmas Island`, `Easter Island`, `Pentecost Airport`,
-`Whitsunday Coast`). A day, a word and a year in a language the check does not
-know (`16 setyembre 2026`, `16-augusti-2026`) is printed as a possible date for
-a person to look at, without failing the check or a hook, as it is as often a
-count and a place (`Day 2 Stuttgart 2026`); the rewrite leaves it, so one that
-is a date has to go by hand. The words of a log that stand there as often
-(`1 flight 2026`, `2 Platzrunden 2026`), an airport code (`3 EDNY 2025`) and a
-height (`1950 ft`) are not even printed. The name of a file carries no time of
-day either (`1513h`, `1513H`, `15h13`, `15H13`, `9h30`, `14h`, `14 h`, `0930Z`,
-`0930z`, `0930UTC`, `15:13`, `3pm`, `930am`, `0930a`, `10 AM`, `1430 GMT`,
-`1430 Zulu`, `14:30 EST`, `1430 local`, `0930 hours`, `14.30Z`, `0930Z-1045Z`,
+(numeric, also with the year first and spaces such as `2026 08 16`, with en
+dashes or with any other mark between its parts such as `16,08,2026`,
+`16|08|2026` or `2026:08:16`, in Chinese, Japanese or Korean such as
+`2026年8月16日` or `2026년 8월 16일`, with a month name in English, German,
+French, Spanish, Portuguese, Italian, Dutch, Czech, Slovak, Polish, Slovenian,
+Hungarian, Swedish, Danish, Norwegian, Finnish or Russian such as `16 Aug 2026`,
+`16. Mai 2026`, `16 août 2026`, `16. srpna 2026`, `2026. augusztus 16.`,
+`16 augusti 2026` or `16 августа 2026` and their abbreviations such as
+`16 ago 2026`, `16 kwi 2026` or `16 авг 2026` (those that are words of English
+or German as well, `16 out 2026` or `16 set 2026`, only with a day and a year of
+four digits, so `3 out of 5` stays), with a space after the dots as DIN 5008
+writes them (`16. 8. 26`), or with the month in Roman numerals such as
+`16.VII.2026` or `2026. VII. 16.`), except the two days after January 1st that a
+flight past midnight runs into. The text of an element and the name of the file
+hold no part of a date either, which the year of the flight completes (`16 Aug`,
+`16.08.`, `16. 8.`, `16 lug`, `augusztus 16.`, `agosto 16`, `Okt 3`, `16/08`,
+`16-8`, `16 8 26`, `8月16日`, `2026年8月`, `16.VII.`, `KW33`, `KW-33`,
+`KW33/26`, `KW 33-34`, `CW33`, `33. KW`, `Woche 33`, `semaine 33`, `33. týden`,
+`33. hét`, `260816`, `log_260816`, `03/2026`, `08-2026`, `2026.08`, `2026.228`,
+`2026228`, `VII/2026`, `Summer 2026`, `Summer '26`, `Sommer26`,
+`Spätsommer 2026`, `été 2026`, `Q3 2026`, `Q3/26`, `3Q26`, `H2/26`, four digits
+after an aircraft type that are a day and a month as in `DA20-2608` or
+`DA20-16-08`, `Sat` with a day of the month (`Sa 16`, `Sat. 16th`) and next to a
+date, also stuck to it as in `Sat16Aug`, or `sáb`, `lun.` or `za` of the other
+languages next to one); a number alone outside a name or a description is a
+number (`<value>16.8</value>`, the `<heading>` of a view), and the rewrite only
+takes a part of a date out of the elements of free text, so one anywhere else
+has to go by hand. Nor may a weekday named in full, in those languages
+(`Saturday`, `Samstag`, `sonntags`, `samedi`, `sobota`): the timestamps no
+longer fall on it; the places named after one keep it (`Friday Harbor`,
+`Murska Sobota`, `Santo Domingo`, `Dunajská Streda`). Nor may a holiday, in
+English or German and a few of the other languages (`Christmas Eve`,
+`Easter Monday`, `Thanksgiving`, `Columbus Day`, `May Day`, `July Fourth`,
+`Groundhog Day`, `Bastille Day`, `Heiligabend`, `Ostermontag`, `Pfingsten`,
+`Pfingstsamstag`, `Nikolaustag`, `Walpurgisnacht`, `3. Advent`,
+`Tag der Deutschen Einheit`, `Nationalfeiertag`, `Ferragosto`, `Wigilia`), which
+names the day as well; the places named after one keep it (`Christmas Island`,
+`Easter Island`, `Pentecost Airport`, `Whitsunday Coast`). A day, a word and a
+year in a language the check does not know (`16 setyembre 2026`,
+`16-kolovoza-2026`) is printed as a possible date for a person to look at,
+without failing the check or a hook, as it is as often a count and a place
+(`Day 2 Stuttgart 2026`); the rewrite leaves it, so one that is a date has to go
+by hand, and the build names the airport names it publishes that hold one. The
+words of a log that stand there as often (`1 flight 2026`,
+`2 Platzrunden 2026`), an airport code (`3 EDNY 2025`) and a height (`1950 ft`)
+are not even printed. The name of a file carries no time of day either (`1513h`,
+`1513H`, `15h13`, `15H13`, `9h30`, `14h30m`, `14h`, `14 h`, `0930Z`, `0930z`,
+`0930UTC`, `15:13`, `3pm`, `930am`, `0930a`, `10 AM`, `1430 GMT`, `1430 Zulu`,
+`14:30 EST`, `1430 local`, `0930 hours`, `14.30Z`, `0930Z-1045Z`,
 `14.30-15.45 Uhr`, `14.30 bis 15.45 Uhr`, `14:30 +02:00`, `1430+0200`), except
 for the sequence number in the time slot of an obfuscated Charterware name, and
 neither do its names and descriptions, nor a Unix time of a past day in the text
@@ -310,8 +325,9 @@ Removed from the site:
 
 - Individual flight dates and times
 - Any other placemark name: free text such as `Flight with Anna` or
-  `Untitled Path` is no airport name, and the start of such a flight gets no
-  airport marker at all
+  `Untitled Path` is no airport name and names no marker. The airports of such a
+  flight are the fields it took off from and landed at, where the landings found
+  them, which the touchdowns of its path info name anyway
 - Dates and times of day in placemark and file names (`16 Aug 2026`,
   `the 16th of August 2026`, `16/Aug/2026`, `16/08`, `16-08`, `16_08`, `26.08`,
   `16.8`, `16 08 2026`, `16082026`, `16AUG26`, `16-AUG-26`, `260816`,
@@ -321,26 +337,30 @@ Removed from the site:
   `2026.228`, `2026228`, `08-2026`, `2026_08`, `2026.08`, `Aug '26`,
   `08/16/'26`, `August the 16th`, `Jul/Aug 2026`, `16-18 Aug 2026`,
   `16.-18.08.2026`, `16./17.08.2026`, `16. - 18. 8. 2026`, `16. u. 17. 8.`,
+  `16,08,2026`, `16|08|2026`, `2026:08:16`, `16-8`, `25_7`, `16 8 26`,
+  `2026年8月16日`, `8月16日`, `2026년 8월 16일`, `DA20-2608`, `DA20-16-08`,
   `Summer 2026`, `Summer '26`, `summer2026`, `Sommer 2026`, `Spätsommer 2026`,
   `été 2026`, `verano 2026`, `zomer 2026`, `lato 2026`, `Q3 2026`, `Q3-26`,
   `3Q26`, `H2 2026`, `H2/26`, `1H 2026`, `2026-08-16T14Z`, `14:30`, `1430Z`,
   `0930z`, `1430 UTC`, `1430L`, `1513h`, `1513H`, `1430hrs`, `14h30`, `14H30`,
-  `9h30`, `14h`, `15.13h`, `14.30 Uhr`, `3pm`, `930am`, `0930a`, `10 AM`,
-  `0930Z-1045Z`, `2026-08-16_1430`, `2026-08-16-14-30`, `2026-08-16 14-30`,
-  `2026-08-16 14-30h`, `2026-08-16 14-30 h`, `2026-08-16T14-30-00Z`,
-  `14.30-15.45 Uhr`, `14.30 to 15.45Z`, `202608161430`; a range with a unit or a
-  runway after the date stays, `2026-08-16 14-30 min`, `2026-08-16 18-75 m`,
-  `2026-08-16 07-25 RWY`, while hours and minutes of the clock with a bare `h`,
-  `m` or `s` are a time), with the zone, the fraction of a second or the offset
-  that follows a time (`1430 GMT`, `1430 Zulu`, `09:30 EDT`, `14:30 AEST`,
-  `1430 local`, `0930 hours`, `14:30:00.5Z`, `14:30 +02:00`, `1430+0200`; the
-  common zones, not every one there is), also with German month names written
-  day first (`16. Mai 2026`, `16. März`, `16MAI26`, `Mai 2026`) and those of the
-  other languages the check knows (`16 août 2026`, `16 de agosto`,
-  `16. srpna 2026`, `16 sierpnia`, `16 ago`, `16 sie`), also with the month
-  first (`augusztus 16.`, `augusztus 16-án`, `agosto 16, 2026`; without the year
-  only a month name of five letters or more, so `Mars 2` and `Juli 5` stay), and
-  with a space after the dots (`16. 8. 26`, `16. 8.`); a month name alone
+  `9h30`, `14h30m`, `14h`, `15.13h`, `14.30 Uhr`, `3pm`, `930am`, `0930a`,
+  `10 AM`, `0930Z-1045Z`, `2026-08-16_1430`, `2026-08-16-14-30`,
+  `2026-08-16 14-30`, `2026-08-16 14-30h`, `2026-08-16 14-30 h`,
+  `2026-08-16T14-30-00Z`, `14.30-15.45 Uhr`, `14.30 to 15.45Z`, `202608161430`;
+  a range with a unit or a runway after the date stays, `2026-08-16 14-30 min`,
+  `2026-08-16 18-75 m`, `2026-08-16 07-25 RWY`, while hours and minutes of the
+  clock with a bare `h`, `m` or `s` are a time), with the zone, the fraction of
+  a second or the offset that follows a time (`1430 GMT`, `1430 Zulu`,
+  `09:30 EDT`, `14:30 AEST`, `1430 local`, `0930 hours`, `14:30:00.5Z`,
+  `14:30 +02:00`, `1430+0200`; the common zones, not every one there is), also
+  with German month names written day first (`16. Mai 2026`, `16. März`,
+  `16MAI26`, `Mai 2026`) and those of the other languages the check knows
+  (`16 août 2026`, `16 de agosto`, `16. srpna 2026`, `16 sierpnia`, `16 ago`,
+  `16 sie`, `16 augusti`, `16. elokuuta`, `16 августа 2026 г.`), also with the
+  month first (`augusztus 16.`, `augusztus 16-án`, `agosto 16, 2026`; without
+  the year only a month name of five letters or more and the German ones that
+  are no name, `Okt 3` and `März 3`, so `Mars 2`, `Juli 5` and `Mai 16` stay),
+  and with a space after the dots (`16. 8. 26`, `16. 8.`); a month name alone
   (`Flugplatz Juli`) stays, and so do runway designators in a name that speaks
   of a runway (`RWY 08/26`, `07L/25R`) and a version after a word or an app that
   says so (`firmware 12.10`, `ForeFlight 2026.03`), and a season, a quarter or a
@@ -369,22 +389,25 @@ Removed from the site:
 - Weekdays in placemark and file names: named in full in English, German or the
   other languages the check knows wherever they stand (`Saturday`, `Sundays`,
   `Samstag`, `sonntags`, `Sonntagsflug`, `Samstagnachmittag`, `samedi`,
-  `sobota`), and abbreviated only right next to a date or a time
-  (`Sat 16 Aug 2026`, `Sa., 16.08.2026`, `16.08.2026 (Sa)`, `Sat16Aug`,
-  `Sat 14:30 16 Aug 2026`, `Sat 14:30`), and in French, Spanish, Italian,
-  Portuguese, Dutch, Czech, Polish and Hungarian as well (`lun. 16 août 2026`,
-  `sáb 16 ago`, `16.08.2026 (sam.)`, `za 16 aug`, `po 16. 8.`, `sob. 16.08.`),
-  though not stuck to the day, not the letters of Hungarian that stand alone
-  (`H`, `K`, `P`, `V`) and not in capitals, which are the codes of airports,
-  states and countries as often (`SZG - VIE 16.08.2026`, `Bedford MA`). An
-  abbreviation on its own stays, since it is as often something else: `Sun` and
-  `Sat` are words, `SAT` and `THU` airport codes (though `SAT` right before a
-  time goes as a weekday: `KAUS to SAT 14:30` becomes `KAUS to`), `Do 27` a
-  Dornier, and a letter or a hyphen before it makes it a part of a registration
-  (`D-EFRI`, `OE-SAT`). Aircraft types (`C172`, `PA28`, `DA20`, `SR22`) and ICAO
-  codes (`EDMO`) are never touched. The places named after a weekday keep it
-  (`Friday Harbor`, `Thursday Island`, `Sunday Creek`); a family name such as
-  `Freitag` does not
+  `sobota`), and abbreviated only right next to a date, a day of the month or a
+  time (`Sat 16 Aug 2026`, `Sa., 16.08.2026`, `16.08.2026 (Sa)`, `Sat16Aug`,
+  `Sa 16`, `Sat. 16th`, `Fri 13th`, `Sat 14:30 16 Aug 2026`, `Sat 14:30`; with a
+  day alone those that are words or types as well only with a dot or a comma
+  after them or an ending after the day, `Do., 16.`, `So 16th`, `dom. 16`,
+  `po 16.`, so `Do 27`, `Mi 8` and `So 16 of us` stay), and in French, Spanish,
+  Italian, Portuguese, Dutch, Czech, Polish and Hungarian as well
+  (`lun. 16 août 2026`, `sáb 16 ago`, `16.08.2026 (sam.)`, `za 16 aug`,
+  `po 16. 8.`, `sob. 16.08.`), though not stuck to the day, not the letters of
+  Hungarian that stand alone (`H`, `K`, `P`, `V`) and not in capitals, which are
+  the codes of airports, states and countries as often (`SZG - VIE 16.08.2026`,
+  `Bedford MA`). An abbreviation on its own stays, since it is as often
+  something else: `Sun` and `Sat` are words, `SAT` and `THU` airport codes
+  (though `SAT` right before a time goes as a weekday: `KAUS to SAT 14:30`
+  becomes `KAUS to`), `Do 27` a Dornier, and a letter or a hyphen before it
+  makes it a part of a registration (`D-EFRI`, `OE-SAT`). Aircraft types
+  (`C172`, `PA28`, `DA20`, `SR22`) and ICAO codes (`EDMO`) are never touched.
+  The places named after a weekday keep it (`Friday Harbor`, `Thursday Island`,
+  `Sunday Creek`); a family name such as `Freitag` does not
 - Holidays in placemark and file names, as the check knows them
   (`Christmas Eve`, `Heiligabend bei Oma`, `Tag der Einheit`), and Unix times of
   past flights (`Kaffee 1755350000`); a place named after a holiday keeps it

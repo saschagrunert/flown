@@ -24,6 +24,7 @@ __all__ = [
     "ENTRY_MAX_AGE_DAYS",
     "PRIVATE_FILE_MODE",
     "REGULAR_FILE_MODE",
+    "TOUCH_AFTER_SECONDS",
     "atomic_bytes_write",
     "atomic_data_write",
     "atomic_text_write",
@@ -36,6 +37,7 @@ __all__ = [
     "source_fingerprint",
     "store_bytes",
     "store_entry",
+    "touch_entry",
 ]
 
 
@@ -300,6 +302,8 @@ _ZSTD_LEVEL = 3
 # The entries of a directory of ``store_entry`` not read or written for this
 # long are removed
 ENTRY_MAX_AGE_DAYS = 30
+# An entry read is touched once it is this old (see ``touch_entry``)
+TOUCH_AFTER_SECONDS = 24 * 3600
 
 
 def source_fingerprint(package: Path, modules: Sequence[str]) -> str:
@@ -337,7 +341,7 @@ def load_bytes(path: Path) -> bytes | None:
     Only from a directory of this user's alone (see ``private_directory``):
     whoever else could write to it could put what a build publishes into
     it. An entry that is read is touched, which keeps it from being pruned
-    (see ``prune_entries``).
+    (see ``touch_entry``).
     """
     if not private_directory(path.parent):
         return None
@@ -347,9 +351,22 @@ def load_bytes(path: Path) -> bytes | None:
         if not isinstance(e, FileNotFoundError):
             logger.debug("Cache entry %s is unreadable: %s", path, e)
         return None
-    with contextlib.suppress(OSError):
-        os.utime(path)
+    touch_entry(path)
     return data
+
+
+def touch_entry(path: Path) -> None:
+    """Mark the entry at ``path`` as used, which keeps it from being pruned.
+
+    Only once it is ``TOUCH_AFTER_SECONDS`` old: a day is nothing against the
+    ``ENTRY_MAX_AGE_DAYS`` an unused entry lasts, and the build in the page
+    writes back every file of the cache whose time changed (IDBFS, see
+    ``frontend/services/localWorker.ts``), which a touch at every read made
+    the whole cache at every build.
+    """
+    with contextlib.suppress(OSError):
+        if time.time() - path.stat().st_mtime >= TOUCH_AFTER_SECONDS:
+            os.utime(path)
 
 
 def store_bytes(path: Path, data: bytes, *, prune: bool = True) -> None:

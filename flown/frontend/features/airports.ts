@@ -327,15 +327,17 @@ export function flightLabel(path: PathInfo, km = 0): string {
  * it out, while the rest of its row picks it alone (see
  * PathSelection.pickFromList). Named after the flight by `label`, which is
  * escaped already. The airport popup's list and the flight list of the
- * statistics rail have one per row.
+ * statistics rail have one per row. In a label, which a finger's
+ * stylesheet widens around the box: a tap that missed it by a few pixels
+ * picked the flight alone and dropped the rest of the selection.
  */
 export function pickBox(id: number, label: string): string {
   return (
-    '<input type="checkbox" class="pick-box" data-path-id="' +
+    '<label class="pick-hit"><input type="checkbox" class="pick-box" data-path-id="' +
     id +
     '" aria-label="Select ' +
     label +
-    '">'
+    '"></label>'
   );
 }
 

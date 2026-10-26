@@ -590,11 +590,10 @@ describe("mapHelpers", () => {
   });
 
   describe("isPageEscape", () => {
-    it("leaves an Escape to a popup, a marker, what else it is told of, and whoever took it", () => {
+    it("leaves an Escape to a popup, what else it is told of, and whoever took it", () => {
       document.body.innerHTML =
         '<div class="maplibregl-popup"><button id="in-popup"></button></div>' +
         '<div class="maplibregl-marker" id="marker"></div>' +
-        '<div class="maplibregl-marker end" id="end"></div>' +
         '<select id="speed"></select><button id="plain"></button>';
       const escape = (id: string, key = "Escape"): KeyboardEvent => {
         let seen!: KeyboardEvent;
@@ -613,12 +612,10 @@ describe("mapHelpers", () => {
       expect(isPageEscape(escape("plain"))).toBe(true);
       expect(isPageEscape(escape("plain", "Enter"))).toBe(false);
       expect(isPageEscape(escape("in-popup"))).toBe(false);
-      expect(isPageEscape(escape("marker"))).toBe(false);
+      // A marker that closed no popup did not prevent it: it is the page's
+      expect(isPageEscape(escape("marker"))).toBe(true);
       expect(isPageEscape(escape("speed"))).toBe(true);
       expect(isPageEscape(escape("speed"), ",#speed")).toBe(false);
-      // Markers whose Escape it is
-      expect(isPageEscape(escape("end"), ":not(.end)")).toBe(true);
-      expect(isPageEscape(escape("marker"), ":not(.end)")).toBe(false);
       const taken = escape("plain");
       taken.preventDefault();
       expect(isPageEscape(taken)).toBe(false);

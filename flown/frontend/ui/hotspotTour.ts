@@ -667,7 +667,7 @@ export function createHotspotTour(app: MapApp): HotspotTour {
   }
 
   // Escape stops it, as it closes the replay; not from a popup or a
-  // marker, which it closes first, nor from a text field or a select
+  // marker that closes its popup first, nor from a text field or a select
   document.addEventListener(
     "keydown",
     (event) => {

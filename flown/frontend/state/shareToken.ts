@@ -8,6 +8,9 @@
  * query string carries as they are:
  *
  *   version      6 bits, FORMAT_VERSION
+ *   check        18 bits, the length of the characters after it and a
+ *                hash of them (checksum), so a token cut short, as chat
+ *                and mail clients do with a long link, does not resolve
  *   present      1 bit for each of FIELDS, in their order
  *   flags        1 bit for each of FLAGS, the switches written "1"
  *   fields       each present field, in the order of FIELDS: the year, the
@@ -42,15 +45,53 @@ import {
 export const MAX_SHARE_TOKEN_LENGTH = 50_000;
 
 /**
- * The layout of the bits below, in VERSION_BITS. A token of another
- * version, written by a later release, does not resolve.
+ * The layout of the bits below, in the token's first character. A token of
+ * another version, written by a later release, does not resolve. Version 0
+ * had no check: its tokens, shared before, still resolve as they are.
  */
-export const FORMAT_VERSION = 0;
-export const VERSION_BITS = 6;
+export const FORMAT_VERSION = 1;
 
 export const BASE64URL =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 export const CHAR_BITS = 6;
+
+/** The characters of the check, after the version */
+const CHECK_CHARS = 3;
+
+/**
+ * The check of the characters after it: their number, to 4096, and 6 bits
+ * of their FNV-1a hash. A token of up to 4096 characters (some 700
+ * flights) fails it wherever it is cut, and a longer one cut by a multiple
+ * of 4096 characters once in 64 times. A hash alone let one cut in 4096
+ * through, and as the flights run to the end of a token such a cut read
+ * as fewer flights. The hash bits are the top ones, which every bit of
+ * every character moves: its low bits do not tell "0" from "p".
+ */
+export function checksum(body: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < body.length; i++) {
+    hash = Math.imul(hash ^ body.charCodeAt(i), 0x01000193);
+  }
+  const length = body.length;
+  return (
+    BASE64URL[(length >> CHAR_BITS) & 63]! +
+    BASE64URL[length & 63]! +
+    BASE64URL[hash >>> 26]!
+  );
+}
+
+/**
+ * Whether this start followed a shared link whose token did not resolve,
+ * which startApp says
+ */
+let unreadLink = false;
+
+export function followedUnreadLink(): boolean {
+  return unreadLink;
+}
+
+export const UNREAD_LINK_MESSAGE =
+  "This shared link could not be read; it may have been cut short";
 
 /** The fields with a value, each marked present or not, in token order */
 export const FIELDS = [
@@ -228,8 +269,16 @@ function readSelection(input: BitReader): number[] {
 }
 
 export function unpack(token: string): URLSearchParams {
-  const input = new BitReader(token);
-  if (input.uint(VERSION_BITS) !== FORMAT_VERSION) fail();
+  const version = BASE64URL.indexOf(token.charAt(0));
+  let body = token.slice(1);
+  if (version === FORMAT_VERSION) {
+    const check = body.slice(0, CHECK_CHARS);
+    body = body.slice(CHECK_CHARS);
+    if (check !== checksum(body)) fail();
+  } else if (version !== 0) {
+    fail();
+  }
+  const input = new BitReader(body);
   const present = new Set(FIELDS.filter(() => input.bit()));
   const flags = FLAGS.filter(() => input.bit());
 
@@ -287,15 +336,19 @@ export function unpackShareToken(token: string): URLSearchParams | null {
 /**
  * Turn a shared link back into the ordinary link in the address bar, before
  * anything reads it: the rest of the page never sees a token. A token that
- * does not resolve opens the page as a link without one would; `debug`
- * stays as it was.
+ * does not resolve opens the page as a first visit would, which startApp
+ * says, and not on the view the visitor saved, which would pass for what
+ * was shared (see StateManager.loadState); `debug` stays as it was.
  */
 export function resolveShareToken(): void {
   const current = new URLSearchParams(window.location.search);
   const token = current.get(SHARE_TOKEN_PARAM);
   if (token === null) return;
   const resolved = unpackShareToken(token);
-  if (!resolved) logError("Shared link could not be read:", token.slice(0, 80));
+  if (!resolved) {
+    logError("Shared link could not be read:", token.slice(0, 80));
+    unreadLink = true;
+  }
   const params = resolved ?? new URLSearchParams();
   const debug = current.get("debug");
   if (debug !== null) params.set("debug", debug);

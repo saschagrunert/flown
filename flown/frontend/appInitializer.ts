@@ -288,6 +288,8 @@ function followMissingAirports(app: MapApp): {
         showAirportMarkers(app, airports);
         app.airportManager.updateAirportPopups();
         app.airportManager.updateAirportMarkerSizes();
+        // The rail named the airports and counted their countries without
+        app.statsManager?.refresh();
         return true;
       })
       .finally(() => (loading = null)));
@@ -313,9 +315,11 @@ function followMissingAirports(app: MapApp): {
 
 /**
  * The controls of what is made of the flights (NEED_DATA in ui/actions.ts),
- * shown unavailable while a load left the map without any
+ * shown unavailable while a load left the map without any. The rail's
+ * collapse button is not one: it closes the statistics. A test holds the
+ * two lists to the template.
  */
-const NEED_DATA_CONTROL_IDS = [
+export const NEED_DATA_CONTROL_IDS = [
   "stats-btn",
   "wrapped-btn",
   "replay-all-btn",
@@ -525,10 +529,15 @@ export function createAirportMarkers(app: MapApp, airports: Airport[]): void {
         );
       }
     });
-    // Escape reaches the popup itself only while focus is inside it
+    // Escape reaches the popup itself only while focus is inside it. One
+    // that closes nothing goes on to the page (isPageEscape), which closes
+    // the next thing that is open.
     element.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") airportMarker.closePopup();
-      else onChipKey(event);
+      if (event.key !== "Escape") onChipKey(event);
+      else if (app.airportManager.isPopupOpen(name)) {
+        event.preventDefault();
+        airportMarker.closePopup();
+      }
     });
 
     // In place of one made before, which goes: a second set over the

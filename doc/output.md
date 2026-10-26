@@ -68,17 +68,17 @@ output-dir/
 
 ## Year files
 
-Each year file holds an object with `format`, `year`, `original_points`,
-`path_info` and `segments`. `format` is the wire format of the rows, which the
-page checks before reading them so a file written by another version is refused
-rather than misread. `path_info` lists the flights in input order, each with its
-id, year, airports, aircraft, exact altitude range and total climb
-(`altitude_gain_ft`), the last three written together for every flight with an
-altitude; where a flight starts and ends is read from its segments. A flight
-with timestamps also has its `landings` (full stops), `touch_and_goes`,
-`go_arounds` (low approaches included, which GPS cannot tell apart from them)
-and `touchdowns`, one `[airport, runway]` per full stop and touch-and-go in the
-order flown, with `null` for a runway the build could not tell (see
+Each year file holds an object with `format`, `year`, `path_info` and
+`segments`. `format` is the wire format of the rows, which the page checks
+before reading them so a file written by another version is refused rather than
+misread. `path_info` lists the flights in input order, each with its id, year,
+airports, aircraft, exact altitude range and total climb (`altitude_gain_ft`),
+the last three written together for every flight with an altitude; where a
+flight starts and ends is read from its segments. A flight with timestamps also
+has its `landings` (full stops), `touch_and_goes`, `go_arounds` (low approaches
+included, which GPS cannot tell apart from them) and `touchdowns`, one
+`[airport, runway]` per full stop and touch-and-go in the order flown, with
+`null` for a runway the build could not tell (see
 [Airport database](#airport-database)). `segments` is
 `{"start": [...], "columns": [lats, lons, altitudes, speeds, times], "ground": [...]}`,
 each array holding one entry per flight in the order of `path_info`: its start

@@ -168,7 +168,7 @@ beforeEach(() => {
   document.body.innerHTML =
     '<nav id="left-buttons"><button id="search-btn" aria-expanded="false">' +
     "Search</button></nav>" +
-    '<main id="map-home"><div id="map"></div></main>';
+    '<main><div id="map"></div></main>';
   lifetime = new AbortController();
   app = createMockApp({ signal: lifetime.signal });
   map = app.map!;
@@ -209,7 +209,7 @@ describe("opening and closing", () => {
     toggleSearch(asMapApp(app));
 
     expect(panel().hidden).toBe(false);
-    expect(panel().nextElementSibling?.id).toBe("map-home");
+    expect(panel().nextElementSibling?.tagName).toBe("MAIN");
     expect(document.activeElement).toBe(input());
     expect(button().getAttribute("aria-expanded")).toBe("true");
     expect(button().getAttribute("aria-controls")).toBe(SEARCH_PANEL_ID);

@@ -7,9 +7,11 @@ of the tiles are tested in test_terrain_fetch.py, the PNG decoder in
 test_png.py and the numbers the frontend shares in test_frontend_parity.py.
 """
 
+import json
 import logging
 import math
 from array import array
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +23,7 @@ from flown.terrain import (
     TERRAIN_ZOOM,
     TILE_SIZE,
     TileKey,
+    _field_offset_ft,
     elevations_by_coordinate,
     ground_profile_ft,
     sample_elevations,
@@ -353,6 +356,28 @@ def _elevations(rows, metres_of):
 
 
 START = [50.0, 8.0]
+
+
+FIELD_GROUND_CASES = json.loads(
+    (Path(__file__).parent / "fixtures" / "field-ground.json").read_text(
+        encoding="utf-8"
+    )
+)["cases"]
+
+
+@pytest.mark.parametrize(
+    "case", FIELD_GROUND_CASES, ids=[case["name"] for case in FIELD_GROUND_CASES]
+)
+def test_the_fields_as_the_page_reads_them(case):
+    """The cases the frontend's fieldFt runs as well (fieldGround.test.ts)."""
+    rows = [
+        _row(8.0, altitude, speed, time=float(index) if timed else None)
+        for index, (altitude, speed, timed) in enumerate(case["rows"])
+    ]
+    flat = [0.0] * len(rows)
+
+    assert _field_offset_ft(rows, flat, range(len(rows))) == case["start"]
+    assert _field_offset_ft(rows, flat, reversed(range(len(rows)))) == case["end"]
 
 
 class TestGroundProfile:

@@ -128,7 +128,6 @@ describe("StatsManager", () => {
             ],
           }),
         ],
-        1234,
       ),
     });
 
@@ -1035,6 +1034,18 @@ describe("StatsManager", () => {
       expect(leadValue(statsPanel, "Flights")).toBe("1");
     });
 
+    it("shows the airports' codes and countries once airports.json comes late", () => {
+      const airports = siteData.airports;
+      siteData.airports = null;
+      mockApp.store.set("statsPanelVisible", true);
+      expect(statsPanel.textContent).not.toMatch(/ in \d+ (country|countries)/);
+
+      siteData.airports = airports;
+      statsManager.refresh();
+
+      expect(statsPanel.textContent).toMatch(/ in \d+ (country|countries)/);
+    });
+
     it("does not recompute on opening when nothing changed", () => {
       mockApp.store.set("statsPanelVisible", true);
       mockApp.currentData = createDataset(
@@ -1220,7 +1231,6 @@ describe("StatsManager", () => {
       mockApp.currentData = createDataset(
         [...mockApp.currentData!.path_info],
         [...mockApp.currentData!.path_segments],
-        99,
       );
 
       expect(spy).toHaveBeenCalledTimes(1);

@@ -80,13 +80,14 @@ GERMAN_MONTHS = {
 
 # The other languages of the countries the flights of a European pilot reach
 # that write the day first: French, Spanish, Portuguese, Italian, Dutch,
-# Czech, Slovak, Polish, Slovenian and Hungarian, with the forms a month
-# takes in a date (the srpna of Czech, the sierpnia of Polish and the
-# avgusta of Slovenian for August), their abbreviations (ago, kwi, srp) and
-# the letters without their accents (aout, wrzesnia), but for those that are
-# first names as well (Marc, Julius) or words (see WITH_A_DAY_MONTHS). Read
-# as the German ones are, in the shapes of a date only: mars, maja and leden
-# alone are words and names.
+# Czech, Slovak, Polish, Slovenian, Hungarian, Swedish, Danish, Norwegian,
+# Finnish and Russian, with the forms a month takes in a date (the srpna of
+# Czech, the sierpnia of Polish, the avgusta of Slovenian, the elokuuta of
+# Finnish and the августа of Russian for August), their abbreviations (ago,
+# kwi, srp) and the letters without their accents (aout, wrzesnia), but for
+# those that are first names as well (Marc, Julius) or words (see
+# WITH_A_DAY_MONTHS). Read as the German ones are, in the shapes of a date
+# only: mars, maja and leden alone are words and names.
 MONTHS_DAY_FIRST = (
     # French
     ("janvier", "janv"),
@@ -205,6 +206,46 @@ MONTHS_DAY_FIRST = (
     ("október", "oktober"),
     ("november",),
     ("december",),
+    # Swedish, Danish and Norwegian
+    ("januari", "januar"),
+    ("februari", "februar"),
+    ("mars", "marts"),
+    ("april",),
+    ("maj", "mai"),
+    ("juni",),
+    ("juli",),
+    ("augusti",),
+    ("september",),
+    ("oktober",),
+    ("november",),
+    ("december", "desember"),
+    # Finnish, as named and as a date has it ("16. elokuuta 2026")
+    ("tammikuu", "tammikuuta"),
+    ("helmikuu", "helmikuuta"),
+    ("maaliskuu", "maaliskuuta"),
+    ("huhtikuu", "huhtikuuta"),
+    ("toukokuu", "toukokuuta"),
+    ("kesäkuu", "kesäkuuta", "kesakuu", "kesakuuta"),
+    ("heinäkuu", "heinäkuuta", "heinakuu", "heinakuuta"),
+    ("elokuu", "elokuuta"),
+    ("syyskuu", "syyskuuta"),
+    ("lokakuu", "lokakuuta"),
+    ("marraskuu", "marraskuuta"),
+    ("joulukuu", "joulukuuta"),
+    # Russian, as named, as a date has it ("16 августа 2026") and with the
+    # abbreviations of "16 авг 2026" and "16 сент. 2026"
+    ("январь", "января", "янв"),
+    ("февраль", "февраля", "фев", "февр"),
+    ("март", "марта", "мар"),
+    ("апрель", "апреля", "апр"),
+    ("май", "мая"),
+    ("июнь", "июня", "июн"),
+    ("июль", "июля", "июл"),
+    ("август", "августа", "авг"),
+    ("сентябрь", "сентября", "сен", "сент"),
+    ("октябрь", "октября", "окт"),
+    ("ноябрь", "ноября", "ноя", "нояб"),
+    ("декабрь", "декабря", "дек"),
 )
 
 # The abbreviations of those languages that are words of English or German

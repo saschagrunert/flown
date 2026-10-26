@@ -7,7 +7,12 @@
  * (ui/flightList.ts) as well, which costs the app nothing that way.
  */
 import type { MapApp } from "../mapApp";
-import type { FilteredStatistics, PathInfo, PathSegment } from "../types";
+import type {
+  Airport,
+  FilteredStatistics,
+  PathInfo,
+  PathSegment,
+} from "../types";
 import { segmentsForPathIds } from "../calculations/statistics";
 import {
   calculateFilteredStatistics,
@@ -17,6 +22,7 @@ import {
   type StatisticsOptions,
 } from "../calculations/panelStats";
 import { logError } from "../utils/logger";
+import { siteData } from "../state/siteData";
 import { airportCode } from "../features/airports";
 import { countryFlagSrc, groupByCountry } from "../features/countries";
 import { FEET_TO_METERS, NAUTICAL_MILES_TO_KM } from "../utils/constants";
@@ -57,6 +63,8 @@ interface StatsInputs {
   aircraft: string;
   /** Sorted selected path ids, or "" without a selection */
   selection: string;
+  /** What names the airports and their countries (airports.json) */
+  airports: readonly Airport[] | null;
 }
 
 /** Stand-in for a measurement the data does not carry */
@@ -525,6 +533,18 @@ export class StatsManager {
   }
 
   /**
+   * Show again what the airports name, once airports.json came late (its
+   * Retry, see followMissingAirports): nothing the panel follows in the
+   * store changed with it
+   */
+  refresh(): void {
+    if (this.app.statsPanelVisible && !this.app.flightListVisible) {
+      this.updateStatsForSelection();
+    }
+    this.flightList.update();
+  }
+
+  /**
    * Stop following the store, and the size and scroll of the panel: the
    * watcher of its fade listens to the window and observes the panel for
    * as long as it is not stopped. What the panel shows stays.
@@ -553,6 +573,7 @@ export class StatsManager {
             Array.from(shownSelection(this.app))
               .sort((a, b) => a - b)
               .join(","),
+      airports: siteData.airports,
     };
   }
 
@@ -562,7 +583,8 @@ export class StatsManager {
       a.segments === b.segments &&
       a.year === b.year &&
       a.aircraft === b.aircraft &&
-      a.selection === b.selection
+      a.selection === b.selection &&
+      a.airports === b.airports
     );
   }
 

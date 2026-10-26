@@ -14,6 +14,7 @@ from .aircraft import parse_aircraft_from_filename
 from .constants import KML_NAMESPACE, KML_NAMESPACES, MAX_TIMESTAMP_DISTANCE_SECONDS
 from .exceptions import KMLParseError
 from .helpers import parse_timestamp_epoch
+from .landings import name_airports
 from .logger import logger
 from .parser_cache import (
     CachedParse,
@@ -603,6 +604,43 @@ def _date_lines_by_points(
             logger.debug("Dated a line without times by its Points: %d", year)
 
 
+def _drop_untimed_lines(
+    path_groups: FlightPathGroup,
+    path_metadata: list[PathMetadata],
+    track_paths: FlightPathGroup,
+    kml_file: str,
+) -> None:
+    """Leave out the lines without a time in a file whose tracks have times.
+
+    Such a line is no recording but a drawing next to one: the planned
+    route ("EDAQ - EDDP" as a few points), which otherwise became a flight
+    of its own, with its own airports, in the year of the file's markers
+    (see ``_date_lines_by_points``). A line whose placemark has a time
+    stays.
+    """
+    if not any(point.ts is not None for path in track_paths for point in path):
+        return
+    kept = [
+        index
+        for index, (path, metadata) in enumerate(
+            zip(path_groups, path_metadata, strict=True)
+        )
+        if metadata.get("timestamp") is not None
+        or any(point.ts is not None for point in path)
+    ]
+    dropped = len(path_groups) - len(kept)
+    if not dropped:
+        return
+    logger.warning(
+        "%s: %d line(s) without times next to a timed track ignored (a "
+        "planned route, not a recording)",
+        Path(kml_file).name,
+        dropped,
+    )
+    path_groups[:] = [path_groups[index] for index in kept]
+    path_metadata[:] = [path_metadata[index] for index in kept]
+
+
 def _log_parse_result(
     kml_file: str,
     coordinates: FlightPath,
@@ -671,6 +709,9 @@ def parse_and_cache(
     finally:
         logger.removeHandler(recorder)
     landings = landings_of(result[1]) if landings_of is not None else None
+    if landings is not None:
+        for metadata, found in zip(result[2], landings, strict=True):
+            name_airports(metadata, found)
     if cache_path:
         save_to_cache(cache_path, *result, recorder.warnings, landings)
     return result, landings
@@ -725,6 +766,7 @@ def _parse_kml(kml_file: str) -> ParseResult:
         aircraft_info,
         unknown_altitude,
     )
+    _drop_untimed_lines(path_groups, path_metadata, track_paths, kml_file)
     _date_lines_by_points(path_metadata, coord_elements, coord_to_metadata)
 
     coordinates.extend(track_coordinates)

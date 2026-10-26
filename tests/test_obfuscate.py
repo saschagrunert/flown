@@ -903,6 +903,27 @@ class TestObfuscateFile:
     def test_missing_file(self, tmp_path):
         assert obfuscate_kml_file(tmp_path / "missing.kml") is False
 
+    def test_a_file_the_rewrite_would_leave_failing_stays_as_it_was(
+        self, tmp_path, caplog
+    ):
+        """The rewrite stops rather than leaving a file half scrubbed.
+
+        A date in an element it does not rewrite stayed, while the
+        timestamps moved to January 1st (regression).
+        """
+        kml_file = tmp_path / "1_DEAGJ_DA20.kml"
+        original = SAMPLE_KML.replace(
+            "</kml>", "<atom:updated>2026-08-16T14:31:00Z</atom:updated></kml>"
+        )
+        kml_file.write_text(original, encoding="utf-8")
+
+        with caplog.at_level(logging.ERROR, logger="flown"):
+            assert obfuscate_kml_file(kml_file) is False
+
+        assert kml_file.read_text(encoding="utf-8") == original
+        assert "Not rewriting" in caplog.text
+        assert any("2026-08-16" in v for v in check_kml(kml_file)[0])
+
 
 class TestObfuscateFiles:
     def test_one_bad_file_does_not_abort_the_run(self, tmp_path):
@@ -1507,7 +1528,7 @@ class TestCheckObfuscated:
         ]
 
     @pytest.mark.parametrize(
-        "name", ["Flyg 16 augusti 2026", "Day 2 Stuttgart 2026", "16-augusti-2026"]
+        "name", ["Let 16 kolovoza 2026", "Day 2 Stuttgart 2026", "16-kolovoza-2026"]
     )
     def test_what_may_be_a_date_warns_and_refuses_nothing(self, tmp_path, name):
         """A day, a word and a year the patterns do not know is as often a
@@ -1525,16 +1546,16 @@ class TestCheckObfuscated:
         assert check_kml(kml_file)[0] == []
 
     def test_a_file_name_that_may_hold_a_date_warns(self, tmp_path):
-        kml_file = tmp_path / "3_DEAGJ_DA20 16 augusti 2026.kml"
+        kml_file = tmp_path / "3_DEAGJ_DA20 16 kolovoza 2026.kml"
         kml_file.write_text("<kml/>", encoding="utf-8")
         assert check_kml(kml_file) == (
             [],
-            ["File name may contain a date in another language: 16 augusti 2026"],
+            ["File name may contain a date in another language: 16 kolovoza 2026"],
         )
 
     def test_the_directory_check_keeps_the_warnings_apart(self, tmp_path):
         (tmp_path / "1_DEHYL_DA40.kml").write_text(
-            "<kml><Placemark><name>Flyg 16 augusti 2026</name>"
+            "<kml><Placemark><name>Let 16 kolovoza 2026</name>"
             "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )
@@ -1547,7 +1568,7 @@ class TestCheckObfuscated:
         self, tmp_path, monkeypatch, capsys
     ):
         (tmp_path / "1_DEHYL_DA40.kml").write_text(
-            "<kml><Placemark><name>Flyg 16 augusti 2026</name>"
+            "<kml><Placemark><name>Let 16 kolovoza 2026</name>"
             "<when>2026-01-01T00:00:00Z</when></Placemark></kml>",
             encoding="utf-8",
         )

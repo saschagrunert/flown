@@ -1794,13 +1794,13 @@ class TestPossibleDates:
         ("text", "found"),
         [
             ("Flug 16 setyembre 2026", ["16 setyembre 2026"]),
-            ("16. augusti 2026", ["16. augusti 2026"]),
-            ("16_kesäkuuta_2026", ["16_kesäkuuta_2026"]),
+            ("16. kolovoza 2026", ["16. kolovoza 2026"]),
+            ("16_birželio_2026", ["16_birželio_2026"]),
             ("16 SETYEMBRE 2026", ["16 SETYEMBRE 2026"]),
             # With hyphens, dots or nothing between, as file names have them
-            ("16-augusti-2026", ["16-augusti-2026"]),
-            ("16.augusti.2026", ["16.augusti.2026"]),
-            ("16augusti2026", ["16augusti2026"]),
+            ("16-kolovoza-2026", ["16-kolovoza-2026"]),
+            ("16.kolovoza.2026", ["16.kolovoza.2026"]),
+            ("16kolovoza2026", ["16kolovoza2026"]),
         ],
     )
     def test_a_day_a_word_and_a_year(self, text, found):
@@ -1828,6 +1828,9 @@ class TestPossibleDates:
             "16 août 2026",
             "16 VII 2026",
             "16 août",
+            "16 augusti 2026",
+            "16_kesäkuuta_2026",
+            "16 августа 2026",
         ],
     )
     def test_what_is_none(self, text):
@@ -2259,3 +2262,237 @@ class TestShapesThatStillPassed:
     @pytest.mark.parametrize("text", ["00:00 +02:00", "12:30AM", "00:30", "12 pm"])
     def test_no_midnight(self, text):
         assert find_time_tokens(text, skip_midnight=True) == [text]
+
+
+class TestShapesThatPassedTheBuild:
+    """Dates the build and the check let through until 2026-10-26."""
+
+    @pytest.mark.parametrize(
+        ("text", "kept", "found"),
+        [
+            ("Wiese Sa 16 - Farm Nord", "Wiese - Farm Nord", "Sa 16"),
+            ("Strip A Mon 16 - Farm", "Strip A - Farm", "Mon 16"),
+            ("Strip A Sat. 16th - Farm", "Strip A - Farm", "Sat. 16th"),
+            ("Trip Sa., 16.", "Trip", "Sa., 16."),
+            ("Trip Fri 13th", "Trip", "Fri 13th"),
+            ("Trip SAT 16", "Trip", "SAT 16"),
+            ("Trip Di 16", "Trip", "Di 16"),
+            ("Trip Do., 16.", "Trip", "Do., 16."),
+            ("Trip So. 16", "Trip", "So. 16"),
+            ("Trip So 16th", "Trip", "So 16th"),
+            ("Vuelo dom. 16", "Vuelo", "dom. 16"),
+            ("Let po 16.", "Let", "po 16."),
+        ],
+    )
+    def test_an_abbreviated_weekday_with_a_day(self, text, kept, found):
+        """With the year of the flight it names the day."""
+        assert strip_dates(text) == kept
+        assert find_partial_date_tokens(text) == [found]
+        assert without_spans(text, stray_date_spans(text)) == kept
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # A Dornier, a Mil, English and Italian, stuck together
+            "Flight in the Do 27",
+            "Mi 8 crew",
+            "So 16 of us",
+            "Vuelo dom 16",
+            "volo di 16 anni",
+            "Code SAT16",
+            # A month after it makes it the date's
+            "Trip Sat 16 Aug",
+        ],
+    )
+    def test_an_abbreviation_and_a_number_that_stay_or_go_with_a_date(self, text):
+        found = find_partial_date_tokens(text)
+        if text.endswith("Aug"):
+            assert found == ["Sat 16 Aug"]
+        else:
+            assert found == []
+            assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        "date",
+        [
+            "16,08,2026",
+            "16;08;2026",
+            "16:08:2026",
+            "16|08|2026",
+            "16·08·2026",
+            "16•08•2026",
+            "16・08・2026",
+            "16'08'2026",
+            "16~08~2026",
+            "08,16,2026",
+            "2026:08:16",
+            "2026|08|16",
+            "2026年8月16日",
+            "2026 年 8 月 16 日",
+            "2026年8月16号",
+            "2026년 8월 16일",
+        ],
+    )
+    def test_dates_with_other_marks(self, date):
+        assert strip_dates(f"EDDS {date} EDDP") == "EDDS EDDP"
+        assert find_date_tokens(f"EDDS {date}", skip_near_jan_first=True) == [date]
+
+    @pytest.mark.parametrize(
+        "date", ["01,01,2026", "2026|01|02", "2026年1月1日", "2026년 1월 2일"]
+    )
+    def test_january_first_with_other_marks_passes_the_check(self, date):
+        assert find_date_tokens(date, skip_near_jan_first=True) == []
+        assert strip_dates(f"EDDS {date}") == "EDDS"
+
+    @pytest.mark.parametrize("text", ["List 1,2,2000", "List 1;2;2000"])
+    def test_numbers_with_other_marks_that_are_no_date(self, text):
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        ("text", "found"),
+        [
+            ("EDDS 16-8", "16-8"),
+            ("EDDS 25-7", "25-7"),
+            ("1_DEHYL_16_8", "16_8"),
+            ("Trip 16 8 26", "16 8 26"),
+            ("Trip 8 16 26 EDDS", "8 16 26"),
+            ("Flug 8月16日", "8月16日"),
+            ("비행 8월 16일", "8월 16일"),
+            ("Flug 2026年8月", "2026年8月"),
+            ("Dresden Okt 3", "Okt 3"),
+            ("Flug Okt. 3.", "Okt. 3."),
+            ("Flug März 3", "März 3"),
+            ("Flug mrz 12", "mrz 12"),
+        ],
+    )
+    def test_parts_of_dates(self, text, found):
+        assert find_partial_date_tokens(text) == [found]
+        assert found not in (strip_dates(text) or "")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # A range goes up, and a day of one digit is a month as often
+            "Leg 8-16",
+            "EDDS 12-8",
+            "PA-28-16",
+            "Wind 16-8kt",
+            "RWY 27-9",
+            # A row of numbers, a unit, two numbers of one digit
+            "1 2 3 4 5 6 7 8 9 10 11 12 13",
+            "Wind 16 8 26 kt",
+            "Leg 1 2 26",
+            # The month alone, and a month that is a name
+            "Flug 8月",
+            "Juli 5",
+            "Mai 16 EDDS",
+        ],
+    )
+    def test_what_stays(self, text):
+        assert find_partial_date_tokens(text) == []
+        if any(c.isalpha() for c in text):
+            assert strip_dates(text) == text
+
+    def test_january_first_parts_pass_the_check(self):
+        assert find_partial_date_tokens("Flug 1月2日 EDDS 2026年1月") == []
+
+    @pytest.mark.parametrize("time", ["14h30m", "14h30min", "9h30m"])
+    def test_hours_and_minutes_with_their_letters(self, time):
+        assert find_time_tokens(f"Vol {time} EDDS") == [time]
+        assert strip_dates(f"Vol {time}") == "Vol"
+
+    def test_a_duration_with_its_letters_stays(self):
+        assert strip_dates("Flight 1h30m") == "Flight 1h30m"
+
+    @pytest.mark.parametrize(
+        ("text", "kept"),
+        [
+            ("DA20-2608", "DA20"),
+            ("DA40-0816", "DA40"),
+            ("PA-28-1608", "PA-28"),
+            ("1_DEAGJ_DA20-2608", "1_DEAGJ_DA20"),
+            # After the letters of a variant, and with the time after it
+            # (regression: the type published them)
+            ("DA40NG-1608", "DA40NG"),
+            ("PA-28R-1608", "PA-28R"),
+            ("A320NEO-1208", "A320NEO"),
+            ("DA20-2608-1430", "DA20"),
+            # With a hyphen or a slash between them, and with the year after
+            # them (regression: the type published them)
+            ("DA20-16-08", "DA20"),
+            ("DA20-16/08", "DA20"),
+            ("DA20-16-8", "DA20"),
+            ("DA20-1608-26", "DA20"),
+            ("DA20-0816-2026", "DA20"),
+        ],
+    )
+    def test_a_day_and_month_after_an_aircraft_type(self, text, kept):
+        assert strip_dates(text) == kept
+        assert find_partial_date_tokens(text) == [text[len(kept) :]]
+        assert strip_dates(f"Trip {text} EDDS") == f"Trip {kept} EDDS"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "B737-8200",
+            "A350-1000",
+            "EDDS-1608",
+            "PA-28-181",
+            "C172-1430",
+            "ASW-27-18",
+            "LS8-18",
+            # A range goes up
+            "DA20-8-16",
+        ],
+    )
+    def test_types_and_codes_with_four_digits_stay(self, text):
+        assert strip_dates(text) == text
+        assert find_partial_date_tokens(text) == []
+
+    @pytest.mark.parametrize(
+        "text", ["DA40-0101", "DA40-0101-1430", "DA40-01-01", "DA40-0101-26"]
+    )
+    def test_a_type_with_january_first_passes_the_check(self, text):
+        assert find_partial_date_tokens(text) == []
+
+    @pytest.mark.parametrize(
+        ("text", "date"),
+        [
+            ("Flyg 16 augusti 2026", "16 augusti 2026"),
+            ("Fly 16. marts 2026", "16. marts 2026"),
+            ("Fly 16. desember 2026", "16. desember 2026"),
+            ("Lento 16. elokuuta 2026", "16. elokuuta 2026"),
+            ("Полёт 16 августа 2026", "16 августа 2026"),
+            ("Полёт 16 августа 2026 \u0433.", "16 августа 2026 \u0433."),
+            # Russian abbreviated (regression: published as written)
+            ("Полёт 16 авг 2026", "16 авг 2026"),
+            ("Полёт 16 сент. 2026", "16 сент. 2026"),
+            ("Полёт 16 Дек 2026", "16 Дек 2026"),
+        ],
+    )
+    def test_more_languages(self, text, date):
+        assert strip_dates(text) == text.split()[0]
+        assert find_date_tokens(text) == [date]
+
+    @pytest.mark.parametrize(
+        "text",
+        ["Flyg 16 augusti", "Lento 16. elokuuta", "Полёт 16 марта", "Полёт 16 авг"],
+    )
+    def test_more_languages_without_the_year(self, text):
+        assert strip_dates(text) == text.split()[0]
+
+    @pytest.mark.parametrize("unit", ["1. ", "16.08 ", "v 12.10 ", "2026.08 "])
+    def test_a_long_run_of_numbers_after_a_version_word_is_linear(self, unit):
+        def run(text):
+            strip_dates(text)
+            find_partial_date_tokens(text)
+
+        # A version word was searched for in all of the text before every
+        # number: 24 KB of "1. " took 17 s
+        ratio = growth(run, lambda size: unit * (size // len(unit)), 5_000)
+        assert ratio < LINEAR_GROWTH
+
+    @pytest.mark.parametrize("unit", ["Sa 16 ", "16-8 ", "16 8 26 ", "8月16日 "])
+    def test_a_long_run_of_the_new_shapes_is_linear(self, unit):
+        ratio = growth(strip_dates, lambda size: unit * (size // len(unit)), 5_000)
+        assert ratio < LINEAR_GROWTH

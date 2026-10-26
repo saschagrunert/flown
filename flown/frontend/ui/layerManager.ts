@@ -242,9 +242,8 @@ export class LayerManager implements PathHitTester {
     });
     // Lifted or flat, the flights are cut and written anew. The smoothed
     // flights and the ground of every level only the 3D view needs are let
-    // go with it.
-    app.store.subscribe("threeDVisible", (threeD) => {
-      if (!threeD) loadedFeatures()?.releaseGroundProfiles();
+    // go a while after it (holdGroundProfiles, which ui/terrain.ts calls).
+    app.store.subscribe("threeDVisible", () => {
       if (this.syncTerrain() !== null) this.redrawVisibleModes();
     });
     app.store.subscribe("globeVisible", () => {

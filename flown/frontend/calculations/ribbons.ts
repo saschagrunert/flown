@@ -420,11 +420,13 @@ export function ribbonPieces(
 }
 
 /** Whether two pieces stand on the same ground at every level */
-function sameOffsets(
+export function sameOffsets(
   a: readonly number[] | undefined,
   b: readonly number[] | undefined,
 ): boolean {
-  return a === b || (!!a && !!b && a.every((offset, i) => offset === b[i]));
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((offset, i) => offset === b[i]);
 }
 
 /** What a feature of a ribbon carries of its piece, see ribbonProperties */

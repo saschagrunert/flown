@@ -22,8 +22,12 @@ export type { BuildOptions, BuildOutcome, InputFile };
 /** The worker's bundle, next to the page */
 const LOCAL_WORKER_BUNDLE = "localWorker.bundle.js";
 
-/** Said when the worker cannot be started or dies on the way */
-export const WORKER_FAILED_MESSAGE = "The build could not run in this browser";
+/**
+ * Said when the worker cannot be started or dies on the way: an old
+ * browser, or one that refuses module workers or WebAssembly
+ */
+export const WORKER_FAILED_MESSAGE =
+  "The build could not run in this browser; try a current Chrome, Edge, Firefox or Safari";
 /**
  * Said when the worker's bundle did not load, offline most often: the
  * browser's error then has no message of a script that ran

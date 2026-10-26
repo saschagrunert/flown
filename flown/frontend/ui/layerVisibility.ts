@@ -184,8 +184,10 @@ export function followLayerVisibility(app: MapApp): void {
         // A style still loading: it is set when it has loaded
       }
     };
-    app.store.subscribeKeys(LAYER_KEYS, labels);
-    map.on("style.load", labels);
+    // Both go with the app, as a map that outlives it keeps loading styles
+    app.store.subscribeKeys(LAYER_KEYS, labels, { signal: app.signal });
+    const styles = map.on("style.load", labels);
+    app.signal.addEventListener("abort", () => styles.unsubscribe());
     labels();
     // Where the map comes to rest, which the heat's legend and the heat
     // cloud follow (the paint of the heat follows the zoom itself): the

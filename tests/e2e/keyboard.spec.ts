@@ -126,6 +126,21 @@ test.describe("Keyboard", () => {
     expect(await airportMarkerIsFocused(page, airport.name)).toBe(true);
   });
 
+  test("Escape on a marker with no popup closes what the page has open", async ({
+    page,
+  }) => {
+    const airport = await focusBusiestAirport(page);
+    await page.locator("#local-flights-btn").click();
+    const panel = page.locator("#local-flights");
+    await expect(panel).toBeVisible();
+
+    await focusAirportMarker(page, airport.name);
+    await page.keyboard.press("Escape");
+
+    await expect(panel).toBeHidden();
+    await expect(mapPopup(page)).toHaveCount(0);
+  });
+
   test("a popup opened with the mouse leaves focus alone", async ({ page }) => {
     await focusBusiestAirport(page);
     const marker = await page.evaluate(() => {

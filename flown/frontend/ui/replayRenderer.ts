@@ -39,6 +39,7 @@ import {
 } from "../calculations/lift";
 import { legAt, replayPoint, type ReplayPoint } from "../features/replay";
 import { datasetIndex } from "../calculations/datasetIndex";
+import { sameOffsets } from "../calculations/ribbons";
 import { flightRoute } from "../features/airports";
 import { prefersReducedMotion } from "../utils/motion";
 import { ReplayCamera } from "./replayCamera";
@@ -110,16 +111,6 @@ function whenSourceLoaded(map: MapLibreMap, id: string): Promise<void> {
     map.on("sourcedata", check);
     check();
   });
-}
-
-/** Whether two trail tips stand the ribbons at the same heights */
-function sameOffsets(
-  a: readonly number[] | undefined,
-  b: readonly number[] | undefined,
-): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.length !== b.length) return false;
-  return a.every((value, i) => value === b[i]);
 }
 
 /** Shown in the readout while no segment has been reached */
@@ -227,6 +218,13 @@ export class AirplaneMarker implements ReplayAirplane {
       if (!isActivation(event)) return;
       if (this.isPopupOpen()) this.closePopup();
       else onActivate();
+    });
+    // Escape on the airplane closes its popup first, as on an airport's
+    // marker; with none open it is the page's (isPageEscape)
+    element.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !this.isPopupOpen()) return;
+      event.preventDefault();
+      this.closePopup();
     });
     this.element = element;
 

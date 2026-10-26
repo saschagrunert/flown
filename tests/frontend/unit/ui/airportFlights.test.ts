@@ -223,6 +223,19 @@ describe("listFlights", () => {
     expect(buttons(container)).toHaveLength(3);
   });
 
+  it("stops the fade of its list as it closes, with one handler however often the list is written", () => {
+    // Every change of the filter or the selection writes it again
+    const { popup, mock } = openPopup();
+    for (let i = 0; i < 3; i++) {
+      mock.setHTML(
+        '<div class="popup-container popup-airport" tabindex="-1"></div>',
+      );
+      listFlights(asMapApp(mockApp), popup, "EDDP Leipzig", flightTotals);
+    }
+
+    expect(mock.listenerCount("close")).toBe(1);
+  });
+
   it("adds no list to an airport without flights", () => {
     const { popup, container } = openPopup();
 

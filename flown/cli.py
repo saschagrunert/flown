@@ -41,6 +41,9 @@ EXIT_INTERRUPTED = 130
 
 
 # What the environment variables were called before the rename to Flown
+# (2026-10-12). The warnings about the old names below, and "Upgrading from
+# kml-heatmap" in doc/usage.md, go after three months, on 2027-01-12: by
+# then a deploy has run with the new names or will not run again.
 OLD_ENV_PREFIX = "KML_HEATMAP_"
 
 

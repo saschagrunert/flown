@@ -147,6 +147,8 @@ export class MobileBar {
    */
   private unsubscribeEdge: (() => void) | null = null;
   private openTab: TabId | null = null;
+  /** Follows the height of the statistics sheet (syncMapInert) */
+  private sheetHeight: ResizeObserver | null = null;
 
   constructor(app: MapApp) {
     this.app = app;
@@ -221,6 +223,7 @@ export class MobileBar {
     } else if (!document.contains(this.root)) {
       insertBeforeMap(this.root);
     }
+    this.syncMapInert();
   }
 
   /** Whether the bar is currently in the document */
@@ -274,15 +277,22 @@ export class MobileBar {
 
     for (const unsubscribe of this.unsubscribes) unsubscribe();
     this.unsubscribes.length = 0;
+    this.sheetHeight?.disconnect();
+    this.sheetHeight = null;
+    this.syncMapInert();
   }
 
   private subscribe(): void {
     const store = this.app.store;
     this.unsubscribes.push(
-      store.subscribe("statsPanelVisible", () => this.syncTabs()),
+      store.subscribe("statsPanelVisible", () => {
+        this.syncTabs();
+        this.syncMapInert();
+      }),
       store.subscribe("selectedYear", () => this.syncTabs()),
       store.subscribe("wrappedVisible", (visible) => {
         this.syncTabs();
+        this.syncMapInert();
         // A bar mounted while Wrapped held the map went to the end of the
         // page, after the map's markers in the tab order; the map is back
         // by the time the dialog says it closed
@@ -291,6 +301,38 @@ export class MobileBar {
     );
     for (const key of SHEET_KEYS) {
       this.unsubscribes.push(store.subscribe(key, () => this.refreshSheet()));
+    }
+    const rail = document.getElementById("stats-rail");
+    if (rail && typeof ResizeObserver !== "undefined") {
+      this.sheetHeight = new ResizeObserver(() => this.syncMapInert());
+      this.sheetHeight.observe(rail);
+    }
+  }
+
+  /**
+   * Take the map out of reach while the statistics sheet covers it from
+   * the bar to the top: Tab went on from the sheet to the canvas under
+   * it, whose arrow keys moved a map nobody could see (WCAG 2.4.11). Not
+   * while the sheet leaves some of it free, where it is still the map to
+   * touch (`inert` takes the pointer as well), nor while Wrapped shows it
+   * in its dialog. Nor while a replay or the hotspot tour has the bottom
+   * edge: the sheet stays open under them, unseen (features.css), and at
+   * the full height of a page without the bar it took the map they run
+   * on out of reach.
+   */
+  private syncMapInert(): void {
+    const map = document.getElementById("map");
+    const rail = document.getElementById("stats-rail");
+    if (!map || !rail) return;
+    const covered =
+      this.isVisible() &&
+      this.app.statsPanelVisible &&
+      !this.app.wrappedVisible &&
+      !rail.hidden &&
+      rail.getBoundingClientRect().height >=
+        parseFloat(getComputedStyle(rail).maxHeight) - 1;
+    if (map.hasAttribute("inert") !== covered) {
+      map.toggleAttribute("inert", covered);
     }
   }
 

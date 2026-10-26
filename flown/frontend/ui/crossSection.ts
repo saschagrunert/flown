@@ -556,12 +556,7 @@ function createTool(app: MapApp): CrossSectionTool {
     // An Escape in a popup or on an airport's marker closes the popup, one
     // in a text field or a select is the field's; one on an end of the line
     // is the tool's
-    if (
-      phase === "closed" ||
-      !isPageEscape(event, ":not(.section-handle)" + FIELDS)
-    ) {
-      return;
-    }
+    if (phase === "closed" || !isPageEscape(event, FIELDS)) return;
     event.preventDefault();
     if (phase === "placing" && (first || press)) {
       // Back to the start of the line being drawn
