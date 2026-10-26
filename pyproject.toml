@@ -37,11 +37,11 @@ test = [
     "lxml-stubs>=0.5.1",
 ]
 dev = [
-    "ruff>=0.17.0",
+    "ruff>=0.17.1",
     "mypy>=2.4.0",
     "pip-audit>=2.10.1",
     # The audit of .github/workflows (make lint and the CI lint job)
-    "zizmor>=1.31.0",
+    "zizmor>=1.31.1",
     # scripts/check_pins.py
     "packaging>=26.3",
     # The spell check (make lint, the pre-commit hook and the CI lint job),
