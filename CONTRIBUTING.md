@@ -205,7 +205,7 @@ never going to match:
 ```bash
 podman run --rm --ipc=host --network host --userns=keep-id --user "$(id -u):$(id -g)" \
   --security-opt label=disable -v "$PWD:/work" -w /work -e HOME=/tmp \
-  mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f \
+  mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea \
   npx playwright test --project=visual --project=visual-phone
 ```
 
@@ -255,7 +255,7 @@ job is the one that fails. The registry returns the digest in the
 
 ```bash
 curl -sI -H "Accept: application/vnd.oci.image.index.v1+json" \
-  https://mcr.microsoft.com/v2/playwright/manifests/v1.64.0-noble |
+  https://mcr.microsoft.com/v2/playwright/manifests/v1.64.1-noble |
   grep -i docker-content-digest
 ```
 
