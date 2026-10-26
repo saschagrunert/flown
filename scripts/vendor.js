@@ -195,7 +195,7 @@ export const VENDOR_PATCHES = {
       // view empties the ribbons' sources, and their tiles held on to
       // 12 MB (a year) to 38 MB (all years) of data nothing drew anymore.
       name: "raw tile data kept by a tile that loads empty",
-      find: /(!(\w+)\)\{this\.collisionBoxArray=new \w+)(;return\}\2\.featureIndex&&\(this\.latestFeatureIndex=\2\.featureIndex,\2\.rawTileData\?)/,
+      find: /(!(\w+)\)this\.collisionBoxArray=new \w+)(;else\{\2\.featureIndex&&\(this\.latestFeatureIndex=\2\.featureIndex,\2\.rawTileData\?)/,
       replace: "$1,this.latestRawTileData=null,this.latestEncoding=null$3",
     },
     {
