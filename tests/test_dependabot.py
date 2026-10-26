@@ -155,6 +155,17 @@ def test_the_gitleaks_hook_and_image_are_bumped_together():
     assert re.search(r"^multi-ecosystem-groups:\n  gitleaks:\n", text, re.MULTILINE)
 
 
+def test_the_entries_of_a_multi_ecosystem_group_leave_the_limit_to_it():
+    """Dependabot refused the whole file over an open-pull-requests-limit
+    on the gitleaks entries, which only the group may set"""
+    text = CONFIG.read_text(encoding="utf-8")
+    entries = re.split(r"^  - package-ecosystem:", text, flags=re.MULTILINE)[1:]
+    grouped = [entry for entry in entries if "\n    multi-ecosystem-group:" in entry]
+
+    assert len(grouped) == 2
+    assert not any("\n    open-pull-requests-limit:" in entry for entry in grouped)
+
+
 def test_the_playwright_image_is_left_to_the_library_bump():
     """A pull request of the image alone could only fail against the
     library, which the npm entry bumps (see dependabot.yml)"""

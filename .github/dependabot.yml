@@ -32,6 +32,9 @@ multi-ecosystem-groups:
       - "ci"
     commit-message:
       prefix: "ci"
+    # Dependabot refuses the limit on the entries of a multi-ecosystem
+    # group; it takes it here
+    open-pull-requests-limit: 3
 updates:
   # Python dependencies: the ranges in pyproject.toml, the single source of
   # the Python dependencies, and their pins in uv.lock, which Dependabot
@@ -284,7 +287,6 @@ updates:
     # See the cooldown of the uv entry
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 3
 
   # The gitleaks image of the secrets job, the FROM line of a Dockerfile of
   # its own, by tag and digest, which this entry bumps together, in the
@@ -297,4 +299,3 @@ updates:
     # See the cooldown of the uv entry
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 3
