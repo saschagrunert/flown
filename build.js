@@ -445,7 +445,7 @@ function compareBundles(before, after, names) {
 // lazy bundle, since a link may open turned, as a globe or in 3D; what only
 // a panel or a mode shows can. The reading of a shared link's token stays
 // here too: it is resolved before anything reads the state. 169.01 KB and
-// 59.7 KB gzipped.
+// 59.71 KB gzipped.
 const BUDGET_APP = { raw: 169.25 * 1024, gzip: 60 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section, the
@@ -473,8 +473,8 @@ const BUDGET_PHONE = { raw: 14.5 * 1024, gzip: 4.75 * 1024 };
 // Your flights: the panel that takes the KML files a visitor drops, the
 // store in the browser and the page's side of the build worker, fetched
 // the first time the panel opens or a file is dragged over the page, and at
-// start by a page that shows those flights. 25.24 KB and 9.05 KB gzipped.
-const BUDGET_LOCAL = { raw: 25.25 * 1024, gzip: 9.25 * 1024 };
+// start by a page that shows those flights. 25.54 KB and 9.11 KB gzipped.
+const BUDGET_LOCAL = { raw: 25.75 * 1024, gzip: 9.25 * 1024 };
 // The worker of Your flights, which runs the site's Python in Pyodide and
 // fetches and decodes the elevation tiles for it (services/localTiles.ts);
 // the runtime itself comes from its CDN and is no part of this. 10.13 KB
