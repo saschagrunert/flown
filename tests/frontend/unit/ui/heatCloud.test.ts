@@ -204,7 +204,7 @@ describe("the heat cloud", () => {
     app.threeDVisible = false;
     expect(map().getLayer(HEAT_CLOUD_LAYER)).toBeUndefined();
     expect(app.store.get("heatCloud")).toBe(false);
-    // Nothing held until the 3D view is back
+    // Nothing drawn until the 3D view is back
     expect(drawn()).toBeNull();
   });
 
@@ -789,6 +789,31 @@ describe("the heat cloud", () => {
       vi.advanceTimersByTime(CLOUD_IDLE_MS);
       expect(drawn()).toBeNull();
       app.heatmapVisible = true;
+      expect(cuts.count).toBe(1);
+      expect(latitudesOf(drawn())).toEqual([47, 48, 49]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps its points a while after the 3D view went off, and cuts them again as it comes back later", async () => {
+    vi.useFakeTimers();
+    try {
+      app.threeDVisible = true;
+      await follow();
+      const points = drawn();
+      cuts.count = 0;
+      // Back in time: drawn again without a cut
+      app.threeDVisible = false;
+      expect(drawn()).toBeNull();
+      vi.advanceTimersByTime(CLOUD_IDLE_MS - 1);
+      app.threeDVisible = true;
+      expect(cuts.count).toBe(0);
+      expect(drawn()).toBe(points);
+
+      app.threeDVisible = false;
+      vi.advanceTimersByTime(CLOUD_IDLE_MS);
+      app.threeDVisible = true;
       expect(cuts.count).toBe(1);
       expect(latitudesOf(drawn())).toEqual([47, 48, 49]);
     } finally {

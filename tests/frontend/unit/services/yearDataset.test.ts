@@ -29,7 +29,6 @@ function longYear(paths: number, rows: number): RawYearData {
     2025,
     segments,
     Object.keys(segments).map((id) => ({ id: Number(id) })),
-    paths * rows,
   );
 }
 
@@ -124,24 +123,19 @@ describe("buildDatasetInSlices", () => {
   it("builds an empty dataset for a year without paths", async () => {
     await expect(
       buildDatasetInSlices(decodeYear(rawYear(2025, {}))),
-    ).resolves.toEqual({
-      path_segments: [],
-      path_info: [],
-      original_points: 0,
-    });
+    ).resolves.toEqual({ path_segments: [], path_info: [] });
   });
 });
 
 describe("combineYearData", () => {
   it("concatenates datasets without remapping or copying objects", () => {
-    const a = dataset(2, 1, 100);
-    const b = dataset(1, 3, 200);
+    const a = dataset(2, 1);
+    const b = dataset(1, 3);
 
     const result = combineYearData([a, b]);
 
     expect(result.path_segments).toHaveLength(3);
     expect(result.path_info).toHaveLength(3);
-    expect(result.original_points).toBe(300);
     expect(result.path_segments.map((s) => s.path_id)).toEqual([1, 2, 3]);
     // Same object references (no copies)
     expect(result.path_segments[0]).toBe(a.path_segments[0]);
@@ -150,7 +144,7 @@ describe("combineYearData", () => {
   });
 
   it("gives arrays of its own, for one year as well", () => {
-    const a = dataset(2, 1, 100);
+    const a = dataset(2, 1);
 
     const result = combineYearData([a]);
 
@@ -162,14 +156,9 @@ describe("combineYearData", () => {
   it("skips null or undefined datasets", () => {
     const result = combineYearData([dataset(1), null, undefined]);
     expect(result.path_segments).toHaveLength(1);
-    expect(result.original_points).toBe(1);
   });
 
   it("returns an empty dataset for no input", () => {
-    expect(combineYearData([])).toEqual({
-      path_segments: [],
-      path_info: [],
-      original_points: 0,
-    });
+    expect(combineYearData([])).toEqual({ path_segments: [], path_info: [] });
   });
 });

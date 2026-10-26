@@ -140,12 +140,11 @@ class TestYearFile:
         assert list(data) == [
             "format",
             "year",
-            "original_points",
             "path_info",
             "segments",
         ]
         assert data["year"] == 2025
-        assert data["original_points"] == 3
+        assert result.original_points == 3
         assert data["path_info"] == [
             {
                 "id": 7,
@@ -220,7 +219,7 @@ class TestYearFile:
         result = _write_year(2025, paths, metadata, [None, 3], tmp_path)
 
         data = parse_data(tmp_path / "2025" / "data.json")
-        assert data["original_points"] == 3
+        assert result.original_points == 3
         assert [info["id"] for info in data["path_info"]] == [3]
         assert result.path_count == 1
 
@@ -230,7 +229,6 @@ class TestYearFile:
         assert data == {
             "format": FORMAT_VERSION,
             "year": 2025,
-            "original_points": 0,
             "path_info": [],
             "segments": {"start": [], "columns": [[], [], [], [], []], "ground": []},
         }
@@ -452,7 +450,6 @@ class TestDropDuplicatePaths:
             path_content_id(paths[0]),
             path_content_id(paths[1]),
         ]
-        assert year["original_points"] == 6
         err = capsys.readouterr().err
         assert "copy of 1_DEAGJ_DA20.kml" in err
         assert "same flight as in 1_DEAGJ_DA20.kml" in err
@@ -584,13 +581,12 @@ class TestAssembleYearFile:
         assert list(data) == [
             "format",
             "year",
-            "original_points",
             "path_info",
             "segments",
         ]
         assert [info["id"] for info in data["path_info"]] == [0, 1]
         assert list(segments_by_id(data)) == ["0", "1"]
-        assert data["original_points"] == 4
+        assert result.original_points == 4
         assert result.path_count == 2
         assert _leftover_parts(tmp_path) == []
 
@@ -1749,7 +1745,6 @@ class TestExportAllData:
         }
         assert [p["id"] for p in data_2025["path_info"]] == [path_content_id(paths[1])]
         assert [p["id"] for p in data_2026["path_info"]] == [path_content_id(paths[0])]
-        assert data_2025["original_points"] == 3
         assert _leftover_parts(tmp_path) == []
 
     def test_aircraft_models_of_the_exported_paths(self, tmp_path, parse_data):
@@ -1790,7 +1785,6 @@ class TestExportAllData:
         ]
         data = parse_data(tmp_path / "2025" / "data.json")
         assert [info["id"] for info in data["path_info"]] == [path_content_id(paths[0])]
-        assert data["original_points"] == 3
 
     def test_year_with_only_point_markers_is_not_exported(self, tmp_path, parse_data):
         paths = [_path((51.5, 12.0, 20.0)), _path((51.5, 12.0, 20.0)), _timed_path()]

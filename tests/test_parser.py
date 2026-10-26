@@ -265,7 +265,8 @@ class TestParseKmlCoordinates:
             'xmlns="http://earth.google.com/kml/2.2"',
         ).replace(
             "</Document>",
-            "<Placemark><name>EDDS - EDDP</name><LineString>"
+            "<Placemark><name>EDDS - EDDP</name>"
+            "<TimeStamp><when>2025-03-15</when></TimeStamp><LineString>"
             "<coordinates>9.2,48.7,300 12.2,51.4,300</coordinates>"
             "</LineString></Placemark></Document>",
         )
@@ -284,7 +285,8 @@ class TestParseKmlCoordinates:
         </gx:Track>
         <LineString><coordinates>8.5,50.0,300 9.0,51.0,400</coordinates></LineString>
         </MultiGeometry></Placemark>
-        <Placemark><name>Other</name><LineString>
+        <Placemark><name>Other</name>
+        <TimeStamp><when>2025-03-15</when></TimeStamp><LineString>
           <coordinates>8.5,50.0,300 9.0,51.0,400</coordinates>
         </LineString></Placemark></Document></kml>"""
         coords, paths, metadata = parse_kml_coordinates(
@@ -379,11 +381,48 @@ class TestParseKmlCoordinates:
           <when>2025-03-15T10:00:00Z</when><gx:coord>8.5 50.0 300</gx:coord>
           <when>2025-03-15T10:01:00Z</when><gx:coord>9.0 51.0 400</gx:coord>
         </gx:Track></Placemark>
-        <Placemark xmlns:o="urn:other"><name>B</name><MultiGeometry>
+        <Placemark xmlns:o="urn:other"><name>B</name>
+        <TimeStamp><when>2025-03-15</when></TimeStamp><MultiGeometry>
         <o:Track/><LineString><coordinates>7.5,50.0,300 7.0,51.0,400</coordinates>
         </LineString></MultiGeometry></Placemark></Document></kml>"""
         _, paths, _ = parse_kml_coordinates(_write(tmp_path, "mixed.kml", kml))
         assert len(paths) == 2
+
+    def test_a_planned_route_next_to_a_timed_track_is_no_flight(self, tmp_path, caplog):
+        """A line without times next to the recording: it became a flight of
+        its own, with its own airports, dated by the file's markers."""
+        kml = f"""{KML_HEADER}<Document><Placemark><name>EDAQ - EDDC</name>
+        <gx:Track>
+          <when>2025-03-15T10:00:00Z</when><gx:coord>12.05 51.55 110</gx:coord>
+          <when>2025-03-15T10:10:00Z</when><gx:coord>12.5 51.4 800</gx:coord>
+        </gx:Track></Placemark>
+        <Placemark><name>EDAQ - EDDP</name><LineString>
+          <coordinates>12.05,51.55,300 12.2,51.5,900 12.24,51.42,300</coordinates>
+        </LineString></Placemark>
+        <Placemark><name>Log Start: 15 Mar 2025 10:00 Z</name>
+          <Point><coordinates>12.05,51.55,110</coordinates></Point>
+        </Placemark></Document></kml>"""
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            coords, paths, metadata = parse_kml_coordinates(
+                _write(tmp_path, "planned.kml", kml)
+            )
+        assert len(paths) == 1
+        assert paths[0][0].ts is not None
+        assert metadata[0]["airport_name"].startswith("EDAQ")
+        assert "EDDC" in metadata[0]["airport_name"]
+        # Its points still count, as those of the markers do
+        assert len(coords) == 6
+        assert "1 line(s) without times next to a timed track ignored" in caplog.text
+
+    def test_lines_without_times_stay_in_a_file_without_a_timed_track(self, tmp_path):
+        kml = f"""{KML_HEADER}<Document><Placemark><name>A</name><LineString>
+          <coordinates>8.5,50.0,300 9.0,51.0,400</coordinates>
+        </LineString></Placemark><Placemark><name>B</name><gx:Track>
+          <gx:coord>8.5 50.0 300</gx:coord><gx:coord>9.0 51.0 400</gx:coord>
+        </gx:Track></Placemark></Document></kml>"""
+        _, paths, _ = parse_kml_coordinates(_write(tmp_path, "untimed.kml", kml))
+        assert paths
+        assert all(point.ts is None for path in paths for point in path)
 
     def test_a_file_name_that_is_not_utf_8(self, tmp_path, caplog):
         """As unzipped from a Windows archive: the build stopped on it."""
@@ -417,6 +456,7 @@ class TestParseKmlCoordinates:
         kml = (
             f"{KML_HEADER}<Document><Placemark>"
             "<name>Aunt<!-- from --> farm - Home <?pi x?>strip</name>"
+            "<TimeStamp><when>2025-03-15</when></TimeStamp>"
             "<LineString><coordinates>8.5,50.0,300 <!-- a gap -->"
             "9.0,51.0,400 <!-- and another -->9.5,52.0,500</coordinates>"
             "</LineString></Placemark><Placemark><name>Track</name><gx:Track>"

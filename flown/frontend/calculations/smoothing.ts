@@ -262,8 +262,9 @@ export interface SmoothFlightsOptions {
   offsets?: readonly ArrayLike<number>[] | null | undefined;
   /**
    * The curves of chains smoothed before, which are not smoothed again:
-   * only for curves of the points alone, as the flat ones are (see
-   * flatCurves in calculations/curves.ts)
+   * only for curves the same for the same segments, of the points alone,
+   * as the flat ones are (see flatCurves in calculations/curves.ts), or at
+   * their altitudes (smoothedCurves in calculations/groundProfile.ts)
    */
   chains?: ChainCache | undefined;
 }

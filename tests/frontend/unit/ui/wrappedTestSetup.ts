@@ -173,7 +173,6 @@ export function createFlightHistory() {
       ...flight(3, 50, 9),
       ...flight(4, 50, 7),
     ],
-    8,
   );
 }
 

@@ -84,10 +84,11 @@ export function followStatsPanel(app: MapApp): void {
   // closes it, as it closes the other sheets, and the focus goes to that
   // tab (see setupStatsRail). The bar steps aside for a replay and the
   // hotspot tour, which hide the sheet and take Escape. Not an Escape for
-  // a popup, a marker or the readout of the cloud, which close first, nor
-  // one that empties the search of the flights. Nor while a sheet of the
-  // bar is open over it, which Escape closes alone: one press closed both.
-  // Nor one in Your flights or the search over it, which close first.
+  // a popup, a marker's open popup or the readout of the cloud, which
+  // close first, nor one that empties the search of the flights. Nor while
+  // a sheet of the bar is open over it, which Escape closes alone: one
+  // press closed both. Nor one in Your flights or the search over it,
+  // which close first.
   document.addEventListener(
     "keydown",
     (event) => {

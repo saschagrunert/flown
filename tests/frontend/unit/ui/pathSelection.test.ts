@@ -846,6 +846,24 @@ describe("PathSelection", () => {
       box.remove();
     });
 
+    it("leaves a click on a checkbox's label to the click it makes on the box", () => {
+      // pickBox's label: a finger's wide target around the box
+      document.body.innerHTML =
+        '<div id="row"><label><input type="checkbox"></label></div>';
+      const row = document.getElementById("row")!;
+      row.addEventListener("click", (e) =>
+        pathSelection.pickFromList(2, e, list),
+      );
+      mockApp.selectedPathIds = new Set([...mockApp.selectedPathIds, 1]);
+
+      row.querySelector("label")!.click();
+
+      // The label's click picked nothing; the box's added the flight
+      expect([...mockApp.selectedPathIds]).toEqual([1, 2]);
+      expect(row.querySelector("input")!.checked).toBe(true);
+      document.body.innerHTML = "";
+    });
+
     it("adds the flights from the one clicked last with Shift, in the list's order", () => {
       pathSelection.pickFromList(4, click(), list);
       pathSelection.pickFromList(2, click({ shiftKey: true }), list);
@@ -1366,6 +1384,12 @@ describe("PathSelection", () => {
       );
 
       expect(chipCount.textContent).toBe("1,200 flights selected");
+      // The narrowest phones leave out the word in .selection-chip-tail
+      expect(chipCount.firstChild!.textContent).toBe("1,200 flights");
+      expect(chipCount.lastElementChild!.className).toBe("selection-chip-tail");
+
+      mockApp.selectedPathIds = new Set();
+      expect(chipCount.textContent).toBe("");
     });
 
     it("says how many shared flights the filter hides, all of them too", () => {

@@ -33,7 +33,6 @@ describe("decodeYear", () => {
           "9": path([51, 9], [[51.1, 9.1, 700, 90]]),
         },
         [{ id: 7 }, { id: 9 }],
-        12,
       ),
     );
 
@@ -46,7 +45,6 @@ describe("decodeYear", () => {
     // A row without a time is NaN
     expect([...decoded.times]).toEqual([2, NaN, NaN]);
     expect(decoded.path_info).toEqual([{ id: 7 }, { id: 9 }]);
-    expect(decoded.original_points).toBe(12);
     expect(decoded.warnings).toEqual([]);
   });
 
@@ -178,12 +176,10 @@ describe("expandYearData", () => {
         { id: 4, year: 2025 },
         { id: 7, year: 2025 },
       ],
-      42,
     );
 
     const data = expandYearData(raw);
 
-    expect(data.original_points).toBe(42);
     expect(data.path_info).toBe(raw.path_info);
     expect(data.path_segments).toEqual([
       {
@@ -461,14 +457,13 @@ describe("expandYearData", () => {
     expect("time" in data.path_segments[1]!).toBe(false);
   });
 
-  it("defaults missing path_info and original_points", () => {
+  it("defaults missing path_info", () => {
     const data = expandYearData({
       format: DATA_FORMAT_VERSION,
       year: 2025,
       segments: {},
     } as RawYearData);
     expect(data.path_info).toEqual([]);
-    expect(data.original_points).toBe(0);
     expect(data.path_segments).toEqual([]);
   });
 

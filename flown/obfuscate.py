@@ -722,7 +722,8 @@ def obfuscate_kml_file(filepath: Path) -> bool:
 
     Returns True if the file was modified, False otherwise. A symlink is
     skipped like the generator skips it, and a file the user may not write is
-    reported instead of being replaced behind its read-only mode.
+    reported instead of being replaced behind its read-only mode. A file the
+    rewrite would leave failing the check stays as it is.
     """
     if filepath.is_symlink():
         logger.warning("Skipping %s: symlinks are not allowed", filepath)
@@ -746,6 +747,19 @@ def obfuscate_kml_file(filepath: Path) -> bool:
 
     new_content = obfuscate_kml_content(content)
     if new_content is None:
+        return False
+
+    # A date the rewrite cannot take out (in an element it does not rewrite,
+    # a recording that runs over too many days) leaves the file as it was,
+    # rather than half scrubbed: the check lists it to be fixed by hand
+    left, _ = _check_content(new_content)
+    if left:
+        logger.error(
+            "Not rewriting %s: the rewrite would leave %d thing(s) the check "
+            "refuses (listed below); fix them by hand, then run it again",
+            filepath,
+            len(left),
+        )
         return False
 
     if not os.access(filepath, os.W_OK):
@@ -1294,6 +1308,21 @@ def check_kml(filepath: Path) -> tuple[list[str], list[str]]:
             for text in find_possible_date_tokens(stem)
         )
 
+    content_violations, content_warnings = _check_content(content)
+    violations.extend(content_violations)
+    warnings.extend(content_warnings)
+    # A track repeats its date in every timestamp; one line per date is enough
+    return list(dict.fromkeys(violations)), list(dict.fromkeys(warnings))
+
+
+def _check_content(content: str) -> tuple[list[str], list[str]]:
+    """The violations and the warnings of the content of a KML file.
+
+    Those of ``check_kml`` but for its file name, which the rewrite checks
+    its result with before it writes it (see ``obfuscate_kml_file``).
+    """
+    violations: list[str] = []
+    warnings: list[str] = []
     violations.extend(
         f"Name element contains date: {match.group(0)}"
         for match in CHECK_NAME_DATE_PATTERN.finditer(content)

@@ -638,6 +638,25 @@ describe("AirplaneMarker", () => {
     expect(onActivate).not.toHaveBeenCalled();
   });
 
+  it("takes Escape for its open popup alone, and leaves the rest to the page", () => {
+    const escape = (): KeyboardEvent => {
+      const event = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+      airplane.getElement().dispatchEvent(event);
+      return event;
+    };
+
+    airplane.openPopup();
+    expect(escape().defaultPrevented).toBe(true);
+    expect(airplane.isPopupOpen()).toBe(false);
+
+    // With nothing to close, the replay's own Escape gets it
+    expect(escape().defaultPrevented).toBe(false);
+  });
+
   it("keeps the popup open through a double click or a double tap", () => {
     const element = airplane.getElement();
     // The caller opens it; here only whether it is asked to matters

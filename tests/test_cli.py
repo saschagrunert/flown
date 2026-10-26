@@ -683,7 +683,7 @@ class TestObfuscateFlag:
         input_dir.mkdir()
         kml = input_dir / "flight.kml"
         kml.write_text(
-            "<kml><Placemark><name>Flyg 16 augusti 2026</name><gx:Track>"
+            "<kml><Placemark><name>Let 16 kolovoza 2026</name><gx:Track>"
             "<when>2025-03-03T08:25:15Z</when><gx:coord>12.0 51.5 100</gx:coord>"
             "</gx:Track></Placemark></kml>"
         )

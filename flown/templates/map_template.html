@@ -139,7 +139,7 @@
             class="btn-surface control-btn"
             data-action="toggleSearch"
             data-icon="search"
-            title="Search: find an airport or a place and go there"
+            title="Search: find an airport or a place and go there (/)"
             aria-label="Search: find an airport or a place and go there"
             aria-keyshortcuts="/"
             aria-expanded="false"
@@ -675,7 +675,7 @@
          display: contents, so it adds no box of its own (styles.css);
          role="main" because older WebKit drops the landmark of an element
          without a box. -->
-    <main id="map-home" role="main">
+    <main role="main">
       <!-- What is selected, and the way out of it. A selection is only drawn
          on the map where the paths themselves are drawn; at the zoom levels
          that show the heat bloom alone it had no representation at all, and
@@ -792,11 +792,13 @@
 
       <!-- Shown by the stylesheet when no map was ever made, a few seconds
            in: a browser runs no module script of a page opened as a file,
-           and the page was an empty map whose controls did nothing -->
+           and the page was an empty map whose controls did nothing. Bound
+           to this computer alone, as the command the build prints: the
+           server listens on every network otherwise. -->
       <p id="serve-hint">
         The map did not start. Opened as a file? Serve its folder over HTTP, for
         example with
-        <code>python3 -m http.server -d &lt;folder&gt;</code>.
+        <code>python3 -m http.server --bind 127.0.0.1 -d &lt;folder&gt;</code>.
       </p>
     </main>
 

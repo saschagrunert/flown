@@ -461,7 +461,7 @@ describe("cross-section", () => {
       expect(escape()).toBe(true);
     });
 
-    it("leaves an Escape in a popup or on an airport's marker to them", async () => {
+    it("leaves an Escape in a popup or for an airport's popup to them", async () => {
       const { app, canvas, map, button } = await setup();
       await open(app);
       drawLine(canvas);
@@ -481,17 +481,21 @@ describe("cross-section", () => {
       const popup = document.createElement("div");
       popup.className = "maplibregl-popup";
       expect(escapeIn(popup)).toBe(true);
+      // A marker that closed its popup prevents the Escape
       const marker = document.createElement("div");
       marker.className = "maplibregl-marker";
-      expect(escapeIn(marker)).toBe(true);
+      marker.addEventListener("keydown", (event) => event.preventDefault());
+      expect(escapeIn(marker)).toBe(false);
       // Nor one in a text field, which empties it
       const search = document.createElement("input");
       search.type = "search";
       expect(escapeIn(search)).toBe(true);
       search.remove();
       expect(root().hidden).toBe(false);
+      marker.remove();
 
-      // One of its own ends is not: it closes, and focus goes to the control
+      // One on a marker with no popup open is the tool's, as is one on an
+      // end of its own: it closes, and focus goes to the control
       const b = handles()[1]!.getElement();
       b.classList.add("maplibregl-marker");
       expect(escapeIn(b)).toBe(false);

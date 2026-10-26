@@ -62,6 +62,8 @@ _ROUTE_SEPARATOR = re.compile(ROUTE_SEPARATOR)
 # too: "EDDF-EDDM", "EDDF->EDDM", "EDDF/EDDM"
 _CODE_SEPARATOR = re.compile(rf"(?<=\b[A-Z]{{4}}){CODE_SEPARATOR}(?=[A-Z]{{4}}\b)")
 _ROUTE_DATE_SUFFIX = re.compile(rf"\s+-\s+{DATE_PATTERN.pattern}\s*$")
+# The words of a name, letters only
+_WORDS = re.compile(r"[^\W\d_]+")
 
 __all__ = [
     "REQUIRE_DATABASE_ENV",
@@ -1252,11 +1254,12 @@ def split_route_name(name: str | None) -> tuple[str, str] | None:
     Airport names may contain " - " themselves (LFBN "Niort - Marais
     Poitevin"), so in a name with ICAO codes only a separator (" - " or
     " to ", else " > " and the others of ``helpers.ROUTE_SEPARATOR``)
-    followed by a code can split it, and exactly one such separator must
-    exist; without one, a separator between two codes ("EDDF-EDDM", see
-    ``_CODE_SEPARATOR``) can, exactly one as well. A standardized single
-    airport name is never a route. A name without any code splits at its
-    only " - ".
+    followed by a code can split it; without one, a separator between two
+    codes ("EDDF-EDDM", see ``_CODE_SEPARATOR``) can. Where there are
+    several, the name has to start with a code as well, and it goes from
+    the first stop to the last ("EDAQ - EDAU - EDDC" from EDAQ to EDDC). A
+    standardized single airport name is never a route. A name without any
+    code splits at its only " - ".
     """
     if not name:
         return None
@@ -1292,11 +1295,14 @@ def split_route_name(name: str | None) -> tuple[str, str] | None:
             if _starts_with_icao_code(name[match.start() - 4 :])
             and _starts_with_icao_code(name[match.end() :])
         ]
-    if len(separators) != 1:
+    # A route of several legs with a code at every stop ("EDAQ - EDAU -
+    # EDDC") goes from the first to the last: every separator is followed by
+    # a code, so only the departure needs one
+    if not separators or (len(separators) > 1 and not _starts_with_icao_code(name)):
         return None
     # The name is stripped, and a separator starts with whitespace or after
     # a code, so neither side can be empty
-    return name[: separators[0].start()], name[separators[0].end() :]
+    return name[: separators[0].start()], name[separators[-1].end() :]
 
 
 class AirportNames(NamedTuple):
@@ -1323,6 +1329,36 @@ def standardize_route(departure: str, arrival: str) -> AirportNames:
     return AirportNames(f"{start} - {end}", start, end)
 
 
+def _uppercase_codes(name: str) -> str:
+    """A route of airport codes typed in lower case ("edaq - eddp") in capitals.
+
+    Only when it is a route in capitals (see ``split_route_name``) whose
+    departure and arrival both start with a code of the database, as they
+    would have to in capitals to be named after it: a code in lower case is
+    no code anywhere else, and "home - farm" or "with Anna" stay words.
+    What follows a code goes as it would in capitals, a date or a time
+    ("edaq - eddp 16 aug", "edaq - eddp 1430z") among it. A single word
+    stays, though it is a code of the database as often ("Farm" and "Fast"
+    are airports in South Africa, "Lima" one in Italy, "Snow" one in
+    Brazil).
+    """
+    if extract_icao_codes_from_name(name) or name == name.upper():
+        return name
+    upper = name.upper()
+    route = split_route_name(upper)
+    if route is None:
+        return name
+    for end in route:
+        words = _WORDS.findall(end)
+        if not (
+            words
+            and _starts_with_icao_code(words[0])
+            and lookup_airport_coordinates(words[0]) is not None
+        ):
+            return name
+    return upper
+
+
 def standardize_airport_names(airport_name: str | None) -> AirportNames:
     """Standardize a placemark name using the OurAirports database.
 
@@ -1333,6 +1369,7 @@ def standardize_airport_names(airport_name: str | None) -> AirportNames:
     if not airport_name:
         return AirportNames(airport_name)
 
+    airport_name = _uppercase_codes(airport_name)
     route = split_route_name(airport_name)
     if route is not None:
         return standardize_route(*route)

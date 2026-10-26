@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AIRPORTS_FAILED_MESSAGE,
   colorSegmentPopups,
   createAirportMarkers,
   loadInitialData,
+  NEED_DATA_CONTROL_IDS,
   resolveYearSelection,
 } from "../../../../flown/frontend/appInitializer";
 import {
@@ -24,7 +27,11 @@ import {
   type MockApp,
 } from "../../testHelpers";
 import { Marker as MockMarker } from "../../../mocks/maplibre-gl";
-import { NO_DATA_MESSAGE } from "../../../../flown/frontend/ui/actions";
+import {
+  NEED_DATA,
+  NO_DATA_MESSAGE,
+  type ActionName,
+} from "../../../../flown/frontend/ui/actions";
 
 const toastMock = vi.hoisted(() => ({
   showToast: vi.fn(),
@@ -64,6 +71,27 @@ const metadata: Metadata = {
   max_groundspeed_knots: 150,
   aircraft_models: { "D-ABCD": "Diamond DA40" },
 };
+
+describe("the controls that need flights", () => {
+  it("are the page's controls of the actions that need them", () => {
+    // Two lists kept by hand: a control left out stayed clickable after a
+    // failed load, and said "0 flights"
+    const page = new DOMParser().parseFromString(
+      readFileSync(
+        join(__dirname, "../../../../flown/templates/map_template.html"),
+        "utf8",
+      ),
+      "text/html",
+    );
+    const ids = [...page.querySelectorAll<HTMLElement>("[data-action]")]
+      .filter((control) =>
+        NEED_DATA.has(control.dataset["action"] as ActionName),
+      )
+      .map((control) => control.id)
+      .filter((id) => id !== "stats-collapse-btn");
+    expect([...ids].sort()).toEqual([...NEED_DATA_CONTROL_IDS].sort());
+  });
+});
 
 describe("appInitializer", () => {
   let app: MockApp;
@@ -427,18 +455,44 @@ describe("appInitializer", () => {
     it("closes its popup on Escape from the focused marker", () => {
       create();
       const element = eddf().getElement();
+      const escape = (): KeyboardEvent => {
+        const event = new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        });
+        element.dispatchEvent(event);
+        return event;
+      };
 
       element.dispatchEvent(
         new KeyboardEvent("keydown", { key: "a", bubbles: true }),
       );
       expect(app.airportManager.closePopup).not.toHaveBeenCalled();
 
-      element.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      app.airportManager.isPopupOpen.mockReturnValue(true);
+      expect(escape().defaultPrevented).toBe(true);
+      expect(app.airportManager.isPopupOpen).toHaveBeenCalledWith(
+        "Frankfurt EDDF",
       );
       expect(app.airportManager.closePopup).toHaveBeenCalledWith(
         "Frankfurt EDDF",
       );
+    });
+
+    it("leaves an Escape that closes no popup to the page", () => {
+      create();
+      app.airportManager.isPopupOpen.mockReturnValue(false);
+      const event = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+
+      eddf().getElement().dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(app.airportManager.closePopup).not.toHaveBeenCalled();
     });
 
     it("handles an empty list and missing names", () => {
@@ -480,7 +534,6 @@ describe("appInitializer", () => {
     const data: KMLDataset = createDataset(
       [{ id: 1, year: 2025, aircraft_registration: "D-ABCD" }],
       [createSegment({ path_id: 1 })],
-      10,
     );
 
     beforeEach(() => {
@@ -847,6 +900,8 @@ describe("appInitializer", () => {
         // The home base and the sizes of the zoom, as on the first load
         expect(app.airportManager.updateAirportPopups).toHaveBeenCalled();
         expect(app.airportManager.updateAirportMarkerSizes).toHaveBeenCalled();
+        // The rail names them by their codes now, and counts their countries
+        expect(app.statsManager.refresh).toHaveBeenCalled();
         expect(toastMock.dismissToast).toHaveBeenCalledWith(
           AIRPORTS_FAILED_MESSAGE,
         );
@@ -895,7 +950,7 @@ describe("appInitializer", () => {
         // Once per failure, not at every load
         toastMock.showToast.mockClear();
         app.dataManager.loadData.mockResolvedValue(
-          createDataset([{ id: 2, year: 2025 }], [], 1),
+          createDataset([{ id: 2, year: 2025 }], []),
         );
         yearSelect().value = "2025";
         await filterManager.filterByYear();

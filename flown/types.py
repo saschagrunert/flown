@@ -110,7 +110,6 @@ class YearFileHeader(TypedDict):
 
     format: int
     year: int
-    original_points: int
 
 
 class SiteMetadata(TypedDict):

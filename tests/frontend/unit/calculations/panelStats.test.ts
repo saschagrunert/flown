@@ -376,7 +376,6 @@ describe("panel statistics", () => {
         2,
       );
       expect(stats.max_altitude_m).toBeCloseTo(2000, 6);
-      expect(stats.min_altitude_m).toBeCloseTo(1000, 6);
       expect(stats.max_altitude_ft).toBeCloseTo(FT(2000), 6);
       expect(stats.max_groundspeed_knots).toBe(140);
       expect(stats.avg_groundspeed_knots).toBe(130);

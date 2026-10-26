@@ -55,11 +55,12 @@ describe("airport labels", () => {
       expect(layer.paint).toEqual({ "text-opacity": 0 });
     });
 
-    it("asks the glyph server for the base style's font, with a local fallback", () => {
+    it("asks the glyph server for the base style's fonts, and only those it has", () => {
+      // CARTO's answers 404 for a stack with "sans-serif" in it, at every
+      // page load; MapLibre adds it itself where it draws the text locally
       const font = airportLabelLayer().layout!["text-font"] as string[];
 
-      expect(font[0]).toBe("Roboto Medium");
-      expect(font.at(-1)).toBe("sans-serif");
+      expect(font).toEqual(["Roboto Medium", "Noto Sans Regular"]);
     });
   });
 

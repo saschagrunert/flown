@@ -1,5 +1,6 @@
 """Per-path export helpers: path info entries and segment rows."""
 
+from bisect import bisect_left
 from functools import lru_cache
 from itertools import pairwise
 from typing import TYPE_CHECKING
@@ -18,6 +19,7 @@ from .segment_calculator import (
     outlasts_the_window,
 )
 from .segment_codec import ALTITUDE_STEP
+from .spikes import altitude_spikes
 from .types import COORDINATE_DECIMALS
 
 if TYPE_CHECKING:
@@ -43,6 +45,43 @@ def path_duration(metadata: PathMetadata) -> float:
             logger.debug("  Could not parse timestamps '%s' -> '%s'", start_ts, end_ts)
 
     return path_duration_seconds * metadata.get("span_share", 1.0)
+
+
+def without_altitude_spikes(path: FlightPath) -> FlightPath:
+    """The path with the glitches of its logger's altitudes smoothed over.
+
+    A glitch (see ``spikes.altitude_spikes``) gets the altitude on the line
+    between the fixes either side of it that are none, by their order, or
+    that of the nearest such fix at an end of the path; its position and
+    time stay. Kept, a single fix at 0 ft added a climb from the ground and
+    back to the statistics and dipped the path to the ground in 3D. The
+    landings read the path as it was recorded and leave such fixes out on
+    their own (see ``landings._timed_fixes``).
+    """
+    # Flight paths only carry points with a known altitude (see
+    # types.FlightPath)
+    altitudes_m = [point.alt or 0.0 for point in path]
+    spikes = altitude_spikes([altitude * METERS_TO_FEET for altitude in altitudes_m])
+    kept = [index for index, spike in enumerate(spikes) if not spike]
+    if not kept or len(kept) == len(path):
+        return path
+    smoothed = list(path)
+    for index, spike in enumerate(spikes):
+        if not spike:
+            continue
+        position = bisect_left(kept, index)
+        if position == 0:
+            altitude = altitudes_m[kept[0]]
+        elif position == len(kept):
+            altitude = altitudes_m[kept[-1]]
+        else:
+            left, right = kept[position - 1], kept[position]
+            share = (index - left) / (right - left)
+            altitude = (
+                altitudes_m[left] + (altitudes_m[right] - altitudes_m[left]) * share
+            )
+        smoothed[index] = path[index]._replace(alt=altitude)
+    return smoothed
 
 
 def altitude_gain_m(altitudes_m: Sequence[float]) -> float:

@@ -7,9 +7,14 @@ silently stops checking fails open, and every check below therefore starts
 from a consistent fixture repository and breaks exactly one thing.
 """
 
+import email.message
+import http.client
 import importlib.util
+import io
 import json
 import sys
+import urllib.error
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -54,8 +59,18 @@ ACTION = """runs:
 """
 GITLEAKS = "v8.30.1"
 # The gitleaks image of the secrets job and the hook of the same release
-GITLEAKS_STEP = (
-    f"          GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks@{DIGEST} # {GITLEAKS}\n"
+GITLEAKS_IMAGE = f"ghcr.io/gitleaks/gitleaks:{GITLEAKS}@{DIGEST}"
+# The steps of the workflow that read the two image files
+WORKFLOW = (
+    "      - run: |\n"
+    "          image=$(sed -n 's/^FROM //p' .github/images/playwright/Dockerfile)\n"
+    "      - run: |\n"
+    "          image=$(sed -n 's/^FROM //p' .github/images/gitleaks/Dockerfile)\n"
+)
+# The command of the documents, which reads the Playwright image file
+DOC_COMMAND = (
+    "```sh\npodman run \"$(sed -n 's/^FROM //p' "
+    '.github/images/playwright/Dockerfile)" npx playwright test\n```\n'
 )
 PRE_COMMIT = (
     "repos:\n"
@@ -120,19 +135,20 @@ def repo(tmp_path, monkeypatch):
     )
     workflow = tmp_path / ".github" / "workflows"
     workflow.mkdir()
-    (workflow / "test.yml").write_text(
-        f"      image: {IMAGE}\n" + GITLEAKS_STEP,
-        encoding="utf-8",
-    )
+    (workflow / "test.yml").write_text(WORKFLOW, encoding="utf-8")
+    for dockerfile, image in (
+        (check_pins.PLAYWRIGHT_DOCKERFILE, IMAGE),
+        (check_pins.GITLEAKS_DOCKERFILE, GITLEAKS_IMAGE),
+    ):
+        path = tmp_path / dockerfile
+        path.parent.mkdir(parents=True)
+        path.write_text(f"# The image of a job\nFROM {image}\n", encoding="utf-8")
     (tmp_path / ".pre-commit-config.yaml").write_text(PRE_COMMIT, encoding="utf-8")
-    # The documents that quote the image for the visual tests
+    # The documents that run the image for the visual tests
     for name in check_pins.PLAYWRIGHT_IMAGE_DOCS:
         doc = tmp_path / name
         doc.parent.mkdir(parents=True, exist_ok=True)
-        doc.write_text(
-            f"```sh\npodman run {IMAGE} npx playwright test\n```\n",
-            encoding="utf-8",
-        )
+        doc.write_text(DOC_COMMAND, encoding="utf-8")
     package = tmp_path / "flown"
     package.mkdir()
     (package / "__init__.py").write_text(
@@ -242,75 +258,91 @@ class TestUvRelease:
         assert "installs no uv release by version" in capsys.readouterr().err
 
 
+def edit(path: Path, old: str, new: str):
+    """Replace text in a file of the fixture repository."""
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8"
+    )
+
+
 class TestPlaywrightImage:
     def test_an_image_ahead_of_the_library_fails(self, repo, capsys):
-        path = repo / ".github/workflows/test.yml"
-        path.write_text(
-            path.read_text(encoding="utf-8").replace(
-                f"v{PLAYWRIGHT}-noble", "v1.70.0-noble"
-            ),
-            encoding="utf-8",
+        edit(
+            repo / check_pins.PLAYWRIGHT_DOCKERFILE,
+            f"v{PLAYWRIGHT}-noble",
+            "v1.70.0-noble",
         )
+        for name in check_pins.PLAYWRIGHT_IMAGE_DOCS:
+            (repo / name).write_text(DOC_COMMAND, encoding="utf-8")
 
         assert check_pins.main() == 1
 
+        err = capsys.readouterr().err
         assert (
-            "runs the Playwright image v1.70.0, package-lock.json pins 1.63.0"
-            in capsys.readouterr().err
+            "names the Playwright image v1.70.0, package-lock.json pins 1.63.0" in err
         )
+        assert "check_pins.py --fix" in err
 
     def test_an_image_without_a_digest_fails(self, repo, capsys):
-        path = repo / ".github/workflows/test.yml"
-        path.write_text(
-            path.read_text(encoding="utf-8").replace(f"@{DIGEST}", ""),
-            encoding="utf-8",
-        )
+        edit(repo / check_pins.PLAYWRIGHT_DOCKERFILE, f"@{DIGEST}", "")
 
         assert check_pins.main() == 1
 
         assert "by its @sha256 digest" in capsys.readouterr().err
 
     def test_a_malformed_digest_is_no_digest(self, repo, capsys):
-        path = repo / ".github/workflows/test.yml"
-        path.write_text(
-            path.read_text(encoding="utf-8").replace(DIGEST, "sha256:abc"),
-            encoding="utf-8",
-        )
+        edit(repo / check_pins.PLAYWRIGHT_DOCKERFILE, DIGEST, "sha256:abc")
 
         assert check_pins.main() == 1
 
         assert "by its @sha256 digest" in capsys.readouterr().err
 
-    def test_a_second_job_on_the_same_image_passes(self, repo):
+    def test_a_second_image_in_the_file_fails(self, repo, capsys):
+        path = repo / check_pins.PLAYWRIGHT_DOCKERFILE
+        path.write_text(
+            path.read_text(encoding="utf-8") + f"FROM {IMAGE}\n", encoding="utf-8"
+        )
+
+        assert check_pins.main() == 1
+
+        assert "has 2 FROM lines, not the one image" in capsys.readouterr().err
+
+    def test_a_missing_file_is_a_problem_not_a_crash(self, repo, capsys):
+        (repo / check_pins.PLAYWRIGHT_DOCKERFILE).unlink()
+
+        assert check_pins.main() == 1
+
+        assert f"{check_pins.PLAYWRIGHT_DOCKERFILE} cannot be read" in (
+            capsys.readouterr().err
+        )
+
+    def test_a_workflow_naming_the_image_itself_fails(self, repo, capsys):
+        """A second place to bump, which Dependabot and --fix do not know"""
         path = repo / ".github/workflows/test.yml"
         path.write_text(
             path.read_text(encoding="utf-8") + f"      image: {IMAGE}\n",
             encoding="utf-8",
         )
 
-        assert check_pins.main() == 0
+        assert check_pins.main() == 1
 
-    def test_a_second_job_on_another_image_fails(self, repo, capsys):
-        """The e2e jobs run in the image as well; one left behind on a bump
-        would test other browsers than the visual job without a word."""
-        stale = f"mcr.microsoft.com/playwright:v1.62.0-noble@{DIGEST}"
-        path = repo / ".github/workflows/test.yml"
-        path.write_text(
-            path.read_text(encoding="utf-8") + f"      image: {stale}\n",
-            encoding="utf-8",
+        assert f"names the image {IMAGE} itself instead of reading" in (
+            capsys.readouterr().err
         )
+
+    def test_a_workflow_not_reading_the_file_fails(self, repo, capsys):
+        (repo / ".github/workflows/test.yml").write_text("jobs:\n", encoding="utf-8")
 
         assert check_pins.main() == 1
 
-        err = capsys.readouterr().err
-        assert f"runs different Playwright images: {IMAGE}, {stale}" in err
-        assert "runs the Playwright image v1.62.0, package-lock.json pins" in err
+        assert (
+            f"does not read its image from {check_pins.PLAYWRIGHT_DOCKERFILE}"
+            in capsys.readouterr().err
+        )
 
     def test_a_document_quoting_the_same_image_passes(self, repo):
         (repo / "CONTRIBUTING.md").write_text(
-            f"Build it first.\n\n```sh\npodman run {IMAGE} npx playwright "
-            "test --project=visual\n```\n",
-            encoding="utf-8",
+            DOC_COMMAND + f"\nIt is `{IMAGE}` today.\n", encoding="utf-8"
         )
 
         assert check_pins.main() == 0
@@ -325,34 +357,27 @@ class TestPlaywrightImage:
         assert f"{name} is missing" in capsys.readouterr().err
 
     @pytest.mark.parametrize("name", check_pins.PLAYWRIGHT_IMAGE_DOCS)
-    def test_a_document_quoting_no_image_fails(self, repo, capsys, name):
+    def test_a_document_not_running_the_file_fails(self, repo, capsys, name):
         (repo / name).write_text("See the testing guide.\n", encoding="utf-8")
 
         assert check_pins.main() == 1
 
-        assert f"{name} quotes no Playwright image" in capsys.readouterr().err
+        assert (
+            f"{name} does not run the image of {check_pins.PLAYWRIGHT_DOCKERFILE}"
+            in capsys.readouterr().err
+        )
 
     def test_a_document_quoting_another_image_fails(self, repo, capsys):
         stale = f"mcr.microsoft.com/playwright:v{PLAYWRIGHT}-noble"
         doc = repo / "doc/development/testing.md"
-        doc.write_text(
-            f"Run `podman run {stale} npx playwright test`.\n", encoding="utf-8"
-        )
+        doc.write_text(DOC_COMMAND + f"Or `podman run {stale}`.\n", encoding="utf-8")
 
         assert check_pins.main() == 1
 
         assert (
             f"doc/development/testing.md quotes the Playwright image {stale}, "
-            f".github/workflows/test.yml runs {IMAGE}"
+            f"{check_pins.PLAYWRIGHT_DOCKERFILE} names {IMAGE}"
         ) in capsys.readouterr().err
-
-    def test_a_workflow_without_the_image_fails(self, repo, capsys):
-        path = repo / ".github/workflows/test.yml"
-        path.write_text("jobs:\n", encoding="utf-8")
-
-        assert check_pins.main() == 1
-
-        assert "runs no Playwright image" in capsys.readouterr().err
 
     def test_an_unpinned_library_fails(self, repo, capsys):
         lock = json.loads((repo / "package-lock.json").read_text(encoding="utf-8"))
@@ -532,7 +557,7 @@ class TestGitleaks:
     """The secrets job runs the gitleaks release the pre-commit hook pins."""
 
     def test_a_hook_bumped_alone_fails(self, repo, capsys):
-        """Dependabot bumps the hook and leaves the image's digest behind."""
+        """A hand edit of the hook leaves the image behind."""
         path = repo / ".pre-commit-config.yaml"
         path.write_text(PRE_COMMIT.replace(GITLEAKS, "v8.31.0"), encoding="utf-8")
 
@@ -540,7 +565,7 @@ class TestGitleaks:
 
         err = capsys.readouterr().err
         assert f"runs gitleaks {GITLEAKS}, the pre-commit hook pins v8.31.0" in err
-        assert "Set GITLEAKS_IMAGE" in err
+        assert f"Set the image of {check_pins.GITLEAKS_DOCKERFILE}" in err
 
     def test_a_hook_on_a_tag_is_read(self, repo):
         path = repo / ".pre-commit-config.yaml"
@@ -551,30 +576,32 @@ class TestGitleaks:
 
         assert check_pins.main() == 0
 
-    def test_an_image_without_its_release_fails(self, repo, capsys):
-        path = repo / ".github/workflows/test.yml"
-        text = path.read_text(encoding="utf-8")
-        path.write_text(text.replace(f" # {GITLEAKS}", ""), encoding="utf-8")
+    def test_an_image_without_a_digest_fails(self, repo, capsys):
+        edit(repo / check_pins.GITLEAKS_DOCKERFILE, f"@{DIGEST}", "")
 
         assert check_pins.main() == 1
 
-        assert "names no release in the comment of its gitleaks image" in (
-            capsys.readouterr().err
-        )
+        assert "by its tag and @sha256 digest" in capsys.readouterr().err
 
-    def test_an_image_without_a_digest_fails(self, repo, capsys):
+    def test_an_image_by_its_digest_alone_fails(self, repo, capsys):
+        """Without its tag the release cannot be compared with the hook's"""
+        edit(repo / check_pins.GITLEAKS_DOCKERFILE, f":{GITLEAKS}@", "@")
+
+        assert check_pins.main() == 1
+
+        assert "by its tag and @sha256 digest" in capsys.readouterr().err
+
+    def test_a_workflow_naming_the_image_itself_fails(self, repo, capsys):
         path = repo / ".github/workflows/test.yml"
-        text = path.read_text(encoding="utf-8")
         path.write_text(
-            text.replace(f"gitleaks@{DIGEST}", f"gitleaks:{GITLEAKS}"),
+            path.read_text(encoding="utf-8")
+            + f"          GITLEAKS_IMAGE: {GITLEAKS_IMAGE}\n",
             encoding="utf-8",
         )
 
         assert check_pins.main() == 1
 
-        assert "runs no gitleaks image pinned by its digest" in (
-            capsys.readouterr().err
-        )
+        assert f"names the image {GITLEAKS_IMAGE} itself" in capsys.readouterr().err
 
     def test_a_config_without_the_hook_fails(self, repo, capsys):
         (repo / ".pre-commit-config.yaml").write_text("repos: []\n", encoding="utf-8")
@@ -591,6 +618,418 @@ class TestGitleaks:
         assert check_pins.main() == 1
 
         assert ".pre-commit-config.yaml cannot be read" in capsys.readouterr().err
+
+
+NOW = datetime(2026, 10, 27, 12, tzinfo=UTC)
+
+
+def uv_settings(window, **entries):
+    """The [tool.uv] table of pyproject.toml as tomllib reads it"""
+    uv = {"exclude-newer": window}
+    if entries:
+        uv["exclude-newer-package"] = entries
+    return {"tool": {"uv": uv}}
+
+
+class TestExcludeNewer:
+    """An exclude-newer-package entry the global cutoff has passed holds its
+    package back for good, without an error anywhere."""
+
+    def test_an_entry_younger_than_the_cutoff_passes(self):
+        settings = uv_settings("7 days", certifi="2026-10-21T00:00:00Z")
+
+        assert check_pins.exclude_newer_mismatches(settings, NOW) == []
+
+    def test_an_entry_the_cutoff_has_passed_fails(self):
+        settings = uv_settings("7 days", setuptools="2026-10-20T00:00:00Z")
+
+        problems = check_pins.exclude_newer_mismatches(settings, NOW)
+
+        assert len(problems) == 1
+        assert "holds setuptools at 2026-10-20T00:00:00Z" in problems[0]
+        assert "now 2026-10-20 12:00 UTC" in problems[0]
+
+    @pytest.mark.parametrize(
+        "window", ["7 days", "1 week", "168 hours", "P7D", "P1W", "PT168H"]
+    )
+    def test_every_spelling_of_the_span_is_read(self, window):
+        settings = uv_settings(window, a="2026-10-20T11:00:00Z", b="2026-10-20T13:00Z")
+
+        problems = check_pins.exclude_newer_mismatches(settings, NOW)
+
+        assert [problem.split(" at ")[0] for problem in problems] == [
+            "pyproject.toml: exclude-newer-package holds a"
+        ]
+
+    def test_a_cutoff_given_as_a_date_is_read(self):
+        settings = uv_settings("2026-10-22", old="2026-10-21", new="2026-10-23")
+
+        problems = check_pins.exclude_newer_mismatches(settings, NOW)
+
+        assert len(problems) == 1
+        assert "holds old" in problems[0]
+
+    def test_toml_dates_are_read_as_their_strings(self):
+        """exclude-newer = 2026-10-22 without quotes is a TOML date"""
+        settings = uv_settings(
+            date(2026, 10, 22),
+            old=datetime(2026, 10, 21, tzinfo=UTC),
+            new=date(2026, 10, 23),
+        )
+
+        problems = check_pins.exclude_newer_mismatches(settings, NOW)
+
+        assert len(problems) == 1
+        assert "holds old at 2026-10-21T00:00:00+00:00" in problems[0]
+
+    def test_an_entry_without_a_date_is_left_alone(self):
+        settings = uv_settings("7 days", pip=False)
+
+        assert check_pins.exclude_newer_mismatches(settings, NOW) == []
+
+    def test_no_global_cutoff_checks_nothing(self):
+        settings = {"tool": {"uv": {"exclude-newer-package": {"a": "2020-01-01"}}}}
+
+        assert check_pins.exclude_newer_mismatches(settings, NOW) == []
+
+    def test_an_unreadable_cutoff_fails(self):
+        settings = uv_settings("a while", a="2026-10-21")
+
+        assert check_pins.exclude_newer_mismatches(settings, NOW) == [
+            'pyproject.toml: [tool.uv] exclude-newer "a while" cannot be read'
+        ]
+
+    def test_an_unreadable_entry_fails(self):
+        settings = uv_settings("7 days", a="next week")
+
+        assert check_pins.exclude_newer_mismatches(settings, NOW) == [
+            'pyproject.toml: exclude-newer-package "a = next week" cannot be read'
+        ]
+
+    def test_main_fails_on_a_passed_entry(self, repo, capsys):
+        path = repo / "pyproject.toml"
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            + '[tool.uv]\nexclude-newer = "7 days"\n'
+            + 'exclude-newer-package = { certifi = "2020-01-01T00:00:00Z" }\n',
+            encoding="utf-8",
+        )
+
+        assert check_pins.main() == 1
+
+        err = capsys.readouterr().err
+        assert "holds certifi at 2020-01-01T00:00:00Z" in err
+        assert "Remove the exclude-newer-package entries" in err
+        # The removal changes nothing else: `make lock` moved every package
+        assert "then run `uv lock`, which keeps every pin" in err
+
+
+NEW_DIGEST = "sha256:" + "cd" * 32
+
+
+class FakeResponse:
+    """What urlopen returns, as a context manager"""
+
+    def __init__(self, headers=None, body=b""):
+        self.headers = headers or {}
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def read(self, *_):
+        return self.body
+
+
+def http_error(url, code, headers=None):
+    message = email.message.Message()
+    for name, value in (headers or {}).items():
+        message[name] = value
+    return urllib.error.HTTPError(url, code, "error", message, io.BytesIO())
+
+
+class TestRegistryDigest:
+    """The digest of a tag, asked of its registry without credentials."""
+
+    def test_a_registry_without_tokens_answers_at_once(self, monkeypatch):
+        calls = []
+
+        def urlopen(request, timeout):
+            calls.append((request.full_url, request.get_method()))
+            assert "application/vnd.oci.image.index.v1+json" in request.get_header(
+                "Accept"
+            )
+            return FakeResponse({"Docker-Content-Digest": NEW_DIGEST})
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        assert (
+            check_pins.registry_digest("mcr.microsoft.com/playwright:v1.64.0-noble")
+            == NEW_DIGEST
+        )
+        assert calls == [
+            ("https://mcr.microsoft.com/v2/playwright/manifests/v1.64.0-noble", "HEAD")
+        ]
+
+    def test_a_registry_that_wants_a_token_gets_one(self, monkeypatch):
+        challenge = (
+            'Bearer realm="https://ghcr.io/token",service="ghcr.io",'
+            'scope="repository:gitleaks/gitleaks:pull"'
+        )
+        calls = []
+
+        def urlopen(request, timeout):
+            url = request if isinstance(request, str) else request.full_url
+            calls.append(url)
+            if isinstance(request, str):
+                return FakeResponse(body=b'{"token": "anonymous"}')
+            if request.get_header("Authorization") != "Bearer anonymous":
+                raise http_error(url, 401, {"WWW-Authenticate": challenge})
+            return FakeResponse({"Docker-Content-Digest": NEW_DIGEST})
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        assert check_pins.registry_digest(f"ghcr.io/gitleaks/gitleaks:{GITLEAKS}") == (
+            NEW_DIGEST
+        )
+        assert calls[1] == (
+            "https://ghcr.io/token?service=ghcr.io&"
+            "scope=repository%3Agitleaks%2Fgitleaks%3Apull"
+        )
+
+    def test_docker_hub_is_asked_at_its_registry_host(self, monkeypatch):
+        urls = []
+
+        def urlopen(request, timeout):
+            urls.append(request.full_url)
+            return FakeResponse({"Docker-Content-Digest": NEW_DIGEST})
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        check_pins.registry_digest("docker.io/library/node:26.12.1-slim")
+
+        assert urls == [
+            "https://registry-1.docker.io/v2/library/node/manifests/26.12.1-slim"
+        ]
+
+    def test_an_unknown_tag_is_a_lookup_error(self, monkeypatch):
+        def urlopen(request, timeout):
+            raise http_error(request.full_url, 404)
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        with pytest.raises(LookupError, match="has no"):
+            check_pins.registry_digest("mcr.microsoft.com/playwright:v9.9.9-noble")
+
+    @pytest.mark.parametrize(
+        ("challenge", "token", "message"),
+        [
+            ('Bearer realm="http://ghcr.io/token"', b"{}", "asks for a token from"),
+            ('Bearer realm="https://ghcr.io/token"', b"{}", "handed out no token"),
+        ],
+    )
+    def test_a_token_that_cannot_be_had_is_an_os_error(
+        self, monkeypatch, challenge, token, message
+    ):
+        def urlopen(request, timeout):
+            if isinstance(request, str):
+                return FakeResponse(body=token)
+            raise http_error(request.full_url, 401, {"WWW-Authenticate": challenge})
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        with pytest.raises(OSError, match=message):
+            check_pins.registry_digest(f"ghcr.io/gitleaks/gitleaks:{GITLEAKS}")
+
+    def test_an_answer_without_a_digest_is_an_os_error(self, monkeypatch):
+        monkeypatch.setattr(
+            check_pins.urllib.request,
+            "urlopen",
+            lambda request, timeout: FakeResponse(),
+        )
+
+        with pytest.raises(OSError, match="without a Docker-Content-Digest"):
+            check_pins.registry_digest("mcr.microsoft.com/playwright:v1.64.0-noble")
+
+    def test_a_server_error_is_an_os_error(self, monkeypatch):
+        def urlopen(request, timeout):
+            raise http_error(request.full_url, 503)
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        with pytest.raises(OSError, match="answered 503"):
+            check_pins.registry_digest("mcr.microsoft.com/playwright:v1.64.0-noble")
+
+    def test_a_token_service_without_the_page_is_an_os_error(self, monkeypatch):
+        """A 404 of the token service says nothing of the tag"""
+        challenge = 'Bearer realm="https://ghcr.io/token",service="ghcr.io"'
+
+        def urlopen(request, timeout):
+            if isinstance(request, str):
+                raise http_error(request, 404)
+            raise http_error(request.full_url, 401, {"WWW-Authenticate": challenge})
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        with pytest.raises(OSError, match=r"token.* answered 404"):
+            check_pins.registry_digest(f"ghcr.io/gitleaks/gitleaks:{GITLEAKS}")
+
+    @pytest.mark.parametrize("cut_short", [False, True])
+    def test_an_answer_that_cannot_be_read_is_an_os_error(self, monkeypatch, cut_short):
+        """A token answer that is no JSON, or one cut short: a warning in
+        main like an unreachable registry, not a traceback"""
+        challenge = 'Bearer realm="https://ghcr.io/token",service="ghcr.io"'
+
+        def urlopen(request, timeout):
+            if not isinstance(request, str):
+                raise http_error(request.full_url, 401, {"WWW-Authenticate": challenge})
+            if cut_short:
+                raise http.client.IncompleteRead(b"")
+            return FakeResponse(body=b"<html>rate limited</html>")
+
+        monkeypatch.setattr(check_pins.urllib.request, "urlopen", urlopen)
+
+        with pytest.raises(OSError, match="cannot be read"):
+            check_pins.registry_digest(f"ghcr.io/gitleaks/gitleaks:{GITLEAKS}")
+
+    def test_a_reference_without_a_tag_is_a_lookup_error(self):
+        with pytest.raises(LookupError, match="no registry/repository:tag"):
+            check_pins.registry_digest("playwright")
+
+
+def fake_registry(monkeypatch, digests):
+    """Answer registry_digest from a map of references to digests; a value
+    that is an exception is raised instead"""
+
+    def registry_digest(reference):
+        answer = digests[reference]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(check_pins, "registry_digest", registry_digest)
+
+
+PLAYWRIGHT_TAG = f"mcr.microsoft.com/playwright:v{PLAYWRIGHT}-noble"
+GITLEAKS_TAG = f"ghcr.io/gitleaks/gitleaks:{GITLEAKS}"
+
+
+class TestOnline:
+    """--online asks the registries for the digest of each tag."""
+
+    def test_digests_of_their_tags_pass(self, repo, monkeypatch, capsys):
+        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST})
+
+        assert check_pins.main(["--online"]) == 0
+
+        assert "each image by the digest of its tag" in capsys.readouterr().out
+
+    def test_a_tag_edited_alone_fails(self, repo, monkeypatch, capsys):
+        """The bump of 1.64.0 to 1.64.1 kept the browsers, so every check
+        but this one passed on the old image"""
+        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: NEW_DIGEST, GITLEAKS_TAG: DIGEST})
+
+        assert check_pins.main(["--online"]) == 1
+
+        assert (
+            f"pins {PLAYWRIGHT_TAG} by {DIGEST}, the registry gives {NEW_DIGEST}"
+            in capsys.readouterr().err
+        )
+
+    def test_a_tag_the_registry_does_not_know_fails(self, repo, monkeypatch, capsys):
+        fake_registry(
+            monkeypatch,
+            {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: LookupError("ghcr.io has no tag")},
+        )
+
+        assert check_pins.main(["--online"]) == 1
+
+        assert "ghcr.io has no tag" in capsys.readouterr().err
+
+    def test_a_registry_out_of_reach_is_a_warning(self, repo, monkeypatch, capsys):
+        fake_registry(
+            monkeypatch, {PLAYWRIGHT_TAG: OSError("timed out"), GITLEAKS_TAG: DIGEST}
+        )
+
+        assert check_pins.main(["--online"]) == 0
+
+        captured = capsys.readouterr()
+        assert f"the digest of {PLAYWRIGHT_TAG} was not checked (timed out)" in (
+            captured.err
+        )
+        assert "each image by the digest" not in captured.out
+
+    def test_offline_asks_no_registry(self, repo, monkeypatch):
+        fake_registry(monkeypatch, {})
+
+        assert check_pins.main() == 0
+
+    def test_an_image_without_a_digest_is_not_asked_about(self, repo, monkeypatch):
+        """The offline check reports it already"""
+        edit(repo / check_pins.GITLEAKS_DOCKERFILE, f"@{DIGEST}", "")
+        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST})
+
+        assert check_pins.main(["--online"]) == 1
+
+
+class TestFix:
+    """--fix writes the tags the library and the hook ask for, with digests."""
+
+    def test_a_library_and_hook_bump_is_written(self, repo, monkeypatch, capsys):
+        lock = json.loads((repo / "package-lock.json").read_text(encoding="utf-8"))
+        lock["packages"]["node_modules/@playwright/test"]["version"] = "1.64.1"
+        (repo / "package-lock.json").write_text(json.dumps(lock), encoding="utf-8")
+        check_pins.read_package_lock.cache_clear()
+        (repo / ".pre-commit-config.yaml").write_text(
+            PRE_COMMIT.replace(GITLEAKS, "v8.31.0"), encoding="utf-8"
+        )
+        playwright = "mcr.microsoft.com/playwright:v1.64.1-noble"
+        gitleaks = "ghcr.io/gitleaks/gitleaks:v8.31.0"
+        fake_registry(monkeypatch, {playwright: NEW_DIGEST, gitleaks: NEW_DIGEST})
+
+        assert check_pins.main(["--fix"]) == 0
+
+        out = capsys.readouterr().out
+        assert f"now runs {playwright}@{NEW_DIGEST}" in out
+        assert f"now runs {gitleaks}@{NEW_DIGEST}" in out
+        assert (repo / check_pins.PLAYWRIGHT_DOCKERFILE).read_text(
+            encoding="utf-8"
+        ) == f"# The image of a job\nFROM {playwright}@{NEW_DIGEST}\n"
+        assert f"FROM {gitleaks}@{NEW_DIGEST}\n" in (
+            repo / check_pins.GITLEAKS_DOCKERFILE
+        ).read_text(encoding="utf-8")
+
+    def test_files_already_right_are_left_alone(self, repo, monkeypatch, capsys):
+        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST})
+
+        assert check_pins.main(["--fix"]) == 0
+
+        assert "now runs" not in capsys.readouterr().out
+
+    def test_a_registry_out_of_reach_leaves_the_file(self, repo, monkeypatch, capsys):
+        before = (repo / check_pins.GITLEAKS_DOCKERFILE).read_text(encoding="utf-8")
+        fake_registry(
+            monkeypatch,
+            {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: OSError("timed out")},
+        )
+
+        assert check_pins.main(["--fix"]) == 0
+
+        assert (repo / check_pins.GITLEAKS_DOCKERFILE).read_text(
+            encoding="utf-8"
+        ) == before
+        assert "was not updated (timed out)" in capsys.readouterr().err
+
+    def test_an_unreadable_file_is_skipped(self, repo, monkeypatch, capsys):
+        (repo / check_pins.PLAYWRIGHT_DOCKERFILE).unlink()
+        fake_registry(monkeypatch, {GITLEAKS_TAG: DIGEST})
+
+        assert check_pins.main(["--fix"]) == 1
+
+        assert "cannot be read" in capsys.readouterr().err
 
 
 SETUPTOOLS = "84.0.0"

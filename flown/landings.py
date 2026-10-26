@@ -59,21 +59,28 @@ from itertools import pairwise
 from statistics import median
 from typing import TYPE_CHECKING, NamedTuple
 
-from .airport_lookup import load_airport_database, load_runway_database
+from .airport_lookup import (
+    database_airport_name,
+    extract_icao_codes_from_name,
+    load_airport_database,
+    load_runway_database,
+)
 from .constants import (
     KM_TO_NAUTICAL_MILES,
     MAX_GROUNDSPEED_KNOTS,
     METERS_TO_FEET,
     SECONDS_PER_HOUR,
 )
+from .date_tokens import strip_dates
 from .geometry import METRES_PER_DEGREE, heading_difference, planar_km, true_bearing
 from .logger import logger
+from .spikes import altitude_spikes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from .airport_lookup import AirportRecord, RunwayEnd
-    from .types import FlightPath
+    from .types import FlightPath, PathMetadata
 
 __all__ = [
     "Field",
@@ -83,6 +90,7 @@ __all__ = [
     "detect_path_landings",
     "field_index",
     "log_landings",
+    "name_airports",
     "path_landings",
 ]
 
@@ -121,10 +129,6 @@ MIN_TIMED_FIXES = 10
 SPEED_HALF_WINDOW_SECONDS = 5.0
 SPEED_MIN_SECONDS = 2.0
 SPEED_MAX_SECONDS = 120.0
-# An altitude this far from the median of the fixes around it is a glitch
-# of the logger (see _without_spikes)
-SPIKE_FT = 200.0
-SPIKE_WINDOW = 7
 # Faster than this up or down is no light aircraft but a logger that lost
 # its fix; no approach or touchdown is read from such a fix
 MAX_VERTICAL_FT_PER_SECOND = 60.0
@@ -154,14 +158,16 @@ class FieldIndex:
     def __init__(self, fields: Iterable[Field]) -> None:
         """Put every field into its cell."""
         self._cells: dict[tuple[int, int], list[Field]] = {}
+        self._count = 0
         for entry in fields:
             self._cells.setdefault(self._cell(entry.lat, entry.lon), []).append(entry)
+            self._count += 1
         # The fields around a cell, by cell and radius (see _around)
         self._nearby: dict[tuple[int, int, float], list[Field]] = {}
 
     def __len__(self) -> int:
-        """The number of fields."""
-        return sum(len(cell) for cell in self._cells.values())
+        """The number of fields, counted once: every parsed file asks."""
+        return self._count
 
     @staticmethod
     def _cell(lat: float, lon: float) -> tuple[int, int]:
@@ -258,6 +264,12 @@ class FlightLandings:
     # Every touchdown in the order flown: the field and the runway, None
     # where the runway could not be told
     touchdowns: list[tuple[str, str | None]] = field(default_factory=list)
+    # The field of the first takeoff and of the last full-stop landing, the
+    # airports of a flight whose name tells none (see name_airports): None
+    # for a first takeoff from a field the database lacks, and for a flight
+    # that took off again after its last full stop
+    departure: str | None = None
+    arrival: str | None = None
 
 
 class _Fix(NamedTuple):
@@ -291,21 +303,13 @@ def _timed_fixes(path: FlightPath) -> list[_Fix]:
 def _without_spikes(fixes: list[_Fix]) -> list[_Fix]:
     """The fixes without those whose altitude leaps away from their neighbours.
 
-    Some loggers write an altitude of 0 now and then, or another that is
-    hundreds of feet off, for a fix or two; read as they are, they touch
-    down wherever they happen near a field. A fix is dropped when its
-    altitude is more than ``SPIKE_FT`` from the median of the
-    ``SPIKE_WINDOW`` fixes around it, which a real touchdown, at the rates
-    a light aircraft climbs and sinks, never is.
+    Read as they are, the glitches of a logger (see
+    ``spikes.altitude_spikes``) touch down wherever they happen near a
+    field. A real touchdown, at the rates a light aircraft climbs and
+    sinks, is never one.
     """
-    half = SPIKE_WINDOW // 2
-    altitudes = [fix.alt_ft for fix in fixes]
-    kept: list[_Fix] = []
-    for i, fix in enumerate(fixes):
-        window = sorted(altitudes[max(0, i - half) : i + half + 1])
-        if abs(fix.alt_ft - window[len(window) // 2]) <= SPIKE_FT:
-            kept.append(fix)
-    return kept
+    spikes = altitude_spikes([fix.alt_ft for fix in fixes])
+    return [fix for fix, spike in zip(fixes, spikes, strict=True) if not spike]
 
 
 def _groundspeeds(fixes: Sequence[_Fix], times: Sequence[float]) -> list[float | None]:
@@ -455,11 +459,16 @@ class _Detector:
             return at.elevation_ft + self.offset
         return self.taxi_grounds.get(at.ident)
 
-    def touch_down(self, index: int, at: Field) -> None:
-        """Record a touchdown at ``at`` from the fix at ``index``."""
+    def touch_down(self, index: int, at: Field, stopped: bool = False) -> None:
+        """Record a touchdown at ``at`` from the fix at ``index``.
+
+        ``stopped`` for a full-stop landing, which makes ``at`` the arrival.
+        """
         self.result.touchdowns.append(
             (at.ident, _runway(self.fixes, self.times, index, at))
         )
+        if stopped:
+            self.result.arrival = at.ident
 
     def step(self, index: int, fix: _Fix) -> None:
         """Read one fix."""
@@ -475,7 +484,7 @@ class _Detector:
             self.approach = None
             return
         if self.on_ground:
-            self._rolling(fix, speed, ground)
+            self._rolling(fix, speed, at, ground)
         elif self.contact is not None and self.contact_at is not None:
             self._after_contact(fix, speed, self.contact, self.contact_at)
         elif not self.armed:
@@ -486,7 +495,9 @@ class _Detector:
         else:
             self._near_field(index, speed, at, fix.alt_ft - ground)
 
-    def _rolling(self, fix: _Fix, speed: float, ground: float | None) -> None:
+    def _rolling(
+        self, fix: _Fix, speed: float, at: Field | None, ground: float | None
+    ) -> None:
         """On the ground: a takeoff once it is fast and climbs after."""
         if speed < TAKEOFF_KNOTS:
             return
@@ -500,6 +511,12 @@ class _Detector:
             self.base_ft = reference
             self.approach = None
             self.result.takeoffs += 1
+            # The field of the first takeoff alone, which stays None where the
+            # database has none: a later one is no departure. And a takeoff
+            # after a full stop leaves for a field the landings may never see.
+            if self.result.takeoffs == 1 and at is not None:
+                self.result.departure = at.ident
+            self.result.arrival = None
 
     def _after_contact(
         self, fix: _Fix, speed: float, contact: int, contact_at: Field
@@ -512,7 +529,7 @@ class _Detector:
             and abs(fix.alt_ft - contact_ground) <= CONTACT_FT
         ):
             self.result.landings += 1
-            self.touch_down(contact, contact_at)
+            self.touch_down(contact, contact_at, stopped=True)
             self.on_ground = True
             self.contact = self.contact_at = None
         elif fix.alt_ft - self.fixes[contact].alt_ft >= CLIMB_AWAY_FT:
@@ -532,7 +549,7 @@ class _Detector:
             if speed < STOP_KNOTS:
                 # Down and stopped between two fixes
                 self.result.landings += 1
-                self.touch_down(index, at)
+                self.touch_down(index, at, stopped=True)
                 self.on_ground = True
             elif speed >= CONTACT_KNOTS:
                 self.contact, self.contact_at = index, at
@@ -565,7 +582,7 @@ class _Detector:
         if self.contact is not None and self.contact_at is not None:
             # The recording ended on the runway, before the aircraft slowed
             self.result.landings += 1
-            self.touch_down(self.contact, self.contact_at)
+            self.touch_down(self.contact, self.contact_at, stopped=True)
         return self.result
 
 
@@ -613,6 +630,33 @@ def path_landings(paths: Sequence[FlightPath]) -> list[FlightLandings | None]:
     if not len(fields):
         return [None] * len(paths)
     return [detect_path_landings(path, fields) for path in paths]
+
+
+def name_airports(metadata: PathMetadata, landings: FlightLandings | None) -> None:
+    """Give a path whose name tells no airport those its landings found.
+
+    A name such as "Flight" or "Flight with Anna" is no route and holds no
+    code, so neither the map nor the statistics had an airport for the
+    flight, though it took off and landed at fields the database knows. Its
+    departure becomes the field of its first takeoff and its arrival that
+    of its last full-stop landing (see ``FlightLandings``), as the parser
+    names a route's airports (``start_airport`` and ``end_airport``). The
+    name itself stays.
+    """
+    if landings is None or (landings.departure is None and landings.arrival is None):
+        return
+    if metadata.get("start_airport") is not None or metadata.get("end_airport"):
+        return
+    if extract_icao_codes_from_name(strip_dates(metadata.get("airport_name"))):
+        return
+    if landings.departure is not None:
+        metadata["start_airport"] = (
+            database_airport_name(landings.departure) or landings.departure
+        )
+    if landings.arrival is not None:
+        metadata["end_airport"] = (
+            database_airport_name(landings.arrival) or landings.arrival
+        )
 
 
 def detect_landings(

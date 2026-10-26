@@ -443,6 +443,20 @@ describe("ReplayManager chase view", () => {
     expect(mockApp.map!.jumpTo).not.toHaveBeenCalled();
   });
 
+  it("is off in the next replay once reduced motion is asked for", () => {
+    // Left on, it showed pressed, chased nothing and held the replay at 10x
+    openReplay();
+    replayManager.toggleChase();
+    replayManager.toggleReplay();
+    vi.spyOn(motion, "prefersReducedMotion").mockReturnValue(true);
+
+    openReplay();
+
+    expect(replayManager.state.chase).toBe(false);
+    expect(el("replay-chase-btn").getAttribute("aria-pressed")).toBe("false");
+    expect(replayManager.state.speed).toBe(50);
+  });
+
   it("lets go of the camera once reduced motion is asked for", () => {
     openReplay();
     replayManager.toggleChase();

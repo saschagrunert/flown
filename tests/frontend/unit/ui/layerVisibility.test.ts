@@ -330,6 +330,25 @@ describe("layer visibility", () => {
     expect(faded()).toBe(true);
   });
 
+  it("lets go of the base map's labels with the app", async () => {
+    // A map that outlives the app kept being told at every style it loaded
+    const life = new AbortController();
+    const gone = createMockApp({
+      currentData: app.currentData,
+      signal: life.signal,
+    });
+    followLayerVisibility(asMapApp(gone));
+    await gone.mapReady;
+    const map = gone.map!;
+    life.abort();
+    map.setGlobalStateProperty.mockClear();
+
+    gone.aviationVisible = true;
+    map.emit("style.load");
+
+    expect(map.setGlobalStateProperty).not.toHaveBeenCalled();
+  });
+
   it("dims the heatmap as the colour flags change", () => {
     followLayerVisibility(asMapApp(app));
     app.dataManager.applyHeatmapEmphasis.mockClear();

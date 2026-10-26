@@ -67,9 +67,11 @@ import {
  * of the page on Android and Linux, which the base style's glyph server
  * has. A style without a glyph server (the fallback the map starts on, and
  * the stub of the e2e specs) has the map measure the text with a local
- * font of that name instead, and `sans-serif` is the one every browser has.
+ * font of that name instead, which MapLibre follows with `sans-serif` of
+ * its own. Not in the stack: the glyph server answers 404 for a stack
+ * with a name it does not know, and every page load asked for one.
  */
-const AIRPORT_LABEL_FONT = ["Roboto Medium", "Noto Sans Regular", "sans-serif"];
+const AIRPORT_LABEL_FONT = ["Roboto Medium", "Noto Sans Regular"];
 
 /**
  * Label size by zoom, `[size, zoom, size, ...]`: it grows at the zooms the

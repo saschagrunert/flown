@@ -110,6 +110,27 @@ const SHARE_CONTROL_IDS = ["share-btn", "selection-link-btn"];
 /** Set while the visitor asked for their flights without the ground */
 export const NO_TERRAIN_KEY = keyedToPage("flown-local-no-terrain");
 /**
+ * The visitor's choice of the ground where the browser would not keep it
+ * (its storage full or refused): for the page's lifetime, as storeFlag says
+ */
+let unkeptNoTerrain: boolean | undefined;
+
+/** Whether the flights are asked for without the ground, in any tab */
+function noTerrain(): boolean {
+  return unkeptNoTerrain ?? storedFlag(NO_TERRAIN_KEY);
+}
+
+/** Keep the choice of the ground, for every tab, or for this one alone */
+function keepNoTerrain(on: boolean): void {
+  storeFlag(NO_TERRAIN_KEY, on);
+  unkeptNoTerrain = storedFlag(NO_TERRAIN_KEY) === on ? undefined : on;
+}
+/**
+ * Written by a Remove all, for the other tabs that show the flights it
+ * removed (reopenAfterSwitch): they would save their view of them again
+ */
+export const REMOVED_KEY = keyedToPage("flown-local-removed");
+/**
  * Set in a tab once it started on the visitor's flights: a state in its
  * address is of its own history there, not a link opened on it (see
  * localStartConfig; the page writes none while it shows them)
@@ -176,7 +197,9 @@ const foldersLast = (
  * The files of a drop: those dropped, and those in the folders dropped,
  * however deep, each folder's before those of the folders in it. Of a
  * folder only what the build takes: it holds other files too, which are
- * no mistake of the visitor's. What could not be read is named in
+ * no mistake of the visitor's, and not its .git, which holds no flights
+ * and thousands of objects (the site build leaves it out too,
+ * validation.list_kml_files). What could not be read is named in
  * `unreadable`.
  */
 async function filesOf(
@@ -187,6 +210,7 @@ async function filesOf(
   const walk = async (entry: FileSystemEntry, top: boolean): Promise<void> => {
     try {
       if (entry.isDirectory) {
+        if (!top && entry.name === ".git") return;
         const entries = await entriesOf(entry as FileSystemDirectoryEntry);
         for (const inner of entries.sort(foldersLast)) await walk(inner, false);
       } else if (
@@ -256,7 +280,7 @@ export function upToDate(
     !!info &&
     info.build === siteBuild(config) &&
     info.stamp === fileStamp(files) &&
-    (info.terrain !== false) === !storedFlag(NO_TERRAIN_KEY)
+    (info.terrain !== false) === !noTerrain()
   );
 }
 
@@ -354,7 +378,16 @@ export async function localStartConfig(
     logError("Could not read the flights kept in this browser:", error);
     return giveUp();
   }
-  if (!info || !files.length) return giveUp();
+  if (!info || !files.length) {
+    // Removed in another tab, which may have shown them on and saved its
+    // view of them again (forgetLocalState)
+    try {
+      localStorage.removeItem(LOCAL_STATE_KEY);
+    } catch {
+      // Nothing was kept
+    }
+    return giveUp();
+  }
   // Of other files than the ones kept (a file removed while the rebuild
   // failed) as well: built again as the panel opens
   if (!upToDate(info, files, config)) {
@@ -462,7 +495,7 @@ const PANEL_HTML =
   "such as 1_DEAGJ_DA20.kml " +
   `(<a href="${NAMING_DOCS_URL}" target="_blank" rel="noopener">how to ` +
   "name them</a>), and the year from the times in it; add an aircraft.json " +
-  "for the model names. Folders too, up to 200 MB in all.</p>" +
+  "for the model names. Folders too, up to 200 MB in all, 32 MB a file.</p>" +
   '<ul class="local-flights-files" aria-label="Your files"></ul>' +
   '<ul class="local-flights-warnings" aria-label="What the build said" hidden></ul>' +
   '<p class="local-flights-status" role="status"></p>' +
@@ -499,6 +532,8 @@ export class LocalFlights {
   private building = false;
   /** Set while the dataset a build made is being kept: too late to stop */
   private keeping = false;
+  /** Whether the build on its way samples the ground, fetching its tiles */
+  private buildsGround = false;
   private buildAgain = false;
   /** Whether the next build downloads again what the last could not */
   private retry = false;
@@ -559,7 +594,7 @@ export class LocalFlights {
     this.alert = panel.querySelector('.local-flights-status[role="alert"]')!;
     this.input = panel.querySelector(".local-flights-drop input")!;
     this.terrainOff = panel.querySelector(".local-flights-terrain input")!;
-    this.terrainOff.checked = storedFlag(NO_TERRAIN_KEY);
+    this.terrainOff.checked = noTerrain();
     this.actions = Object.fromEntries(
       Object.keys(ACTIONS).map((action) => [
         action,
@@ -592,11 +627,16 @@ export class LocalFlights {
     this.terrainOff.addEventListener(
       "change",
       () => {
-        storeFlag(NO_TERRAIN_KEY, this.terrainOff.checked);
-        // Built again the way asked for, as a changed set of files is,
-        // and shown only where the visitor's flights are shown already
+        keepNoTerrain(this.terrainOff.checked);
         this.clearAlert();
-        if (this.files.length) void this.build(BUILDING_MESSAGE, false);
+        this.groundAsked(true);
+      },
+      listen,
+    );
+    window.addEventListener(
+      "storage",
+      (event) => {
+        if (event.key === NO_TERRAIN_KEY) this.groundAsked(false);
       },
       listen,
     );
@@ -790,8 +830,12 @@ export class LocalFlights {
     );
   }
 
-  /** The files kept, read again: another tab may have changed them */
+  /**
+   * The files kept, read again, and whether the ground is asked for: another
+   * tab may have changed them
+   */
   private async refresh(): Promise<void> {
+    this.terrainOff.checked = noTerrain();
     try {
       [this.files, this.info] = await Promise.all([listFiles(), readInfo()]);
     } catch (error) {
@@ -866,11 +910,7 @@ export class LocalFlights {
     // drop was stopped) or not the latest (one built while the panel was
     // closed, said only by a toast); a changed set of files is built again
     // as it is shown
-    const current =
-      local &&
-      upToDate(this.info, this.files) &&
-      this.app.config.localFlights?.builtAt === this.info?.builtAt;
-    this.actions.show.hidden = !any || current || this.building;
+    this.actions.show.hidden = !any || this.showsKept() || this.building;
     // A dataset built without what could not be fetched (offline), which
     // a build tries again: offered, rather than built again at every
     // start, which offline would do over and over
@@ -887,6 +927,19 @@ export class LocalFlights {
     this.actions.clear.hidden = !any && !local;
     if (this.actions.clear.hidden) this.stopAsking();
     if (!this.building) this.say("");
+  }
+
+  /**
+   * Whether the page shows the flights of the files kept: not the site's,
+   * nor theirs of other files (a build of a drop was stopped) or not the
+   * latest (one built while the panel was closed, said only by a toast)
+   */
+  private showsKept(): boolean {
+    return (
+      !!this.app.config.localFlights &&
+      upToDate(this.info, this.files) &&
+      this.app.config.localFlights.builtAt === this.info?.builtAt
+    );
   }
 
   /**
@@ -934,6 +987,30 @@ export class LocalFlights {
   }
 
   /**
+   * The ground asked for or not, in this tab (`here`) or another: built
+   * again the way asked for, as a changed set of files is, and shown only
+   * where the visitor's flights are shown already. A build on its way that
+   * fetches the ground, and is asked not to, is let go of first, as a stop
+   * lets go of one, before it asks AWS for more of its tiles; another
+   * tab's choice builds again only for such a build.
+   */
+  private groundAsked(here: boolean): void {
+    this.terrainOff.checked = noTerrain();
+    if (
+      this.terrainOff.checked &&
+      this.building &&
+      !this.keeping &&
+      this.buildsGround
+    ) {
+      this.builder.destroy();
+      this.run++;
+      this.building = false;
+      here = true;
+    }
+    if (here && this.files.length) void this.build(BUILDING_MESSAGE, false);
+  }
+
+  /**
    * Say `message`: in the status, or as an error in the alert beside it,
    * two regions that stay in the panel and in the accessibility tree, so a
    * screen reader hears each as its text changes; an empty one takes no
@@ -951,16 +1028,32 @@ export class LocalFlights {
     this.alert.textContent = "";
   }
 
-  /** Keep the dropped files and build them */
+  /**
+   * Keep the dropped files and build them; files kept already as they are
+   * are only shown
+   */
   async add(dropped: Dropped): Promise<void> {
     const kept = this.adding.then(() => this.keep(dropped));
     this.adding = kept.catch(() => undefined);
     // Outside the queue: a drop while a build runs is kept, and built next
-    if (await kept) await this.build();
+    const outcome = await kept;
+    if (outcome === "changed") await this.build();
+    else if (outcome === "unchanged" && !this.showsKept()) {
+      // A build on its way has them already, and shows them once done
+      if (this.building) this.reveal = true;
+      else await this.show(false);
+    }
   }
 
-  /** Keep the dropped files; whether there are any to build */
-  private async keep(dropped: Dropped): Promise<boolean> {
+  /**
+   * Keep the dropped files: "changed" when there are any to build,
+   * "unchanged" when every one is kept already as it is (dropped again with
+   * its name, size and time: a folder dropped again after one flight was
+   * added to it), false when nothing came of the drop
+   */
+  private async keep(
+    dropped: Dropped,
+  ): Promise<"changed" | "unchanged" | false> {
     this.clearAlert();
     const files: StoredFileWithBytes[] = [];
     let refused = 0;
@@ -968,6 +1061,9 @@ export class LocalFlights {
     const oversized: string[] = [];
     const duplicates = new Set<string>();
     const taken = new Map<string, File>();
+    // The names of the drop seen, and of the files kept already as they are
+    const seen = new Set<string>();
+    let unchanged = 0;
     // A large tree takes a while; a build on its way says its own
     const folders = Array.from(dropped).some(
       (item) => "isDirectory" in item && item.isDirectory,
@@ -977,11 +1073,12 @@ export class LocalFlights {
     if (folders && !this.building) this.say("");
     // Every build takes all the files kept, these among them
     let sizes: Map<string, number>;
+    let known: Map<string, StoredFile>;
     try {
       await this.clearing;
-      sizes = new Map(
-        (await listFiles()).map((kept) => [kept.name, kept.size]),
-      );
+      const listed = await listFiles();
+      sizes = new Map(listed.map((kept) => [kept.name, kept.size]));
+      known = new Map(listed.map((kept) => [kept.name, kept]));
     } catch (error) {
       logError("Could not read the files kept:", error);
       this.say(STORAGE_FAILED_MESSAGE, true);
@@ -996,12 +1093,17 @@ export class LocalFlights {
       if (!ACCEPTED.test(file.name) && file.name !== AIRCRAFT_FILE) refused++;
       else if (file.size > MAX_FILE_BYTES) oversized.push(file.name);
       else if (file.name === AIRCRAFT_FILE) {
-        taken.set(
-          (await keptAs(file, sizes.keys())) ?? aircraftName(++aircraft),
-          file,
-        );
-      } else if (taken.has(file.name)) duplicates.add(file.name);
-      else taken.set(file.name, file);
+        // One of those kept, of the same bytes, stays as it is
+        if (await keptAs(file, sizes.keys())) unchanged++;
+        else taken.set(aircraftName(++aircraft), file);
+      } else if (seen.has(file.name)) duplicates.add(file.name);
+      else {
+        seen.add(file.name);
+        const old = known.get(file.name);
+        if (old?.size === file.size && old.modified === file.lastModified) {
+          unchanged++;
+        } else taken.set(file.name, file);
+      }
     }
     const problems = [
       ...(refused ? [UNSUPPORTED_FILES_MESSAGE] : []),
@@ -1013,6 +1115,10 @@ export class LocalFlights {
         ...problems,
         ...(unreadable.length ? [unreadableMessage(unreadable)] : []),
       ];
+      if (unchanged) {
+        if (all.length) this.say(all.join(". "), true);
+        return "unchanged";
+      }
       this.say((all.length ? all : [NO_FILES_MESSAGE]).join(". "), true);
       return false;
     }
@@ -1044,12 +1150,13 @@ export class LocalFlights {
         size: file.size,
         bytes,
         added: Date.now(),
+        modified: file.lastModified,
       });
     }
     if (unreadable.length) problems.push(unreadableMessage(unreadable));
     if (!files.length) {
       if (problems.length) this.say(problems.join(". "), true);
-      return false;
+      return unchanged ? "unchanged" : false;
     }
     const kept = new Set(files.map((file) => file.name));
     const replacedKept = replaced.filter((name) => kept.has(name));
@@ -1064,7 +1171,7 @@ export class LocalFlights {
       return false;
     }
     await this.refresh();
-    return true;
+    return "changed";
   }
 
   private async remove(name: string): Promise<void> {
@@ -1088,9 +1195,13 @@ export class LocalFlights {
     else await this.clear();
   }
 
-  /** Show the flights of the files kept, built again when they changed */
-  private async show(): Promise<void> {
-    this.clearAlert();
+  /**
+   * Show the flights of the files kept, built again when they changed.
+   * `clear`: what the panel said goes (a drop of files kept already says
+   * its own)
+   */
+  private async show(clear = true): Promise<void> {
+    if (clear) this.clearAlert();
     await this.refresh();
     if (!this.files.length) return;
     if (upToDate(this.info, this.files)) this.switchTo(true);
@@ -1159,6 +1270,11 @@ export class LocalFlights {
       return;
     }
     this.forgetLocalState();
+    try {
+      localStorage.setItem(REMOVED_KEY, String(Date.now()));
+    } catch {
+      // The other tabs let their saved view go as they start again
+    }
     this.files = [];
     this.info = null;
     if (this.app.config.localFlights) {
@@ -1222,9 +1338,13 @@ export class LocalFlights {
     this.render();
     const generation = this.generation;
     try {
-      // What is built, whatever is kept by the time it is done
+      // What is built, whatever is kept by the time it is done; and with
+      // the ground as asked for last, in this tab or another, which the
+      // box may not show yet: without it, no tile is asked of AWS
       const built = this.files;
-      const terrain = !this.terrainOff.checked;
+      const terrain = !noTerrain();
+      this.terrainOff.checked = !terrain;
+      this.buildsGround = terrain;
       const config = window.MAP_CONFIG ?? this.app.config;
       // Asked for while the files are read
       const flags = siteFlags(this.app, config);
@@ -1411,11 +1531,33 @@ export function reopenAfterSwitch(
   app: MapApp,
   // The page's address without the link's state: the visitor's flights
   showMine: () => void = () => location.replace(location.pathname),
+  // The same, after another tab removed them: the site's, as the start
+  // then finds none (localStartConfig)
+  showSite: () => void = showMine,
 ): void {
   started = app;
   // Started on the site's flights, with nothing to reopen (localStartConfig)
   if (framed()) return;
-  if (app.config.localFlights) holdShareControls();
+  if (app.config.localFlights) {
+    holdShareControls();
+    // Another tab's Remove all: this one would save its view of the flights
+    // gone at every pan, under a key nothing removes once the page starts
+    // on the site's again
+    window.addEventListener(
+      "storage",
+      (event) => {
+        if (event.key !== REMOVED_KEY || !event.newValue) return;
+        app.stateManager?.cancelSave();
+        try {
+          localStorage.removeItem(LOCAL_STATE_KEY);
+        } catch {
+          // Nothing was kept
+        }
+        showSite();
+      },
+      { signal: app.signal },
+    );
+  }
   if (linkedAway) {
     linkedAway = false;
     // Said, with the way back: the flag is kept, but a visitor who

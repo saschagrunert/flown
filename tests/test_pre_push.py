@@ -595,7 +595,7 @@ class TestCheckRange:
         the commit shortened as the refused files' are."""
         base = git(repo, "rev-parse", "HEAD")
         possible = CLEAN_KML.replace(
-            "</kml>", "<name>Flyg 16 augusti 2026</name></kml>"
+            "</kml>", "<name>Let 16 kolovoza 2026</name></kml>"
         )
         warned = commit(repo, {"data/3.kml": possible})
         dated = commit(repo, {"data/2.kml": REAL_KML})
@@ -609,7 +609,7 @@ class TestCheckRange:
     def test_a_possible_date_alone_passes(self, repo, capsys):
         base = git(repo, "rev-parse", "HEAD")
         possible = CLEAN_KML.replace(
-            "</kml>", "<name>Flyg 16 augusti 2026</name></kml>"
+            "</kml>", "<name>Let 16 kolovoza 2026</name></kml>"
         )
         sha = commit(repo, {"data/3.kml": possible})
         assert pre_push.check_range(repo, base, sha) == 0
@@ -673,7 +673,7 @@ class TestCheckFiles:
         """A day, a word and a year the patterns do not know refuses nothing."""
         monkeypatch.chdir(tmp_path)
         (tmp_path / "2.kml").write_text(
-            CLEAN_KML.replace("</kml>", "<name>Flyg 16 augusti 2026</name></kml>")
+            CLEAN_KML.replace("</kml>", "<name>Let 16 kolovoza 2026</name></kml>")
         )
         assert pre_push.check_files(["2.kml"]) == 0
         err = capsys.readouterr().err
@@ -686,7 +686,7 @@ class TestCheckFiles:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "2.kml").write_text(REAL_KML)
         (tmp_path / "3.kml").write_text(
-            CLEAN_KML.replace("</kml>", "<name>Flyg 16 augusti 2026</name></kml>")
+            CLEAN_KML.replace("</kml>", "<name>Let 16 kolovoza 2026</name></kml>")
         )
         assert pre_push.check_files(["2.kml", "3.kml"]) == 1
         err = capsys.readouterr().err

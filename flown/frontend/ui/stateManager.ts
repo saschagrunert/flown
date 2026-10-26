@@ -10,6 +10,7 @@ import {
   type ToggleKey,
 } from "../state/toggles";
 import type { MapCenter, SavedState } from "../types";
+import { followedUnreadLink } from "../state/shareToken";
 import {
   isPathId,
   isSupportedSchemaVersion,
@@ -314,7 +315,8 @@ export class StateManager {
       }
     }
 
-    // Priority 2: localStorage
-    return this.loadMapState();
+    // Priority 2: localStorage, but not after a shared link that could not
+    // be read: the visitor's own view would pass for what was shared
+    return followedUnreadLink() ? null : this.loadMapState();
   }
 }

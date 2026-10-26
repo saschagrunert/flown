@@ -1,6 +1,7 @@
 """Tests for the build in the browser (flown.browser)."""
 
 import ast
+import hashlib
 import json
 import os
 import subprocess
@@ -13,9 +14,12 @@ from urllib.error import HTTPError
 import pytest
 
 import flown.airport_lookup as lookup_module
+import flown.parser as parser_module
+import flown.validation as validation_module
 from flown import browser
 from flown.exceptions import InvalidInputError
 from flown.logger import logger
+from flown.terrain_pixels import _decode_planes, decode_cached_tile
 from tests.tiles import terrarium_png
 
 KML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -90,6 +94,34 @@ def js(monkeypatch):
     module.XMLHttpRequest = FakeXhr  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "js", module)
     return FakeXhr
+
+
+def elevations(path, indices):
+    """The elevations ``decode_cached_tile`` reads of the tile at ``path``."""
+    values = decode_cached_tile(path, indices)
+    assert values is not None, f"{path.name} is unusable"
+    return values.tolist()
+
+
+def build_twice(inputs, site, tiles=None, **options):
+    """``browser.build`` as the worker runs it: again with the tiles it asked for.
+
+    ``tiles`` answers a tile's name with the bytes the worker got for it,
+    None for one it could not fetch.
+    """
+    outcome = browser.build(str(inputs), str(site), **options)
+    if "tiles" not in outcome:
+        return outcome
+    fetched = Path(f"{site}-tiles")
+    fetched.mkdir()
+    for tile in outcome["tiles"]:
+        assert tile["url"].startswith("https://s3.amazonaws.com/")
+        data = tiles(tile["name"]) if tiles else None
+        if data is not None:
+            (fetched / f"{tile['name']}.png").write_bytes(data)
+    again = browser.build(str(inputs), str(site), tiles_dir=str(fetched), **options)
+    assert "tiles" not in again, "asked for tiles twice"
+    return again
 
 
 class TestXhrGet:
@@ -249,29 +281,40 @@ class TestBuild:
         # Nothing of the build is left on the logger
         assert not any(isinstance(h, browser._Relay) for h in logger.handlers)
 
-    def test_tiles_are_fetched_through_the_request_and_a_miss_is_taken(
+    def test_the_tiles_missing_are_asked_of_the_worker_and_a_miss_is_taken(
         self, tmp_path, js, monkeypatch
     ):
-        """The build goes on without the ground, as it does offline."""
-        monkeypatch.setattr(
-            "flown.terrain_fetch.TERRAIN_CACHE_DIR", tmp_path / "cache" / "terrain"
-        )
-        pauses: list[float] = []
-        monkeypatch.setattr("flown.terrain_fetch.time.sleep", pauses.append)
+        """The worker fetches them; without them the build goes on without
+        the ground, as it does offline."""
+        terrain = tmp_path / "cache" / "terrain"
+        monkeypatch.setattr("flown.terrain_fetch.TERRAIN_CACHE_DIR", terrain)
         inputs = tmp_path / "input"
         inputs.mkdir()
         (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
 
-        outcome = browser.build(str(inputs), str(tmp_path / "site"), terrain=True)
+        asked = browser.build(str(inputs), str(tmp_path / "site"), terrain=True)
+
+        # Asked of the worker, every one once, and none fetched here
+        names = [tile["name"] for tile in asked["tiles"]]
+        assert "10-546-340" in names
+        assert len(set(names)) == len(names)
+        assert all(
+            tile["url"]
+            == "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"
+            + tile["name"].replace("-", "/")
+            + ".png"
+            for tile in asked["tiles"]
+        )
+        assert not any("terrarium" in url for url in js.sent)
+        assert not (tmp_path / "site").exists() or not list(
+            (tmp_path / "site").glob("*/data.json")
+        )
+
+        outcome = build_twice(inputs, tmp_path / "again", terrain=True)
 
         assert outcome["years"] == [2025]
-        # Once, without a pause: offline, the attempts would hold up every
-        # build, and the other tiles are not asked for
-        assert len(js.sent) == 1, "not one tile asked for once"
-        assert pauses == []
-        assert all(url.startswith("https://s3.amazonaws.com/") for url in js.sent)
-        assert set(js.timeouts) == {int(browser.TILE_TIMEOUT_SECONDS * 1000)}
-        data = json.loads((tmp_path / "site" / "2025" / "data.json").read_text())
+        assert not any("terrarium" in url for url in js.sent)
+        data = json.loads((tmp_path / "again" / "2025" / "data.json").read_text())
         assert data["segments"]["ground"] == [None]
         # Which the page offers to build again once the connection is back
         assert outcome["degraded"] == ["terrain"]
@@ -281,6 +324,68 @@ class TestBuild:
                 "view draws it as a straight line between their airfields"
             )
         ]
+
+    def test_the_tiles_the_worker_fetched_are_kept_with_its_pixels(
+        self, tmp_path, js, monkeypatch
+    ):
+        """Checked as a download is; the pixels it decoded spare the decode."""
+        terrain = tmp_path / "cache" / "terrain"
+        monkeypatch.setattr("flown.terrain_fetch.TERRAIN_CACHE_DIR", terrain)
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+        png = terrarium_png(lambda x, y: 250.0)
+        asked = browser.build(str(inputs), str(tmp_path / "site"), terrain=True)
+        fetched = tmp_path / "fetched"
+        fetched.mkdir()
+        names = [tile["name"] for tile in asked["tiles"]]
+        first, *rest = names
+        for name in names:
+            (fetched / f"{name}.png").write_bytes(png)
+        # The first with pixels the worker decoded, of a ground the PNG has
+        # not: kept as they are, and sampled from
+        planes = bytes([128]) * 65536 + bytes([10]) * 65536 + bytes(65536)
+        (fetched / f"{first}.planes").write_bytes(planes)
+        # Neither is a tile
+        (fetched / "10-1-1.png").write_bytes(b"not a PNG")
+        (fetched / "notes.txt").write_text("not a tile", encoding="utf-8")
+
+        outcome = browser.build(
+            str(inputs), str(tmp_path / "site"), terrain=True, tiles_dir=str(fetched)
+        )
+
+        assert outcome["degraded"] == []
+        # Let go of as they are taken, the one that is no tile too
+        assert [path.name for path in fetched.iterdir()] == ["notes.txt"]
+        assert sorted(path.stem for path in terrain.glob("*.png")) == sorted(names)
+        assert not (terrain / "10-1-1.png").exists()
+        assert all((terrain / f"{name}.pixels").exists() for name in names)
+        assert elevations(terrain / f"{first}.png", [0]) == [10.0]
+        if rest:
+            kept = elevations(terrain / f"{rest[0]}.png", [0])
+            assert kept == [250.0]
+
+    def test_the_fixture_the_browser_decodes_has_these_planes(self):
+        """The e2e suite has a browser decode the same tile as the worker
+        does (local-flights.spec.ts) and checks its planes by this digest:
+        what the worker hands in is what this package decodes."""
+        fixtures = Path(__file__).parent / "fixtures" / "terrarium"
+        expected = json.loads((fixtures / "tile.json").read_text())["planes_sha256"]
+        planes = _decode_planes((fixtures / "tile.png").read_bytes())
+        assert hashlib.sha256(planes).hexdigest() == expected
+
+    def test_planes_of_another_size_are_decoded_here(self, tmp_path):
+        """Pixels the worker got wrong are not kept as the tile's."""
+        tiles = browser._PageTiles(wanting=False)
+        tiles.cache_dir = tmp_path / "terrain"
+        fetched = tmp_path / "fetched"
+        fetched.mkdir()
+        (fetched / "10-2-3.png").write_bytes(terrarium_png(lambda x, y: 75.0))
+        (fetched / "10-2-3.planes").write_bytes(b"short")
+
+        assert browser._take_tiles(tiles, fetched) == 1
+        assert not (tiles.cache_dir / "10-2-3.pixels").exists()
+        assert elevations(tiles.cache_dir / "10-2-3.png", [5]) == [75.0]
 
     def test_an_empty_directory_is_refused(self, tmp_path, js):
         (tmp_path / "input").mkdir()
@@ -325,6 +430,7 @@ class TestBuild:
         inputs.mkdir()
         (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
         (inputs / "notes.kml").write_text("not xml", encoding="utf-8")
+        (inputs / "empty.kml").write_bytes(b"")
         (inputs / "plan.kml").write_text(
             KML.replace(" 110<", "<").replace(" 800<", "<").replace(" 230<", "<"),
             encoding="utf-8",
@@ -334,11 +440,13 @@ class TestBuild:
 
         assert outcome["flights"] == 1
         assert [entry["file"] for entry in outcome["skipped"]] == [
+            "empty.kml",
             "notes.kml",
             "plan.kml",
         ]
         assert all(entry["reason"] for entry in outcome["skipped"])
-        assert "route plan" in outcome["skipped"][1]["reason"]
+        assert outcome["skipped"][0]["reason"] == "File is empty: empty.kml"
+        assert "route plan" in outcome["skipped"][2]["reason"]
         # Named by the file alone, not the directory the worker wrote it to
         assert not any(str(inputs) in entry["reason"] for entry in outcome["skipped"])
 
@@ -365,6 +473,10 @@ class TestBuild:
             browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
         assert "empty.kml: " in str(failed.value)
         assert "notes.kml: " in str(failed.value)
+        # The page says it: by the file alone, as a file skipped is named,
+        # not with the directory the worker wrote it to
+        assert "File is empty: empty.kml" in str(failed.value)
+        assert str(inputs) not in str(failed.value)
 
     def test_the_warnings_are_handed_back(self, tmp_path, js):
         """For the panel to show once the build is done."""
@@ -479,7 +591,10 @@ class TestBuild:
         inputs.mkdir()
         (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
 
-        browser.build(str(inputs), str(tmp_path / "one"), terrain=True)
+        # Asking the worker for the others builds nothing, and prunes nothing
+        assert "tiles" in browser.build(str(inputs), str(tmp_path / "ask"))
+        assert far.exists()
+        build_twice(inputs, tmp_path / "one", terrain=True)
         assert not far.exists()
         assert under.exists()
         assert (terrain / "10-546-340.pixels").exists()
@@ -570,6 +685,27 @@ class TestBuild:
             for warning in relay.outcome()["warnings"]
         )
 
+    def test_the_warnings_past_the_most_are_counted(self):
+        """The panel says how many it leaves out; what the build went
+        without is said whenever it comes, after every file's warnings."""
+        _, _, terrain = browser.DEGRADED
+        with browser._relayed(None, "/input") as relay:
+            for number in range(browser.MAX_WARNINGS + 3):
+                logger.warning("/input/%d.kml names no aircraft", number)
+            # Said again: counted once
+            logger.warning("/input/%d.kml names no aircraft", browser.MAX_WARNINGS)
+            logger.warning(terrain, 5, 5, 2)
+
+        warnings = relay.outcome()["warnings"]
+        assert warnings[: browser.MAX_WARNINGS] == [
+            f"{number}.kml names no aircraft" for number in range(browser.MAX_WARNINGS)
+        ]
+        assert warnings[browser.MAX_WARNINGS :] == [
+            browser.DEGRADED[terrain][1],
+            "3 more warnings not shown",
+        ]
+        assert relay.outcome()["degraded"] == ["terrain"]
+
     def test_the_runways_alone_missing_are_said_as_such(self):
         """Not as the airport names, which the build has."""
         _, runways, _ = browser.DEGRADED
@@ -600,6 +736,33 @@ class TestBuild:
 
         # Downloaded again only where asked: a slow line waits for the timeout
         assert tried == [False, True]
+
+    def test_a_kml_larger_than_the_page_reads_is_left_out(self, tmp_path, js):
+        """The parse takes some twenty times its size; the site build's own
+        limit is left as it was."""
+        before = (
+            validation_module.MAX_KML_FILE_SIZE,
+            parser_module.__dict__["MAX_KML_FILE_SIZE"],
+        )
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+        (inputs / "2_DEAGJ_DA20.kml").write_bytes(
+            KML.encode().replace(
+                b"<Document>", b"<Document>" + b" " * browser.MAX_KML_BYTES
+            )
+        )
+
+        outcome = browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+
+        assert outcome["flights"] == 1
+        assert [entry["file"] for entry in outcome["skipped"]] == ["2_DEAGJ_DA20.kml"]
+        assert "max 32 MB" in outcome["skipped"][0]["reason"]
+        after = (
+            validation_module.MAX_KML_FILE_SIZE,
+            parser_module.__dict__["MAX_KML_FILE_SIZE"],
+        )
+        assert after == before
 
     def test_running_out_of_memory_is_said_as_such(self, tmp_path, js, monkeypatch):
         """A failed year says so only as its cause: the page lets the runtime go."""

@@ -271,10 +271,11 @@ export const FIELDS = /* @__PURE__ */ (() => "," + KEYED_FIELDS)();
 
 /**
  * Whether `event` is an Escape for what the page has open: not one a
- * listener before has taken, nor one in a popup or on a marker of the map,
- * which close the popup first. `besides` goes on the end of the selectors
- * of those: `,#id` for one more (a select, whose own list it closes), or
- * `:not(.class)` for markers whose Escape it is.
+ * listener before has taken, nor one in a popup of the map, which closes
+ * the popup first. A marker takes the Escape only when it closes its popup
+ * (and prevents it then): on one with no popup open it is the page's, as
+ * on any other button. `besides` goes on the end of the popup's selector:
+ * `,#id` for one more (a select, whose own list it closes).
  */
 export function isPageEscape(event: KeyboardEvent, besides = ""): boolean {
   const target = event.target;
@@ -282,8 +283,7 @@ export function isPageEscape(event: KeyboardEvent, besides = ""): boolean {
     event.key === "Escape" &&
     !event.defaultPrevented &&
     !(
-      target instanceof Element &&
-      target.closest(".maplibregl-popup,.maplibregl-marker" + besides)
+      target instanceof Element && target.closest(".maplibregl-popup" + besides)
     )
   );
 }

@@ -409,9 +409,11 @@ main {
   z-index: var(--z-controls);
   /* A landscape phone is above the breakpoint but only ~360px tall, which is
      shorter than the two columns. The page itself does not scroll, so without
-     this the last group is stranded below the fold. */
+     this the last group is stranded below the fold. It stops above what
+     stands at the bottom of its side (`--below`, see #right-buttons). */
   max-height: calc(
-    100vh - var(--edge-gap) * 2 - var(--safe-top) - var(--safe-bottom)
+    100vh - var(--edge-gap) - var(--safe-top) - var(--safe-bottom) -
+      var(--below, var(--edge-gap))
   );
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -437,8 +439,22 @@ main {
   left: calc(var(--edge-gap) + var(--safe-left));
   transition: left var(--duration-base) ease;
 }
+/* In a window under about 620 px tall (a laptop at 125 %) the columns ran
+   down over the GitHub link in the bottom right, which then took focus
+   where nobody could see it, and over the legend in the bottom left. They
+   stop above them and scroll instead. The heights are the boxes' own: the
+   link's 20 px icon in its padding and border, a legend as drawn (the
+   heat's is one row, the altitude's and the speed's three). */
 #right-buttons {
   right: calc(var(--edge-gap) + var(--safe-right));
+  --below: calc(var(--attribution-h) + var(--space-sm) * 4 + 22px);
+}
+body:has(#heat-legend:not([hidden])) #left-buttons {
+  --below: calc(var(--attribution-h) + var(--space-sm) * 2 + 44px);
+}
+body:has(#altitude-legend:not([hidden]), #airspeed-legend:not([hidden]))
+  #left-buttons {
+  --below: calc(var(--attribution-h) + var(--space-sm) * 2 + 110px);
 }
 /* The mobile bar stands in for the two columns and sets `hidden` on them.
    `.control-column` would otherwise win on source order, and keying off the
@@ -741,6 +757,14 @@ main {
 #selection-chip-mode {
   display: none;
 }
+/* On the narrowest phones (320 px, the first iPhone SE) the count was cut
+   to "2 flights …" beside the chip's icons (see the mobile layout): it
+   says "2 flights" there */
+@media (max-width: 339.98px) {
+  .selection-chip-tail {
+    display: none;
+  }
+}
 
 /* ==========================================================================
    Compass
@@ -978,7 +1002,7 @@ main {
   user-select: text;
   /* The panel holds well over its own height, and it used to stop dead
      wherever the rail ended, as often as not through the middle of a row.
-     ui/scrollFade.ts drops `is-at-end` on the class once there is no more
+     utils/scrollFade.ts drops `is-at-end` on the class once there is no more
      (see `.control-column.is-at-end`). */
   mask-image: linear-gradient(
     to bottom,
@@ -1963,8 +1987,9 @@ main > #map .maplibregl-ctrl-bottom-right {
   }
   /* "Sharing 1 flight" with Replay, the link, Exit and the profile beside
      it ran out of a 360 px screen: share mode's mark and accent say it in
-     place of the word, and the link and Exit are icons named by their
-     labels (ui/pathSelection.ts) */
+     place of the word, and the buttons are icons named by their labels
+     (ui/pathSelection.ts). Replay, Share and Clear too: beside the count
+     and the profile they were cut to "Rep…", "Sh…" and "Cl…" up to 393 px. */
   #selection-chip.is-sharing {
     border-color: var(--color-accent-blue);
   }
@@ -1973,8 +1998,7 @@ main > #map .maplibregl-ctrl-bottom-right {
     color: var(--color-accent-blue);
   }
   .selection-chip-word,
-  #selection-link-btn .control-label,
-  #selection-exit-btn .control-label {
+  #selection-chip button .control-label {
     display: none;
   }
   .stats-open #selection-chip {
@@ -2064,6 +2088,26 @@ main > #map .maplibregl-ctrl-bottom-right {
   vertical-align: middle;
   accent-color: var(--color-accent-blue);
   cursor: pointer;
+}
+/* Its label (pickBox) is no box for a mouse. A finger missed the 16 px by
+   a few pixels onto the rest of the row, which picks the flight alone and
+   dropped the selection made so far: there the label makes it about 44 px
+   wide, as tall as the row. Wider to the right, where the row's button
+   is: Chrome moves a tap to the nearest thing to press, and took the last
+   5 px of the label for the button. */
+.pick-hit {
+  display: contents;
+}
+@media (pointer: coarse) {
+  .pick-hit {
+    display: inline-flex;
+    flex: none;
+    align-self: stretch;
+    align-items: center;
+    padding: 0 14px 0 9px;
+    vertical-align: middle;
+    cursor: pointer;
+  }
 }
 .popup-airport:focus-visible {
   outline: var(--focus-ring);

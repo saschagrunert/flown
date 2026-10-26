@@ -37,12 +37,20 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 __all__ = [
+    "ALTITUDE_SPIKE_FT",
+    "ALTITUDE_SPIKE_WINDOW",
     "SPIKE_MIN_KM",
     "SPIKE_STEP_FACTOR",
+    "altitude_spikes",
     "distance_spikes",
     "run_spikes",
     "spike_limit",
 ]
+
+# An altitude this far from the median of the fixes around it is a glitch
+# of the logger (see altitude_spikes)
+ALTITUDE_SPIKE_FT = 200.0
+ALTITUDE_SPIKE_WINDOW = 7
 
 # The most fixes a spike holds: ten, or a fiftieth of the track for a long
 # one (a minute of stale fixes at one a second in an hour's flight)
@@ -176,6 +184,45 @@ def run_spikes(
         count,
         stale,
     )
+
+
+def altitude_spikes(altitudes_ft: Sequence[float]) -> list[bool]:
+    """Whether each altitude leaps away from those of its neighbours.
+
+    Some loggers write an altitude of 0 now and then, or another that is
+    hundreds of feet off, for a fix or two. One is more than
+    ``ALTITUDE_SPIKE_FT`` from the median of the ``ALTITUDE_SPIKE_WINDOW``
+    fixes around it, which no climb or descent of a light aircraft is. By
+    the fixes rather than their times: loggers write a stretch of fixes
+    under one time as often as a time per fix, which would read as a climb
+    no aircraft makes.
+
+    Near an end of the track, where the window is cut short, the median of
+    a steady climb lies fixes away from the fix: a recording of a few
+    sparse fixes up a climb read as spikes all but one. There a fix is one
+    only when its neighbours in the window agree among themselves, within
+    ``ALTITUDE_SPIKE_FT``, and it is that far from their median.
+    """
+    half = ALTITUDE_SPIKE_WINDOW // 2
+    last = len(altitudes_ft) - 1
+    spikes: list[bool] = []
+    for index, altitude in enumerate(altitudes_ft):
+        if half <= index <= last - half:
+            window = sorted(altitudes_ft[index - half : index + half + 1])
+            spikes.append(abs(altitude - window[half]) > ALTITUDE_SPIKE_FT)
+            continue
+        others = sorted(
+            [
+                *altitudes_ft[max(0, index - half) : index],
+                *altitudes_ft[index + 1 : index + half + 1],
+            ]
+        )
+        spikes.append(
+            len(others) >= 2
+            and others[-1] - others[0] <= ALTITUDE_SPIKE_FT
+            and abs(altitude - others[len(others) // 2]) > ALTITUDE_SPIKE_FT
+        )
+    return spikes
 
 
 def distance_spikes(points: Sequence[tuple[float, float]]) -> set[int]:

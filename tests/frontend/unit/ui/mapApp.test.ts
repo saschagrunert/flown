@@ -126,7 +126,6 @@ describe("MapApp", () => {
       const data: KMLDataset = {
         path_segments: [createSegment({ path_id: 1 })],
         path_info: [{ id: 1 }],
-        original_points: 0,
       };
       app.currentData = data;
 
@@ -152,7 +151,6 @@ describe("MapApp", () => {
             end_airport: "EDDF",
           },
         ],
-        original_points: 0,
       };
       expect(app.airportToPaths["EDDF"]).toEqual(new Set([1, 2]));
 

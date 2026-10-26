@@ -19,10 +19,12 @@ from flown.export_pipeline import (
     exported_knots,
     path_duration,
     process_path_segments,
+    without_altitude_spikes,
 )
 from flown.helpers import parse_timestamp_epoch
 from flown.segment_calculator import SegmentSpeed, SpeedWindow
 from flown.segment_codec import ALTITUDE_STEP
+from flown.spikes import altitude_spikes
 from flown.types import PathMetadata, TrackPoint
 
 
@@ -147,8 +149,14 @@ class TestBuildPathInfo:
         )
         assert "start_airport" not in info
 
-    def test_three_part_name_not_split(self):
+    def test_three_part_name_goes_from_the_first_stop_to_the_last(self):
         metadata = _metadata({"airport_name": "EDDF - EDDM - EDDT"})
+        info = build_path_info(_make_path(), metadata, 0, 2025)
+        assert info["start_airport"] == "EDDF"
+        assert info["end_airport"] == "EDDT"
+
+    def test_three_part_name_without_a_departure_code_not_split(self):
+        metadata = _metadata({"airport_name": "Home strip - EDDM - EDDT"})
         info = build_path_info(_make_path(), metadata, 0, 2025)
         assert "start_airport" not in info
 
@@ -368,6 +376,75 @@ class TestAltitudeGain:
 
     def test_empty(self):
         assert altitude_gain_m([]) == 0.0
+
+
+def _feet_path(*altitudes_ft):
+    """Fixes a second apart, eastward, at these altitudes in feet."""
+    return [
+        TrackPoint(50.0, 8.0 + i * 0.001, alt / METERS_TO_FEET, 1000.0 + i)
+        for i, alt in enumerate(altitudes_ft)
+    ]
+
+
+def _feet(path):
+    return [round(point.alt * METERS_TO_FEET, 6) for point in path]
+
+
+class TestAltitudeSpikes:
+    def test_a_fix_at_0_ft_in_flight(self):
+        altitudes = [2000.0, 2010, 2020, 0, 2040, 2050, 2060]
+        assert altitude_spikes(altitudes) == [False] * 3 + [True] + [False] * 3
+
+    def test_a_steady_climb_is_none(self):
+        """Not even at the ends, where the window is cut short: a few sparse
+        fixes up a climb read as spikes all but one."""
+        assert not any(altitude_spikes([300.0, 650, 1000, 1350]))
+        assert not any(altitude_spikes([float(feet) for feet in range(0, 9000, 300)]))
+
+    def test_a_glitch_at_an_end_against_neighbours_that_agree(self):
+        """A logger that wrote 0 ft as its last fix, on the ground at 350 ft."""
+        assert altitude_spikes([350.0, 352, 349, 351, 0]) == [False] * 4 + [True]
+        assert altitude_spikes([0.0, 350, 352, 349]) == [True] + [False] * 3
+
+    def test_too_few_fixes_say_nothing(self):
+        assert altitude_spikes([0.0, 3000]) == [False, False]
+        assert altitude_spikes([]) == []
+
+
+class TestWithoutAltitudeSpikes:
+    def test_a_glitch_gets_the_line_between_its_neighbours(self):
+        path = _feet_path(1000, 1100, 1200, 0, 0, 1500, 1600, 1700, 1800)
+        smoothed = without_altitude_spikes(path)
+        assert _feet(smoothed) == [
+            1000,
+            1100,
+            1200,
+            1300,
+            1400,
+            1500,
+            1600,
+            1700,
+            1800,
+        ]
+        # The positions and times stay
+        assert [(p.lat, p.lon, p.ts) for p in smoothed] == [
+            (p.lat, p.lon, p.ts) for p in path
+        ]
+
+    def test_a_glitch_at_an_end_gets_its_neighbour(self):
+        smoothed = without_altitude_spikes(_feet_path(350, 352, 349, 351, 0))
+        assert _feet(smoothed)[-1] == 351
+
+    def test_a_path_without_glitches_is_the_same(self):
+        path = _make_path()
+        assert without_altitude_spikes(path) is path
+
+    def test_the_statistics_leave_the_glitch_out(self):
+        """A single fix at 0 ft added a climb from the ground and back."""
+        path = _feet_path(2000, 2010, 2020, 0, 2040, 2050, 2060)
+        info = build_path_info(without_altitude_spikes(path), _metadata({}), 0, 2025)
+        assert info["min_altitude_ft"] == 2000.0
+        assert info["altitude_gain_ft"] == 60.0
 
 
 class TestSegmentGroundspeed:

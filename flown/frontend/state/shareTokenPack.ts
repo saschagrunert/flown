@@ -12,6 +12,7 @@ import {
   CENTRE_LAT,
   CENTRE_LNG,
   CHAR_BITS,
+  checksum,
   fail,
   FIELDS,
   FLAGS,
@@ -27,7 +28,6 @@ import {
   TEXT_LENGTH_BITS,
   TILT,
   unpack,
-  VERSION_BITS,
   YEAR_BITS,
   ZOOM,
   type Field,
@@ -195,7 +195,6 @@ function pack(params: URLSearchParams): string {
   const text = (key: string): string => params.get(key)!;
 
   const out = new BitWriter();
-  out.uint(FORMAT_VERSION, VERSION_BITS);
   for (const field of FIELDS) out.bit(has(field));
   for (const flag of FLAGS) {
     const value = params.get(flag);
@@ -229,7 +228,8 @@ function pack(params: URLSearchParams): string {
     ends.forEach((end, i) => writeFixed(out, end, LINE[i]!));
   }
   if (has("p")) writeSelection(out, selectionOf(params));
-  return out.toString();
+  const body = out.toString();
+  return BASE64URL[FORMAT_VERSION]! + checksum(body) + body;
 }
 
 /** The entries of a link in one order, to tell two links apart by */

@@ -267,6 +267,15 @@ class TestAircraftType:
             ("glid", "GLID"),
             # A date is taken out, as from every published name
             ("DA40 16 Aug 2026", "DA40"),
+            # ... and so is a day and a month after the type (regression)
+            ("DA20-2608", "DA20"),
+            ("PA28-0816", "PA28"),
+            ("PA-28-1608", "PA-28"),
+            ("DA40NG-1608", "DA40NG"),
+            ("DA20-2608-1430", "DA20"),
+            ("DA20-16-08", "DA20"),
+            ("DA20-1608-26", "DA20"),
+            ("OKT3-DA40", "DA40"),
         ],
     )
     def test_published_in_capitals(self, raw, aircraft_type):
@@ -296,8 +305,9 @@ class TestAircraftType:
         assert result.type is None
         assert f"Ignoring the aircraft type {raw!r}" in caplog.text
 
-    def test_a_date_alone_is_no_type(self, caplog):
-        assert _parsed("1_DEHYL_16AUG26.kml").type is None
+    @pytest.mark.parametrize("raw", ["16AUG26", "OKT3"])
+    def test_a_date_alone_is_no_type(self, raw, caplog):
+        assert _parsed(f"1_DEHYL_{raw}.kml").type is None
         assert "no type designator" not in caplog.text
 
     @pytest.mark.parametrize(

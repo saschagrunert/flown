@@ -365,6 +365,9 @@ export class PathSelection {
    * does.
    */
   pickFromList(pathId: number, event: MouseEvent, list: PickList): void {
+    // A click on the label around a checkbox (pickBox) is followed by the
+    // click it makes on the box, which is the one acted on
+    if (event.target instanceof HTMLLabelElement) return;
     const box = event.target instanceof HTMLInputElement ? event.target : null;
     const sharing = this.app.isolateSelection;
     const held = this.held();
@@ -523,19 +526,20 @@ export class PathSelection {
           ? "Sharing " + flights + hiddenText + filterWords
           : flights + " selected";
     const changed = count.textContent !== text;
+    // The words in a .selection-chip-word go on a phone, where the chip's
+    // mark says it is shared (styles.css): "3 flights, 1 hidden". Its
+    // " selected" goes on the narrowest phones alone, as `-tail`.
+    const word = (words: string, kind = "word"): HTMLElement => {
+      const span = document.createElement("span");
+      span.className = "selection-chip-" + kind;
+      span.textContent = words;
+      return span;
+    };
     if (changed && sharing) {
-      // The words in a .selection-chip-word go on a phone, where the
-      // chip's mark says it is shared (styles.css): "3 flights, 1 hidden"
-      const word = (words: string): HTMLElement => {
-        const span = document.createElement("span");
-        span.className = "selection-chip-word";
-        span.textContent = words;
-        return span;
-      };
       count.replaceChildren(word("Sharing "), flights + hiddenText);
       if (filterWords) count.append(word(filterWords));
     } else if (changed) {
-      count.textContent = text;
+      count.replaceChildren(text && flights, text && word(" selected", "tail"));
     }
     chip.hidden = selected === 0;
     chip.classList.toggle("is-sharing", sharing);

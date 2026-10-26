@@ -271,7 +271,6 @@ describe("DataManager", () => {
           ],
         }),
       ],
-      1000,
     );
 
   beforeEach(() => {

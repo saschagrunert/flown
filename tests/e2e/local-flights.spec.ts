@@ -13,7 +13,9 @@
  * the real one when asked to.
  */
 
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { build } from "esbuild";
 import { test, expect, type Page } from "./fixtures";
 import {
   attachErrorCollectors,
@@ -335,5 +337,57 @@ test.describe("Your flights", () => {
     );
     await expect(page.locator("#file-drop-sheet")).toBeHidden();
     await expect(shown(page)).toHaveText("Showing your 1 flight from 1 file");
+  });
+});
+
+test.describe("Your flights, the tiles decoded by the browser", () => {
+  test("give the planes the build's own decoder gives @desktop", async ({
+    page,
+    browserName,
+  }) => {
+    // The worker's decoding (services/localTiles.ts), bundled as the worker
+    // bundles it, on a page of its own: the site's policy refuses a script
+    // it did not ship. The planes of the fixture are those flown/png.py
+    // decodes (tests/test_browser.py checks the same digest)
+    const bundled = await build({
+      entryPoints: ["flown/frontend/services/localTiles.ts"],
+      bundle: true,
+      write: false,
+      format: "iife",
+      globalName: "localTiles",
+    });
+    const png = await readFile("tests/fixtures/terrarium/tile.png");
+    const expected = (
+      JSON.parse(
+        await readFile("tests/fixtures/terrarium/tile.json", "utf8"),
+      ) as { planes_sha256: string }
+    ).planes_sha256;
+    await page.setContent("<!doctype html><title>tiles</title>");
+    await page.addScriptTag({ content: bundled.outputFiles[0]!.text });
+
+    const planes = await page.evaluate(async (base64) => {
+      const png = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const { decodeTile } = (
+        window as unknown as {
+          localTiles: {
+            decodeTile(png: ArrayBuffer): Promise<Uint8Array | null>;
+          };
+        }
+      ).localTiles;
+      const decoded = await decodeTile(png.buffer);
+      return (
+        decoded && Array.from(decoded, (v) => String.fromCharCode(v)).join("")
+      );
+    }, png.toString("base64"));
+
+    // Chromium decodes it; another browser may leave it to the build, but
+    // whatever it decodes has to be the same
+    if (browserName === "chromium") expect(planes).not.toBeNull();
+    if (planes !== null) {
+      const digest = createHash("sha256")
+        .update(Buffer.from(planes, "latin1"))
+        .digest("hex");
+      expect(digest).toBe(expected);
+    }
   });
 });

@@ -7,14 +7,16 @@ files ``export_flight_data`` writes, which the page then serves to itself
 from the browser's storage, and nothing leaves the browser.
 
 Two things a browser has not, the build gets from here: sockets, and threads.
-The airport database and the elevation tiles are fetched with the worker's
-synchronous ``XMLHttpRequest`` instead (``install_network``), which is what
-a worker may do; every pool of the build runs in the worker's one thread
-(``configure_workers`` tells the pools, the tile fetcher is told).
+The airport database is fetched with the worker's synchronous
+``XMLHttpRequest`` instead (``install_network``), which is what a worker may
+do; every pool of the build runs in the worker's one thread
+(``configure_workers`` tells the pools). The elevation tiles, some hundred
+of them, the worker fetches itself, several at a time, between two runs of
+a build (see ``build``).
 
 The cache directory is read when ``flown.cache`` is imported, so the worker
-sets ``FLOWN_CACHE_DIR`` before it imports anything of the package; the
-modules that need it are imported in ``build`` for the same reason.
+sets ``FLOWN_CACHE_DIR`` before it imports anything of the package, this
+module among it.
 """
 
 from __future__ import annotations
@@ -26,13 +28,24 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .helpers import numeric_filename_key
-from .validation import KML_SUFFIXES
+from .cache import atomic_bytes_write
+from .exceptions import FlownError
+from .logger import logger
+from .terrain_fetch import MAX_TILE_BYTES, TILE_URL, TerrariumTiles
+from .terrain_pixels import TileKey, is_tile_png, keep_decoded_planes
+from .validation import find_kml_files
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
-__all__ = ["BuildOutcome", "build", "install_network", "xhr_get"]
+__all__ = [
+    "MAX_KML_BYTES",
+    "BuildOutcome",
+    "TilesWantedError",
+    "build",
+    "install_network",
+    "xhr_get",
+]
 
 #: What ``build`` answers the worker with, as a plain dict for the page
 type BuildOutcome = dict[str, Any]
@@ -42,9 +55,16 @@ _AIRCRAFT_FILE = re.compile(r"aircraft(?:-([1-9]\d*))?\.json")
 
 
 # How long a download may take before it counts as failed: the airport
-# database is 16 MB, which a slow line takes a while over, a tile is small
+# database is 16 MB, which a slow line takes a while over
 DATABASE_TIMEOUT_SECONDS = 120.0
-TILE_TIMEOUT_SECONDS = 30.0
+
+# The largest KML a build in the page reads, a file's or the document of a
+# KMZ inflated (MAX_FILE_BYTES in ui/localMessages.ts): a third of what the
+# site build reads (validation.MAX_KML_FILE_SIZE). The parse takes some
+# twenty times the document's size at its peak (a 73 MB file took 1.46 GB
+# natively), and the runtime in the page has 4 GB at most, a phone's tab far
+# less. 32 MB of a track is more than a hundred hours of fixes once a second.
+MAX_KML_BYTES = 32 * 1024 * 1024
 
 
 def xhr_get(
@@ -114,12 +134,6 @@ def _xhr_urlopen(
     return _XhrResponse(status, body, final_url)
 
 
-def _xhr_tile_get(url: str) -> tuple[int, bytes]:
-    """The tile fetcher's ``_get`` over ``xhr_get``."""
-    status, body, _ = xhr_get(url, TILE_TIMEOUT_SECONDS)
-    return status, body
-
-
 def install_network() -> None:
     """Route the package's downloads through the worker's XMLHttpRequest."""
     from . import airport_lookup  # noqa: PLC0415
@@ -138,7 +152,8 @@ PHASES = {
     "\nProcessing %d start points...": "Finding the airports…",
     "\n  Exporting data to JSON files...": "Writing your flights…",
 }
-# The most warnings a build hands back, for the panel to show
+# The most warnings a build hands back, for the panel to show, besides
+# those of DEGRADED and a line that counts the rest
 MAX_WARNINGS = 10
 
 # The warnings of a build that went on without what it could not fetch,
@@ -199,9 +214,12 @@ class _Relay(logging.Handler):
     A line of ``PHASES`` is reported as its step; a warning is kept, without
     the directory the files were written into, for the page to show once the
     build is done (``warnings``), in the page's words where ``DEGRADED`` has
-    them, and what the build went without in ``degraded``. Errors are not: a
-    build that fails raises, and a file it skips is named with its reason
-    (see ``build``).
+    them, and what the build went without in ``degraded``. Up to
+    ``MAX_WARNINGS`` of them, and those of ``DEGRADED`` whenever they come
+    (the ground's is logged late, after the warnings of every file); the
+    others are counted, and the count said last. Errors are not: a build
+    that fails raises, and a file it skips is named with its reason (see
+    ``build``).
     """
 
     #: What the page says of the runways missing (DEGRADED)
@@ -214,6 +232,8 @@ class _Relay(logging.Handler):
         self._phase: str | None = None
         self.warnings: list[str] = []
         self.degraded: set[str] = set()
+        # The warnings past MAX_WARNINGS, which are only counted
+        self._unsaid: set[str] = set()
 
     def emit(self, record: logging.LogRecord) -> None:
         with contextlib.suppress(Exception):
@@ -225,8 +245,12 @@ class _Relay(logging.Handler):
                 if missing:
                     self.degraded.add(missing)
                 message = said or record.getMessage().replace(self._prefix, "").strip()
-                if message not in self.warnings and len(self.warnings) < MAX_WARNINGS:
+                if message in self.warnings:
+                    return
+                if said or len(self.warnings) < MAX_WARNINGS:
                     self.warnings.append(message)
+                else:
+                    self._unsaid.add(message)
                 return
             phase = PHASES.get(str(record.msg))
             if phase is not None and phase != self._phase:
@@ -244,6 +268,11 @@ class _Relay(logging.Handler):
         if "airports" in degraded and "runways" in degraded:
             degraded.discard("runways")
             warnings = [w for w in warnings if w != self.RUNWAYS_SAID]
+        if unsaid := len(self._unsaid):
+            warnings = [
+                *warnings,
+                f"{unsaid} more warning{'' if unsaid == 1 else 's'} not shown",
+            ]
         return {"warnings": warnings, "degraded": sorted(degraded)}
 
 
@@ -266,11 +295,11 @@ def input_files(input_dir: str | Path) -> tuple[list[str], list[Path]]:
 
     The files keep the names they were dropped with, which the aircraft of
     a flight is read from (see ``aircraft``; the year comes from the times
-    in the file), in the order the site build takes them, by the number a
-    name starts with (``numeric_filename_key``): the page has no order of
-    its own to hand on, and ``10_`` plays after ``2_`` as it does there.
-    The AppleDouble files of a folder from macOS (``._1_x.kml``) are left
-    out, as the site build leaves them out (``validation.list_kml_files``).
+    in the file), listed as the site build lists them
+    (``validation.find_kml_files``): by the number a name starts with, as
+    the page has no order of its own to hand on and ``10_`` plays after
+    ``2_`` there, without the AppleDouble files of a folder from macOS
+    (``._1_x.kml``).
 
     The aircraft files are ``aircraft.json`` and those the page numbers
     after it, ``aircraft-2.json`` and on, for every one dropped: on from
@@ -283,20 +312,117 @@ def input_files(input_dir: str | Path) -> tuple[list[str], list[Path]]:
     """
     root = Path(input_dir)
     files = [path for path in root.iterdir() if path.is_file()]
-    kml_files = sorted(
-        (
-            str(path)
-            for path in files
-            if path.suffix.lower() in KML_SUFFIXES and not path.name.startswith("._")
-        ),
-        key=numeric_filename_key,
-    )
+    kml_files = [str(path) for path in find_kml_files(root)]
     numbered = {
         path: int(match[1] or 1)
         for path in files
         if (match := _AIRCRAFT_FILE.fullmatch(path.name))
     }
     return kml_files, sorted(numbered, key=numbered.__getitem__, reverse=True)
+
+
+class TilesWantedError(Exception):
+    """The elevation tiles a build needs that the cache has not yet."""
+
+    def __init__(self, tiles: list[TileKey]) -> None:
+        super().__init__(f"{len(tiles)} elevation tile(s) to fetch")
+        self.tiles = tiles
+
+
+class _PageTiles(TerrariumTiles):
+    """The elevation tiles of a build in the page, which fetches them itself.
+
+    The worker's one thread fetched them one after the other, a synchronous
+    request each: 400 tiles took a minute, nearly all of it waiting on the
+    host. So the first run of a build stops at the tiles the cache has not
+    (``TilesWantedError``, with ``wanting``), the worker fetches those
+    several at a time and hands them in (``_take_tiles``), and the build
+    runs again without ``wanting``: a tile the worker could not get is
+    missing then, as it is offline.
+    """
+
+    def __init__(self, *, wanting: bool) -> None:
+        super().__init__(workers=1, keep_ground=False, attempts=1)
+        self.wanting = wanting
+
+    def fetch(self, tiles: Iterable[TileKey]) -> None:
+        missing = [tile for tile in tiles if not self.path(tile).is_file()]
+        if missing and self.wanting:
+            raise TilesWantedError(missing)
+
+
+# A tile the worker hands in (see _take_tiles): its PNG, and its pixels where
+# it decoded them
+_TAKEN_TILE = re.compile(r"(\d+)-(\d+)-(\d+)\.png")
+_TAKEN_PLANES_SUFFIX = ".planes"
+
+
+def _take_tiles(tiles: TerrariumTiles, directory: Path) -> int:
+    """Keep the tiles the worker fetched into ``directory`` in the cache.
+
+    Each as ``z-x-y.png``, checked as a download is (``MAX_TILE_BYTES``,
+    ``is_tile_png``), and with its pixels where the worker decoded them
+    (``z-x-y.planes``, see ``keep_decoded_planes``): decoding a tile in
+    Python takes the page some 50 ms. Each leaves ``directory`` once taken,
+    kept or not: the worker's file system holds it in the page's memory,
+    some 300 KB a tile with its pixels, for the rest of the build. Returns
+    how many tiles it kept.
+    """
+    try:
+        entries = sorted(directory.iterdir())
+    except OSError:
+        return 0
+    kept = 0
+    for entry in entries:
+        match = _TAKEN_TILE.fullmatch(entry.name)
+        if match is None:
+            continue
+        tile = TileKey(*map(int, match.groups()))
+        planes_file = entry.with_suffix(_TAKEN_PLANES_SUFFIX)
+        try:
+            if _keep_taken_tile(tiles, tile, entry, planes_file):
+                kept += 1
+        finally:
+            for taken in (entry, planes_file):
+                with contextlib.suppress(OSError):
+                    taken.unlink()
+    return kept
+
+
+def _keep_taken_tile(
+    tiles: TerrariumTiles, tile: TileKey, png_file: Path, planes_file: Path
+) -> bool:
+    """Keep one tile of ``_take_tiles``, with its pixels; whether it was."""
+    try:
+        data = png_file.read_bytes()
+        if len(data) > MAX_TILE_BYTES or not is_tile_png(data):
+            logger.debug("Elevation tile %s is not a PNG tile", png_file.name)
+            return False
+        tiles.cache_dir.mkdir(parents=True, exist_ok=True)
+        atomic_bytes_write(tiles.path(tile), data)
+    except OSError as e:
+        logger.debug("Cannot keep elevation tile %s: %s", png_file.name, e)
+        return False
+    with contextlib.suppress(OSError):
+        keep_decoded_planes(tiles.path(tile), data, planes_file.read_bytes())
+    return True
+
+
+@contextlib.contextmanager
+def _kml_size_capped() -> Iterator[None]:
+    """Read no KML larger than ``MAX_KML_BYTES`` while the build runs."""
+    from . import parser, validation  # noqa: PLC0415
+
+    # The parser reads the limit under the name it imported it as
+    limits = (validation.__dict__, parser.__dict__)
+    before = [limit["MAX_KML_FILE_SIZE"] for limit in limits]
+    for limit in limits:
+        limit["MAX_KML_FILE_SIZE"] = MAX_KML_BYTES
+    try:
+        yield
+    finally:
+        for limit, value in zip(limits, before, strict=True):
+            limit["MAX_KML_FILE_SIZE"] = value
 
 
 def build(
@@ -306,23 +432,33 @@ def build(
     terrain: bool = True,
     flags: list[str] | None = None,
     retry: bool = False,
+    tiles_dir: str | None = None,
 ) -> BuildOutcome:
     """Build the data files of the flights in ``input_dir`` into ``output_dir``.
 
     ``report`` is told the steps of the build (see ``PHASES``), which the
     page shows as progress. ``terrain`` samples the ground under the flights
-    from the elevation tiles, fetched through the worker and kept in the
-    cache directory. ``flags`` are the country codes the page has a flag
-    for (its own ``available_flags``): the package in the page has none.
+    from the elevation tiles kept in the cache directory. ``flags`` are the
+    country codes the page has a flag for (its own ``available_flags``): the
+    package in the page has none.
+
+    A build that needs tiles the cache has not stops at them, and answers
+    with ``tiles``, the URL of each and the name it is handed in under. The
+    worker fetches them into a directory, and builds again with that as
+    ``tiles_dir``: the tiles in it are kept in the cache (``_take_tiles``),
+    and none is asked for again, so one the worker could not get is missing
+    (``degraded``).
 
     A file that makes no flight is left out, and named with the reason in
-    ``skipped``: the visitor sees the rest, and which file to look at.
-    Answers with the years, the extent the map opens on, what was found,
-    the warnings of the build and what it went without for want of a
-    connection (``degraded``: "airports", "runways", "terrain"); raises the
-    errors of ``export_flight_data`` for inputs that make no site at all,
-    and a ``MemoryError`` for one that ran out of memory on the way, which a
-    failed year says only as its cause.
+    ``skipped``: the visitor sees the rest, and which file to look at. A
+    file larger than ``MAX_KML_BYTES`` is one. Answers with the years, the
+    extent the map opens on, what was found, the warnings of the build and
+    what it went without for want of a connection (``degraded``:
+    "airports", "runways", "terrain"); raises the errors of
+    ``export_flight_data`` for inputs that make no site at all (naming
+    the files without ``input_dir``, as the rest is said), and a
+    ``MemoryError`` for one that ran out of memory on the way, which a failed
+    year says only as its cause.
 
     A database the last build could not fetch is loaded again, and said
     again to be missing; ``retry`` downloads it again at once (see
@@ -340,7 +476,6 @@ def build(
     from .airport_lookup import retry_missing_databases  # noqa: PLC0415
     from .parser_cache import prune_cache_entries_except  # noqa: PLC0415
     from .pipeline import export_flight_data  # noqa: PLC0415
-    from .terrain_fetch import TerrariumTiles  # noqa: PLC0415
     from .workers import configure_workers  # noqa: PLC0415
 
     install_network()
@@ -348,12 +483,13 @@ def build(
     # No processes in the page: every pool works here, without trying
     configure_workers(1, processes=False)
     kml_files, aircraft_files = input_files(input_dir)
-    # One attempt a tile: offline, the pauses before the others would hold up
-    # every build, which Build again tries once the connection is back
-    tiles = TerrariumTiles(get=_xhr_tile_get, workers=1, keep_ground=False, attempts=1)
+    tiles = _PageTiles(wanting=tiles_dir is None)
+    if terrain and tiles_dir is not None:
+        _take_tiles(tiles, Path(tiles_dir))
+    prefix = input_dir.rstrip("/") + "/"
     built = False
     try:
-        with _relayed(report, input_dir) as relay:
+        with _relayed(report, input_dir) as relay, _kml_size_capped():
             result = export_flight_data(
                 kml_files,
                 output_dir,
@@ -363,10 +499,24 @@ def build(
                 flags=flags,
             )
         built = True
+    except TilesWantedError as e:
+        return {
+            "tiles": [
+                {
+                    "url": TILE_URL.format(z=tile.z, x=tile.x, y=tile.y),
+                    "name": f"{tile.z}-{tile.x}-{tile.y}",
+                }
+                for tile in e.tiles
+            ]
+        }
     except Exception as e:
         # Said as what it is, for the page to start a runtime of its own
         if not isinstance(e, MemoryError) and _out_of_memory(e):
             raise MemoryError from e
+        # The page says it: without the directory the files were written
+        # into, as the warnings and the files skipped are said
+        if isinstance(e, FlownError) and e.args and isinstance(e.args[0], str):
+            e.args = (e.args[0].replace(prefix, ""), *e.args[1:])
         raise
     finally:
         prune_cache_entries_except(kml_files)
@@ -382,7 +532,12 @@ def build(
             [extent.max_lat, extent.max_lon],
         ],
         "skipped": [
-            {"file": Path(entry.kml_file).name, "reason": entry.reason}
+            {
+                "file": Path(entry.kml_file).name,
+                # Without the directory the files were written into, as
+                # the warnings are said
+                "reason": entry.reason.replace(prefix, ""),
+            }
             for entry in result.skipped
         ],
         **relay.outcome(),

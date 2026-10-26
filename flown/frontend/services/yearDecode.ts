@@ -204,8 +204,6 @@ export function decodeYear(raw: RawYearData): DecodedYear {
 
   return {
     path_info: firstListings(pathInfo),
-    original_points:
-      typeof raw.original_points === "number" ? raw.original_points : 0,
     pathIds: ids.slice(0, paths),
     rowCounts: rowCounts.slice(0, paths),
     // Not slice() where nothing was cut: that would copy the whole column

@@ -411,6 +411,18 @@ class TestPruneStaleCacheEntries:
         assert prune_stale_cache_entries(cache_dir=cache_dir) == 0
         assert entry.exists()
 
+    def test_loading_a_recent_entry_leaves_its_time(self, tmp_path):
+        """A build in the page writes back every entry whose time changed."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        entry = cache_dir / ("c" * 32 + self._current_suffix())
+        save_to_cache(entry, COORDS, PATHS, METADATA)
+        stamp = time.time() - DAY / 2
+        os.utime(entry, (stamp, stamp))
+
+        assert load_cached_parse(entry) is not None
+        assert entry.stat().st_mtime == stamp
+
     def test_get_cache_key_does_not_prune(self, tmp_path):
         kml = tmp_path / "test.kml"
         kml.write_bytes(b"<kml/>")

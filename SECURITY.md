@@ -31,18 +31,20 @@ need no key.
 ## Automated checks
 
 Every push to main runs `pip-audit` against what `uv.lock` pins, `npm audit`,
-and a gitleaks scan of the commits it pushed (the whole history when the clone
-lacks the commit main had before, as after a force push). A pull request scans
-the commits it adds, with the `.gitleaks.toml` of its base so that its own
-allowlist cannot pass a secret it adds (a `.gitleaksignore` or a
-`gitleaks:allow` comment it adds can, in plain sight in its diff), and runs the
-two audits when it changes a lock file or `package.json`. A secret the scan
-finds fails the checks a pull request needs to merge, and keeps main from being
-published; a new advisory does not, so it cannot hold back every pull request.
-Both run weekly, and on a manual run, with a scan of the whole history, so new
-advisories show up without a push. Every GitHub Action is pinned by commit SHA
-and every container image by digest, and every job that checks out the
-repository leaves no credentials in the checkout. Dependabot keeps the
+and a gitleaks scan of the commits since the last commit of main whose run
+ended, passed or failed, so a push whose run was dropped for a newer one is
+scanned too (the whole history when the clone lacks the commit main had before,
+as after a force push). A pull request scans the commits it adds, with the
+`.gitleaks.toml` of its base so that its own allowlist cannot pass a secret it
+adds (a `.gitleaksignore` or a `gitleaks:allow` comment it adds can, in plain
+sight in its diff), and runs the two audits when it changes a lock file or
+`package.json`, failing only on an advisory its base does not have. A secret the
+scan finds fails the checks a pull request needs to merge, and keeps main from
+being published; a new advisory does not, so it cannot hold back every pull
+request. Both run weekly, and on a manual run, with a scan of the whole history,
+so new advisories show up without a push. Every GitHub Action is pinned by
+commit SHA and every container image by digest, and every job that checks out
+the repository leaves no credentials in the checkout. Dependabot keeps the
 dependencies current, and `make lock` regenerates the Python lock file with the
 newest releases the ranges allow.
 
@@ -121,7 +123,7 @@ build (it says the runtime could not be loaded), and so does a download that
 stalls for a minute or a runtime that does not start within two minutes of its
 last file; it cannot run code with the site's origin. The package's own Python
 comes from `flown-src.zip` next to the page. The airport database and the tiles
-are data the build parses, never code.
+are data the build parses, or the browser decodes as images, never code.
 
 A host that sends a CSP header of its own for every file holds the worker to it
 as well (see [Hosting](doc/hosting.md#headers-and-compression)): it has to allow

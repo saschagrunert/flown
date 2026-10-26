@@ -256,12 +256,14 @@ function cloudDetail(level: number, zoom: number): number {
 
 /**
  * How long points the cloud does not draw are kept: all of them while it
- * draws none (the Heatmap switch is off in the 3D view, Wrapped's button
- * had them cut ahead of time, prepareHeatCloud, for an intro that did not
- * come, or the intro is over), and those of the other cloud while it draws
- * one (Wrapped's cut ahead in the 3D view, or the 3D view's while Wrapped's
- * draws). With the flights smoothed for them Wrapped's held 8.6 MB of the
- * heap after a pointer had merely crossed the button.
+ * draws none (the 3D view is off, the Heatmap switch is off in it,
+ * Wrapped's button had them cut ahead of time, prepareHeatCloud, for an
+ * intro that did not come, or the intro is over), and those of the other
+ * cloud while it draws one (Wrapped's cut ahead in the 3D view, or the 3D
+ * view's while Wrapped's draws). With the flights smoothed for them
+ * Wrapped's held 8.6 MB of the heap after a pointer had merely crossed the
+ * button. The flights the 3D view's are cut from are kept as long (see
+ * GROUND_IDLE_MS in calculations/groundProfile.ts).
  */
 export const CLOUD_IDLE_MS = 15_000;
 
@@ -685,9 +687,6 @@ export function followHeatCloud(app: MapApp): void {
     ]);
   };
 
-  /** The 3D switch as the last sync found it */
-  let threeD = app.threeDVisible;
-
   const sync = (): void => {
     if (app.signal.aborted) return;
     // Wrapped's cloud hands its map over to the flat heatmap as its intro
@@ -711,15 +710,13 @@ export function followHeatCloud(app: MapApp): void {
     place();
     // The flat heatmap steps aside while the layer is there to draw
     app.heatCloud = wanted();
-    const left3D = threeD && !app.threeDVisible;
-    threeD = app.threeDVisible;
     if (!app.heatCloud) {
-      // Nothing to hold on to until the 3D view is back. Those Wrapped drew
-      // or had cut ahead of time (prepareHeatCloud) are kept for a while
-      // (CLOUD_IDLE_MS), while what they were made of stays: its button
-      // asks for them again as soon as the closing dialog hands it the
-      // focus back.
-      if (left3D) forget(false);
+      // Nothing to draw until the 3D view is back. Its points are kept for
+      // a while (CLOUD_IDLE_MS) like those Wrapped drew or had cut ahead of
+      // time (prepareHeatCloud), while what they were made of stays: the
+      // 3D view turned off and on again took 125 ms (four times slower CPU)
+      // to cut them anew, and Wrapped's button asks for its own again as
+      // soon as the closing dialog hands it the focus back.
       if (!leaving) draw(null);
       release();
       map.triggerRepaint();

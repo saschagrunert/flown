@@ -71,5 +71,17 @@ test.describe("Your flights, built with Pyodide @desktop", () => {
         window.mapApp!.siteData.airports!.map((a) => a.code).sort(),
       ),
     ).toContain("EDAQ");
+    // With the ground under them: the elevation tiles the worker fetched
+    // and decoded for the build (services/localTiles.ts), handed in to it
+    expect(
+      await page.evaluate(() => window.mapApp!.config.localFlights!.degraded),
+    ).not.toContain("terrain");
+    expect(
+      await page.evaluate(() =>
+        window.mapApp!.fullPathSegments!.some(
+          (segment) => segment.ground_ft !== undefined,
+        ),
+      ),
+    ).toBe(true);
   });
 });

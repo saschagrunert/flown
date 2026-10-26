@@ -45,9 +45,7 @@ describe("wrappedHtml", () => {
       airport_names: ["EDDF", "EDDH"],
       num_aircraft: 2,
       aircraft_list: [],
-      min_altitude_m: 0,
       max_altitude_m: 11000,
-      min_altitude_ft: 0,
       max_altitude_ft: 36090,
       max_groundspeed_knots: 450,
     };

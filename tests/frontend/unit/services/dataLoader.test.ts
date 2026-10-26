@@ -394,12 +394,9 @@ describe("DataLoader", () => {
       "1": path([50, 8], [[50.1, 8.1, 1000, 100, 0]]),
     },
   ): void {
-    files[`test-data/${year}/data.json`] = rawYear(
-      year,
-      segments,
-      [{ id: 1, year }],
-      1,
-    );
+    files[`test-data/${year}/data.json`] = rawYear(year, segments, [
+      { id: 1, year },
+    ]);
   }
 
   /** Metadata that knows these sizes, and the years they belong to */
@@ -654,7 +651,6 @@ describe("DataLoader", () => {
 
       expect(result).not.toBeNull();
       expect(result!.path_segments).toHaveLength(2);
-      expect(result!.original_points).toBe(2);
       expect(mockFetchJson).toHaveBeenCalledTimes(2);
       expect(onLoadError).not.toHaveBeenCalled();
     });

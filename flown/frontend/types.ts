@@ -110,7 +110,6 @@ export interface RawYearData {
   /** Wire format of the rows, DATA_FORMAT_VERSION in services/yearDecode.ts */
   format: number;
   year: number;
-  original_points: number;
   path_info: PathInfo[];
   segments: RawSegments;
 }
@@ -158,10 +157,7 @@ export interface FilteredStatistics {
   total_distance_km: number;
   total_distance_nm: number;
   max_altitude_m?: number | undefined;
-  min_altitude_m?: number | undefined;
-  total_altitude_gain_m?: number | undefined;
   max_altitude_ft?: number | undefined;
-  min_altitude_ft?: number | undefined;
   total_altitude_gain_ft?: number | undefined;
   max_groundspeed_knots?: number | undefined;
   avg_groundspeed_knots?: number | undefined;
@@ -248,7 +244,6 @@ export interface Metadata {
 export interface KMLDataset {
   path_segments: PathSegment[];
   path_info: PathInfo[];
-  original_points: number;
   /** Set on an "all years" dataset that is missing a year that failed to load */
   incomplete?: boolean;
 }

@@ -36,6 +36,7 @@ import {
   smoothAlong,
   groundedFlights,
   heldGroundedFlights,
+  holdGroundProfiles,
   releaseGroundedFlights,
   releaseGroundProfiles,
 } from "../../../../flown/frontend/calculations/groundProfile";
@@ -44,6 +45,7 @@ import {
   ribbonOf,
   ribbonPieces,
   ribbonProperties,
+  sameOffsets,
   screenCut,
 } from "../../../../flown/frontend/calculations/ribbons";
 import {
@@ -1476,6 +1478,30 @@ describe("lift", () => {
         );
       });
 
+      it("take the curves and the ground of flights another dataset of the 3D view had, as all years share a year's segments", () => {
+        const year = dataset.filter((segment) => segment.path_id !== 2);
+        const others = dataset.filter((segment) => segment.path_id === 2);
+        const combined = [...others, ...year];
+        holdGroundProfiles(true);
+        const ofYear = groundedFlights(year, true, 8);
+        releaseGroundedFlights();
+        const all = groundedFlights(combined, true, 8);
+        // The curves of the year's flights, after the other flight's
+        all.chains.slice(1).forEach((chain, c) => {
+          expect(chain.points).toBe(ofYear.chains[c]!.points);
+        });
+        // As all of it smoothed anew gives
+        releaseGroundProfiles();
+        expect(groundedFlights(combined, true, 8)).toEqual(all);
+        // Outside the 3D view they go with the flights of the dataset
+        const again = groundedFlights(year, true, 8);
+        holdGroundProfiles(false);
+        releaseGroundedFlights();
+        expect(groundedFlights(year, true, 8).chains[0]!.points).not.toBe(
+          again.chains[0]!.points,
+        );
+      });
+
       it("are smoothed anew for a few flights alone, and not held (smoothGrounded)", () => {
         const flights = groundedFlights(dataset, true, 8);
         const alone = smoothGrounded(dataset, true, 8);
@@ -1495,5 +1521,17 @@ describe("lift", () => {
         expect(keptGrounded(dataset, one, true, 8)).not.toBe(kept);
       });
     });
+  });
+});
+
+describe("sameOffsets", () => {
+  it("tells the offsets of the ground apart, a prefix included", () => {
+    expect(sameOffsets(undefined, undefined)).toBe(true);
+    expect(sameOffsets([1, 2], [1, 2])).toBe(true);
+    expect(sameOffsets([1, 2], [1, 3])).toBe(false);
+    expect(sameOffsets([1, 2], undefined)).toBe(false);
+    // The copy of the ribbons took a prefix for the whole
+    expect(sameOffsets([1], [1, 2])).toBe(false);
+    expect(sameOffsets([1, 2], [1])).toBe(false);
   });
 });

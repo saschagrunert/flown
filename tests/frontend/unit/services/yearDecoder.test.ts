@@ -33,12 +33,9 @@ vi.mock("../../../../flown/frontend/utils/logger", () => ({
   logError: vi.fn(),
 }));
 
-const year = rawYear(
-  2025,
-  { "1": path([50, 8], [[50.1, 8.1, 500, 100]]) },
-  [{ id: 1 }],
-  2,
-);
+const year = rawYear(2025, { "1": path([50, 8], [[50.1, 8.1, 500, 100]]) }, [
+  { id: 1 },
+]);
 const expanded = expandYearData(year);
 
 describe("createYearDecoder", () => {

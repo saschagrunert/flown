@@ -162,7 +162,8 @@ def _takeoff(
     after a winch launch, a hover, the top of a slow climb out) is above
     the field it rose from, and so is a field above the home the recording
     began at: both leave the end to the circle. A stretch that climbs
-    slower is skipped (a road over a rise); one that climbs fast but
+    slower is skipped (a road over a rise), and ends the wait when it
+    lasts ``TRIM_MOVING_SECONDS`` (a drive); one that climbs fast but
     follows no such wait (a slow climb out into the wind, a logger that
     froze or lost its height in the air, a thermal) leaves the end to the
     circle, as does a recording that starts on the move. Only the first
@@ -196,7 +197,11 @@ def _takeoff(
         if max(stretch) - heights[start] < TRIM_CLIMB_M or not _gains_quickly(
             list(zip(times[start : last + 1], stretch, strict=True))
         ):
-            waited = position
+            # A drive ends the wait; a moment over the speed does not, as a
+            # takeoff roll that dips below it for a fix (42, 38, 57 kn) has
+            # one at its start
+            if times[last] - times[start] >= TRIM_MOVING_SECONDS:
+                waited = position
             continue
         before = sorted(heights[:start])
         low = before[int(len(before) * TRIM_LOW_SHARE)]
@@ -314,10 +319,12 @@ def planar_km(lat0: float, lon0: float, lat1: float, lon1: float) -> float:
 def planar_metres(lat0: float, lon0: float, lat1: float, lon1: float) -> float:
     """Distance in metres on a plane at the middle latitude of the two points.
 
-    The short way round across the antimeridian, and multiplied out the way
-    the frontend measures the metres flown along a path (groundProfileFt in
-    calculations/groundProfile.ts), which the ground of a flight has to
-    agree with to the bit.
+    The short way round across the antimeridian, and the formula the
+    frontend measures the metres flown along a path with (alongMetres in
+    calculations/groundProfile.ts), so that the ground the build samples
+    shifts between the fields as the page's own ground does. Not to the
+    bit: CPython's and V8's hypot differ in the last bit for a third of all
+    inputs, far below the 10 ft the year file stores the ground in.
     """
     dlon = longitude_difference(lon0, lon1)
     return hypot(

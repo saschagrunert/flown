@@ -256,7 +256,7 @@ export class ReplayManager {
     // Escape leaves the replay, as it leaves Wrapped and the sheets. Not
     // from the speed picker, whose own list it closes, nor from a text
     // field such as the search of the flights, which it empties, nor from a
-    // popup or a marker on the map, where it closes the popup.
+    // popup or a marker on the map that had one open, which it closes.
     document.addEventListener(
       "keydown",
       (event) => {
@@ -534,7 +534,13 @@ export class ReplayManager {
   }
 
   private deactivateReplay(panel: HTMLElement): void {
-    const hadFocus = focusWasIn(panel);
+    // In the panel, or on the airplane, which leaves with the replay:
+    // Escape on it with its popup closed ends the replay (isPageEscape)
+    const hadFocus =
+      focusWasIn(panel) ||
+      !!this.state.airplaneMarker
+        ?.getElement()
+        .contains(document.activeElement);
     // The closing announcement below replaces the "stopped" one, and the
     // map stays where it is: the airplane leaves it, and a chase gives the
     // view back from where it looks
@@ -674,6 +680,10 @@ export class ReplayManager {
       showToast(REPLAY_PRECONDITION_MESSAGE, "info");
       return false;
     }
+    // A chase view left on from a replay before goes off under reduced
+    // motion turned on since: shown pressed, it chased nothing (see
+    // chaseAirplane) and held the replay at CHASE_MAX_SPEED
+    if (this.state.chase && prefersReducedMotion()) this.toggleChase();
     const left = order.length - pathIds.length;
     if (left > 0) {
       showToast(

@@ -37,6 +37,13 @@ const following = new WeakSet<MapApp>();
 let listEnd: ScrollEndWatcher | null = null;
 
 /**
+ * Popups that stop the fade of their list as they close: once for each,
+ * as its list is written again at every change of the filter or the
+ * selection while it is open
+ */
+const stopsOnClose = new WeakSet<Popup>();
+
+/**
  * Add the flight list to an airport popup whose content was just written.
  * @param app - The app whose flights and selection are listed
  * @param popup - The airports' popup, open on the map for this airport
@@ -111,9 +118,14 @@ export function listFlights(
   host.append(title, list);
   // A long list stops mid-row; the bottom fades while there is more
   listEnd?.stop();
-  const watcher = watchScrollEnd(list);
-  listEnd = watcher;
-  popup.once("close", () => watcher.stop());
+  listEnd = watchScrollEnd(list);
+  if (!stopsOnClose.has(popup)) {
+    stopsOnClose.add(popup);
+    popup.on("close", () => {
+      listEnd?.stop();
+      listEnd = null;
+    });
+  }
 
   list.addEventListener("click", (event) => {
     const row = (event.target as Element).closest<HTMLElement>(

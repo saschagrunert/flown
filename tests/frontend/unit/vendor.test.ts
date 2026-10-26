@@ -274,6 +274,20 @@ describe("vendored third-party files", () => {
       );
     });
 
+    it("name every fix that no longer matches in one error", () => {
+      // Two of the fixes moved at once: one build names both
+      const moved = Buffer.from(
+        entry()
+          .toString("latin1")
+          .replace(/this\.collisionBoxArray=new/, "this.collisionBoxes=new")
+          .replace("searchParams.set(`v`,", "searchParams.append(`v`,"),
+        "latin1",
+      );
+      expect(() => applyVendorPatches(moved, "maplibre-gl.mjs")).toThrow(
+        /"raw tile data kept by a tile that loads empty" matches 0 places.*; the fix "the worker started by a URL the page does not preload" matches 0 places/,
+      );
+    });
+
     it("leave every byte around them as it was", () => {
       // Bytes that are no text in UTF-8 come back as they went in
       const tail = Buffer.from([0x0a, 0xc3, 0xa0, 0xff, 0x00]);

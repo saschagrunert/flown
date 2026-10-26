@@ -14,6 +14,7 @@ import {
   LocalFlights,
   NO_TERRAIN_KEY,
   OWN_TAB_KEY,
+  REMOVED_KEY,
   localStartConfig,
   reopenAfterSwitch,
   siteBuild,
@@ -630,10 +631,9 @@ describe("adding files", () => {
     await settle();
     await settle();
 
+    // The aircraft file as kept stays as it is, and builds with the rest
     const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
-    expect(kept.map((f) => f.name)).toEqual(["1.KMZ", "aircraft.json"]);
-    expect(new TextDecoder().decode(kept[1]!.bytes)).toBe("{}");
-    expect(kept[1]!.size).toBe(2);
+    expect(kept.map((f) => f.name)).toEqual(["1.KMZ"]);
     expect(store.requestPersistence).toHaveBeenCalledTimes(1);
     // The refusal of the photo is still said as the build goes on
     expect(alert().textContent).toBe(UNSUPPORTED_FILES_MESSAGE);
@@ -878,6 +878,8 @@ describe("adding files", () => {
     await settle();
     expect(store.clearAll).toHaveBeenCalledTimes(1);
     expect(status().textContent).toBe(REMOVED_MESSAGE);
+    // Said to the other tabs, which may show them (reopenAfterSwitch)
+    expect(localStorage.getItem(REMOVED_KEY)).not.toBeNull();
 
     // The lines of the build still going are not the panel's any more
     fake.settlers[0]!.progress("Parsing 1 KML file(s)...");
@@ -999,18 +1001,18 @@ describe("adding files", () => {
   it("refuses files that would take the files kept past the limit in all", async () => {
     // Every build takes all of them: a drop under the limit on its own
     store.listFiles.mockResolvedValue([
-      stored("a.kml", MAX_KEPT_BYTES / 2),
+      stored("a.kml", MAX_KEPT_BYTES * 0.6),
       stored("b.kml", MAX_KEPT_BYTES / 4),
     ]);
     const local = makePanel();
 
-    await local.add([sized("c.kml", MAX_KEPT_BYTES / 2)]);
+    await local.add([sized("c.kml", MAX_FILE_BYTES)]);
 
     expect(alert().textContent).toBe(TOO_LARGE_MESSAGE);
     expect(store.putFiles).not.toHaveBeenCalled();
 
     // One dropped again in place of a larger one kept comes to less
-    const adding = local.add([sized("a.kml", MAX_KEPT_BYTES / 4)]);
+    const adding = local.add([sized("a.kml", MAX_FILE_BYTES)]);
     await settle();
     expect(store.putFiles).toHaveBeenCalledTimes(1);
     fake.settlers[0]!.resolve(OUTCOME);
@@ -1029,7 +1031,7 @@ describe("adding files", () => {
 
     expect(alert().textContent).toBe(oversizedMessage(["huge.kml"]));
     expect(oversizedMessage(["a.kml", "b.kml"])).toBe(
-      "a.kml, b.kml are larger than 100 MB, which the build cannot read",
+      "a.kml, b.kml are larger than 32 MB, which the build in the browser cannot read",
     );
     const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
     expect(kept.map((f) => f.name)).toEqual(["a.kml"]);
@@ -1146,6 +1148,9 @@ describe("adding files", () => {
 
     // A folder from a foreign disk on macOS, with ._ files beside each; the
     // folder in it listed first, as a browser may
+    // And its .git, which the site build leaves out too: not even read
+    const git = folder(".git", entry("2.kml", "<kml/>"));
+    const readGit = vi.spyOn(git, "createReader");
     const adding = local.add([
       folder(
         "logs",
@@ -1155,6 +1160,7 @@ describe("adding files", () => {
           entry("._1.kml", "\u0000\u0005"),
           entry("aircraft.json", '{"D-EAGJ": {}}'),
         ),
+        git,
         entry("aircraft.json"),
         entry("._aircraft.json"),
       ),
@@ -1172,13 +1178,14 @@ describe("adding files", () => {
     ]);
     expect(aircraftName(1)).toBe("aircraft.json");
     expect(aircraftName(2)).toBe("aircraft-2.json");
+    expect(readGit).not.toHaveBeenCalled();
     // Neither is a mistake of the visitor's
     expect(alert().textContent).toBe("");
     fake.settlers[0]!.resolve(OUTCOME);
     await adding;
   });
 
-  it("numbers an aircraft.json on from those kept, and takes one dropped again for itself", async () => {
+  it("numbers an aircraft.json on from those kept, and leaves one dropped again as it is", async () => {
     store.listFiles.mockResolvedValue([
       stored("aircraft.json", 2),
       stored("aircraft-3.json", 5),
@@ -1198,12 +1205,75 @@ describe("adding files", () => {
 
     const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
     expect(kept.map((f) => f.name)).toEqual([
-      "aircraft.json",
       "aircraft-4.json",
       "aircraft-5.json",
     ]);
     // None replaced a file of another size, nor took the place of another
     expect(alert().textContent).toBe("");
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+  });
+
+  it("keeps no file dropped again as it is kept, and shows the flights instead", async () => {
+    const dropped = Object.assign(file("1.kml"), {});
+    store.listFiles.mockResolvedValue([
+      { ...stored("1.kml", dropped.size), modified: dropped.lastModified },
+      stored("2.kml", 6),
+    ]);
+    store.readInfo.mockResolvedValue({
+      ...INFO,
+      files: ["1.kml", "2.kml"],
+      stamp: fileStamp([
+        { ...stored("1.kml", dropped.size), modified: dropped.lastModified },
+        stored("2.kml", 6),
+      ]),
+    });
+    const local = makePanel();
+
+    await local.add([dropped]);
+
+    // Neither written again nor built: shown as they are
+    expect(store.putFiles).not.toHaveBeenCalled();
+    expect(fake.build).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
+  });
+
+  it("builds no file dropped again as it is kept while a build of it runs", async () => {
+    const dropped = file("1.kml");
+    store.listFiles.mockResolvedValue([
+      { ...stored("1.kml", dropped.size), modified: dropped.lastModified },
+    ]);
+    const local = makePanel();
+    const first = local.add([file("2.kml")]);
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(1);
+
+    // The build on its way has it already, and shows it once done
+    await local.add([dropped]);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await first;
+    await settle();
+
+    expect(fake.build).toHaveBeenCalledTimes(1);
+    expect(store.putFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a file dropped again that changed since, with its time", async () => {
+    const changed = file("1.kml");
+    store.listFiles.mockResolvedValue([
+      { ...stored("1.kml", changed.size), modified: changed.lastModified - 1 },
+    ]);
+    const local = makePanel();
+
+    const adding = local.add([changed]);
+    await settle();
+
+    const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
+    expect(kept.map((f) => [f.name, f.modified])).toEqual([
+      ["1.kml", changed.lastModified],
+    ]);
+    expect(fake.build).toHaveBeenCalledTimes(1);
     fake.settlers[0]!.resolve(OUTCOME);
     await adding;
   });
@@ -1311,7 +1381,7 @@ describe("adding files", () => {
 
   it("checks two drops at once against the limit one after the other", async () => {
     // What is kept grows with each drop kept
-    const kept: StoredFile[] = [stored("z.kml", MAX_KEPT_BYTES * 0.3)];
+    const kept: StoredFile[] = [stored("z.kml", MAX_KEPT_BYTES * 0.7)];
     store.listFiles.mockImplementation(() => Promise.resolve([...kept]));
     store.putFiles.mockImplementation((files: StoredFileWithBytes[]) => {
       kept.push(
@@ -1321,8 +1391,8 @@ describe("adding files", () => {
     });
     const local = makePanel();
 
-    const first = local.add([sized("a.kml", MAX_KEPT_BYTES * 0.4)]);
-    const second = local.add([sized("b.kml", MAX_KEPT_BYTES * 0.4)]);
+    const first = local.add([sized("a.kml", MAX_FILE_BYTES)]);
+    const second = local.add([sized("b.kml", MAX_FILE_BYTES)]);
     await settle();
     await settle();
 
@@ -1434,6 +1504,161 @@ describe("adding files", () => {
       panel().querySelector<HTMLInputElement>(".local-flights-terrain input")!
         .checked,
     ).toBe(true);
+  });
+
+  it("builds without the ground where asked to though the browser keeps no choice", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = await openPanel();
+    const box = panel().querySelector<HTMLInputElement>(
+      ".local-flights-terrain input",
+    )!;
+    // Its storage full, or refused: the choice stays for the page's lifetime
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("full", "QuotaExceededError");
+      });
+    try {
+      box.checked = true;
+      box.dispatchEvent(new Event("change"));
+      await settle();
+      expect(fake.build.mock.calls[0]![1]).toBe(false);
+      fake.settlers[0]!.resolve(OUTCOME);
+      await settle();
+
+      // Nor does a later build, or the panel read again, forget it
+      const adding = local.add([file("b.kml")]);
+      await settle();
+      expect(fake.build.mock.calls[1]![1]).toBe(false);
+      expect(box.checked).toBe(true);
+      fake.settlers[1]!.resolve(OUTCOME);
+      await adding;
+    } finally {
+      setItem.mockRestore();
+      box.checked = false;
+      box.dispatchEvent(new Event("change"));
+      await settle();
+    }
+  });
+
+  it("stops a build that fetches the ground once it is switched off, and builds without", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = await openPanel();
+    const box = panel().querySelector<HTMLInputElement>(
+      ".local-flights-terrain input",
+    )!;
+    const adding = local.add([file("b.kml")]);
+    await settle();
+    expect(fake.build.mock.calls[0]![1]).toBe(true);
+
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+    await settle();
+
+    // Let go of before it asks AWS for more tiles, and started again
+    // without them
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    expect(fake.build).toHaveBeenCalledTimes(2);
+    expect(fake.build.mock.calls[1]![1]).toBe(false);
+    // Which fails with the worker it went with, unsaid
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await settle();
+    expect(alert().textContent).toBe("");
+    fake.settlers[1]!.resolve(OUTCOME);
+    await adding;
+    await settle();
+    expect(store.putDataset).toHaveBeenCalledTimes(1);
+    expect(store.putDataset).toHaveBeenLastCalledWith(
+      OUTCOME.files,
+      expect.objectContaining({ terrain: false }),
+    );
+    // Shown, as the drop asked
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    // Switched on again, nothing is stopped: the next build takes it
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+    await settle();
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    expect(fake.build.mock.calls[2]![1]).toBe(true);
+    fake.settlers[2]!.resolve(OUTCOME);
+    await settle();
+  });
+
+  it("stops a build that fetches the ground once another tab switches it off", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = await openPanel();
+    const box = panel().querySelector<HTMLInputElement>(
+      ".local-flights-terrain input",
+    )!;
+    const adding = local.add([file("b.kml")]);
+    await settle();
+    expect(fake.build.mock.calls[0]![1]).toBe(true);
+
+    // Another tab's: the storage event of its choice
+    localStorage.setItem(NO_TERRAIN_KEY, "1");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: NO_TERRAIN_KEY, newValue: "1" }),
+    );
+    await settle();
+
+    expect(box.checked).toBe(true);
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    expect(fake.build.mock.calls[1]![1]).toBe(false);
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    fake.settlers[1]!.resolve(OUTCOME);
+    await adding;
+    await settle();
+
+    // Nor is a build without the ground stopped by the choice said again
+    const again = local.add([file("c.kml")]);
+    await settle();
+    expect(fake.build.mock.calls[2]![1]).toBe(false);
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: NO_TERRAIN_KEY, newValue: "1" }),
+    );
+    await settle();
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    fake.settlers[2]!.resolve(OUTCOME);
+    await again;
+
+    // Another key, or the choice undone, stops nothing
+    window.dispatchEvent(new StorageEvent("storage", { key: "other" }));
+    localStorage.removeItem(NO_TERRAIN_KEY);
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: NO_TERRAIN_KEY, newValue: null }),
+    );
+    await settle();
+    expect(box.checked).toBe(false);
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    expect(fake.build).toHaveBeenCalledTimes(3);
+  });
+
+  it("builds without the ground when another tab asked for it, and says so", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    const local = await openPanel();
+    const box = panel().querySelector<HTMLInputElement>(
+      ".local-flights-terrain input",
+    )!;
+    expect(box.checked).toBe(false);
+    // Ticked in another tab while this one was open
+    localStorage.setItem(NO_TERRAIN_KEY, "1");
+
+    const adding = local.add([file("b.kml")]);
+    await settle();
+
+    // No tile is asked of AWS
+    expect(fake.build.mock.calls[0]![1]).toBe(false);
+    expect(box.checked).toBe(true);
+    fake.settlers[0]!.resolve(OUTCOME);
+    await adding;
+
+    // And the box shows it as the panel opens again
+    local.close();
+    localStorage.removeItem(NO_TERRAIN_KEY);
+    local.open();
+    await settle();
+    expect(box.checked).toBe(false);
   });
 
   it("hands the build the site's flags and its build", async () => {
@@ -2655,10 +2880,13 @@ describe("localStartConfig", () => {
 
   it("is null without a dataset, and clears the flag", async () => {
     localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    // Saved again by a tab that showed them after another removed them
+    localStorage.setItem(LOCAL_STATE_KEY, "{}");
 
     await expect(localStartConfig(config)).resolves.toBeNull();
 
     expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBeNull();
+    expect(localStorage.getItem(LOCAL_STATE_KEY)).toBeNull();
   });
 
   it("is null for a dataset of another build of the site, which the panel builds again", async () => {
@@ -2859,6 +3087,29 @@ describe("reopenAfterSwitch", () => {
 
     expect(button.classList.contains("active")).toBe(true);
     expect(document.getElementById(LOCAL_PANEL_ID)).toBeNull();
+  });
+
+  it("lets the view of the flights another tab removed go, and shows the site's", () => {
+    const mock = createMockApp({ config: { localFlights: INFO } });
+    const showSite = vi.fn<() => void>();
+    reopenAfterSwitch(asMapApp(mock), undefined, showSite);
+    localStorage.setItem(LOCAL_STATE_KEY, "{}");
+
+    // Another key, or the marker cleared: nothing
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: LOCAL_FLIGHTS_KEY, newValue: null }),
+    );
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: REMOVED_KEY, newValue: null }),
+    );
+    expect(showSite).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: REMOVED_KEY, newValue: "1" }),
+    );
+    expect(mock.stateManager.cancelSave).toHaveBeenCalled();
+    expect(localStorage.getItem(LOCAL_STATE_KEY)).toBeNull();
+    expect(showSite).toHaveBeenCalledTimes(1);
   });
 
   it("says Copy link cannot while the page shows the visitor's flights", () => {

@@ -3,7 +3,6 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { MapApp } from "../../../../flown/frontend/mapApp";
-import type { KMLDataset } from "../../../../flown/frontend/types";
 import {
   AppStore,
   defineStoreAccessors,
@@ -435,6 +434,56 @@ describe("MobileBar", () => {
       expect(tab("stats").getAttribute("aria-expanded")).toBe("true");
     });
 
+    it("takes the map out of reach while the statistics sheet covers it", () => {
+      const map = document.createElement("div");
+      map.id = "map";
+      const rail = document.createElement("div");
+      rail.id = "stats-rail";
+      document.body.append(map, rail);
+      // jsdom lays nothing out: the sheet's height and its largest
+      let height = 600;
+      vi.spyOn(rail, "getBoundingClientRect").mockImplementation(
+        () => ({ height }) as DOMRect,
+      );
+      rail.style.maxHeight = "600px";
+      bar!.destroy();
+      create();
+
+      app.store.set("statsPanelVisible", true);
+      expect(map.hasAttribute("inert")).toBe(true);
+
+      // Wrapped shows the map in its dialog
+      app.store.set("wrappedVisible", true);
+      expect(map.hasAttribute("inert")).toBe(false);
+      app.store.set("wrappedVisible", false);
+      expect(map.hasAttribute("inert")).toBe(true);
+
+      // A replay and the tour run on the map, with the sheet open but
+      // unseen under them, at the full height of a page without the bar
+      app.store.set("replayActive", true);
+      expect(map.hasAttribute("inert")).toBe(false);
+      app.store.set("replayActive", false);
+      expect(map.hasAttribute("inert")).toBe(true);
+      app.store.set("tourView", {} as never);
+      expect(map.hasAttribute("inert")).toBe(false);
+      app.store.set("tourView", null);
+      expect(map.hasAttribute("inert")).toBe(true);
+
+      // A sheet that leaves some of the map free leaves it to touch
+      height = 250;
+      app.store.set("statsPanelVisible", false);
+      app.store.set("statsPanelVisible", true);
+      expect(map.hasAttribute("inert")).toBe(false);
+
+      // Nor does it stay out of reach once the bar goes
+      height = 600;
+      app.store.set("statsPanelVisible", false);
+      app.store.set("statsPanelVisible", true);
+      expect(map.hasAttribute("inert")).toBe(true);
+      bar!.destroy();
+      expect(map.hasAttribute("inert")).toBe(false);
+    });
+
     it("opens the wrapped card and follows its state", async () => {
       tab("wrapped").click();
       await vi.waitFor(() =>
@@ -557,10 +606,7 @@ describe("MobileBar", () => {
       option.textContent = "D-EXYZ";
       document.getElementById("aircraft-select")!.append(option);
 
-      app.store.set("currentData", {
-        path_info: [],
-        path_segments: [],
-      } as unknown as KMLDataset);
+      app.store.set("currentData", { path_info: [], path_segments: [] });
 
       const mirrored = document.querySelector<HTMLSelectElement>(
         '[data-row="aircraft"] select',

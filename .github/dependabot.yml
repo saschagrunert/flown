@@ -4,6 +4,34 @@
 # four pull requests opened in the same minute kept jobs waiting for a
 # runner for up to eleven minutes.
 version: 2
+# The gitleaks hook of .pre-commit-config.yaml and the gitleaks image of the
+# secrets job (.github/images/gitleaks/Dockerfile) are the same release, so
+# they are bumped in one pull request: a pull request of either alone failed
+# the lint job (scripts/check_pins.py compares the two) and the secrets job
+# (which compares the release the image reports with the hook's) until the
+# other was pushed by hand. Each of the two entries below joins this group
+# with all of its dependencies (patterns "*"); the pre-commit entry has no
+# other hook, and the docker entry no other image. The group's schedule is
+# the one of both entries.
+#
+# @playwright/test and its image (.github/images/playwright/Dockerfile) are
+# not grouped like this: an entry joins a multi-ecosystem group as a whole,
+# and the npm entry of "/" holds every other npm dependency too, which a
+# second npm entry of the same directory may not split off. Dependabot does
+# not bump that image at all, since a pull request of the image alone could
+# only fail against the library; `python scripts/check_pins.py --fix` writes
+# it on the library's branch (see the playwright group below).
+multi-ecosystem-groups:
+  gitleaks:
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "09:00"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
 updates:
   # Python dependencies: the ranges in pyproject.toml, the single source of
   # the Python dependencies, and their pins in uv.lock, which Dependabot
@@ -111,10 +139,9 @@ updates:
     groups:
       # On its own because it cannot be merged as it comes: the visual and
       # e2e jobs run in the Playwright image, whose tag and digest in
-      # test.yml (and the same reference in CONTRIBUTING.md and
-      # doc/development/testing.md) have to be bumped by hand on the same
-      # branch. scripts/check_pins.py fails the lint job until they are;
-      # the visual job comment in test.yml says how to look up the digest.
+      # .github/images/playwright/Dockerfile have to be bumped on the same
+      # branch, with `python scripts/check_pins.py --fix`. The lint job
+      # fails until they are (see the top).
       playwright:
         patterns:
           - "@playwright/test"
@@ -247,28 +274,27 @@ updates:
   # pre-commit hook revisions. Only gitleaks is left as a pinned repo in
   # .pre-commit-config.yaml; the linters, formatters and file checks run
   # from the project environment, so nothing here can drift from what CI
-  # installs. The CI secrets job runs the gitleaks image test.yml pins by
-  # digest, with its release in a comment, so a bump of the gitleaks rev
-  # fails the lint job (scripts/check_pins.py compares the comment with the
-  # rev) and the secrets job (which compares the release the image
-  # reports) until the image is updated by hand on the same branch (the
-  # comment of that step says how to look up the digest).
+  # installs. The gitleaks rev is bumped together with the image of the
+  # secrets job, in the gitleaks group at the top.
   - package-ecosystem: "pre-commit"
     directory: "/"
+    multi-ecosystem-group: "gitleaks"
+    patterns:
+      - "*"
     # See the cooldown of the uv entry
     cooldown:
       default-days: 7
-    schedule:
-      interval: "weekly"
-      day: "friday"
-      time: "09:00"
     open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "ci"
-    commit-message:
-      prefix: "pre-commit"
-    groups:
-      hooks:
-        patterns:
-          - "*"
+
+  # The gitleaks image of the secrets job, the FROM line of a Dockerfile of
+  # its own, by tag and digest, which this entry bumps together, in the
+  # gitleaks group at the top
+  - package-ecosystem: "docker"
+    directory: "/.github/images/gitleaks"
+    multi-ecosystem-group: "gitleaks"
+    patterns:
+      - "*"
+    # See the cooldown of the uv entry
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3

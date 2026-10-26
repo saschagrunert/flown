@@ -519,6 +519,18 @@ describe("the stretches of the cloud", () => {
     );
   });
 
+  it("merges a last fix written again a moment later where it was", () => {
+    // A step of no length had a heat per metre of Infinity, which broke
+    // off the stretch it ended
+    const fixes = line(5);
+    const segments = flight(1, [...fixes, fixes.at(-1)!, fixes.at(-1)!]);
+    segments[5]!.time = segments[4]!.time! + 0.5;
+    const points = pointsOf(
+      cloudOf(segments, everything, [0, 0, 0, 0, 0, 0], 11),
+    );
+    expect(points).toHaveLength(2);
+  });
+
   it("is no longer than CLOUD_MERGE_MAX_PX of the level", () => {
     const level = 11;
     const points = pointsOf(

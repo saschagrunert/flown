@@ -163,7 +163,11 @@ import {
 } from "./calculations/datasetIndex";
 import type { StoreAccessors } from "./state/store";
 import { TOGGLE_KEYS } from "./state/toggles";
-import { resolveShareToken } from "./state/shareToken";
+import {
+  followedUnreadLink,
+  resolveShareToken,
+  UNREAD_LINK_MESSAGE,
+} from "./state/shareToken";
 import {
   SHARE_INTRO_PARAM,
   SHARE_TOKEN_PARAM,
@@ -1586,6 +1590,7 @@ export async function startApp(config: MapConfig): Promise<MapApp> {
   // A shared link becomes the ordinary one before anything reads it: the
   // token is read here, its packing for Copy link is in the extras bundle
   resolveShareToken();
+  if (followedUnreadLink()) showToast(UNREAD_LINK_MESSAGE, "error");
   // The phone bundle has the phone's bar (MapApp.followMobileBar): a phone
   // asks for it while the rest of the start runs
   if (isPhoneLayout()) void loadPhone();

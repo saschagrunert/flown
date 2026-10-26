@@ -19,7 +19,6 @@ import type { KMLDataset, PathInfo, PathSegment } from "../types";
  */
 export interface DecodedYear {
   path_info: PathInfo[];
-  original_points: number;
   /** Id of every path that has rows */
   pathIds: Float64Array;
   /** Number of rows of every such path */
@@ -131,11 +130,7 @@ function addRows(
 }
 
 function emptyDataset(decoded: DecodedYear): KMLDataset {
-  return {
-    path_segments: [],
-    path_info: decoded.path_info,
-    original_points: decoded.original_points,
-  };
+  return { path_segments: [], path_info: decoded.path_info };
 }
 
 /**
@@ -210,10 +205,6 @@ export function combineYearData(
     ),
     path_info: ([] as KMLDataset["path_info"]).concat(
       ...years.map((data) => data.path_info),
-    ),
-    original_points: years.reduce(
-      (sum, data) => sum + (data.original_points || 0),
-      0,
     ),
   };
 }

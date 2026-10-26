@@ -14,6 +14,7 @@ import type { PathSegment } from "../../../../flown/frontend/types";
 import { createDataset, createSegment, type MockApp } from "../../testHelpers";
 import { liftOffsetPx } from "../../../../flown/frontend/calculations/lift";
 import {
+  GROUND_IDLE_MS,
   groundedFlights,
   heldGroundedFlights,
 } from "../../../../flown/frontend/calculations/groundProfile";
@@ -47,7 +48,7 @@ vi.mock("../../../../flown/frontend/services/featureLoader", async () => {
     await import("../../../../flown/frontend/ui/pathRibbons");
   const { followsLevel } =
     await import("../../../../flown/frontend/calculations/lift");
-  const { heldGroundedFlights, releaseGroundedFlights, releaseGroundProfiles } =
+  const { heldGroundedFlights, releaseGroundedFlights } =
     await import("../../../../flown/frontend/calculations/groundProfile");
   const { followHeatCloud, followSelectionRibbons } = featureBundle;
   const bundle = {
@@ -61,7 +62,6 @@ vi.mock("../../../../flown/frontend/services/featureLoader", async () => {
     followsLevel,
     heldGroundedFlights,
     releaseGroundedFlights,
-    releaseGroundProfiles,
   };
   return {
     loadedFeatures: () =>
@@ -604,8 +604,19 @@ describe("LayerManager 3D view", () => {
       await drawClimb();
       expect(smoothed()).not.toBeNull();
 
-      mockApp.store.set("threeDVisible", false);
-      expect(smoothed()).toBeNull();
+      // Kept a while for the 3D view to come back on to
+      vi.useFakeTimers();
+      try {
+        mockApp.store.set("threeDVisible", false);
+        const held = smoothed();
+        expect(held).not.toBeNull();
+        vi.advanceTimersByTime(GROUND_IDLE_MS - 1);
+        expect(smoothed()).toBe(held);
+        vi.advanceTimersByTime(1);
+        expect(smoothed()).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
 
       mockApp.store.set("threeDVisible", true);
       await terrainCode();

@@ -347,7 +347,6 @@ def test_year_data_shape_and_unique_ids(golden_output):
         assert list(data) == [
             "format",
             "year",
-            "original_points",
             "path_info",
             "segments",
         ]

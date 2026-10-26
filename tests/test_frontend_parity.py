@@ -14,7 +14,7 @@ import pytest
 
 import flown.terrain as terrain_module
 import flown.terrain_fetch as fetch_module
-from flown import previews
+from flown import browser, previews
 from flown.constants import KM_TO_NAUTICAL_MILES, METERS_TO_FEET
 from flown.geometry import METRES_PER_DEGREE
 from flown.path_content import PATH_ID_BITS
@@ -30,7 +30,6 @@ from flown.terrain import (
     TERRAIN_ZOOM,
     TILE_SIZE,
 )
-from flown.validation import MAX_KML_FILE_SIZE
 
 FRONTEND = Path(__file__).parent.parent / "flown" / "frontend"
 
@@ -115,7 +114,17 @@ def _ts_constant(relative, name):
         # The previews colour their heat as the heat cloud does
         ("ui/heatCloudShaders.ts", "CLOUD_COLOUR", previews.CLOUD_COLOUR),
         # Your flights refuses a file the build in the page would skip
-        ("ui/localMessages.ts", "MAX_FILE_BYTES", MAX_KML_FILE_SIZE),
+        ("ui/localMessages.ts", "MAX_FILE_BYTES", browser.MAX_KML_BYTES),
+        # The worker fetches the tiles of a build in the page as the site
+        # build fetches them, and decodes them as its decoder does
+        ("services/localTiles.ts", "TILE_FETCHES", fetch_module.FETCH_WORKERS),
+        ("services/localTiles.ts", "MAX_TILE_BYTES", fetch_module.MAX_TILE_BYTES),
+        (
+            "services/localTiles.ts",
+            "SERVER_ERRORS_TO_GIVE_UP",
+            fetch_module.SERVER_ERROR_TILES_TO_GIVE_UP,
+        ),
+        ("services/localTiles.ts", "TILE_SIDE", TILE_SIZE),
     ],
 )
 def test_the_frontend_reads_what_the_exporter_writes(relative, name, value):
@@ -162,3 +171,13 @@ def test_the_frontend_draws_the_relief_from_the_same_tiles():
     match = re.search(r'\bconst TERRAIN_TILE_URL =\s*"([^"]+)";', source)
     assert match, "TERRAIN_TILE_URL not found in ui/terrain.ts"
     assert match.group(1) == fetch_module.TILE_URL
+
+
+def test_the_worker_gives_the_tile_host_up_on_the_same_answers():
+    """The server errors a tile of the site build is tried again on are
+    those the worker counts towards giving the host up."""
+    source = (FRONTEND / "services" / "localTiles.ts").read_text(encoding="utf-8")
+    match = re.search(r"\bconst SERVER_ERRORS = new Set\(\[([\d, ]+)\]\);", source)
+    assert match, "SERVER_ERRORS not found in services/localTiles.ts"
+    codes = {int(code) for code in match.group(1).split(",")}
+    assert codes == fetch_module._RETRIED_HTTP_CODES

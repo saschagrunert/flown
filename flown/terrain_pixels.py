@@ -29,6 +29,7 @@ __all__ = [
     "decode_cached_tile",
     "has_current_pixels",
     "is_tile_png",
+    "keep_decoded_planes",
 ]
 
 TILE_SIZE = 256
@@ -145,6 +146,22 @@ def _keep_pixel_planes(path: Path, data: bytes, planes: bytes) -> None:
     except OSError as e:
         # Only the next build pays for it: it decodes the tile again
         logger.debug("Cannot keep the pixels of %s: %s", path.name, e)
+
+
+def keep_decoded_planes(path: Path, data: bytes, planes: bytes) -> bool:
+    """Keep the planes someone else decoded of the tile at ``path``.
+
+    The build in the page has the worker decode the PNGs it fetched, as a
+    browser decodes an image, in a fraction of the time this module takes
+    (see ``flown.browser``): ``planes`` are the red, the green and the blue
+    plane of the PNG ``data``, as ``_decode_planes`` gives them. Whether
+    they are of the right size, at least; False for any other, which is then
+    decoded here.
+    """
+    if len(planes) != _PLANES_BYTES:
+        return False
+    _keep_pixel_planes(path, data, planes)
+    return True
 
 
 def _elevations_at(planes: bytes, indices: Sequence[int]) -> array[float]:

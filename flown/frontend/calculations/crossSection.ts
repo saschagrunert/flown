@@ -21,6 +21,7 @@ import {
   turnOf,
   type Coordinate,
 } from "../utils/geometry";
+import { cellKey } from "./grid";
 import { heatWeight } from "./heatLines";
 import { groundLevelsFt } from "./statistics";
 
@@ -285,12 +286,9 @@ function fieldLevelsOf(segments: readonly PathSegment[]): Map<number, number> {
  */
 const CELL_DEG = 0.05;
 
-/** A row of cells in the numbers of cellOf: more than the world's columns */
-const ROW = 16384;
-
-/** The cell a point is in: its row times ROW, and its column */
-function cellOf(lat: number, lon: number): number {
-  return Math.floor(lat / CELL_DEG) * ROW + Math.floor(lon / CELL_DEG);
+/** The row of cells a latitude is in, or the column a longitude is in */
+function cellIndex(degrees: number): number {
+  return Math.floor(degrees / CELL_DEG);
 }
 
 /** The key of the segments every corridor measures: a cell of none */
@@ -326,7 +324,7 @@ function corridorSegments(
       const key =
         Math.abs(lat1 - lat0) > CELL_DEG || Math.abs(lon1 - lon0) > CELL_DEG
           ? EVERY
-          : cellOf(lat0, lon0);
+          : cellKey(cellIndex(lat0), cellIndex(lon0));
       const cell = cells.get(key);
       if (cell) cell.push(i);
       else cells.set(key, [i]);
@@ -340,11 +338,11 @@ function corridorSegments(
   // How far a segment that starts in a cell reaches from its middle, in
   // the line's plane: half the cell, and the segment
   const reach = 1.5 * CELL_DEG * Math.hypot(frame.kx, frame.ky);
-  const [top, right] = [cellOf(north!, 0), cellOf(0, east!)];
-  for (let row = cellOf(south!, 0) - ROW; row <= top + ROW; row += ROW) {
-    for (let column = cellOf(0, west!) - 1; column <= right + 1; column++) {
+  const [top, right] = [cellIndex(north!), cellIndex(east!)];
+  for (let row = cellIndex(south!) - 1; row <= top + 1; row++) {
+    for (let column = cellIndex(west!) - 1; column <= right + 1; column++) {
       const [along, across] = toFrame(frame, [
-        (row / ROW + 0.5) * CELL_DEG,
+        (row + 0.5) * CELL_DEG,
         (column + 0.5) * CELL_DEG,
       ]);
       if (
@@ -352,7 +350,7 @@ function corridorSegments(
         along < frame.lengthM + reach &&
         Math.abs(across) < halfWidthM + reach
       ) {
-        take(cells.get(row + column));
+        take(cells.get(cellKey(row, column)));
       }
     }
   }

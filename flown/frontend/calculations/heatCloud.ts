@@ -479,7 +479,9 @@ export function cloudPoints(
         const [x, y] = mercatorOf(point);
         const height = heightAt(j) * pixelsPerFt;
         const under = groundAt(j) * pixelsPerFt;
-        const density = heat / metres;
+        // A step that goes nowhere (a last fix repeated, parked) has no
+        // density of its own: Infinity broke off the stretch it ends
+        const density = metres > 0 ? heat / metres : least;
         const prevPx = prevX * worldPx;
         const prevPy = prevY * worldPx;
         if (merging) {

@@ -45,6 +45,12 @@ class SegmentSpeed:
     segments enter the rolling window, including the ones where the aircraft
     stood still (speed 0), because their time counts toward the average.
     ``speed`` is None for every other segment.
+
+    A segment of less than ``MIN_SEGMENT_TIME_SECONDS`` says nothing on its
+    own, but its distance was flown: it is ``carried_distance`` (and
+    ``carried_time``) of the next segment that is measured, which the speed
+    and the window count with its own, unless the two together are faster
+    than any aircraft (a position jump among the short segments).
     """
 
     timestamp: float | None
@@ -53,6 +59,13 @@ class SegmentSpeed:
     distance: float
     time_delta: float
     valid: bool = False
+    carried_distance: float = 0.0
+    carried_time: float = 0.0
+
+
+def _knots(distance_km: float, seconds: float) -> float:
+    """The groundspeed of ``distance_km`` flown in ``seconds``."""
+    return distance_km * KM_TO_NAUTICAL_MILES / seconds * SECONDS_PER_HOUR
 
 
 def extract_segment_speeds(
@@ -62,8 +75,14 @@ def extract_segment_speeds(
 
     The distances of the segments add up to the length of the path, so a
     caller that needs it sums them instead of computing each one twice.
+    Loggers that write a fix twice under one time, or fixes a hundredth of
+    a second apart, leave segments too short to measure: their distance
+    goes to the next one that is measured (see ``SegmentSpeed``), as left
+    out it took the groundspeed of such a track down to half.
     """
     segment_speeds: list[SegmentSpeed] = []
+    # The distance and time of the short segments since the last measured one
+    pending_km = pending_seconds = 0.0
 
     for p1, p2 in pairwise(path):
         segment_distance_km = haversine_distance(p1.lat, p1.lon, p2.lat, p2.lon)
@@ -73,6 +92,7 @@ def extract_segment_speeds(
         time_delta = 0.0
         relative_time = None
         valid = False
+        carried_km = carried_seconds = 0.0
 
         if p1.ts is not None and p2.ts is not None:
             time_delta = p2.ts - p1.ts
@@ -82,12 +102,27 @@ def extract_segment_speeds(
                 relative_time = p1.ts - path_start_time
 
             if time_delta >= MIN_SEGMENT_TIME_SECONDS:
-                segment_distance_nm = segment_distance_km * KM_TO_NAUTICAL_MILES
-                speed = (segment_distance_nm / time_delta) * SECONDS_PER_HOUR
+                carried_km, carried_seconds = pending_km, pending_seconds
+                speed = _knots(
+                    segment_distance_km + carried_km, time_delta + carried_seconds
+                )
+                if speed > MAX_GROUNDSPEED_KNOTS and carried_km:
+                    # The short segments were a position jump (a logger that
+                    # froze and caught up at once): the segment on its own
+                    carried_km = carried_seconds = 0.0
+                    speed = _knots(segment_distance_km, time_delta)
                 # An implausible speed (a position jump) is no measurement
                 valid = speed <= MAX_GROUNDSPEED_KNOTS
                 if valid:
                     instant_speed = speed
+                pending_km = pending_seconds = 0.0
+            elif time_delta >= 0:
+                pending_km += segment_distance_km
+                pending_seconds += time_delta
+            else:
+                pending_km = pending_seconds = 0.0
+        else:
+            pending_km = pending_seconds = 0.0
 
         segment_speeds.append(
             SegmentSpeed(
@@ -97,6 +132,8 @@ def extract_segment_speeds(
                 distance=segment_distance_km,
                 time_delta=time_delta,
                 valid=valid,
+                carried_distance=carried_km,
+                carried_time=carried_seconds,
             )
         )
 
@@ -149,10 +186,14 @@ class SpeedWindow:
         )
         self.timestamps = [seg.timestamp for seg in timed if seg.timestamp is not None]
         self._distance_totals = list(
-            accumulate((seg.distance for seg in timed), initial=0.0)
+            accumulate(
+                (seg.distance + seg.carried_distance for seg in timed), initial=0.0
+            )
         )
         self._time_totals = list(
-            accumulate((seg.time_delta for seg in timed), initial=0.0)
+            accumulate(
+                (seg.time_delta + seg.carried_time for seg in timed), initial=0.0
+            )
         )
 
     def __len__(self) -> int:

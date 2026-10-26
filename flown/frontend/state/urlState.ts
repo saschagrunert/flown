@@ -113,8 +113,8 @@ function visibilityString(state: AppState): string {
 
 /**
  * Read the toggles off a link. Only a `v` of all nine slots counts: the
- * shorter ones of the releases before the isolate flag are ignored, and the
- * layers of such a link open as a first visit's. The toggles with a
+ * shorter ones of older links, from before the isolate flag, are ignored,
+ * and the layers of such a link open as a first visit's. The toggles with a
  * parameter of their own are only ever written while on, so a link without
  * one leaves them as they are.
  */

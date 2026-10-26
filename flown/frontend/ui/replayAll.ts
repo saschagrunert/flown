@@ -153,7 +153,7 @@ export class ReplayAllControls {
     };
     // Escape leaves it, as it leaves the replay of one flight; not from the
     // speed picker, whose own list it closes, nor from a text field, nor
-    // from a popup or a marker
+    // from a popup or a marker that closed its popup
     document.addEventListener(
       "keydown",
       (event) => {

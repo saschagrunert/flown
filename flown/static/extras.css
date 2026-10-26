@@ -88,4 +88,10 @@
   .popup-flight {
     min-height: var(--btn-min-height);
   }
+  /* The box where a mouse has it, in line with the titles above the list:
+     its label (styles.css, `.pick-hit`) widens it to the right alone, as
+     the list cuts off what reaches past its left edge */
+  .popup-flights .pick-hit {
+    padding-left: 0;
+  }
 }

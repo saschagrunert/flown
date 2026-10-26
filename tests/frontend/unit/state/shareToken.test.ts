@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
 import {
+  BASE64URL,
+  checksum,
   FLAGS,
+  FORMAT_VERSION,
+  followedUnreadLink,
   MAX_SHARE_TOKEN_LENGTH,
   resolveShareToken,
   unpackShareToken,
@@ -85,10 +89,10 @@ describe("the token of a shared link", () => {
     const query = encodeStateToUrl({ ...VIEW, selectedPathIds: ids });
 
     expect(packShareToken(query)!.length).toBeLessThan(query.length * 0.55);
-    // A view alone takes a few dozen characters
+    // A view alone takes about 20 characters
     expect(
       packShareToken("y=2025&lat=50.000000&lng=8.000000&z=9.00")!.length,
-    ).toBeLessThan(20);
+    ).toBeLessThanOrEqual(20);
   });
 
   it("leaves debug out", () => {
@@ -151,9 +155,34 @@ describe("the token of a shared link", () => {
   });
 
   it("resolves the tokens shared so far to the same links", () => {
-    // Packed by FORMAT_VERSION 0 as Copy link hands them out. A change to
+    // Packed by FORMAT_VERSION 1 as Copy link hands them out. A change to
     // the order of FLAGS or FIELDS, or to a precision, breaks every link
     // shared before it: it takes a new FORMAT_VERSION, and these stay.
+    const shared: [token: string, link: string][] = [
+      ["BAFsgAD9I", "y=2025"],
+      ["BALr4AIwcggAxMh", "y=all&a=D-EAGJ&v=100100001"],
+      ["BAQCQAISoMOHPsLO0srk", "a=Pa%C3%9Fagier"],
+      [
+        "BASzHgDWK1wne-ODMkAHUQ",
+        "lat=-33.856784&lng=151.215297&z=12.25&b=-179.9&t=84.9",
+      ],
+      ["BADgAHg", "g=1&d=1&s=1&l=1"],
+      [
+        "BAU7AQCrVeT8sn0VamwflfAA",
+        "x=-33.85678%2C151.21530%2C-33.86000%2C151.20000",
+      ],
+      [
+        "BAgwgIT9EsAAAACLAAAACTwP___SID9_____",
+        "y=2024&p=1x%2Ca5%2Czik0zj%2Ce13wu1of&sv=4&i=1",
+      ],
+    ];
+    for (const [token, link] of shared) {
+      expect(unpackShareToken(token)?.toString(), token).toBe(link);
+      expect(packShareToken(link), link).toBe(token);
+    }
+  });
+
+  it("still resolves the tokens of FORMAT_VERSION 0, which had no check", () => {
     const shared: [token: string, link: string][] = [
       ["AgAD9I", "y=2025"],
       ["A4AIwcggAxMh", "y=all&a=D-EAGJ&v=100100001"],
@@ -174,8 +203,29 @@ describe("the token of a shared link", () => {
     ];
     for (const [token, link] of shared) {
       expect(unpackShareToken(token)?.toString(), token).toBe(link);
-      expect(packShareToken(link), link).toBe(token);
     }
+  });
+
+  it("does not resolve once cut short", () => {
+    // As chat and mail clients cut a long link: without the check, most cuts
+    // fell back to the visitor's own view and some read as fewer flights.
+    // The second, cut by two characters, passed a check of a hash alone
+    // and read as its first flight.
+    for (const link of [
+      "y=2024&a=D-EAGJ&p=1x%2Ca5%2Czik0zj%2Ce13wu1of%2C2s%2C9k&sv=4&i=1",
+      "y=2024&p=5j%2C69i&sv=4",
+    ]) {
+      const token = packShareToken(link)!;
+      for (let length = 0; length < token.length; length++) {
+        expect(unpackShareToken(token.slice(0, length)), link).toBeNull();
+      }
+    }
+    const token = packShareToken(
+      "y=2024&a=D-EAGJ&p=1x%2Ca5%2Czik0zj%2Ce13wu1of%2C2s%2C9k&sv=4&i=1",
+    )!;
+    // Nor with a character changed
+    const changed = token.slice(0, -1) + (token.endsWith("A") ? "B" : "A");
+    expect(unpackShareToken(changed)).toBeNull();
   });
 
   it("is not read past its longest, and selects the first of the most flights", () => {
@@ -243,12 +293,14 @@ describe("the token of a shared link", () => {
       expect(window.location.search).toBe("?y=2025&p=a5&sv=4&i=1&debug=true");
     });
 
-    it("drops a token that does not resolve", () => {
+    it("drops a token that does not resolve, and remembers it did", () => {
       window.history.replaceState(null, "", `/?${SHARE_TOKEN_PARAM}=!!`);
+      expect(followedUnreadLink()).toBe(false);
 
       resolveShareToken();
 
       expect(window.location.search).toBe("");
+      expect(followedUnreadLink()).toBe(true);
     });
 
     it("leaves a link without a token as it is", () => {
@@ -315,13 +367,34 @@ describe("the token of a shared link (fast-check)", () => {
     );
   });
 
+  it("does not resolve once cut short, wherever it is cut", () => {
+    // The check holds the length: a hash alone let a few of these through
+    // at some cut, with fewer flights
+    fc.assert(
+      fc.property(state, (state) => {
+        const token = packShareToken(encodeStateToUrl(state))!;
+        for (let length = 0; length < token.length; length++) {
+          expect(unpackShareToken(token.slice(0, length))).toBeNull();
+        }
+      }),
+      { numRuns: 300 },
+    );
+  });
+
   it("never throws on any text, nor resolves to a path id past 40 bits", () => {
     // Any text, and text of the token's own characters after the "A" of
-    // this format's version, which resolves now and then, flights and all.
-    // The ids are read off `p` itself: parseUrlParams would drop a bad one.
+    // the first format's version, or after this one's and the check of
+    // the text, which resolve now and then, flights and all. The ids are
+    // read off `p` itself: parseUrlParams would drop a bad one.
     fc.assert(
       fc.property(
-        fc.oneof(fc.string(), fc.stringMatching(/^A[\w-]*$/)),
+        fc.oneof(
+          fc.string(),
+          fc.stringMatching(/^A[\w-]*$/),
+          fc
+            .stringMatching(/^[\w-]*$/)
+            .map((body) => BASE64URL[FORMAT_VERSION]! + checksum(body) + body),
+        ),
         (text) => {
           const params = unpackShareToken(text);
           for (const id of params?.get("p")?.split(",") ?? []) {

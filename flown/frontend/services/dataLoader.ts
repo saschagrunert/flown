@@ -701,10 +701,7 @@ export class DataLoader {
 
       this.cache.set(year, data);
       arrived = true;
-      logDebug(
-        "✓ Loaded data (" + year + "):",
-        data.original_points + " points",
-      );
+      logDebug("✓ Loaded data (" + year + ")");
       return data;
     } catch (error) {
       logError("Error loading data for year " + year + ":", error);
@@ -805,7 +802,7 @@ export class DataLoader {
       } else {
         combined.incomplete = true;
       }
-      logDebug("Combined all years:", combined.original_points + " points");
+      logDebug("Combined all years");
       return combined;
     } catch (error) {
       logError("Error loading and combining all years:", error);

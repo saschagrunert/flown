@@ -1869,4 +1869,10 @@ body:has(.mobile-bar) .flights-table thead button {
   .flights-table td {
     height: 40px;
   }
+  /* The checkbox's wide label (styles.css, `.pick-hit`) the height of the
+     row, and into the padding of the cell, so the box stays where it was */
+  .flights-table .pick-hit {
+    height: 40px;
+    margin-left: -9px;
+  }
 }

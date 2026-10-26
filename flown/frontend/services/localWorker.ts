@@ -7,9 +7,10 @@
  * dropped files go into the worker's file system, `flown.browser.build`
  * (flown/browser.py) writes the data files of a site from them, and the
  * worker hands those back to the page, which keeps them in the browser
- * (services/localStore.ts). The airport database and the elevation tiles
- * the build fetches are kept in a directory mounted on IndexedDB, so the
- * second build needs neither again.
+ * (services/localStore.ts). The airport database the build fetches, and
+ * the elevation tiles the worker fetches for it (services/localTiles.ts),
+ * are kept in a directory mounted on IndexedDB, so the second build needs
+ * neither again.
  *
  * A build of its own (build.js, localWorkerBuildOptions): the page starts
  * it by URL (services/localBuild.ts) and shares no module with it. Pyodide
@@ -22,6 +23,7 @@
  */
 
 import { versioned } from "./lazyImport";
+import { fetchTiles, type WantedTile } from "./localTiles";
 import { localCacheDbName } from "../state/localFlags";
 import {
   CACHE_BUSY_MESSAGE,
@@ -57,6 +59,8 @@ const SOURCES_FILE = "flown-src.zip";
 
 const INPUT_DIR = "/input";
 const OUTPUT_DIR = "/site";
+/** Where the tiles the worker fetched are handed in (flown/browser.py) */
+const TILES_DIR = "/tiles";
 const SOURCES_DIR = "/lib/flown-src";
 
 /** A file the page hands over, as it was dropped */
@@ -103,6 +107,9 @@ export interface BuildOutcome {
   degraded?: string[] | undefined;
   files: { path: string; bytes: ArrayBuffer }[];
 }
+
+/** What a run of the Python build answers with: the build, or the tiles it needs */
+type PythonOutcome = Omit<BuildOutcome, "files"> | { tiles: WantedTile[] };
 
 type BuildResponse = { id: number } & (
   | { progress: string }
@@ -258,6 +265,9 @@ export const RUNTIME_FAILED_MESSAGE =
 export const LOADING_RUNTIME_MESSAGE = "Loading the Python runtime…";
 export const LOADING_PARSER_MESSAGE = "Loading the KML parser…";
 export const LOADING_PACKAGE_MESSAGE = "Loading the build…";
+/** Said while the worker fetches the elevation tiles the build needs */
+export const FETCHING_GROUND_MESSAGE =
+  "Fetching the ground under your flights…";
 
 /**
  * How long the cache may take to be read into the worker's memory once it
@@ -416,6 +426,9 @@ export class Runtime {
     private readonly cacheDir: string = localCacheDbName(),
     /** What watches each start, a new one for every try (runtimeWatch) */
     private readonly watchStart: () => RuntimeWatch = runtimeWatch,
+    /** What fetches the elevation tiles (services/localTiles.ts) */
+    private readonly fetchTile: Fetch = (input, init) =>
+      globalThis.fetch(input, init),
   ) {}
 
   ready(report: ProgressReport, version?: string): Promise<PyodideLike> {
@@ -574,6 +587,7 @@ export class Runtime {
       try {
         removeTree(pyodide, INPUT_DIR);
         removeTree(pyodide, OUTPUT_DIR);
+        removeTree(pyodide, TILES_DIR);
       } catch {
         // A runtime lost, which goes with the worker
       }
@@ -592,6 +606,7 @@ export class Runtime {
     try {
       removeTree(pyodide, INPUT_DIR);
       removeTree(pyodide, OUTPUT_DIR);
+      removeTree(pyodide, TILES_DIR);
       fs.mkdirTree(INPUT_DIR);
       for (const file of files) {
         // The name decides the aircraft (flown/browser.py)
@@ -608,18 +623,25 @@ export class Runtime {
     pyodide.globals.set("report", (_level: string, message: string) =>
       report(message),
     );
-    let outcome: Omit<BuildOutcome, "files">;
+    let outcome: PythonOutcome;
     try {
-      // The flags as a JSON string, which Python reads as a literal
-      const result = (await pyodide.runPythonAsync(
-        `import json\n` +
-          `from flown import browser\n` +
-          `json.dumps(browser.build(${JSON.stringify(INPUT_DIR)}, ` +
-          `${JSON.stringify(OUTPUT_DIR)}, report, terrain=${terrain ? "True" : "False"}, ` +
-          `retry=${retry ? "True" : "False"}, ` +
-          `flags=json.loads(${JSON.stringify(JSON.stringify(flags ?? null))})))`,
-      )) as string;
-      outcome = JSON.parse(result) as Omit<BuildOutcome, "files">;
+      outcome = await this.python(pyodide, terrain, flags, retry, null);
+      // The tiles the cache has not, which the build stopped at: fetched
+      // here several at a time, decoded, and handed in to it again, which
+      // takes any it could not get for missing
+      if ("tiles" in outcome) {
+        report(FETCHING_GROUND_MESSAGE);
+        fs.mkdirTree(TILES_DIR);
+        await fetchTiles(outcome.tiles, this.fetchTile, (name, png, planes) => {
+          fs.writeFile(`${TILES_DIR}/${name}.png`, png);
+          if (planes) fs.writeFile(`${TILES_DIR}/${name}.planes`, planes);
+        });
+        removeTree(pyodide, OUTPUT_DIR);
+        outcome = await this.python(pyodide, terrain, flags, false, TILES_DIR);
+        removeTree(pyodide, TILES_DIR);
+        if ("tiles" in outcome)
+          throw new Error("The build asked for its tiles twice");
+      }
     } catch (error) {
       // A Python exception leaves the runtime as it was, but for one of
       // memory (flown/browser.py raises one for a year that ran out): the
@@ -639,6 +661,27 @@ export class Runtime {
       }
     }
     return { ...outcome, files: filesUnder(pyodide, OUTPUT_DIR) };
+  }
+
+  /** One run of the Python build (flown.browser.build), `tilesDir` handed in */
+  private async python(
+    pyodide: PyodideLike,
+    terrain: boolean,
+    flags: string[] | undefined,
+    retry: boolean,
+    tilesDir: string | null,
+  ): Promise<PythonOutcome> {
+    // The flags as a JSON string, which Python reads as a literal
+    const result = (await pyodide.runPythonAsync(
+      `import json\n` +
+        `from flown import browser\n` +
+        `json.dumps(browser.build(${JSON.stringify(INPUT_DIR)}, ` +
+        `${JSON.stringify(OUTPUT_DIR)}, report, terrain=${terrain ? "True" : "False"}, ` +
+        `retry=${retry ? "True" : "False"}, ` +
+        `tiles_dir=${tilesDir ? JSON.stringify(tilesDir) : "None"}, ` +
+        `flags=json.loads(${JSON.stringify(JSON.stringify(flags ?? null))})))`,
+    )) as string;
+    return JSON.parse(result) as PythonOutcome;
   }
 }
 

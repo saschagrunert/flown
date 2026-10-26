@@ -44,6 +44,7 @@ from .cache import (
     atomic_bytes_write,
     private_directory,
     source_fingerprint,
+    touch_entry,
 )
 from .landings import FlightLandings
 from .logger import logger
@@ -450,8 +451,7 @@ def load_cached_parse(cache_path: Path) -> CachedParse | None:
         logger.debug("Cache file %s is corrupt or unreadable: %s", cache_path, e)
         return None
 
-    with contextlib.suppress(OSError):
-        os.utime(cache_path)
+    touch_entry(cache_path)
     return CachedParse(coordinates, path_groups, path_metadata, warnings, landings)
 
 

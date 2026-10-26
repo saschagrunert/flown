@@ -95,30 +95,60 @@ else reads together:
 - The setup-uv step of the setup-toolchain action and the uv image of the
   `Dockerfile` name the same uv release, and the image is pinned by its
   `@sha256` digest. Dependabot moves neither to another release.
-- The Playwright image of the `e2e` and `visual` jobs in
-  `.github/workflows/test.yml` is the same in both, pinned by its `@sha256`
-  digest, its tag matches the `@playwright/test` version in `package-lock.json`,
-  and `CONTRIBUTING.md` and `doc/development/testing.md` quote exactly the same
-  image reference. A document that is missing, or quotes no image, fails the
-  check too, rather than leaving the command it moved to unchecked.
+- No `exclude-newer-package` entry of `pyproject.toml` names a date that the
+  cutoff of `exclude-newer` (`7 days`) has passed. Such an entry lets a security
+  fix younger than the cutoff into `uv.lock`; once the cutoff passes its date it
+  holds the package further back than every other, and keeps each later release
+  out without an error anywhere. Remove it then.
+- The Playwright image of `.github/images/playwright/Dockerfile`, the one FROM
+  line the `e2e`, `visual` and `pyodide` jobs read, is pinned by its `@sha256`
+  digest and its tag matches the `@playwright/test` version in
+  `package-lock.json`. The workflow names no image of its own, and
+  `CONTRIBUTING.md` and `doc/development/testing.md` run the one of that file
+  (and quote no other). A document that is missing, or does not name the file,
+  fails the check too, rather than leaving the command it moved to unchecked.
 - `__version__` in `flown/__init__.py` matches `version` in `package.json` and
   both version fields of `package-lock.json`.
 - The Python version of `.python-version` is the one of the `python` base images
   in the `Dockerfile`, `requires-python`, mypy's `python_version` and ruff's
-  `target-version`. The Node.js release of `.nvmrc` is exact (`26.12.0`, since
+  `target-version`. The Node.js release of `.nvmrc` is exact (`26.12.1`, since
   the gzipped size budgets depend on the zlib it bundles), the tag of the `node`
   base image is the same, and `engines` in `package.json` asks for its major
   version or newer. Dependabot bumps none of them, so they move together by
   hand.
-- The gitleaks image of the secrets job names in its comment the release the
-  gitleaks hook of `.pre-commit-config.yaml` pins. Dependabot bumps the hook and
-  not the image. The secrets job compares the release the pulled image reports
-  as well, but only once the image is pulled; this check names the image to
-  update in the lint job, next to the other pins.
+- The gitleaks image of `.github/images/gitleaks/Dockerfile`, which the secrets
+  job reads, is pinned by tag and digest, and its tag is the release the
+  gitleaks hook of `.pre-commit-config.yaml` pins. Dependabot bumps the two in
+  one pull request; a hand edit of either still drifts. The secrets job compares
+  the release the pulled image reports as well, but only once the image is
+  pulled; this check names the image to update in the lint job, next to the
+  other pins.
 
 The other pre-commit hooks are not checked: the linters, formatters and file
 checks run from the project environment, so they have no revision of their own
-to drift. `make lint` and the CI lint job run it.
+to drift.
+
+With `--online` it also asks the registries, anonymously, for the digest of the
+tag of each of the two images, and fails when the pinned digest is another: the
+jobs pull by the digest, so a tag edited alone keeps running the old image (the
+bump of `@playwright/test` from 1.64.0 to 1.64.1 kept the browsers, and every
+other check passed against the old image). A registry that cannot be reached is
+a warning, not a failure. `--fix` writes the tag the library and the hook ask
+for into the two files, with the digest the registry gives for it, and then
+checks as `--online` does; run it on the branch of a `@playwright/test` bump.
+`make lint` and the CI lint job run it with `--online`.
+
+## new_advisories.py
+
+Compares two reports of `pip-audit -f json`, or of `npm audit --json`, the audit
+of a pull request's base and of its head, and fails on every advisory of the
+head that the base does not have. The `security` job of a pull request that
+changes a lock file runs it, so an advisory published for a version the base
+already pins does not turn the pull request red; a push to `main` and the weekly
+run audit the whole lock files. An advisory is matched by its package and its id
+or any alias, and for npm only high and critical ones count, as
+`npm audit --audit-level=high` does. A report that cannot be read fails it, and
+so does the one npm writes when its audit fails (only the error, no advisories).
 
 ## pre_push.py
 

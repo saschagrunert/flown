@@ -1,0 +1,80 @@
+{
+  "//": "The field at each end of a flight, as the build (_field_offset_ft in flown/terrain.py, over a flat model) and the page (fieldFt in flown/frontend/calculations/groundProfile.ts) both read it from the taxiing. Rows are [altitude ft, groundspeed kt, timed]; start and end are the field in feet, null for none. tests/test_terrain.py and tests/frontend/unit/calculations/fieldGround.test.ts run every case.",
+  "cases": [
+    {
+      "name": "taxiing at both ends, the upper median of each",
+      "rows": [
+        [500, 10, true],
+        [520, 12, true],
+        [510, 8, true],
+        [700, 80, true],
+        [900, 90, true],
+        [600, 70, true],
+        [400, 15, true],
+        [420, 9, true],
+        [410, 5, true],
+        [430, 3, true]
+      ],
+      "start": 510,
+      "end": 420
+    },
+    {
+      "name": "too short a taxi at the start",
+      "rows": [
+        [500, 10, true],
+        [510, 10, true],
+        [800, 90, true],
+        [600, 20, true],
+        [610, 20, true],
+        [620, 20, true]
+      ],
+      "start": null,
+      "end": 610
+    },
+    {
+      "name": "a speed of 0 is none and ends the taxiing",
+      "rows": [
+        [500, 0, true],
+        [500, 10, true],
+        [510, 10, true],
+        [520, 10, true],
+        [900, 90, true]
+      ],
+      "start": null,
+      "end": null
+    },
+    {
+      "name": "a row without a time ends the taxiing",
+      "rows": [
+        [500, 10, true],
+        [510, 10, false],
+        [520, 10, true],
+        [530, 10, true],
+        [900, 90, true]
+      ],
+      "start": null,
+      "end": null
+    },
+    {
+      "name": "a line without times has no field",
+      "rows": [
+        [500, 10, false],
+        [510, 10, false],
+        [520, 10, false],
+        [530, 10, false]
+      ],
+      "start": null,
+      "end": null
+    },
+    {
+      "name": "in the air at both ends",
+      "rows": [
+        [3000, 90, true],
+        [3100, 95, true],
+        [3200, 100, true]
+      ],
+      "start": null,
+      "end": null
+    }
+  ]
+}

@@ -136,10 +136,40 @@ the worker that builds the visitor's flights: it imports Pyodide from its CDN,
 loads lxml and the package's own Python from `flown-src.zip` next to the page
 (`site_assets.py` writes it, without the modules of the command line,
 `NOT_IN_THE_PAGE`), and runs `flown.browser.build` on the files, with the
-airport database and the elevation tiles it fetches kept in a directory mounted
-on IndexedDB. The page's Content Security Policy does not reach a worker started
-from a file of the site, which gets the policy of that file's response; a host
-that sends one would have to allow the CDN in it.
+airport database it fetches kept in a directory mounted on IndexedDB. The
+elevation tiles the build needs it does not fetch itself: it names those its
+cache has not, the worker fetches them eight at a time and decodes them with the
+browser's canvas (`services/localTiles.ts`), and the build runs again with them,
+checking them as it checks a download of its own. The page's Content Security
+Policy does not reach a worker started from a file of the site, which gets the
+policy of that file's response; a host that sends one would have to allow the
+CDN in it.
+
+### Pyodide
+
+The worker loads a pinned release of Pyodide (`PYODIDE_VERSION` in
+`services/localWorker.ts`), whose files it checks against the SHA-384 each had
+when the release was pinned (`PYODIDE_INTEGRITY`). Neither Dependabot nor
+`scripts/check_pins.py` sees them, so a new release is taken by hand:
+
+1. Take a release of the Python in `.python-version`: Pyodide names its releases
+   after it since 314 (`314.0.7` runs Python 3.14), and its lock file has to
+   carry lxml.
+2. Set `PYODIDE_VERSION`, and the five hashes from the files of that release,
+   which the npm package `pyodide` of the same version holds byte for byte:
+
+   ```bash
+   for file in pyodide.mjs pyodide.asm.mjs pyodide.asm.wasm python_stdlib.zip pyodide-lock.json; do
+     printf '%s sha384-%s\n' "$file" "$(curl -sfL "https://cdn.jsdelivr.net/pyodide/v<version>/full/$file" |
+       openssl dgst -sha384 -binary | openssl base64 -A)"
+   done
+   ```
+
+3. Run the real build: the `pyodide` job of `test.yml` runs in a pull request
+   that changes the worker, or locally in the Playwright image with
+   `FLOWN_E2E_PYODIDE=1 npx playwright test --project=desktop local-flights-pyodide`
+   (see [Testing](testing.md)). The hermetic e2e suite stubs the worker and says
+   nothing about the release.
 
 ### Shared chunk
 

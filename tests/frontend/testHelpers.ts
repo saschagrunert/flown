@@ -54,13 +54,8 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 export function createDataset(
   pathInfo: PathInfo[] = [],
   segments: PathSegment[] = [],
-  originalPoints = 0,
 ): KMLDataset {
-  return {
-    path_segments: segments,
-    path_info: pathInfo,
-    original_points: originalPoints,
-  };
+  return { path_segments: segments, path_info: pathInfo };
 }
 
 /**
@@ -144,6 +139,7 @@ interface MockManagers {
   statsManager: {
     updateStatsPanel: Mock;
     updateStatsForSelection: Mock;
+    refresh: Mock;
   };
   touchClock: TouchClock;
   pathSelection: {
@@ -381,6 +377,7 @@ function createMockManagers(): MockManagers {
     statsManager: {
       updateStatsPanel: vi.fn(),
       updateStatsForSelection: vi.fn(),
+      refresh: vi.fn(),
     },
     touchClock: new TouchClock(),
     pathSelection: {
