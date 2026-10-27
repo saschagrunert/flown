@@ -33,7 +33,7 @@ test = [
     "pytest-xdist>=3.8.0",
     "pytest-randomly>=5.0.0",
     "coverage>=7.16.2",
-    "hypothesis>=6.170.1",
+    "hypothesis>=6.170.2",
     "lxml-stubs>=0.5.1",
 ]
 dev = [
@@ -82,14 +82,6 @@ package = false
 # takes the lock for out of date. A security fix younger than that needs an
 # entry in exclude-newer-package for its package.
 exclude-newer = "7 days"
-# certifi 2026.10.19 fixes PYSEC-2026-4320 and setuptools 84.1.0 fixes
-# GHSA-xmj3-9gf7-h52w. Drop each entry once the release it lets in is a week
-# old, then run `uv lock`: setuptools from 2026-10-26 20:39 UTC (84.2.0 was
-# uploaded at 20:38 on the 19th), certifi from 2026-10-27 02:25 UTC (02:24 on
-# the 20th). Dropped sooner, uv locks the release before it.
-# scripts/check_pins.py fails the lint job on the setuptools entry from
-# 2026-10-27 and on the certifi entry from 2026-10-28, 00:00 UTC.
-exclude-newer-package = { certifi = "2026-10-21T00:00:00Z", setuptools = "2026-10-20T00:00:00Z" }
 
 [tool.setuptools.dynamic]
 version = {attr = "flown.__version__"}
