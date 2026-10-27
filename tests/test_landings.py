@@ -47,7 +47,7 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 # flights, with the fixture airport and runway databases; flights added to
 # data/ after them are read but left out of the totals
 COUNTED_FLIGHTS = 103
-TOTALS = [109, 87, 174, 6]
+TOTALS = [109, 87, 161, 19]
 
 # A field with one runway, 09/27, and the altitude its logger reads there
 FIELD = Field("EXMP", 50.0, 8.0, 500.0, (RunwayEnd("09", 90.0), RunwayEnd("27", 270.0)))
@@ -223,6 +223,87 @@ class TestTheRules:
         found = _detect(flight)
 
         assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 0, 1)
+
+    def test_a_low_pass_without_a_roll_is_a_go_around(self):
+        """Down to 10 ft over the runway at one fix and climbing at the next.
+
+        Within CONTACT_FT of the ground, but never rolling on it (regression:
+        it was a touch-and-go).
+        """
+        flight = Flight().takeoff().circuit().leg(60, 70, -490)
+        flight.leg(80, 70, 700).circuit().final().stop()
+
+        found = _detect(flight)
+
+        assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 0, 1)
+        assert found.touchdowns == [("EXMP", "27")]
+
+    def test_a_level_pass_above_the_earlier_rolls_is_a_go_around(self):
+        """Level, but 25 ft above where the touch-and-go rolled."""
+        flight = Flight().takeoff().circuit().final().touch_and_go()
+        flight.circuit().final(LOGGED_GROUND_FT + 25).leg(80, 70, 700)
+        flight.circuit().final().stop()
+
+        found = _detect(flight)
+
+        assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 1, 1)
+        assert found.touchdowns == [("EXMP", "27"), ("EXMP", "27")]
+
+    def test_a_roll_between_sparse_fixes_cannot_be_told(self):
+        """A fix every 10 s: the low pass stays a touch-and-go."""
+        flight = Flight(fix_seconds=10).takeoff().circuit().leg(60, 70, -490)
+        flight.leg(80, 70, 700).circuit().final().stop()
+
+        found = _detect(flight)
+
+        assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 1, 0)
+
+    def test_a_fix_lost_beside_the_low_stretch_cannot_be_told(self):
+        """Two fixes 5 s apart near the ground, after a gap of 10 s.
+
+        The stretch is too short for a roll, but one could hide in the gap:
+        the fix the logger lost.
+        """
+        flight = Flight().takeoff().circuit().leg(60, 70, -490)
+        lowest = len(flight.points) - 1
+        flight.leg(80, 70, 700).circuit().final().stop()
+        flight.points[lowest + 1] = flight.points[lowest + 1]._replace(
+            alt=(LOGGED_GROUND_FT + 8) * FEET_TO_METERS
+        )
+        del flight.points[lowest - 1]
+
+        found = _detect(flight)
+
+        assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 1, 0)
+
+    def test_a_roll_with_a_lost_altitude_is_no_earlier_roll(self):
+        """The logger reads 300 ft under the ground through the first roll.
+
+        Kept as the first roll's lowest point, it would put the second one
+        300 ft above it and make it a go-around.
+        """
+        flight = Flight().takeoff().circuit().final()
+        lost = len(flight.points) - 4
+        flight.touch_and_go().circuit().final().touch_and_go()
+        flight.circuit().final().stop()
+        for index in range(lost, lost + 5):
+            flight.points[index] = flight.points[index]._replace(
+                alt=(LOGGED_GROUND_FT - 300) * FEET_TO_METERS
+            )
+
+        found = _detect(flight)
+
+        assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 2, 0)
+
+    def test_a_low_pass_across_the_runway_is_nothing(self):
+        """No roll and no runway to line up with: neither of the two."""
+        flight = Flight().takeoff().leg(60, 90, 0, 0).leg(60, 90, 0, 90)
+        flight.leg(60, 80, -500, 180).leg(60, 80, -490, 180).leg(80, 70, 700, 180)
+        flight.leg(60, 90, 0, 270).circuit().final().stop()
+
+        found = _detect(flight)
+
+        assert (found.landings, found.touch_and_goes, found.go_arounds) == (1, 0, 0)
 
     def test_a_low_pass_across_the_runways_is_no_go_around(self):
         flight = Flight().takeoff().leg(60, 90, 0, 0).leg(60, 90, 0, 90)
@@ -523,7 +604,7 @@ class TestSampleFlights:
             for airport, runway in landings.touchdowns:
                 assert runway in {end.designator for end in runways[airport]}
         # What the fixture databases let it find; with the full ones the
-        # counted flights land 110 times and touch and go 188 times
+        # counted flights land 110 times and touch and go 173 times
         counted = [found[number] for number in range(1, COUNTED_FLIGHTS + 1)]
         totals = [
             sum(getattr(landings, key) for landings in counted)

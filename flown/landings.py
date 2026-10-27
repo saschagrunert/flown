@@ -32,6 +32,18 @@ The rules, per timed fix of a flight:
   well: a gap in the timestamps reads as a stop wherever it is. Within
   means above or below: a logger that loses its altitude for a while
   reports the aircraft hundreds of feet under the ground.
+- A touch-and-go rolls: the track stays within ``ROLL_FT`` of its lowest
+  point for ``ROLL_SECONDS``, and that point is no more than
+  ``ROLL_SPREAD_FT`` above the lowest points of the flight's earlier rolls
+  at the field (their median). Not above the field's ground: the logger's
+  error at a single field is larger than that. A low pass over the runway,
+  a few feet above it at the lowest fix and climbing again at the next, is
+  a go-around instead when it lines up with a runway as the rule below
+  asks, and nothing when it does not. A pass with ``ROLL_SECONDS`` or more
+  between two fixes in or beside its stretch near the lowest point cannot
+  show a roll (a sparse logger, a lost fix): it stays a touch-and-go, but
+  is no earlier roll for the next pass. Nor is a roll the logger read more
+  than ``CONTACT_FT`` off the field's ground.
 - Below ``APPROACH_FT`` above a field without coming within ``CONTACT_FT``
   of it, then a climb of ``CLIMB_AWAY_FT``, is a go-around when the track
   to the lowest point lines up with a runway of the field (any track at a
@@ -113,6 +125,13 @@ STOP_KNOTS = 25.0
 # Climb after a touchdown or the lowest point of an approach that is a
 # touch-and-go or a go-around
 CLIMB_AWAY_FT = 300.0
+# A touch-and-go stays this close to its lowest point for this long; a low
+# pass is there for a fix or two
+ROLL_FT = 10.0
+ROLL_SECONDS = 8.0
+# How far the lowest point of a roll is above those of the flight's earlier
+# rolls at the same field at most
+ROLL_SPREAD_FT = 20.0
 # Height above a field below which the aircraft is on an approach to it
 APPROACH_FT = 400.0
 # The part of the approach the runway is read from, and the least distance
@@ -446,6 +465,8 @@ class _Detector:
         self.base_ft = fixes[0].alt_ft
         # The first fix of a touchdown that has not stopped or climbed away
         self.contact: int | None = None
+        # The altitudes of the lowest points of the rolls so far, by field
+        self.roll_lows: dict[str, list[float]] = {}
         self.contact_at: Field | None = None
         self.approach: _Approach | None = None
         # After a go-around, until the aircraft is above APPROACH_FT or away
@@ -486,7 +507,7 @@ class _Detector:
         if self.on_ground:
             self._rolling(fix, speed, at, ground)
         elif self.contact is not None and self.contact_at is not None:
-            self._after_contact(fix, speed, self.contact, self.contact_at)
+            self._after_contact(index, fix, speed, self.contact, self.contact_at)
         elif not self.armed:
             self.armed = fix.alt_ft - self.base_ft >= ARMED_CLIMB_FT
         elif at is None or ground is None:
@@ -519,9 +540,12 @@ class _Detector:
             self.result.arrival = None
 
     def _after_contact(
-        self, fix: _Fix, speed: float, contact: int, contact_at: Field
+        self, index: int, fix: _Fix, speed: float, contact: int, contact_at: Field
     ) -> None:
-        """After a touchdown: a full stop, or a climb that is a touch-and-go."""
+        """After a touchdown: a full stop, or a climb that is a touch-and-go.
+
+        Or a go-around, when the climb began without a roll on the runway.
+        """
         contact_ground = self.ground_ft(contact_at)
         if (
             speed < STOP_KNOTS
@@ -530,14 +554,65 @@ class _Detector:
         ):
             self.result.landings += 1
             self.touch_down(contact, contact_at, stopped=True)
+            self._rolled_at(contact_at, self._lowest(contact, index + 1))
             self.on_ground = True
             self.contact = self.contact_at = None
         elif fix.alt_ft - self.fixes[contact].alt_ft >= CLIMB_AWAY_FT:
-            self.result.touch_and_goes += 1
-            self.touch_down(contact, contact_at)
-            self.base_ft = self.fixes[contact].alt_ft
-            self.armed = False
             self.contact = self.contact_at = None
+            lowest = self._lowest(contact, index)
+            rolled = self._rolled(contact, index, lowest, contact_at)
+            if rolled is False:
+                self._go_around(contact_at, lowest)
+            else:
+                self.result.touch_and_goes += 1
+                self.touch_down(contact, contact_at)
+                if rolled:
+                    self._rolled_at(contact_at, lowest)
+                self.base_ft = self.fixes[contact].alt_ft
+                self.armed = False
+
+    def _lowest(self, start: int, end: int) -> int:
+        """The fix with the lowest altitude from ``start`` to before ``end``."""
+        return min(range(start, end), key=lambda i: self.fixes[i].alt_ft)
+
+    def _rolled_at(self, at: Field, lowest: int) -> None:
+        """Keep the lowest point of a roll at ``at``.
+
+        Unless the logger read it far off the field's ground: a lost
+        altitude would put every later pass hundreds of feet above it.
+        """
+        low_ft = self.fixes[lowest].alt_ft
+        ground = self.ground_ft(at)
+        if ground is not None and abs(low_ft - ground) <= CONTACT_FT:
+            self.roll_lows.setdefault(at.ident, []).append(low_ft)
+
+    def _rolled(self, contact: int, end: int, lowest: int, at: Field) -> bool | None:
+        """Whether the fixes from ``contact`` to ``end`` rolled on the runway.
+
+        None where two fixes in or beside the stretch near the lowest point
+        are as far apart as a roll lasts: it could lie between them.
+        """
+        fixes = self.fixes
+        floor = fixes[lowest].alt_ft + ROLL_FT
+        low = [i for i in range(contact, end) if fixes[i].alt_ft <= floor]
+        around = range(max(low[0], 1), min(low[-1] + 2, len(fixes)))
+        if any(fixes[i].t - fixes[i - 1].t >= ROLL_SECONDS for i in around):
+            return None
+        earlier = self.roll_lows.get(at.ident)
+        if earlier and fixes[lowest].alt_ft - median(earlier) > ROLL_SPREAD_FT:
+            return False
+        return fixes[low[-1]].t - fixes[low[0]].t >= ROLL_SECONDS
+
+    def _go_around(self, at: Field, lowest: int) -> None:
+        """Count a climb away from ``lowest`` at ``at`` as a go-around.
+
+        Low over a field is no approach unless it lines up with one of its
+        runways, where the list has them.
+        """
+        if not at.runways or _runway(self.fixes, self.times, lowest, at):
+            self.result.go_arounds += 1
+        self.approach = None
+        self.climbing_away = True
 
     def _near_field(self, index: int, speed: float, at: Field, height: float) -> None:
         """At a field, ``height`` above its ground: a touchdown or an approach."""
@@ -550,6 +625,7 @@ class _Detector:
                 # Down and stopped between two fixes
                 self.result.landings += 1
                 self.touch_down(index, at, stopped=True)
+                self._rolled_at(at, index)
                 self.on_ground = True
             elif speed >= CONTACT_KNOTS:
                 self.contact, self.contact_at = index, at
@@ -568,14 +644,7 @@ class _Detector:
                 self.approach.lowest_ft, self.approach.lowest = height, index
         approach = self.approach
         if approach is not None and height - approach.lowest_ft >= CLIMB_AWAY_FT:
-            # Low over a field is no approach unless it lines up with one of
-            # its runways, where the list has them
-            if not approach.at.runways or _runway(
-                self.fixes, self.times, approach.lowest, approach.at
-            ):
-                self.result.go_arounds += 1
-            self.approach = None
-            self.climbing_away = True
+            self._go_around(approach.at, approach.lowest)
 
     def finish(self) -> FlightLandings:
         """What the flight did, with a touchdown the recording ended on."""

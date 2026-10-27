@@ -201,19 +201,23 @@ runway of every touchdown. The build reads the landings from the logs at their
 full precision (`flown/landings.py`): a touchdown is a fix within 60 ft of a
 field's ground (its published elevation plus how far the logger read above it
 while taxiing) at 35 kt or more, a full stop one that slows below 25 kt there, a
-touch-and-go one that climbs 300 ft without stopping, and a go-around an
-approach below 400 ft on a runway's line that climbs away without touching down.
-The runway is the track over the last 30 seconds, snapped to the nearest runway
-end of the field. A runway end is named by its number (`09`, `27L`, with the
-letter of a true heading, `16T`, or of a strip for gliders or ultralights,
-`09G`, `27U`), or, at many small strips, by the compass point it faces (`N`,
-`NE`); water lanes and helipads are no runways. A strip for gliders or
-ultralights, or one named by a compass point, that lies beside a numbered runway
-(within 10 degrees of it) is left out, as no track tells the two apart: a
-landing there keeps the runway's name. The heading of an end is the true one the
-list gives, unless that is far off the line between the thresholds or the
-heading the designator names (the list has the other end's for some), else the
-line between the thresholds, else the designator's.
+touch-and-go one that rolls (stays within 10 ft of its lowest point for 8
+seconds, at most 20 ft above where the flight rolled at that field before) and
+climbs 300 ft without stopping, and a go-around an approach below 400 ft on a
+runway's line that climbs away without a roll on the runway; such a pass off the
+runway's line counts as neither. A pass with fixes 8 seconds or more apart near
+its lowest point cannot show a roll, so it stays a touch-and-go. The runway is
+the track over the last 30 seconds, snapped to the nearest runway end of the
+field. A runway end is named by its number (`09`, `27L`, with the letter of a
+true heading, `16T`, or of a strip for gliders or ultralights, `09G`, `27U`),
+or, at many small strips, by the compass point it faces (`N`, `NE`); water lanes
+and helipads are no runways. A strip for gliders or ultralights, or one named by
+a compass point, that lies beside a numbered runway (within 10 degrees of it) is
+left out, as no track tells the two apart: a landing there keeps the runway's
+name. The heading of an end is the true one the list gives, unless that is far
+off the line between the thresholds or the heading the designator names (the
+list has the other end's for some), else the line between the thresholds, else
+the designator's.
 
 Without the database the site is still generated, with the airport names as the
 KML files spell them, without countries and without landings. Set
