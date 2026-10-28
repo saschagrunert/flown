@@ -31,8 +31,7 @@ import type {
   RawYearData,
 } from "../../../flown/frontend/types";
 import { checkSite } from "../../e2e/site-check";
-import { rawYear } from "../yearFixtures";
-import type { PathSegments } from "../yearFixtures";
+import { path, rawYear } from "../yearFixtures";
 
 // vitest runs with the repository root as working directory
 const DATA_DIR = join(cwd(), "docs", "data");
@@ -346,64 +345,6 @@ function isMetadata(value: unknown): value is Metadata {
 
 // ---- inline sample (new format) ----
 
-/**
- * Column scales of the wire format, mirroring flown/segment_codec.py
- * (the altitude column counts steps of 20 ft); the two coordinate columns
- * are second differences. The sample is written in
- * the units a reader thinks in and encoded here, so the guards and the
- * loader are checked against an encoder that is not the one under test.
- */
-const SCALES = [1e5, 1e5, 1 / 20, 1, 10];
-/** The columns written as second differences */
-const SECOND_ORDER = 2;
-
-/** Tens of feet, GROUND_STEP of flown/segment_codec.py */
-const GROUND_SCALE = 1 / 10;
-
-function encodePath(
-  start: [number, number],
-  rows: number[][],
-  groundFt?: number[],
-): PathSegments {
-  const scaledStart = [
-    Math.round(start[0] * SCALES[0]!),
-    Math.round(start[1] * SCALES[1]!),
-  ];
-  const running = [scaledStart[0]!, scaledStart[1]!, 0, 0, 0];
-  const steps = [0, 0];
-  const columns: (number | null)[][] = [[], [], [], []];
-  if (rows.some((row) => row.length > 4)) columns.push([]);
-  for (const row of rows) {
-    columns.forEach((column, index) => {
-      const value = row[index];
-      if (value === undefined) {
-        column.push(null);
-        return;
-      }
-      const scaled = Math.round(value * SCALES[index]!);
-      const step = scaled - running[index]!;
-      if (index < SECOND_ORDER) {
-        column.push(step - steps[index]!);
-        steps[index] = step;
-      } else {
-        column.push(step);
-      }
-      running[index] = scaled;
-    });
-  }
-  const encoded: PathSegments = { start: scaledStart, columns };
-  if (groundFt) {
-    let previous = 0;
-    encoded.ground = groundFt.map((feet) => {
-      const scaled = Math.round(feet * GROUND_SCALE);
-      const difference = scaled - previous;
-      previous = scaled;
-      return difference;
-    });
-  }
-  return encoded;
-}
-
 const sampleMetadata = {
   min_groundspeed_knots: 0.1,
   max_groundspeed_knots: 120,
@@ -428,7 +369,7 @@ const sampleAirports = {
 };
 
 /** The first path of sampleYear2025, with relative times and ground */
-const samplePath = encodePath(
+const samplePath = path(
   [50.03, 8.57],
   [
     [49.5, 9.5, 3000, 110, 0],
@@ -442,7 +383,7 @@ const sampleYear2025: RawYearData = rawYear(
   {
     "840108108563": samplePath,
     // A path whose ground the build does not know, without relative times
-    "5": encodePath([48.35, 11.79], [[48.4, 11.8, 1000, 60]]),
+    "5": path([48.35, 11.79], [[48.4, 11.8, 1000, 60]]),
   },
   [
     // Ids are content hashes: large, sparse and in no particular order

@@ -1179,6 +1179,72 @@ def _stages(directory):
     )
 
 
+class TestSmoothedPaths:
+    @staticmethod
+    def _glitched(year: int) -> list[TrackPoint]:
+        """Ten minutes east at 1,000 m, one fix at 0 m in the middle; a
+        degree further north each year."""
+        start = parse_timestamp_epoch(f"{year}-06-01T10:00:00Z") or 0.0
+        return [
+            TrackPoint(
+                year - 1975.0,
+                8.0 + 0.003 * i,
+                0.0 if i == 30 else 1000.0,
+                start + 10 * i,
+            )
+            for i in range(61)
+        ]
+
+    @staticmethod
+    def _lowest_ft(output_dir: Path, parse_data) -> list[float]:
+        """The lowest altitude each year file draws, by year."""
+        return [
+            min(row[2] for row in decoded_segments(entry)[1])
+            for data_file in sorted(output_dir.glob("*/data.json"))
+            for entry in segments_by_id(parse_data(data_file)).values()
+        ]
+
+    def test_the_paths_given_are_drawn_as_they_are(self, tmp_path, parse_data):
+        """A trimmed path comes smoothed as the whole flight is (see
+        pipeline.trim_paths): the export smooths it no more, in the pool
+        as well. Given the recorded paths, the glitch is drawn."""
+        paths = [self._glitched(2025), self._glitched(2026)]
+        metadata = _metadata([{"year": 2025}, {"year": 2026}])
+        pool = _PicklingPool()
+
+        export_all_data(
+            paths, metadata, [], output_dir=str(tmp_path / "own"), available_flags=[]
+        )
+        with patch("flown.workers.ProcessPoolExecutor", return_value=pool):
+            export_all_data(
+                paths,
+                metadata,
+                [],
+                output_dir=str(tmp_path / "given"),
+                available_flags=[],
+                smoothed=paths,
+            )
+
+        assert len(pool.tasks) == 2
+        assert all(low > 3000 for low in self._lowest_ft(tmp_path / "own", parse_data))
+        # A row is drawn at the middle of its ends
+        assert all(
+            low < 2000 for low in self._lowest_ft(tmp_path / "given", parse_data)
+        )
+
+    def test_one_per_path(self, tmp_path):
+        paths = [self._glitched(2025)]
+        with pytest.raises(ValueError, match="one per path"):
+            export_all_data(
+                paths,
+                _metadata([{"year": 2025}]),
+                [],
+                output_dir=str(tmp_path),
+                available_flags=[],
+                smoothed=[],
+            )
+
+
 class TestSiteOutput:
     def test_stable_mtimes_follow_the_content(self, tmp_path):
         """An unchanged file keeps its time, and with it its ETag on Pages."""

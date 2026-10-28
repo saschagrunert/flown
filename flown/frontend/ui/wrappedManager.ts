@@ -201,6 +201,14 @@ export class WrappedManager {
     return this.savedView;
   }
 
+  /**
+   * Fill the cards of an open dialog anew: the airports came through the
+   * toast's Retry, which names the destinations and the home base
+   */
+  refresh(): void {
+    if (this.app.wrappedVisible) this.fillCards();
+  }
+
   constructor(app: MapApp) {
     this.app = app;
     this.originalMapParent = null;
@@ -439,9 +447,10 @@ export class WrappedManager {
     const content = domCache.get("wrapped-content");
     if (content) content.scrollTop = 0;
 
-    // Add Escape key handler to close modal
+    // Add Escape key handler to close modal; one something else took first
+    // is not the dialog's as well
     this.escapeHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !e.defaultPrevented) {
         this.closeWrapped();
       }
     };

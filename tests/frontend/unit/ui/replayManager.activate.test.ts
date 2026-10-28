@@ -271,6 +271,22 @@ describe("ReplayManager activation", () => {
       expect(easeTo).toHaveBeenCalledWith(
         expect.objectContaining({ pitch: 0 }),
       );
+      replayManager.toggleReplay();
+
+      // The tour flies back to the user's view, flat, half way there
+      mockApp.replayState.layingBack = null;
+      mockApp.map!.jumpTo({ pitch: 40 });
+      mockApp.replayState.returningTo = {
+        center: { lat: 47, lng: 11 },
+        zoom: 9,
+        bearing: 0,
+        pitch: 0,
+      };
+      easeTo.mockClear();
+      replayManager.toggleReplay();
+      expect(easeTo).toHaveBeenCalledWith(
+        expect.objectContaining({ pitch: 0 }),
+      );
     });
 
     it("leaves persistence to the store subscription", () => {
@@ -383,6 +399,14 @@ describe("ReplayManager activation", () => {
           }
         },
       );
+      // The height goes to the page a frame after the observer's round
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+        frames.push(callback),
+      );
+      const nextFrame = (): void => {
+        for (const callback of frames.splice(0)) callback(0);
+      };
       mockApp.selectedPathIds = new Set([1]);
       const panel = el("replay-controls");
       let height = 167;
@@ -395,6 +419,10 @@ describe("ReplayManager activation", () => {
 
       height = 220;
       watch.callback();
+      expect(
+        document.body.style.getPropertyValue(REPLAY_PANEL_HEIGHT_VAR),
+      ).toBe("167px");
+      nextFrame();
       expect(
         document.body.style.getPropertyValue(REPLAY_PANEL_HEIGHT_VAR),
       ).toBe("220px");

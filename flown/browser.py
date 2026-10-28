@@ -29,16 +29,23 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .cache import atomic_bytes_write
-from .exceptions import FlownError
+from .exceptions import FlownError, InvalidInputError
 from .logger import logger
 from .terrain_fetch import MAX_TILE_BYTES, TILE_URL, TerrariumTiles
-from .terrain_pixels import TileKey, is_tile_png, keep_decoded_planes
+from .terrain_pixels import (
+    TileKey,
+    drop_decoded_png,
+    has_current_pixels,
+    is_tile_png,
+    keep_decoded_planes,
+)
 from .validation import find_kml_files
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
 
 __all__ = [
+    "MAX_INPUT_BYTES",
     "MAX_KML_BYTES",
     "BuildOutcome",
     "TilesWantedError",
@@ -65,6 +72,12 @@ DATABASE_TIMEOUT_SECONDS = 120.0
 # natively), and the runtime in the page has 4 GB at most, a phone's tab far
 # less. 32 MB of a track is more than a hundred hours of fixes once a second.
 MAX_KML_BYTES = 32 * 1024 * 1024
+
+# The most KML a build in the page reads in all (MAX_KEPT_BYTES in
+# ui/localMessages.ts, which holds the files kept to it): the page counts a
+# KMZ as it is kept, compressed ten to twenty times, and the memory a build
+# takes follows the documents inside
+MAX_INPUT_BYTES = 200 * 1024 * 1024
 
 
 def xhr_get(
@@ -345,10 +358,25 @@ class _PageTiles(TerrariumTiles):
         super().__init__(workers=1, keep_ground=False, attempts=1)
         self.wanting = wanting
 
+    def cached(self, tile: TileKey) -> bool:
+        # Its pixels alone, once a build dropped its PNG (drop_decoded_pngs)
+        return super().cached(tile) or has_current_pixels(self.path(tile))
+
     def fetch(self, tiles: Iterable[TileKey]) -> None:
-        missing = [tile for tile in tiles if not self.path(tile).is_file()]
+        missing = [tile for tile in tiles if not self.cached(tile)]
         if missing and self.wanting:
             raise TilesWantedError(missing)
+
+    def drop_decoded_pngs(self) -> None:
+        """Keep only the pixels of the tiles asked for, where they are kept.
+
+        The worker reads the whole cache into the page's memory at every
+        start, and keeps it there (services/localWorker.ts): the PNG of a
+        tile took as much room again as its pixels, which are all a build
+        reads of it once kept (``drop_decoded_png``).
+        """
+        for tile in self.asked:
+            drop_decoded_png(self.path(tile))
 
 
 # A tile the worker hands in (see _take_tiles): its PNG, and its pixels where
@@ -406,6 +434,32 @@ def _keep_taken_tile(
     with contextlib.suppress(OSError):
         keep_decoded_planes(tiles.path(tile), data, planes_file.read_bytes())
     return True
+
+
+def _check_input_size(kml_files: list[str]) -> None:
+    """Refuse inputs of more KML than ``MAX_INPUT_BYTES`` once unpacked.
+
+    A file larger than ``MAX_KML_BYTES`` counts for nothing: it is left out.
+    The error names the files that unpack the most, KMZ archives most often.
+    """
+    from .parser import parse_size  # noqa: PLC0415
+
+    sizes = {
+        path: size for path in kml_files if (size := parse_size(path)) <= MAX_KML_BYTES
+    }
+    total = sum(sizes.values())
+    if total <= MAX_INPUT_BYTES:
+        return
+    largest = sorted(sizes, key=sizes.__getitem__, reverse=True)[:3]
+    # Rounded up: never "200 MB, more than the 200 MB"
+    raise InvalidInputError(
+        f"Your files come to {-(-total // (1024 * 1024))} MB of KML once the KMZ "
+        f"files are unpacked, more than the {MAX_INPUT_BYTES // (1024 * 1024)} "
+        "MB a build in the browser reads; remove some, such as "
+        + ", ".join(
+            f"{Path(path).name} ({sizes[path] // (1024 * 1024)} MB)" for path in largest
+        )
+    )
 
 
 @contextlib.contextmanager
@@ -489,6 +543,8 @@ def build(
     prefix = input_dir.rstrip("/") + "/"
     built = False
     try:
+        # In here: the cache lets go of the files removed all the same
+        _check_input_size(kml_files)
         with _relayed(report, input_dir) as relay, _kml_size_capped():
             result = export_flight_data(
                 kml_files,
@@ -522,6 +578,9 @@ def build(
         prune_cache_entries_except(kml_files)
         if built or not terrain:
             tiles.prune_except(tiles.asked)
+        # Every tile asked for was read, its pixels kept of the PNG it has
+        if built:
+            tiles.drop_decoded_pngs()
     extent = result.extent
     return {
         "years": list(result.years),

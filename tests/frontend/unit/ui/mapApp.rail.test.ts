@@ -1507,7 +1507,7 @@ describe("MapApp controls and map", () => {
       deliver();
 
       await vi.waitFor(() =>
-        expect(m.toggleSearch).toHaveBeenCalledWith(app, false),
+        expect(m.toggleSearch).toHaveBeenCalledWith(app, false, ""),
       );
       await Promise.resolve();
       expect(m.toggleSearch).toHaveBeenCalledTimes(1);
@@ -1515,6 +1515,90 @@ describe("MapApp controls and map", () => {
 
       app.toggleSearch();
       await vi.waitFor(() => expect(m.toggleSearch).toHaveBeenCalledTimes(2));
+    });
+
+    it("hands it what was typed while its bundle came, and the keys after to the page", async () => {
+      await initializeApp(app);
+      const { deliver } = await holdNextLoad(loadSearch);
+      const type = (key: string, init: KeyboardEventInit = {}) => {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        document.body.dispatchEvent(event);
+        return event;
+      };
+
+      // The map zooms by "+" and "-" on its canvas
+      const reached = vi.fn();
+      document.body.addEventListener("keydown", reached);
+
+      app.toggleSearch(true);
+      expect(type("W").defaultPrevented).toBe(true);
+      expect(type("-").defaultPrevented).toBe(true);
+      expect(reached).not.toHaveBeenCalled();
+      // A press dropped while the bundle comes keeps no keys of its own
+      app.toggleSearch(true);
+      type("a");
+      // A second "/" is the shortcut's, which drops it, not text
+      type("/");
+      // Not text: the browser's, or the page's
+      expect(type("Shift").defaultPrevented).toBe(false);
+      expect(type("c", { ctrlKey: true }).defaultPrevented).toBe(false);
+      deliver();
+
+      await vi.waitFor(() =>
+        expect(m.toggleSearch).toHaveBeenCalledWith(app, true, "W-a"),
+      );
+      expect(m.toggleSearch).toHaveBeenCalledTimes(1);
+      expect(type("n").defaultPrevented).toBe(false);
+      // "/", Shift, Ctrl+C and the key after
+      expect(reached).toHaveBeenCalledTimes(4);
+      document.body.removeEventListener("keydown", reached);
+    });
+
+    it("leaves the keys of a field gone to while its bundle comes to that field", async () => {
+      await initializeApp(app);
+      const { deliver } = await holdNextLoad(loadSearch);
+      const fields = [
+        Object.assign(document.createElement("input"), { type: "search" }),
+        document.createElement("textarea"),
+        document.createElement("select"),
+        document.createElement("div"),
+      ];
+      fields[3]?.setAttribute("contenteditable", "");
+      // A box to tick takes no text: its keys still go to the search
+      const box = Object.assign(document.createElement("input"), {
+        type: "checkbox",
+      });
+      document.body.append(...fields, box);
+      const type = (target: Element, key: string) => {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const reached = vi.fn();
+      document.body.addEventListener("keydown", reached);
+
+      app.toggleSearch(true);
+      for (const field of fields) {
+        expect(type(field, "x").defaultPrevented).toBe(false);
+      }
+      expect(reached).toHaveBeenCalledTimes(fields.length);
+      expect(type(box, "W").defaultPrevented).toBe(true);
+      deliver();
+
+      await vi.waitFor(() =>
+        expect(m.toggleSearch).toHaveBeenCalledWith(app, true, "W"),
+      );
+      document.body.removeEventListener("keydown", reached);
+      for (const element of [...fields, box]) element.remove();
     });
 
     it.each([["replayActive"], ["wrappedVisible"]] as const)(
@@ -1595,7 +1679,7 @@ describe("MapApp controls and map", () => {
         expect(event.defaultPrevented).toBe(true);
         await vi.waitFor(() =>
           // To open it, or go back to its field: not to close it
-          expect(m.toggleSearch).toHaveBeenCalledWith(app, true),
+          expect(m.toggleSearch).toHaveBeenCalledWith(app, true, ""),
         );
       });
 
@@ -1627,7 +1711,7 @@ describe("MapApp controls and map", () => {
 
           expect(press(box).defaultPrevented).toBe(true);
           await vi.waitFor(() =>
-            expect(m.toggleSearch).toHaveBeenCalledWith(app, true),
+            expect(m.toggleSearch).toHaveBeenCalledWith(app, true, ""),
           );
           box.remove();
         },

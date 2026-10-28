@@ -811,10 +811,11 @@ jobs:
         run: |
           if [ -n "$BASE_SHA" ] &&
             changed="$(git diff --name-only "$BASE_SHA" HEAD -- \
-              uv.lock package-lock.json package.json)" &&
+              uv.lock package-lock.json package.json \
+              .github/actions/setup-toolchain/action.yml)" &&
             [ -z "$changed" ]; then
             echo "audit=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::no lock file changed; skipping the dependency audits"
+            echo "::notice::no lock file or uv pin changed; skipping the dependency audits"
           else
             echo "audit=true" >> "$GITHUB_OUTPUT"
           fi
@@ -854,6 +855,31 @@ jobs:
           pip-audit --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt" \
             -f json -o "$RUNNER_TEMP/python-audit.json" || true
           python scripts/new_advisories.py pip "$base/audit.json" "$RUNNER_TEMP/python-audit.json"
+      # uv itself is pinned by hand in the setup-toolchain action and the
+      # Dockerfile (scripts/check_pins.py holds the two together), which
+      # neither Dependabot nor uv.lock covers: its release is audited on its
+      # own, without hashes (--no-deps, whose warning is expected), and in a
+      # pull request against the base's release as above: a critical
+      # advisory for 0.13.1 went unreported until a review found it.
+      - name: Audit the uv release
+        if: steps.deps.outputs.audit == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python scripts/check_pins.py --uv-requirement > "$RUNNER_TEMP/uv.txt"
+          if [ -z "$BASE_SHA" ]; then
+            pip-audit --disable-pip --no-deps -r "$RUNNER_TEMP/uv.txt"
+            exit
+          fi
+          base="$RUNNER_TEMP/uv-base"
+          mkdir -p "$base"
+          git show "$BASE_SHA:.github/actions/setup-toolchain/action.yml" > "$base/action.yml"
+          python scripts/check_pins.py --uv-requirement "$base/action.yml" > "$base/uv.txt"
+          pip-audit --disable-pip --no-deps -r "$base/uv.txt" \
+            -f json -o "$base/audit.json" || true
+          pip-audit --disable-pip --no-deps -r "$RUNNER_TEMP/uv.txt" \
+            -f json -o "$RUNNER_TEMP/uv-audit.json" || true
+          python scripts/new_advisories.py pip "$base/audit.json" "$RUNNER_TEMP/uv-audit.json"
       # The same for npm: in a pull request both lock files are audited
       # without installing anything (--package-lock-only), and only a high
       # or critical advisory the head adds fails it

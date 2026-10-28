@@ -25,14 +25,9 @@ import flown.terrain_pixels as pixels_module
 import flown.workers as workers_module
 from flown.exceptions import TerrainUnavailableError
 from flown.logger import logger
-from flown.terrain import (
-    TERRAIN_ZOOM,
-    TILE_SIZE,
-    TerrariumTiles,
-    TileKey,
-    sample_path_elevations,
-)
-from flown.terrain_pixels import has_current_pixels
+from flown.terrain import TERRAIN_ZOOM, sample_path_elevations
+from flown.terrain_fetch import TerrariumTiles
+from flown.terrain_pixels import TILE_SIZE, TileKey, has_current_pixels
 from flown.types import TrackPoint
 from flown.workers import init_worker
 from tests.conftest import FlatTiles
@@ -760,6 +755,47 @@ class TestTerrariumTiles:
         }
         assert kept.read_bytes()[:4] == b"FLTP"
 
+    def test_the_png_of_kept_pixels_can_go(self, tmp_path):
+        """The build in the page keeps the pixels alone (flown.browser)."""
+        tiles = TerrariumTiles(tmp_path)
+        tile = TileKey(10, 1, 1)
+        png = tiles.path(tile)
+        png.write_bytes(_tile_png(123.0))
+        # No pixels yet: the PNG is all there is of the tile
+        assert not pixels_module.drop_decoded_png(png)
+        tiles.pixels({tile: [0]})
+
+        assert pixels_module.drop_decoded_png(png)
+
+        assert not png.exists()
+        assert pixels_module.decode_cached_tile(png, [0]) == array("d", [123.0])
+
+    def test_the_png_of_pixels_of_another_stays(self, tmp_path):
+        tiles = TerrariumTiles(tmp_path)
+        tile = TileKey(10, 1, 1)
+        png = tiles.path(tile)
+        png.write_bytes(_tile_png(123.0))
+        tiles.pixels({tile: [0]})
+        png.write_bytes(_tile_png(5.0))
+
+        assert not pixels_module.drop_decoded_png(png)
+
+        assert png.exists()
+        assert tiles.pixels({tile: [0]}) == {tile: array("d", [5.0])}
+
+    def test_damaged_pixels_without_their_png_are_removed(self, tmp_path):
+        tiles = TerrariumTiles(tmp_path)
+        tile = TileKey(10, 1, 1)
+        png = tiles.path(tile)
+        png.write_bytes(_tile_png(123.0))
+        tiles.pixels({tile: [0]})
+        assert pixels_module.drop_decoded_png(png)
+        kept = tmp_path / "10-1-1.pixels"
+        kept.write_bytes(kept.read_bytes()[:-10])
+
+        assert pixels_module.decode_cached_tile(png, [0]) is None
+        assert not kept.exists()
+
     def test_a_corrupt_cached_tile_is_removed(self, tmp_path):
         tiles = TerrariumTiles(tmp_path)
         tile = TileKey(10, 1, 1)
@@ -986,7 +1022,7 @@ class TestTerrariumTiles:
 
         class Broken:
             def pixels(self, wanted):
-                raise terrain_module.DecodeFailedError("a worker died")
+                raise pixels_module.DecodeFailedError("a worker died")
 
         paths = {1: [TrackPoint(50.0, 8.0, 0.0)]}
         with pytest.raises(TerrainUnavailableError, match="could not be decoded"):

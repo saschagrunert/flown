@@ -21,14 +21,13 @@ from flown.constants import METERS_TO_FEET
 from flown.png import PngError
 from flown.terrain import (
     TERRAIN_ZOOM,
-    TILE_SIZE,
-    TileKey,
     _field_offset_ft,
     elevations_by_coordinate,
     ground_profile_ft,
     sample_elevations,
     sample_path_elevations,
 )
+from flown.terrain_pixels import TILE_SIZE, TileKey
 from flown.types import TrackPoint
 from tests.conftest import FlatTiles
 from tests.tiles import (
@@ -158,6 +157,12 @@ class TestSampleElevations:
         assert list(elevations) == [123.0]
         assert missing == 0
 
+    def test_the_depths_of_the_seas_as_the_tiles_hold_them(self):
+        """The ground of a path goes no lower than sea level and its fields
+        (see ``ground_profile_ft``), which the elevations do not know."""
+        elevations, _, _ = sample_elevations([(50.0, 8.0)], FlatTiles(-5200.0))
+        assert list(elevations) == [-5200.0]
+
 
 class TestSamplePathElevations:
     def test_one_elevation_per_point_keyed_by_path(self):
@@ -187,7 +192,7 @@ class TestSamplePathElevations:
 
     def test_the_same_elevations_as_one_coordinate_at_a_time(self):
         """Points in one tile, across tile edges and repeated, alike."""
-        source = FunctionTiles(lambda gx, gy: math.sin(gx / 7.0) * 300 + gy % 13)
+        source = FunctionTiles(lambda gx, gy: math.sin(gx / 7.0) * 300 + 400 + gy % 13)
         edge = 546 * TILE_SIZE
         lons = [
             8.0,
@@ -444,6 +449,52 @@ class TestGroundProfile:
         ground = ground_profile_ft(START, rows, _elevations(rows, lambda lon: 100.0))
 
         assert ground == [round(100 * METERS_TO_FEET / 10) * 10] * 4
+
+    def test_the_sea_floor_is_the_sea(self):
+        """The tiles hold the depths of the seas: a flight from one coastal
+        field to another over the ocean had its ground thousands of feet
+        down."""
+        rows = _flight(20, 20)
+
+        def metres(lon):
+            return 6.0 if lon in {8.01, 8.02, 8.03, 8.06, 8.07, 8.08} else -1600.0
+
+        ground = ground_profile_ft(START, rows, _elevations(rows, metres))
+
+        assert ground == [20, 20, 20, 0, 0, 20, 20, 20]
+
+    def test_a_field_below_sea_level_takes_the_model_as_deep(self):
+        """Bar Yehuda, 1,266 ft below the sea by the Dead Sea, to a field
+        in the hills: at sea level, the model under the field would have
+        shifted all of the flight's ground down by as much."""
+        rows = _flight(-1266, 1000)
+        field = -1266 / METERS_TO_FEET
+
+        def metres(lon):
+            return field if lon <= 8.03 else 1000 / METERS_TO_FEET
+
+        ground = ground_profile_ft(START, rows, _elevations(rows, metres))
+
+        assert ground is not None
+        assert ground[:3] == [round(-1266 / 10) * 10] * 3
+        assert ground[3:] == [1000] * 5
+
+    def test_no_lower_than_the_lowest_field(self):
+        """A polder field a few feet below the sea, and the sea beyond its
+        dyke."""
+        rows = _flight(-10, 400)
+
+        def metres(lon):
+            if lon <= 8.03:
+                return -3.0
+            return -30.0 if lon <= 8.05 else 400 / METERS_TO_FEET
+
+        ground = ground_profile_ft(START, rows, _elevations(rows, metres))
+
+        assert ground is not None
+        assert ground[:3] == [-10] * 3
+        # The sea, at the field's depth
+        assert ground[3:5] == [-10] * 2
 
     def test_a_speed_of_zero_is_no_speed(self):
         # A path without timing: every speed is 0, none of it is taxiing

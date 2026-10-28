@@ -46,12 +46,12 @@ ranges in `pyproject.toml` anew and can pick newer releases than CI tests with.
 
 The pre-commit hooks run ruff (check and format), prettier, typos, gitleaks, the
 whitespace fixers and the checks for merge conflict markers and for valid TOML
-and YAML on every commit. When a commit touches `data/`, they also check that
-the KML files are obfuscated. Apart from gitleaks, the hooks run the tools from
-your own environment rather than from a pinned mirror, so no hook revision can
-drift on its own. ruff, typos, the file checks of `pre-commit-hooks` (from the
-dev extra) and the obfuscation check are resolved off `$PATH` and prettier out
-of `node_modules`, so commit with the virtual environment active and after
+and YAML on every commit. They also check every KML or KMZ file a commit stages,
+wherever it is, for real dates. Apart from gitleaks, the hooks run the tools
+from your own environment rather than from a pinned mirror, so no hook revision
+can drift on its own. ruff, typos, the file checks of `pre-commit-hooks` (from
+the dev extra) and the obfuscation check are resolved off `$PATH` and prettier
+out of `node_modules`, so commit with the virtual environment active and after
 `npm ci` to get the versions CI installs. The CI lint job runs the same file
 checks over every tracked file.
 
@@ -167,7 +167,8 @@ here, not an oversight: adding the parentheses back is undone on the next
   Dependabot waits a day more); a release that is younger, a security fix say,
   needs an entry in `exclude-newer-package` for its package. uv itself is pinned
   in the setup-toolchain action and in the Dockerfile, and Dependabot moves
-  neither to another release: move both by hand.
+  neither to another release: move both by hand. The security job audits that
+  release, so the weekly run reports an advisory for it.
 - The published page carries MapLibre GL JS and html-to-image itself:
   `scripts/vendor.js` takes them out of `node_modules` at build time, so
   `package-lock.json` is the only place their versions are pinned and Dependabot

@@ -1,8 +1,9 @@
 /**
  * The page's side of the build worker (services/localWorker.ts).
  *
- * One worker serves every build of the page; it is started with the first
- * and ended with the panel (ui/localFlights.ts). A build reports its
+ * One worker serves the builds of the page; it is started with the first,
+ * and ended with the panel (ui/localFlights.ts) or once no build came for
+ * a while (WORKER_IDLE_MS), the next starting another. A build reports its
  * progress as the steps the Python build takes, and answers with the data
  * files of a site, which the caller keeps (services/localStore.ts).
  */
@@ -55,6 +56,15 @@ function workerFailure(event: ErrorEvent | Event): string {
     : WORKER_FAILED_MESSAGE;
 }
 
+/**
+ * How long the worker is kept once no build is on its way: its runtime, and
+ * the cache it read in, take hundreds of megabytes of the page's memory,
+ * which a page that goes on (a build with the panel closed or the map held,
+ * or one that failed) has no use for. A build soon after (a file removed,
+ * Build again) finds it still there.
+ */
+export const WORKER_IDLE_MS = 60_000;
+
 const startWorker = (): LocalWorkerLike =>
   new Worker(new URL(versioned(`./${LOCAL_WORKER_BUNDLE}`), import.meta.url), {
     type: "module",
@@ -70,8 +80,13 @@ export class LocalBuilder {
   private worker: LocalWorkerLike | null = null;
   private readonly pending = new Map<number, Pending>();
   private nextId = 1;
+  /** The wait to let an idle worker go (WORKER_IDLE_MS) */
+  private idle: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(private readonly start: () => LocalWorkerLike = startWorker) {}
+  constructor(
+    private readonly start: () => LocalWorkerLike = startWorker,
+    private readonly idleMs = WORKER_IDLE_MS,
+  ) {}
 
   /** Whether a build is on its way */
   get busy(): boolean {
@@ -90,6 +105,7 @@ export class LocalBuilder {
     options: BuildOptions = {},
   ): Promise<BuildOutcome> {
     const id = this.nextId++;
+    clearTimeout(this.idle);
     return new Promise<BuildOutcome>((resolve, reject) => {
       let worker: LocalWorkerLike;
       try {
@@ -101,11 +117,8 @@ export class LocalBuilder {
         return;
       }
       this.pending.set(id, { progress, resolve, reject });
-      // The bytes go over, not copies: the caller keeps its own in the store
-      worker.postMessage(
-        { id, build: { files, terrain, ...options } },
-        files.map((file) => file.bytes),
-      );
+      // The files as Blobs, which hand over no bytes: the worker reads them
+      worker.postMessage({ id, build: { files, terrain, ...options } }, []);
     });
   }
 
@@ -132,6 +145,9 @@ export class LocalBuilder {
       return;
     }
     this.pending.delete(response.id);
+    if (!this.pending.size) {
+      this.idle = setTimeout(() => this.fail(), this.idleMs);
+    }
     if ("done" in response) {
       pending.resolve(response.done);
       return;
@@ -142,8 +158,12 @@ export class LocalBuilder {
     if (response.lost) this.fail(error);
   }
 
-  /** The worker is lost: every build waiting on it fails, and it is let go */
-  private fail(error: Error): void {
+  /**
+   * The worker is let go, lost or idle: every build waiting on it fails,
+   * and the next starts another
+   */
+  private fail(error = new Error(WORKER_FAILED_MESSAGE)): void {
+    clearTimeout(this.idle);
     const waiting = [...this.pending.values()];
     this.pending.clear();
     this.worker?.terminate();
@@ -152,6 +172,6 @@ export class LocalBuilder {
   }
 
   destroy(): void {
-    this.fail(new Error(WORKER_FAILED_MESSAGE));
+    this.fail();
   }
 }

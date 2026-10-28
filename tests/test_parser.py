@@ -1260,6 +1260,23 @@ class TestDamagedDocuments:
         assert caplog.text.count(f"line {line}, column") == 1
         assert "(cut.kml" not in caplog.text
 
+    def test_a_cut_off_paired_track_drops_the_when_of_the_cut_fix(
+        self, tmp_path, caplog
+    ):
+        pairs = "".join(
+            f"<when>2025-06-01T10:00:{i:02d}Z</when>"
+            f"<gx:coord>8.{i:04d} 50.0 {500 + i}</gx:coord>\n"
+            for i in range(10)
+        )
+        kml = f"{KML_HEADER}<Document><Placemark><gx:Track>{pairs}"
+        cut = kml[: kml.index("<gx:coord>8.0006") + len("<gx:coord>8.00")]
+        with caplog.at_level(logging.WARNING, logger="flown"):
+            _, paths, metadata = parse_kml_coordinates(_write(tmp_path, "cut.kml", cut))
+        assert len(paths[0]) == 6
+        assert metadata[0]["end_timestamp"] == "2025-06-01T10:00:05Z"
+        assert "cut.kml: damaged," in caplog.text
+        assert "<gx:coord> elements" not in caplog.text
+
     @pytest.mark.parametrize("end", ["8.12", "8.1234,50", "8.1234,50.1,5"])
     def test_the_point_a_line_is_cut_in_is_left_out(self, tmp_path, end):
         line = " ".join(f"8.{i:04d},50.0,{500 + i}" for i in range(10))

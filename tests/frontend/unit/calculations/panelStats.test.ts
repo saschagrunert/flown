@@ -20,110 +20,32 @@ import {
   METERS_TO_FEET,
 } from "../../../../flown/frontend/utils/constants";
 import type { PathInfo, PathSegment } from "../../../../flown/frontend/types";
-import { createDataset, createSegment, segmentOf } from "../../testHelpers";
+import {
+  MOCK_PATH_INFO,
+  MOCK_SEGMENTS,
+  createDataset,
+  createSegment,
+  segmentOf,
+} from "../../testHelpers";
 
 const FT = (meters: number): number => meters * METERS_TO_FEET;
 
 describe("panel statistics", () => {
-  const mockPathInfo: PathInfo[] = [
-    {
-      id: 1,
-      year: 2025,
-      aircraft_registration: "D-EAGJ",
-      aircraft_type: "DA40",
-      start_airport: "EDAV",
-      end_airport: "EDDF",
-      min_altitude_ft: FT(1000),
-      max_altitude_ft: FT(1500),
-      altitude_gain_ft: FT(500),
-    },
-    {
-      id: 2,
-      year: 2025,
-      aircraft_registration: "D-EAGJ",
-      aircraft_type: "DA40",
-      start_airport: "EDDF",
-      end_airport: "EDAV",
-      min_altitude_ft: FT(1200),
-      max_altitude_ft: FT(1200),
-      altitude_gain_ft: 0,
-    },
-    {
-      id: 3,
-      year: 2024,
-      aircraft_registration: "D-EXYZ",
-      aircraft_type: "C172",
-      start_airport: "EDDM",
-      end_airport: "EDDK",
-      min_altitude_ft: FT(2000),
-      max_altitude_ft: FT(2000),
-      altitude_gain_ft: 0,
-    },
-    {
-      id: 4,
-      year: 2025,
-      aircraft_registration: "D-EXYZ",
-      aircraft_type: "C172",
-      start_airport: "EDDK",
-      end_airport: "EDDM",
-      min_altitude_ft: FT(1800),
-      max_altitude_ft: FT(1800),
-      altitude_gain_ft: 0,
-    },
-  ];
-
-  const mockSegments: PathSegment[] = [
-    {
-      path_id: 1,
-      coords: [
-        [52.5, 13.4],
-        [50.0, 8.5],
-      ],
-      altitude_ft: FT(1000),
-      groundspeed_knots: 120,
-      time: 1000,
-    },
-    {
-      path_id: 1,
-      coords: [
-        [50.0, 8.5],
-        [50.1, 8.6],
-      ],
-      altitude_ft: FT(1500),
-      groundspeed_knots: 130,
-      time: 1100,
-    },
-    {
-      path_id: 2,
-      coords: [
-        [50.1, 8.6],
-        [52.5, 13.4],
-      ],
-      altitude_ft: FT(1200),
-      groundspeed_knots: 125,
-      time: 2000,
-    },
-    {
-      path_id: 3,
-      coords: [
-        [48.3, 11.7],
-        [50.9, 6.9],
-      ],
-      altitude_ft: FT(2000),
-      groundspeed_knots: 140,
-      time: 3000,
-    },
-    {
-      path_id: 4,
-      coords: [
-        [50.9, 6.9],
-        [48.3, 11.7],
-      ],
-      altitude_ft: FT(1800),
-      groundspeed_knots: 135,
-      time: 4000,
-    },
-  ];
+  /** The flights, with the heights of their segments */
+  const mockPathInfo: PathInfo[] = MOCK_PATH_INFO.map((info, i) => ({
+    ...info,
+    ...[
+      [1000, 1500, 500],
+      [1200, 1200, 0],
+      [2000, 2000, 0],
+      [1800, 1800, 0],
+    ].map(([low, high, gain]) => ({
+      min_altitude_ft: FT(low!),
+      max_altitude_ft: FT(high!),
+      altitude_gain_ft: FT(gain!),
+    }))[i],
+  }));
+  const mockSegments = MOCK_SEGMENTS;
 
   describe("collectAirports", () => {
     it("collects unique airports", () => {

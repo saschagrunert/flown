@@ -10,11 +10,14 @@ every file that names the Python or Node.js version names the same one, and
 that the gitleaks image of CI is the release of the pre-commit hook.
 
 With --online it also asks the registries whether the digest of each of the
-two images is still the one of its tag, which a tag edited by hand alone
-leaves behind: docker pulls by the digest, whatever the tag next to it says.
+two images, and of the uv image of the Dockerfile, is still the one of its
+tag, which a tag edited by hand alone leaves behind: docker pulls by the
+digest, whatever the tag next to it says.
 A registry that cannot be reached is a warning, not a failure. --fix writes
 the tag the library and the hook ask for into the two image files, with the
 digest the registry gives for it, then checks as --online does.
+--uv-requirement prints the uv release of the composite action (or of a copy
+of it) as a requirement, for the security job to audit, and checks nothing.
 
 Whether uv.lock matches pyproject.toml is uv's to tell: `uv lock --check`
 runs in the CI lint job and `make lint`, and `uv sync --locked` fails the
@@ -548,6 +551,29 @@ def build_mismatches(pyproject: dict[str, Any]) -> list[str]:
     return problems
 
 
+def read_uv_release(action: str) -> str | None:
+    """The uv release the setup-uv step of the composite action installs."""
+    match = UV_ACTION_VERSION.search(action)
+    return match.group(2) if match else None
+
+
+def print_uv_requirement(path: Path) -> int:
+    """Print the uv release a copy of the composite action installs, as a
+    requirement, for the security job to audit: Dependabot moves no uv pin
+    (see dependabot.yml) and pip-audit reads only uv.lock, so an advisory for
+    the uv that CI and the image run showed nowhere."""
+    try:
+        release = read_uv_release(path.read_text(encoding="utf-8"))
+    except OSError as e:
+        print(f"error: {path} cannot be read ({e.strerror or e})", file=sys.stderr)
+        return 1
+    if release is None:
+        print(f"error: {path} installs no uv release by version", file=sys.stderr)
+        return 1
+    print(f"uv=={release}")
+    return 0
+
+
 def uv_mismatches() -> list[str]:
     """Check that CI and the container image run the same uv.
 
@@ -562,8 +588,7 @@ def uv_mismatches() -> list[str]:
     except OSError as e:
         action = ""
         problems.append(f"{UV_ACTION} cannot be read ({e.strerror or e})")
-    match = UV_ACTION_VERSION.search(action)
-    ci = match.group(2) if match else None
+    ci = read_uv_release(action)
     if ci is None and action:
         problems.append(f"{UV_ACTION} installs no uv release by version")
     images = DOCKER_UV_IMAGE.findall((ROOT / "Dockerfile").read_text(encoding="utf-8"))
@@ -670,8 +695,30 @@ def wanted_references() -> dict[str, str]:
     return wanted
 
 
-def digest_mismatches() -> tuple[list[str], list[str]]:
-    """Check the digest of each image file against its registry.
+def image_file_references() -> list[tuple[str, str | None]]:
+    """The reference each image file names, by the file."""
+    return [
+        (dockerfile, read_image(dockerfile)[0])
+        for dockerfile in (PLAYWRIGHT_DOCKERFILE, GITLEAKS_DOCKERFILE)
+    ]
+
+
+def uv_image_references() -> list[tuple[str, str | None]]:
+    """The uv image of the Dockerfile. It is moved by hand, along with the
+    release of CI (uv_mismatches), and the security job audits it as that
+    release: a tag edited alone would build the image with the old uv."""
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    return [
+        ("Dockerfile", f"ghcr.io/astral-sh/uv:{tag}{digest}")
+        for tag, digest in DOCKER_UV_IMAGE.findall(text)
+    ]
+
+
+def digest_mismatches(
+    images: list[tuple[str, str | None]],
+) -> tuple[list[str], list[str]]:
+    """Check the digest of each image, by the file that names it, against
+    its registry.
 
     The jobs pull by the digest, so a tag edited by hand alone keeps the
     old image running: in a bump of @playwright/test whose browsers did
@@ -679,8 +726,7 @@ def digest_mismatches() -> tuple[list[str], list[str]]:
     problems, and the warnings for a registry that could not be reached.
     """
     problems, warnings = [], []
-    for dockerfile in (PLAYWRIGHT_DOCKERFILE, GITLEAKS_DOCKERFILE):
-        image, _ = read_image(dockerfile)
+    for dockerfile, image in images:
         match = IMAGE_REFERENCE.fullmatch(image) if image else None
         if match is None or match.group("digest") is None:
             continue
@@ -740,7 +786,18 @@ def main(argv: list[str] | None = None) -> int:
         help="write the tag the library and the hook ask for into the image "
         "files, with its digest, then check as --online does",
     )
+    parser.add_argument(
+        "--uv-requirement",
+        nargs="?",
+        const=ROOT / UV_ACTION,
+        type=Path,
+        metavar="ACTION",
+        help=f"print the uv release a copy of {UV_ACTION} installs (by default "
+        "this one) as a requirement for pip-audit, and check nothing else",
+    )
     args = parser.parse_args([] if argv is None else argv)
+    if args.uv_requirement is not None:
+        return print_uv_requirement(args.uv_requirement)
     warnings: list[str] = []
     if args.fix:
         changed, warnings = fix_images()
@@ -757,8 +814,14 @@ def main(argv: list[str] | None = None) -> int:
     gitleaks_problems = gitleaks_mismatches()
     digest_problems: list[str] = []
     if args.online or args.fix:
-        digest_problems, digest_warnings = digest_mismatches()
+        digest_problems, digest_warnings = digest_mismatches(image_file_references())
         warnings += digest_warnings
+        # --fix leaves the uv image alone, so its hint is uv's own
+        uv_digest_problems, uv_digest_warnings = digest_mismatches(
+            uv_image_references()
+        )
+        uv_problems += uv_digest_problems
+        warnings += uv_digest_warnings
     for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
 

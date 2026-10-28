@@ -15,6 +15,7 @@ import pytest
 
 import flown.site_assets as assets_module
 from flown.geometry import CoordinateExtent
+from flown.png import chunks
 from flown.site_assets import (
     BuildCommit,
     _copy_javascript_bundle,
@@ -1102,3 +1103,18 @@ class TestCountryFlags:
         assets_module._copy_country_flags(output, ["XX"])
 
         assert not (output / assets_module.FLAGS_DIR_NAME).exists()
+
+
+class TestShippedImages:
+    @pytest.mark.parametrize(
+        "path", sorted(assets_module.STATIC_DIR.glob("*.png")), ids=lambda p: p.name
+    )
+    def test_carry_no_text_or_time(self, path):
+        """Every site publishes them: the tool that drew them wrote the time
+        it did into them (regression)."""
+        kinds = set()
+        for kind, _ in chunks(path.read_bytes()):
+            kinds.add(kind)
+            if kind == b"IEND":
+                break
+        assert not kinds & {b"tEXt", b"zTXt", b"iTXt", b"tIME", b"eXIf"}

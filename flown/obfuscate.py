@@ -50,6 +50,7 @@ from .date_tokens import (
     CHARTERWARE_DATE_PATTERN,
     EPOCH_PATTERN,
     MAX_DAYS_AFTER_JAN_1,
+    MOST_PASSES,
     any_month_number,
     charterware_datetime,
     epoch_is_obfuscated,
@@ -566,12 +567,13 @@ def _until_unchanged(step: Callable[[str], str], text: str) -> str:
 
     What one pass leaves may read as a date of its own, or stand next to
     one now ("Sat Sat 16 Aug" once the first "Sat" is gone), so a single
-    pass, or any fixed number of them, can leave something the check
-    reports. A pass that changes the text takes something out of it, but
-    for the first one, which may move a date to January 1st and lengthen it
-    by a digit ("6 Aug 2026" is "01 Jan 2026"), so the passes end.
+    pass can leave something the check reports. A text still changing
+    after ``MOST_PASSES`` (one built to read as a date again whenever one
+    is taken out, "Aug2Aug2Aug2") is left as it is then: the check reports
+    what is left, and ``obfuscate_kml_file`` keeps such a file as it was,
+    for a person to rewrite.
     """
-    for _ in range(2 * len(text) + 2):
+    for _ in range(MOST_PASSES):
         again = step(text)
         if again == text:
             break
@@ -925,10 +927,13 @@ def _undated_stem(stem: str) -> str | None:
     the separator they leave doubled ("1_DEHYL_DA40_16Aug" is
     "1_DEHYL_DA40"), until nothing of them is left (see
     ``_until_unchanged``): "EDDS Sat 14:30 16 Aug 2026" loses the "Sat" as
-    well.
+    well. A name with a date left after the last pass stays as well, for
+    the check to report.
     """
     undated = _until_unchanged(_undated_once, stem)
-    return None if undated == stem else undated
+    if undated == stem or _undated_once(undated) != undated:
+        return None
+    return undated
 
 
 def _aircraft_of(name: str) -> tuple[str | None, str | None]:

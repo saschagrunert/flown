@@ -45,6 +45,7 @@ import {
 import {
   HEATMAP_LAYER_IDS,
   MAP_LAYERS,
+  METERS_TO_FEET,
 } from "../../flown/frontend/utils/constants";
 import type { Map as MapLibreMap } from "maplibre-gl";
 
@@ -57,6 +58,103 @@ export function createDataset(
 ): KMLDataset {
   return { path_segments: segments, path_info: pathInfo };
 }
+
+/**
+ * Four flights of two aircraft over two years, for the statistics and the
+ * filters (calculations/): two of D-EAGJ there and back in 2025, one of
+ * D-EXYZ in 2024 and its way back in 2025
+ */
+export const MOCK_PATH_INFO: PathInfo[] = [
+  {
+    id: 1,
+    year: 2025,
+    aircraft_registration: "D-EAGJ",
+    aircraft_type: "DA40",
+    start_airport: "EDAV",
+    end_airport: "EDDF",
+  },
+  {
+    id: 2,
+    year: 2025,
+    aircraft_registration: "D-EAGJ",
+    aircraft_type: "DA40",
+    start_airport: "EDDF",
+    end_airport: "EDAV",
+  },
+  {
+    id: 3,
+    year: 2024,
+    aircraft_registration: "D-EXYZ",
+    aircraft_type: "C172",
+    start_airport: "EDDM",
+    end_airport: "EDDK",
+  },
+  {
+    id: 4,
+    year: 2025,
+    aircraft_registration: "D-EXYZ",
+    aircraft_type: "C172",
+    start_airport: "EDDK",
+    end_airport: "EDDM",
+  },
+];
+
+/** Feet of `meters` */
+const feetOf = (meters: number): number => meters * METERS_TO_FEET;
+
+/** The segments of MOCK_PATH_INFO's flights, two of the first */
+export const MOCK_SEGMENTS: PathSegment[] = [
+  {
+    path_id: 1,
+    coords: [
+      [52.5, 13.4],
+      [50.0, 8.5],
+    ],
+    altitude_ft: feetOf(1000),
+    groundspeed_knots: 120,
+    time: 1000,
+  },
+  {
+    path_id: 1,
+    coords: [
+      [50.0, 8.5],
+      [50.1, 8.6],
+    ],
+    altitude_ft: feetOf(1500),
+    groundspeed_knots: 130,
+    time: 1100,
+  },
+  {
+    path_id: 2,
+    coords: [
+      [50.1, 8.6],
+      [52.5, 13.4],
+    ],
+    altitude_ft: feetOf(1200),
+    groundspeed_knots: 125,
+    time: 2000,
+  },
+  {
+    path_id: 3,
+    coords: [
+      [48.3, 11.7],
+      [50.9, 6.9],
+    ],
+    altitude_ft: feetOf(2000),
+    groundspeed_knots: 140,
+    time: 3000,
+  },
+  {
+    path_id: 4,
+    coords: [
+      [50.9, 6.9],
+      [48.3, 11.7],
+    ],
+    altitude_ft: feetOf(1800),
+    groundspeed_knots: 135,
+    time: 4000,
+  },
+];
 
 /**
  * Create a segment with sensible defaults
@@ -210,6 +308,7 @@ interface MockManagers {
   wrappedManager: {
     showWrapped: Mock;
     closeWrapped: Mock;
+    refresh: Mock;
     userMapView: Mock;
     destroy: Mock;
   };
@@ -322,6 +421,7 @@ function createMockManagers(): MockManagers {
   const wrappedManager = {
     showWrapped: vi.fn(),
     closeWrapped: vi.fn(),
+    refresh: vi.fn(),
     userMapView: vi.fn(() => null),
     destroy: vi.fn(),
   };

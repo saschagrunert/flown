@@ -1,12 +1,14 @@
 """Tests for geometry module."""
 
 import math
+from pathlib import Path
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 import flown.geometry as geometry_module
+from flown.export_pipeline import without_altitude_spikes
 from flown.geometry import (
     EARTH_RADIUS_KM,
     KM_PER_DEGREE,
@@ -23,6 +25,9 @@ from flown.geometry import (
     web_mercator,
 )
 from flown.types import TrackPoint
+from tests.conftest import parse_kml_coordinates
+
+DATA_DIR = Path(__file__).parent.parent / "data"
 
 latitudes = st.floats(min_value=-90.0, max_value=90.0)
 longitudes = st.floats(min_value=-180.0, max_value=180.0)
@@ -314,6 +319,20 @@ class TestTrimPathEndsOnTheFlight:
         assert start is not None
         assert start >= rolled - 20
         self._drops_all_before_the_roll(recorder, parked, rolled - 20)
+
+    def test_a_landing_whose_heights_the_logger_lost(self):
+        """Flight 91: 1,000 ft low for the last two minutes of its approach,
+        which hid the landing; read with them smoothed over, as the build
+        trims (``pipeline.trim_paths``), it ends after the landing roll."""
+        _, groups, _ = parse_kml_coordinates(str(DATA_DIR / "91_DELGD_C182.kml"))
+        path = groups[0]
+
+        assert geometry_module._flight_span(path)[1] is None
+        _, landing = geometry_module._flight_span(without_altitude_spikes(path))
+        assert landing is not None
+        trimmed = trim_path_ends(path, 300, without_altitude_spikes(path))
+        assert trimmed[-1] in path[: landing + 1]
+        assert len(trimmed) < len(trim_path_ends(path, 300))
 
     def test_the_drive_home_is_not_published(self):
         recorder = _flight(_Recorder().stand(60)).stand(120)

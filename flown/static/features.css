@@ -260,23 +260,26 @@
 /* The legend keeps its corner beside the panel as long as the two fit side
    by side, and stands on top of the panel only in windows too narrow for
    that: the panel covered the scale's labels there. With the panel about
-   460 px wide and the legend up to 225 px (41,000 ft labels), they meet
-   below about 960 px, and below about 1340 px beside the rail, where the
-   panel is centred on the narrower map. ReplayManager measures
-   --replay-panel-h. */
-@media (min-width: 768px) and (max-width: 959.98px) and (min-height: 480.02px) {
-  body.replay-active .color-legend {
-    bottom: calc(
-      var(--space-lg) + var(--safe-bottom) + var(--replay-panel-h, 0px) +
-        var(--space-sm)
+   540 px wide (its row of controls for a flight of an hour or more) and the
+   legend up to 225 px (41,000 ft labels), they meet below about 1030 px,
+   and below about 1380 px beside the rail, where the panel is centred on
+   the narrower map. ReplayManager measures --replay-panel-h. The lift is a
+   property rather than the legend's `bottom` (styles.css adds it to both):
+   the left column has to stop above the legend wherever it stands, and its
+   groups ran over the lifted legend's title and scale in any window under
+   about 900 px tall. The profile and the cross-section below lift it the
+   same way. */
+@media (min-width: 768px) and (max-width: 1029.98px) and (min-height: 480.02px) {
+  body.replay-active {
+    --legend-lift: calc(
+      var(--space-lg) + var(--replay-panel-h, 0px) - var(--attribution-h)
     );
   }
 }
-@media (min-width: 960px) and (max-width: 1339.98px) and (min-height: 480.02px) {
-  body.stats-open.replay-active .color-legend {
-    bottom: calc(
-      var(--space-lg) + var(--safe-bottom) + var(--replay-panel-h, 0px) +
-        var(--space-sm)
+@media (min-width: 1030px) and (max-width: 1379.98px) and (min-height: 480.02px) {
+  body.stats-open.replay-active {
+    --legend-lift: calc(
+      var(--space-lg) + var(--replay-panel-h, 0px) - var(--attribution-h)
     );
   }
 }
@@ -291,19 +294,14 @@ body.replay-all-active .toast-stack {
   );
 }
 
-/* Where the legend stands on top of the panel (the two ranges above), the
+/* Where the legend stands on top of the panel (the first range above), the
    toasts that stack above the panel stood on the legend's scale: they go
-   above both then. ReplayManager measures --replay-legend-h. */
-@media (min-width: 768px) and (max-width: 959.98px) and (min-height: 480.02px) {
-  body.replay-active:has(.color-legend:not([hidden])) .toast-stack {
-    bottom: calc(
-      var(--space-lg) + var(--safe-bottom) + var(--replay-panel-h, 0px) +
-        var(--space-sm) + var(--replay-legend-h, 0px) + var(--space-sm)
-    );
-  }
-}
-@media (min-width: 960px) and (max-width: 1339.98px) and (min-height: 480.02px) {
-  body.stats-open.replay-active:has(.color-legend:not([hidden])) .toast-stack {
+   above both then. ReplayManager measures --replay-legend-h. Not beside
+   the rail, where the legend steps aside for a toast (styles.css): lifted
+   past the empty place, the toast stood on the left column. */
+@media (min-width: 768px) and (max-width: 1029.98px) and (min-height: 480.02px) {
+  body.replay-active:not(.stats-open):has(.color-legend:not([hidden]))
+    .toast-stack {
     bottom: calc(
       var(--space-lg) + var(--safe-bottom) + var(--replay-panel-h, 0px) +
         var(--space-sm) + var(--replay-legend-h, 0px) + var(--space-sm)
@@ -385,8 +383,10 @@ body.replay-all-active .color-legend {
    ========================================================================== */
 /* Bottom centre, above the map's credit, and 300 px or more from the left
    edge, clear of a colour legend up to 270 px wide in the bottom left
-   corner, as long as the strip has its least width (see below) */
-#flight-profile {
+   corner, as long as the strip has its least width (see below). The
+   cross-section's panel is the same but for its width. */
+#flight-profile,
+#cross-section {
   position: fixed;
   left: 50%;
   bottom: calc(var(--attribution-h) + var(--space-sm) + var(--safe-bottom));
@@ -580,43 +580,25 @@ body.profile-open .toast-stack {
 /* Narrower than that, the legend stands on top of the strip, as it does on
    the replay panel */
 @media (min-width: 768px) and (max-width: 839.98px) and (min-height: 480.02px) {
-  body.profile-open .color-legend {
-    bottom: calc(
-      var(--attribution-h) + var(--space-sm) + var(--safe-bottom) +
-        var(--flight-profile-h, 0px) + var(--space-sm)
-    );
+  body.profile-open {
+    --legend-lift: calc(var(--flight-profile-h, 0px) + var(--space-sm));
   }
 }
 @media (min-width: 840px) and (max-width: 1155.98px) and (min-height: 480.02px) {
-  body.stats-open.profile-open .color-legend {
-    bottom: calc(
-      var(--attribution-h) + var(--space-sm) + var(--safe-bottom) +
-        var(--flight-profile-h, 0px) + var(--space-sm)
-    );
+  body.stats-open.profile-open {
+    --legend-lift: calc(var(--flight-profile-h, 0px) + var(--space-sm));
   }
 }
 
 /* ==========================================================================
    Cross-section (ui/crossSection.ts)
    ========================================================================== */
-/* Where the flight profile goes, which steps aside for it, and a little
-   wider: 300 px or more from the left edge, clear of a colour legend, as
-   long as the panel has its least width (see below) */
+/* Where the flight profile goes, which steps aside for it, and drawn the
+   same (see #flight-profile), a little wider: 300 px or more from the left
+   edge, clear of a colour legend, as long as the panel has its least width
+   (see below) */
 #cross-section {
-  position: fixed;
-  left: 50%;
-  bottom: calc(var(--attribution-h) + var(--space-sm) + var(--safe-bottom));
-  transform: translateX(-50%);
   width: clamp(280px, calc(100vw - 600px), 640px);
-  box-sizing: border-box;
-  padding: var(--space-sm) var(--space-md);
-  background-color: var(--color-bg-edge);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel);
-  z-index: var(--z-legend);
-  color: var(--color-text);
-  font-size: var(--text-sm);
 }
 /* The attribute has to outrank the displays below */
 #cross-section [hidden] {
@@ -768,19 +750,13 @@ body.cross-section-open .toast-stack {
 }
 /* Narrower than that, the legend stands on top of the panel */
 @media (min-width: 768px) and (max-width: 859.98px) and (min-height: 480.02px) {
-  body.cross-section-open .color-legend {
-    bottom: calc(
-      var(--attribution-h) + var(--space-sm) + var(--safe-bottom) +
-        var(--cross-section-h, 0px) + var(--space-sm)
-    );
+  body.cross-section-open {
+    --legend-lift: calc(var(--cross-section-h, 0px) + var(--space-sm));
   }
 }
 @media (min-width: 860px) and (max-width: 1175.98px) and (min-height: 480.02px) {
-  body.stats-open.cross-section-open .color-legend {
-    bottom: calc(
-      var(--attribution-h) + var(--space-sm) + var(--safe-bottom) +
-        var(--cross-section-h, 0px) + var(--space-sm)
-    );
+  body.stats-open.cross-section-open {
+    --legend-lift: calc(var(--cross-section-h, 0px) + var(--space-sm));
   }
 }
 /* On a phone it spans the width above the bar and the credit, as the

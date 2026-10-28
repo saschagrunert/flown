@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from .cache import CACHE_DIR, load_entry, source_fingerprint, store_entry
-from .constants import KM_TO_NAUTICAL_MILES, MAX_GROUNDSPEED_KNOTS, SECONDS_PER_HOUR
+from .constants import MAX_KM_PER_SECOND
 from .date_tokens import near_jan_first
 from .geometry import KM_PER_DEGREE, haversine_distance
 from .logger import logger
@@ -81,12 +81,10 @@ _SAMPLE_DEGREES = _CELL_DEGREES / 2
 # apart its fixes are (a logger that writes a fix a minute): the lines
 # ``time_near`` finds
 _NEAR_DEGREES = _CELL_DEGREES - _SAMPLE_DEGREES / 2
-# MAX_GROUNDSPEED_KNOTS in degrees of latitude a second: a line between two
-# fixes that is faster is a position glitch the parser left (see
+# MAX_KM_PER_SECOND in degrees of latitude: a line between two fixes that
+# is faster is a position glitch the parser left (see
 # parser_gx_track._position_spikes) and is not indexed
-_MAX_DEGREES_PER_SECOND = (
-    MAX_GROUNDSPEED_KNOTS / KM_TO_NAUTICAL_MILES / SECONDS_PER_HOUR / KM_PER_DEGREE
-)
+_MAX_DEGREES_PER_SECOND = MAX_KM_PER_SECOND / KM_PER_DEGREE
 # A shift of the clock is taken for one that at least this many of the
 # moments of ``_clock_shifts`` agree on, to within this many seconds: a
 # fix every few seconds, and a few tens of metres between two receivers

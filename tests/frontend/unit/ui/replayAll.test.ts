@@ -29,7 +29,10 @@ import {
 } from "../../../../flown/frontend/utils/constants";
 import { HEAT_CLOUD_LAYER } from "../../../../flown/frontend/ui/heatCloudLayer";
 import { REPLAY_PANEL_HEIGHT_VAR } from "../../../../flown/frontend/ui/replayManager";
-import { restingPitch } from "../../../../flown/frontend/ui/replayState";
+import {
+  restingPitch,
+  returnToView,
+} from "../../../../flown/frontend/ui/replayState";
 import {
   groundedFlights,
   heldGroundedFlights,
@@ -978,6 +981,22 @@ describe("the replay of all flights", () => {
 
       expect(fitted()).toMatchObject({ pitch: 30 });
       expect(app.replayState.pitchBefore).toBeNull();
+    });
+
+    it("takes the tilt of a camera flying back to the user's view as where it goes", () => {
+      // A chase or the tour easing back to a flat map, half way there
+      map().jumpTo({ pitch: 40 });
+      returnToView(asMapApp(app), {
+        center: { lat: 47, lng: 11 },
+        zoom: 9,
+        bearing: 0,
+        pitch: 0,
+      });
+      controls.show();
+
+      expect(app.replayState.pitchBefore).toBe(0);
+      controls.close();
+      expect(map().easeTo).toHaveBeenLastCalledWith({ pitch: 0 });
     });
 
     it("reads the time into every flight on its clock", () => {

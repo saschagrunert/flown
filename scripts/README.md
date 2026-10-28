@@ -129,14 +129,20 @@ checks run from the project environment, so they have no revision of their own
 to drift.
 
 With `--online` it also asks the registries, anonymously, for the digest of the
-tag of each of the two images, and fails when the pinned digest is another: the
-jobs pull by the digest, so a tag edited alone keeps running the old image (the
-bump of `@playwright/test` from 1.64.0 to 1.64.1 kept the browsers, and every
-other check passed against the old image). A registry that cannot be reached is
-a warning, not a failure. `--fix` writes the tag the library and the hook ask
-for into the two files, with the digest the registry gives for it, and then
-checks as `--online` does; run it on the branch of a `@playwright/test` bump.
-`make lint` and the CI lint job run it with `--online`.
+tag of each of the two images and of the uv image of the `Dockerfile`, and fails
+when the pinned digest is another: the jobs pull by the digest, so a tag edited
+alone keeps running the old image (the bump of `@playwright/test` from 1.64.0 to
+1.64.1 kept the browsers, and every other check passed against the old image). A
+registry that cannot be reached is a warning, not a failure. `--fix` writes the
+tag the library and the hook ask for into the two files, with the digest the
+registry gives for it, and then checks as `--online` does; run it on the branch
+of a `@playwright/test` bump. `make lint` and the CI lint job run it with
+`--online`.
+
+`--uv-requirement [ACTION]` checks nothing: it prints the uv release of the
+setup-toolchain action, or of a copy of it, as `uv==<release>`. The `security`
+job audits that with `pip-audit`, the base's against the head's in a pull
+request, since neither Dependabot nor the audit of `uv.lock` covers uv itself.
 
 ## new_advisories.py
 

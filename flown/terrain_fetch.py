@@ -173,6 +173,10 @@ class TerrariumTiles:
         """Where a tile is kept."""
         return self.cache_dir / f"{tile.z}-{tile.x}-{tile.y}.png"
 
+    def cached(self, tile: TileKey) -> bool:
+        """Whether a tile is in the cache, which then needs no download."""
+        return self.path(tile).is_file()
+
     def remove_stale_temp_files(self) -> int:
         """Remove the temp files of writes a killed build left behind.
 
@@ -386,7 +390,7 @@ class TerrariumTiles:
 
     def fetch(self, tiles: Iterable[TileKey]) -> None:
         """Download the tiles that are not in the cache yet."""
-        missing = [tile for tile in tiles if not self.path(tile).is_file()]
+        missing = [tile for tile in tiles if not self.cached(tile)]
         if not missing:
             return
         try:
@@ -426,9 +430,7 @@ class TerrariumTiles:
         self.asked.update(wanted)
         self.remove_stale_temp_files()
         self.fetch(wanted)
-        cached = [
-            (tile, self.path(tile)) for tile in wanted if self.path(tile).is_file()
-        ]
+        cached = [(tile, self.path(tile)) for tile in wanted if self.cached(tile)]
         paths = [path for _, path in cached]
         indices = [wanted[tile] for tile, _ in cached]
         # Decoding a tile takes a few tens of milliseconds of pure Python,

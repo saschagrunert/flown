@@ -5,7 +5,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .constants import KM_TO_NAUTICAL_MILES, MAX_GROUNDSPEED_KNOTS, SECONDS_PER_HOUR
+from .constants import MAX_KM_PER_SECOND
 from .geometry import haversine_distance
 from .helpers import parse_timestamp_epoch
 from .logger import logger
@@ -32,9 +32,6 @@ _SPACE_AFTER_COMMA = re.compile(r",\s+")
 JOIN_DISTANCE_KM = 0.05
 # ... unless its time begins this long after the end of the one before
 JOIN_MAX_GAP_SECONDS = 30 * 60
-# A timed track also continues further away, as far as MAX_GROUNDSPEED_KNOTS
-# covers in the gap between the two (see _continues)
-_MAX_KM_PER_SECOND = MAX_GROUNDSPEED_KNOTS / KM_TO_NAUTICAL_MILES / SECONDS_PER_HOUR
 # A line whose last point is this close above its lowest one (metres), after
 # it was this much higher (metres), came down to land; so did one whose last
 # GROUND_FIXES points stand within GROUND_SPREAD_KM of each other: at a
@@ -207,7 +204,7 @@ def _continues(
     ``join_split_lines``): the one after must begin when the one before has
     ended, or later, so that the times of the flight go on in order. It may
     begin further away by what the aircraft can fly in the gap between them
-    (at ``MAX_GROUNDSPEED_KNOTS``): a logger that lost its fix for a minute
+    (at ``MAX_KM_PER_SECOND``): a logger that lost its fix for a minute
     and starts a new track. Not on the ground (see ``_starts_on_ground``):
     that is the next flight, after one whose recording stopped on final.
     """
@@ -229,7 +226,7 @@ def _continues(
     if before_end is None or after_begin is None or begin is None:
         return repeated and not timed
     gap = after_begin - before_end
-    reach_km = JOIN_DISTANCE_KM + (gap * _MAX_KM_PER_SECOND if timed else 0.0)
+    reach_km = JOIN_DISTANCE_KM + (gap * MAX_KM_PER_SECOND if timed else 0.0)
     return (
         (bool(name) or repeated)
         and (after_begin >= before_end if timed else begin <= after_begin)

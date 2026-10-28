@@ -416,6 +416,33 @@ describe("ReplayManager chase view", () => {
     expect(mockApp.map!.jumpTo).not.toHaveBeenCalled();
   });
 
+  it("gives back the view from before a chase played again during the fit at the end", () => {
+    openReplay(239);
+    replayManager.toggleChase();
+    settle();
+    replayManager.playReplay();
+    vi.advanceTimersByTime(500);
+    expect(replayManager.state.playing).toBe(false);
+    expect(mockApp.map!.fitBounds).toHaveBeenCalled();
+    // Half way to the overview, still tilted from the chase
+    mockApp.map!.jumpTo({
+      center: [16.15, 48.15],
+      zoom: 12.5,
+      bearing: 40,
+      pitch: 55,
+    });
+
+    replayManager.playReplay();
+    vi.advanceTimersByTime(100);
+
+    expect(replayManager.userMapView()).toEqual({
+      center: { lng: 16.05, lat: 48.05 },
+      zoom: 11,
+      bearing: 20,
+      pitch: 30,
+    });
+  });
+
   it("keeps the user's own view as the one to save while it chases", () => {
     openReplay();
     expect(replayManager.userMapView()).toBeNull();
@@ -468,5 +495,15 @@ describe("ReplayManager chase view", () => {
       true,
     );
     expect(replayManager.userMapView()).toBeNull();
+    // The view from before, over the airplane, at once
+    expect(mockApp.map!.easeTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        zoom: 11,
+        bearing: 20,
+        pitch: 30,
+        animate: false,
+      }),
+    );
+    expect(camera()).toEqual({ zoom: 11, bearing: 20, pitch: 30 });
   });
 });

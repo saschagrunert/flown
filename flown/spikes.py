@@ -26,24 +26,29 @@ writes a stretch of the real flight with times too close together, a few
 kilometres a second apart, which no aircraft flies, but where it flew.
 """
 
+from bisect import bisect_left
 from collections.abc import Callable
 from itertools import pairwise
 from statistics import median_low
 from typing import TYPE_CHECKING
 
+from .constants import MAX_VERTICAL_FT_PER_SECOND
 from .geometry import haversine_distance
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 __all__ = [
+    "ALTITUDE_GLITCH_SECONDS",
     "ALTITUDE_SPIKE_FT",
     "ALTITUDE_SPIKE_WINDOW",
     "SPIKE_MIN_KM",
     "SPIKE_STEP_FACTOR",
+    "SUSTAINED_FT_PER_SECOND",
     "altitude_spikes",
     "distance_spikes",
     "run_spikes",
+    "smoothed_altitudes",
     "spike_limit",
 ]
 
@@ -51,6 +56,22 @@ __all__ = [
 # of the logger (see altitude_spikes)
 ALTITUDE_SPIKE_FT = 200.0
 ALTITUDE_SPIKE_WINDOW = 7
+# A logger that loses its height for longer comes back within this (see
+# _glitch_runs): the longest seen, 4 minutes
+ALTITUDE_GLITCH_SECONDS = 300.0
+# The most a light aircraft climbs or sinks for more than a few seconds,
+# 1,500 ft a minute (see _glitch_runs)
+SUSTAINED_FT_PER_SECOND = 25.0
+# A stretch between two jumps that lasts this long may be one the flight
+# flew (see _Stretches), and the most stretches and fixes one glitch spans:
+# the longest seen, 12 and 95
+_GLITCH_REFERENCE_SECONDS = 30.0
+_GLITCH_STRETCHES = 16
+_GLITCH_FIXES = 600
+# A drift is told over this many seconds, from a fix at most this many
+# fixes away (see _Stretches._settled)
+_DRIFT_SECONDS = 5.0
+_DRIFT_FIXES = 10
 
 # The most fixes a spike holds: ten, or a fiftieth of the track for a long
 # one (a minute of stale fixes at one a second in an hour's flight)
@@ -186,7 +207,9 @@ def run_spikes(
     )
 
 
-def altitude_spikes(altitudes_ft: Sequence[float]) -> list[bool]:
+def altitude_spikes(
+    altitudes_ft: Sequence[float], times: Sequence[float] | None = None
+) -> list[bool]:
     """Whether each altitude leaps away from those of its neighbours.
 
     Some loggers write an altitude of 0 now and then, or another that is
@@ -202,6 +225,9 @@ def altitude_spikes(altitudes_ft: Sequence[float]) -> list[bool]:
     sparse fixes up a climb read as spikes all but one. There a fix is one
     only when its neighbours in the window agree among themselves, within
     ``ALTITUDE_SPIKE_FT``, and it is that far from their median.
+
+    With the ``times`` of the fixes, a longer glitch is one as well (see
+    ``_glitch_runs``).
     """
     half = ALTITUDE_SPIKE_WINDOW // 2
     last = len(altitudes_ft) - 1
@@ -222,7 +248,220 @@ def altitude_spikes(altitudes_ft: Sequence[float]) -> list[bool]:
             and others[-1] - others[0] <= ALTITUDE_SPIKE_FT
             and abs(altitude - others[len(others) // 2]) > ALTITUDE_SPIKE_FT
         )
+    if times is not None:
+        _glitch_runs(altitudes_ft, times, spikes)
     return spikes
+
+
+def smoothed_altitudes(
+    altitudes: Sequence[float], spikes: Sequence[bool]
+) -> list[float]:
+    """``altitudes`` with each spike on the line between the fixes either
+    side of it that are none, by their order, or at the altitude of the
+    nearest such fix at an end."""
+    kept = [index for index, spike in enumerate(spikes) if not spike]
+    smoothed = list(altitudes)
+    if not kept:
+        return smoothed
+    for index, spike in enumerate(spikes):
+        if not spike:
+            continue
+        position = bisect_left(kept, index)
+        if position == 0:
+            smoothed[index] = altitudes[kept[0]]
+        elif position == len(kept):
+            smoothed[index] = altitudes[kept[-1]]
+        else:
+            left, right = kept[position - 1], kept[position]
+            share = (index - left) / (right - left)
+            smoothed[index] = (
+                altitudes[left] + (altitudes[right] - altitudes[left]) * share
+            )
+    return smoothed
+
+
+def _glitch_runs(
+    altitudes_ft: Sequence[float], times: Sequence[float], spikes: list[bool]
+) -> None:
+    """Mark the longer glitches of a logger among ``spikes``.
+
+    Some loggers lose their height for a minute or two: it jumps hundreds
+    or thousands of feet from one fix to the next, faster than
+    ``MAX_VERTICAL_FT_PER_SECOND``, wanders off, often with more such
+    jumps, and comes back. Too many fixes for the median, it put a flight
+    1,400 ft below the sea and added thousands of feet to its climb.
+
+    The jumps split the fixes into stretches, and the flight flew the
+    first and the last of them. Between, it flew a stretch it can have
+    flown to from the one it flew before, the stretches between them, and
+    a drift at the ends of the two, passed over as a glitch (see
+    ``_Stretches.across``). Of the ways from the first to the last, the
+    one that leaves the fewest jumps as they are counts, and of those the
+    one that keeps the most fixes. Which side of a jump the glitch is on
+    is told that way by the stretches around it, not by the jump: of two
+    glitches in a row, the jump between them is the largest of all. One
+    glitch spans ``_GLITCH_STRETCHES`` and ``_GLITCH_FIXES`` at most, so
+    that a logger that jumps at every fix, under times that stand still,
+    takes each fix with a few others only.
+    """
+    smoothed = smoothed_altitudes(altitudes_ft, spikes)
+
+    def jumps(index: int) -> bool:
+        step = abs(smoothed[index] - smoothed[index - 1])
+        seconds = max(1.0, times[index] - times[index - 1])
+        return step > max(ALTITUDE_SPIKE_FT, MAX_VERTICAL_FT_PER_SECOND * seconds)
+
+    starts = [
+        0,
+        *(index for index in range(1, len(smoothed)) if jumps(index)),
+        len(smoothed),
+    ]
+    if len(starts) < 3:
+        return
+    for first, stop in _Stretches(smoothed, times, list(pairwise(starts))).glitches():
+        for index in range(first, stop):
+            spikes[index] = True
+
+
+class _Stretches:
+    """The stretches of fixes between the jumps of an altitude, each as
+    its first fix and the one past its last (see ``_glitch_runs``)."""
+
+    def __init__(
+        self,
+        altitudes: Sequence[float],
+        times: Sequence[float],
+        stretches: list[tuple[int, int]],
+    ) -> None:
+        self.altitudes = altitudes
+        self.times = times
+        self.stretches = stretches
+        # Only a stretch that lasts _GLITCH_REFERENCE_SECONDS is one the
+        # flight can be told by: a logger that lost its height writes a few
+        # fixes at whatever height between its jumps
+        self.told = [
+            stretch in {0, len(stretches) - 1}
+            or times[stop - 1] - times[first] >= _GLITCH_REFERENCE_SECONDS
+            for stretch, (first, stop) in enumerate(stretches)
+        ]
+        # The fixes where each such stretch settles from its start and from
+        # its end (see _settled)
+        self.settled = [
+            (self._settled(first, stop, 1), self._settled(first, stop, -1))
+            if told
+            else (first, stop - 1)
+            for told, (first, stop) in zip(self.told, stretches, strict=True)
+        ]
+
+    def _settled(self, first: int, stop: int, direction: int) -> int:
+        """Where the stretch from ``first`` to before ``stop`` settles, from
+        its start (``direction`` 1) or its end (-1).
+
+        A logger that lost its height may drift off before it jumps, or back
+        after it jumps back: within ``MAX_VERTICAL_FT_PER_SECOND`` from one
+        fix to the next, but at more than ``SUSTAINED_FT_PER_SECOND`` for
+        ``_DRIFT_SECONDS``, which no light aircraft keeps up for long. Such a
+        drift at an end is part of the glitch next to it, as far as halfway
+        along the stretch.
+        """
+        middle = (first + stop - 1) // 2
+        index = first if direction > 0 else stop - 1
+        while index != middle:
+            # The first fix _DRIFT_SECONDS on, within _DRIFT_FIXES
+            other = next(
+                (
+                    other
+                    for other in range(
+                        index + direction,
+                        index + direction * (_DRIFT_FIXES + 1),
+                        direction,
+                    )
+                    if first <= other < stop
+                    and abs(self.times[other] - self.times[index]) >= _DRIFT_SECONDS
+                ),
+                None,
+            )
+            if other is None or abs(
+                self.altitudes[other] - self.altitudes[index]
+            ) <= SUSTAINED_FT_PER_SECOND * abs(self.times[other] - self.times[index]):
+                break
+            index += direction
+        return index
+
+    def across(self, before: int, after: int) -> bool:
+        """Whether the flight can have flown from stretch ``before`` to
+        ``after``, the stretches between them glitches.
+
+        From where the one settles to where the other does, within
+        ``ALTITUDE_GLITCH_SECONDS``, at no more than
+        ``SUSTAINED_FT_PER_SECOND``. Not under one time: fixes whose times
+        stand still say nothing of how fast, and a few of a flight written
+        so, each a jump from the next, read as a glitch from its field to
+        its field. A stretch between them that lasts as
+        long as one the flight is told by lies on one side of the line it
+        takes, as a glitch does: one that crosses the line climbs and sinks
+        with the flight.
+        """
+        altitudes = self.altitudes
+        start, end = self.settled[before][1], self.settled[after][0]
+        seconds = self.times[end] - self.times[start]
+        if not 0 < seconds <= ALTITUDE_GLITCH_SECONDS or abs(
+            altitudes[end] - altitudes[start]
+        ) > max(ALTITUDE_SPIKE_FT, SUSTAINED_FT_PER_SECOND * seconds):
+            return False
+        slope = (altitudes[end] - altitudes[start]) / (end - start)
+        for stretch in range(before + 1, after):
+            if not self.told[stretch]:
+                continue
+            first, stop = self.stretches[stretch]
+            offs = [
+                altitudes[index] - altitudes[start] - slope * (index - start)
+                for index in range(first, stop)
+            ]
+            if not (all(off > 0 for off in offs) or all(off < 0 for off in offs)):
+                return False
+        return True
+
+    def glitches(self) -> list[tuple[int, int]]:
+        """The runs of fixes the flight did not fly, each as its first fix
+        and the one past its last."""
+        stretches, settled = self.stretches, self.settled
+        # For the way to each stretch: the jumps it leaves as they are, the
+        # fixes it keeps, the stretch it came from, and whether it passed
+        # over a glitch from there
+        left = [0] * len(stretches)
+        kept = [stretches[0][1]] * len(stretches)
+        came_from = [-1] * len(stretches)
+        passed = [False] * len(stretches)
+        for after in range(1, len(stretches)):
+            first, stop = stretches[after]
+            left[after] = left[after - 1] + 1
+            kept[after] = kept[after - 1] + stop - first
+            came_from[after] = after - 1
+            if not self.told[after]:
+                continue
+            # From the stretch before, the glitch is a drift at their ends
+            for before in range(after - 1, max(-1, after - 2 - _GLITCH_STRETCHES), -1):
+                if first - stretches[before][1] > _GLITCH_FIXES:
+                    break
+                if not self.told[before] or not self.across(before, after):
+                    continue
+                fixes = (
+                    kept[before]
+                    - (stretches[before][1] - 1 - settled[before][1])
+                    + stop
+                    - settled[after][0]
+                )
+                if (left[before], -fixes) < (left[after], -kept[after]):
+                    left[after], kept[after] = left[before], fixes
+                    came_from[after], passed[after] = before, True
+        runs: list[tuple[int, int]] = []
+        after = len(stretches) - 1
+        while after > 0:
+            if passed[after]:
+                runs.append((settled[came_from[after]][1] + 1, settled[after][0]))
+            after = came_from[after]
+        return runs
 
 
 def distance_spikes(points: Sequence[tuple[float, float]]) -> set[int]:

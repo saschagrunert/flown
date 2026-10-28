@@ -900,8 +900,10 @@ describe("appInitializer", () => {
         // The home base and the sizes of the zoom, as on the first load
         expect(app.airportManager.updateAirportPopups).toHaveBeenCalled();
         expect(app.airportManager.updateAirportMarkerSizes).toHaveBeenCalled();
-        // The rail names them by their codes now, and counts their countries
+        // The rail names them by their codes now, and counts their countries,
+        // and an open Wrapped its destinations
         expect(app.statsManager.refresh).toHaveBeenCalled();
+        expect(app.wrappedManager.refresh).toHaveBeenCalled();
         expect(toastMock.dismissToast).toHaveBeenCalledWith(
           AIRPORTS_FAILED_MESSAGE,
         );

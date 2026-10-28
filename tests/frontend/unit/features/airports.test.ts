@@ -299,7 +299,7 @@ describe("airports feature", () => {
       ]).toEqual(["DE"]);
     });
 
-    it("groupByCountry groups airports by country code in first-seen order", () => {
+    it("groupByCountry groups airports by country code, the countries in first-seen order", () => {
       const grouped = countries.groupByCountry([
         "LSZH Zurich",
         "EDAV Halle-Oppin",
@@ -311,6 +311,61 @@ describe("airports feature", () => {
         ["DE", ["EDAV Halle-Oppin", "EDDF Frankfurt"]],
         ["CZ", ["LKPR Prague"]],
       ]);
+    });
+
+    it("groupByCountry sorts the airports of a country by their place name", () => {
+      siteData.airports = [
+        {
+          name: "EDDF Frankfurt",
+          lat: 50,
+          lon: 8,
+          code: "EDDF",
+          country: "DE",
+        },
+        {
+          name: "EDAV Halle-Oppin",
+          lat: 51,
+          lon: 12,
+          code: "EDAV",
+          country: "DE",
+        },
+        { name: "EDAZ Berlin", lat: 52, lon: 13, code: "EDAZ", country: "DE" },
+        { name: "Zell", lat: 47, lon: 12, country: "DE" },
+      ];
+      expect(
+        countries
+          .groupByCountry([
+            "Zell",
+            "EDAV Halle-Oppin",
+            "EDDF Frankfurt",
+            "EDAZ Berlin",
+          ])
+          .get("DE"),
+      ).toEqual(["EDAZ Berlin", "EDDF Frankfurt", "EDAV Halle-Oppin", "Zell"]);
+    });
+
+    it("groupByCountry orders two fields of one place by their code, not by the flights", () => {
+      siteData.airports = [
+        {
+          name: "EDTF Freiburg",
+          lat: 48,
+          lon: 7.8,
+          code: "EDTF",
+          country: "DE",
+        },
+        {
+          name: "EDTB Freiburg",
+          lat: 48,
+          lon: 7.9,
+          code: "EDTB",
+          country: "DE",
+        },
+      ];
+      const order = ["EDTB Freiburg", "EDTF Freiburg"];
+      expect(countries.groupByCountry(order).get("DE")).toEqual(order);
+      expect(countries.groupByCountry([...order].reverse()).get("DE")).toEqual(
+        order,
+      );
     });
 
     it("groupByCountry puts unknown airports under 'Other'", () => {

@@ -11,12 +11,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .constants import (
-    KM_TO_NAUTICAL_MILES,
-    MAX_GROUNDSPEED_KNOTS,
-    MAX_TIMESTAMP_DISTANCE_SECONDS,
-    SECONDS_PER_HOUR,
-)
+from .constants import MAX_KM_PER_SECOND, MAX_TIMESTAMP_DISTANCE_SECONDS
 from .geometry import haversine_distance
 from .helpers import parse_timestamp_epoch
 from .logger import logger
@@ -43,12 +38,11 @@ if TYPE_CHECKING:
     from .types import FlightPath, FlightPathGroup, PathMetadata, PlacemarkMetadata
 
 
-# MAX_GROUNDSPEED_KNOTS in kilometres a second, and how far two fixes may
-# be apart on top of what that speed covers between them before the jump
-# counts as too fast: GPS jitter between two fixes with the same time, a
-# second of clock rounding, never comes near it, and a jump that small
-# neither stretches the map nor costs the duplicate check anything
-_MAX_KM_PER_SECOND = MAX_GROUNDSPEED_KNOTS / KM_TO_NAUTICAL_MILES / SECONDS_PER_HOUR
+# How far two fixes may be apart on top of what MAX_KM_PER_SECOND covers
+# between them before the jump counts as too fast: GPS jitter between two
+# fixes with the same time, a second of clock rounding, never comes near
+# it, and a jump that small neither stretches the map nor costs the
+# duplicate check anything
 _SPIKE_SLACK_KM = 1.0
 # More than one fix in a row is a spike only this far from the flight (see
 # spikes.run_spikes): a lagging clock puts a few kilometres of the real
@@ -62,7 +56,7 @@ type _TimedFix = tuple[float, float, float]
 def _too_fast(first: _TimedFix, second: _TimedFix) -> bool:
     """Whether no aircraft gets from one (lat, lon, time) fix to the other."""
     distance = haversine_distance(first[0], first[1], second[0], second[1])
-    return distance > _MAX_KM_PER_SECOND * abs(second[2] - first[2]) + _SPIKE_SLACK_KM
+    return distance > MAX_KM_PER_SECOND * abs(second[2] - first[2]) + _SPIKE_SLACK_KM
 
 
 def _position_spikes(fixes: Sequence[_TimedFix]) -> set[int]:

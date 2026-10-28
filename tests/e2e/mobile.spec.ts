@@ -1063,4 +1063,137 @@ test.describe("Mobile bar", () => {
       expect(focused.onScreen).toBe(true);
     });
   });
+
+  /**
+   * Zoomed out to fit the flights into a short or a narrow screen, the
+   * airports crowd, and a marker whose neighbours' squares overlap its own
+   * keeps less than the 24 px target-size asks for (features/airports.ts).
+   * The search opens any airport's popup as its marker does, which is the
+   * criterion's equivalent exception (WCAG 2.5.8): the markers are left out
+   * of that rule there, and every other target is held to it.
+   */
+  async function expectNoA11yViolationsCrowded(
+    page: Page,
+    label: string,
+  ): Promise<void> {
+    await expectNoA11yViolations(page, label, (builder) =>
+      builder.disableRules(["target-size"]),
+    );
+    await expectNoA11yViolations(page, label + " (target size)", (builder) =>
+      builder.withRules(["target-size"]).exclude(".airport-marker-root"),
+    );
+  }
+
+  test.describe("Held sideways", () => {
+    test.use({ viewport: { width: 844, height: 390 } });
+
+    test("the Layers sheet stands beside the map and shows half its rows", async ({
+      page,
+    }) => {
+      // Half the height, as upright, left room for the first row alone
+      await openMobileSheet(page, "layers");
+      const sheet = page.locator("#mobile-sheet");
+      const box = (await sheet.boundingBox())!;
+      expect(box.x, "the map stays in sight beside the sheet").toBeGreaterThan(
+        0,
+      );
+      await expect
+        .poll(() =>
+          sheet.evaluate((element) => {
+            const frame = element.getBoundingClientRect();
+            return [...element.querySelectorAll(".sheet-row")].filter((row) => {
+              const { top, bottom } = row.getBoundingClientRect();
+              return top >= frame.top && bottom <= frame.bottom;
+            }).length;
+          }),
+        )
+        .toBeGreaterThanOrEqual(4);
+    });
+
+    test("a toast stands on the map beside the sheet", async ({ page }) => {
+      // Centred on the window, it covered the rows of the sheet at the
+      // right edge: a year that fails to load says so with the sheet open
+      const years = await knownYears(page);
+      const current = await page.locator("#year-select").inputValue();
+      const other = years.find((year) => year !== current);
+      test.skip(other === undefined, "the site has a single year");
+      await page.route(`**/data/${other}/data.json`, (route) => route.abort());
+
+      await openMobileSheet(page, "filter");
+      await chooseSheetOption(
+        page.locator('.sheet-row[data-row="year"] select'),
+        other!,
+      );
+      const toast = toastMessage(
+        page,
+        `Could not load the flights of ${other}`,
+      );
+      await expect(toast).toBeVisible();
+      const sheet = page.locator("#mobile-sheet");
+      await expect(sheet).toBeVisible();
+      const frame = (await sheet.boundingBox())!;
+      const box = (await toast.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(frame.x);
+
+      // Clear of the notch as well: a sideways iPhone has an inset on
+      // either side, which the page runs under (viewport-fit=cover)
+      const insets = (value: string | null): Promise<void> =>
+        page.evaluate((inset) => {
+          for (const side of ["left", "right"]) {
+            const name = `--safe-${side}`;
+            const root = document.documentElement.style;
+            if (inset) root.setProperty(name, inset);
+            else root.removeProperty(name);
+          }
+        }, value);
+      await insets("59px");
+      const notched = (await sheet.boundingBox())!;
+      const clear = (await toast.boundingBox())!;
+      expect(clear.x).toBeGreaterThanOrEqual(59);
+      expect(clear.x + clear.width).toBeLessThanOrEqual(notched.x);
+      await insets(null);
+
+      // Where the map beside the sheet is too narrow for one (a phone's
+      // split screen), it stands over the window again: kept to the map,
+      // its words ran out of a toast 36 px wide
+      await page.setViewportSize({ width: 412, height: 400 });
+      await expect(sheet).toBeVisible();
+      const narrow = (await toast.boundingBox())!;
+      expect(narrow.x).toBeGreaterThanOrEqual(0);
+      expect(narrow.x + narrow.width).toBeLessThanOrEqual(412);
+      expect(
+        await toast.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+        "its words fit in it",
+      ).toBe(true);
+
+      // The failed load is the point of this test (see the Filter sheet's)
+      errors.consoleErrors = errors.consoleErrors.filter(
+        (text) =>
+          !text.includes(`data/${other}/data.json`) &&
+          !text.includes("net::ERR_FAILED"),
+      );
+    });
+
+    test("the idle page and the open sheet have no WCAG A/AA violations", async ({
+      page,
+    }) => {
+      await expect(page.locator("#mobile-bar")).toBeVisible();
+      await expectNoA11yViolationsCrowded(page, "sideways idle");
+
+      await openMobileSheet(page, "layers");
+      await expectNoA11yViolationsCrowded(page, "sideways sheet");
+    });
+  });
+
+  test.describe("On the narrowest phone", () => {
+    test.use({ viewport: { width: 320, height: 568 } });
+
+    test("the idle page has no WCAG A/AA violations", async ({ page }) => {
+      await expect(page.locator("#mobile-bar")).toBeVisible();
+      await expectNoA11yViolationsCrowded(page, "320 px idle");
+    });
+  });
 });

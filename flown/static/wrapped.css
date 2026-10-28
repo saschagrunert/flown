@@ -578,7 +578,8 @@ body:has(#wrapped-modal:not([hidden]))
   margin-left: var(--unit-gap);
 }
 
-/* The four card headings share one shape: icon, then label */
+/* The four card headings share one shape: icon, then label, painted in
+   the gradient of their card (--title-from to --title-to) */
 .wrapped-square-card .fun-facts-title,
 .wrapped-square-card .top-airports-title,
 .wrapped-square-card .airports-grid-title,
@@ -586,6 +587,32 @@ body:has(#wrapped-modal:not([hidden]))
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  font-size: var(--wrapped-section);
+  font-weight: bold;
+  margin-bottom: var(--space-md);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: linear-gradient(
+    135deg,
+    var(--title-from) 0%,
+    var(--title-to) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.wrapped-square-card .fun-facts-title,
+.wrapped-square-card .aircraft-fleet-title {
+  --title-from: var(--color-accent-blue);
+  --title-to: var(--color-accent-cyan);
+}
+.wrapped-square-card .top-airports-title {
+  --title-from: var(--color-accent-red);
+  --title-to: var(--color-accent-pink);
+}
+.wrapped-square-card .airports-grid-title {
+  --title-from: var(--color-accent-pink);
+  --title-to: var(--color-accent-red);
 }
 .wrapped-square-card .section-title-text {
   min-width: 0;
@@ -642,21 +669,6 @@ body:has(#wrapped-modal:not([hidden]))
    third frame deep on a phone */
 .wrapped-square-card .fun-facts {
   margin: var(--space-lg) 0;
-}
-.wrapped-square-card .fun-facts-title {
-  font-size: var(--wrapped-section);
-  font-weight: bold;
-  margin-bottom: var(--space-md);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  background: linear-gradient(
-    135deg,
-    var(--color-accent-blue) 0%,
-    var(--color-accent-cyan) 100%
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 .wrapped-square-card .fun-fact {
   font-size: var(--text-base);
@@ -730,21 +742,6 @@ body:has(#wrapped-modal:not([hidden]))
 .wrapped-square-card .top-airports {
   margin: var(--space-lg) 0;
 }
-.wrapped-square-card .top-airports-title {
-  font-size: var(--wrapped-section);
-  font-weight: bold;
-  margin-bottom: var(--space-md);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  background: linear-gradient(
-    135deg,
-    var(--color-accent-red) 0%,
-    var(--color-accent-pink) 100%
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
 .wrapped-square-card .top-airport {
   display: flex;
   justify-content: space-between;
@@ -797,21 +794,6 @@ body:has(#wrapped-modal:not([hidden]))
 }
 .wrapped-square-card .airports-grid {
   margin: var(--space-lg) 0;
-}
-.wrapped-square-card .airports-grid-title {
-  font-size: var(--wrapped-section);
-  font-weight: bold;
-  margin-bottom: var(--space-md);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  background: linear-gradient(
-    135deg,
-    var(--color-accent-pink) 0%,
-    var(--color-accent-red) 100%
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 .wrapped-square-card .country-group {
   margin-bottom: var(--space-md);
@@ -974,21 +956,6 @@ body:has(#wrapped-modal:not([hidden]))
 }
 .wrapped-square-card .aircraft-fleet {
   margin: var(--space-lg) 0;
-}
-.wrapped-square-card .aircraft-fleet-title {
-  font-size: var(--wrapped-section);
-  font-weight: bold;
-  margin-bottom: var(--space-md);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  background: linear-gradient(
-    135deg,
-    var(--color-accent-blue) 0%,
-    var(--color-accent-cyan) 100%
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 /* One colour for the whole fleet, with the rank of an aircraft in how
    strong its tint is (calculateAircraftColorClass). In four accents the

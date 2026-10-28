@@ -335,6 +335,39 @@ describe("crossSection", () => {
     }
   });
 
+  it("measures every segment of a line half round the world, without the index", () => {
+    // The flight crosses a line half round the world at 8 E; looking up
+    // the box's cells took over 100 ms for each frame of a drag
+    const segments = crossing({ lon: 8 });
+    const start: Coordinate = [60, -100];
+    const end: Coordinate = [-40, 70];
+    const frame = lineFrame(start, end);
+    const at = (lon: number): Coordinate => {
+      // Where the line is at `lon`, along the great circle closely enough
+      for (let along = 0; ; along += 1000) {
+        const point = fromFrame(frame, along, 0);
+        if (point[1] >= lon) return point;
+      }
+    };
+    const crossingAt = at(8)[0];
+    const crossed = segments.map((segment) => ({
+      ...segment,
+      coords: segment.coords.map(([lat, lon]) => [
+        lat - 50 + crossingAt,
+        lon,
+      ]) as [Coordinate, Coordinate],
+    }));
+
+    const began = performance.now();
+    const section = crossSection(
+      request(crossed, { start, end, halfWidthM: 1000 }),
+    );
+
+    expect(performance.now() - began).toBeLessThan(30);
+    expect(section.flights).toBe(1);
+    expect(section.totalSeconds).toBeGreaterThan(0);
+  });
+
   it("keeps a corridor across the antimeridian measuring every segment", () => {
     const across: PathSegment[] = crossing({ lon: 180 }).map((segment) => ({
       ...segment,

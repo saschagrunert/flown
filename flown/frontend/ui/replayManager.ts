@@ -47,7 +47,7 @@ import { flightOrder } from "../calculations/flightProfile";
 
 import { AirplaneMarker, ReplayRenderer } from "./replayRenderer";
 import { appendTrailSegment, speedColouredTrail } from "./replayTrail";
-import { restingPitch, type ReplayState } from "./replayState";
+import { userView, type ReplayState } from "./replayState";
 import type { SavedCamera } from "./chaseCamera";
 import type { PathSegment } from "../types";
 import {
@@ -106,10 +106,21 @@ export function followPanelHeight(
   const measure = (): void =>
     style.setProperty(property, panel.offsetHeight + "px");
   measure();
+  // A frame later, not in the observer's callback: the property moves the
+  // legend and the left column (--legend-lift), which another observer
+  // watches (utils/scrollFade.ts), and WebKit reports a resize of that in
+  // the same round as an error, "ResizeObserver loop completed"
+  let frame = 0;
   const watch =
-    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => {
+          cancelAnimationFrame(frame);
+          frame = requestAnimationFrame(measure);
+        });
   watch?.observe(panel);
   const stop = (): void => {
+    cancelAnimationFrame(frame);
     watch?.disconnect();
     style.removeProperty(property);
     signal?.removeEventListener("abort", stop);
@@ -936,8 +947,9 @@ export class ReplayManager {
     this.app.map.easeTo({
       center: toLngLat(startCoords),
       ...(this.state.autoZoom ? { zoom: AUTO_ZOOM_FOLLOW } : {}),
-      // A lay-back it cuts short goes on to where it was going
-      pitch: restingPitch(this.app),
+      // A lay-back, or a flight back to the user's view, it cuts short goes
+      // on to where it was going
+      pitch: userView(this.app)?.pitch ?? 0,
       duration: AUTO_ZOOM_PAN_MS,
       animate: !prefersReducedMotion(),
     });
@@ -1031,6 +1043,7 @@ export class ReplayManager {
     // way the map was before it
     const saved = this.renderer.camera.endChase();
     if (!bounds) return;
+    if (saved) this.renderer.camera.keepSaved(saved, FIT_BOUNDS_MS);
     this.app.map.fitBounds(toBounds(bounds), {
       // A fit turns the map north up unless it is told the bearing, and
       // the replay leaves the orientation to the user

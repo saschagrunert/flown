@@ -236,8 +236,8 @@ function runtimeOf(
   };
 }
 
-const bytes = (...values: number[]): ArrayBuffer =>
-  new Uint8Array(values).buffer;
+/** A file as the page hands it over: as the store keeps it */
+const bytes = (...values: number[]): Blob => new Blob([new Uint8Array(values)]);
 
 /** An exception of the Python run, as Pyodide throws it */
 const pythonError = (message: string, type = "Exception"): Error =>
@@ -391,6 +391,9 @@ describe("Runtime", () => {
     const inputs = [
       { name: "a.kml", bytes: bytes(1, 2, 3) },
       { name: "sub/b.kml", bytes: bytes(4) },
+      // As kept: beside an a_c.kml, it would take that one's place
+      { name: "a\\c.kml", bytes: bytes(5) },
+      { name: "a_c.kml", bytes: bytes(6) },
     ];
 
     const outcome = await runtime.build(inputs, true, progress);
@@ -398,17 +401,17 @@ describe("Runtime", () => {
     expect([...pyodide.inputsAtRun.keys()]).toEqual([
       "/input/a.kml",
       "/input/sub_b.kml",
+      "/input/a\\c.kml",
+      "/input/a_c.kml",
     ]);
     expect(pyodide.inputsAtRun.get("/input/a.kml")).toEqual(
       new Uint8Array([1, 2, 3]),
     );
-    // Neither the inputs nor the outputs stay in the worker's memory, nor
-    // the bytes it was handed
+    // Neither the inputs nor the outputs stay in the worker's memory
     expect([...pyodide.files.keys()]).toEqual([]);
     expect([...pyodide.dirs].filter((d) => /^\/(input|site)/.test(d))).toEqual(
       [],
     );
-    expect(inputs.map((input) => input.bytes.byteLength)).toEqual([0, 0]);
     const run = pyodide.python.at(-1)!;
     expect(run).toContain(
       'browser.build("/input", "/site", report, terrain=True, retry=False, tiles_dir=None, flags=json.loads("null"))',
@@ -555,6 +558,33 @@ describe("Runtime", () => {
     await expect(
       runtime.build([{ name: "a.kml", bytes: bytes(1) }], true, vi.fn()),
     ).rejects.toThrow(RUNTIME_LOST_MESSAGE);
+  });
+
+  it("names a file kept that the store cannot read, and keeps the runtime", async () => {
+    const pyodide = new FakePyodide();
+    const { runtime, loader } = runtimeOf(pyodide);
+    // What a Blob of the store answers once what it kept of it is lost
+    const lost = new Blob([new Uint8Array([2])]);
+    vi.spyOn(lost, "arrayBuffer").mockRejectedValue(
+      new DOMException("The file could not be read", "NotReadableError"),
+    );
+    const inputs = [
+      { name: "a.kml", bytes: bytes(1) },
+      { name: "b.kml", bytes: lost },
+    ];
+
+    await expect(runtime.build(inputs, true, vi.fn())).rejects.toThrow(
+      "Could not read b.kml; remove it and add it again",
+    );
+    // No build ran on the rest, and nothing of them stays
+    expect(pyodide.python.join("\n")).not.toContain("browser.build(");
+    expect([...pyodide.files.keys()]).toEqual([]);
+    // Not lost: the next build takes the same runtime
+    inputs.pop();
+    await expect(runtime.build(inputs, true, vi.fn())).resolves.toMatchObject(
+      OUTCOME,
+    );
+    expect(loader).toHaveBeenCalledTimes(1);
   });
 
   it("lets go of the cache another tab deletes, and writes nothing back into it", async () => {

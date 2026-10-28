@@ -36,6 +36,7 @@
 import {
   Marker,
   type GeoJSONSource,
+  type LngLat,
   type Map as MapLibreMap,
 } from "maplibre-gl";
 import type { MapApp } from "../mapApp";
@@ -50,10 +51,12 @@ import {
 } from "../calculations/crossSection";
 import { keptFlights } from "./keptFlights";
 import { applyToggleButtonState } from "../utils/buttonState";
+import { isTouchDevice } from "../utils/device";
 import { frameCoalescer } from "../utils/frameCoalescer";
 import {
   DEGREES_TO_RADIANS,
   metresPerPixel,
+  TILE_SIZE_PX,
   wrapDegrees,
   type Coordinate,
 } from "../utils/geometry";
@@ -65,6 +68,7 @@ import {
   CORRIDOR_SCREEN_PX,
   CROSS_SECTION_SOURCE,
   corridorData,
+  groundAt,
   pointAt,
   removeLayers,
   tooShort,
@@ -154,7 +158,9 @@ const KEY_STEPS: Partial<Record<string, [number, number]>> = {
 /**
  * Where the arrow key of `event` moves an end of the line at `at` on the
  * map `target`, a few pixels on the screen and more with Shift; null for
- * any other key
+ * any other key. Where the screen shows no ground there (the sky of a
+ * tilted map, or an end off the screen in 3D, past the relief drawn), as
+ * many pixels of the map seen from straight above, turned as it is.
  */
 function nudged(
   target: MapLibreMap,
@@ -164,13 +170,36 @@ function nudged(
   const step = KEY_STEPS[event.key];
   if (!step) return null;
   const pixels = event.shiftKey ? KEY_STEP_FAST_PX : KEY_STEP_PX;
+  const [x, y] = step;
   const point = target.project(toLngLat(at));
-  const moved = target.unproject([
-    point.x + step[0] * pixels,
-    point.y + step[1] * pixels,
-  ]);
-  return [moved.lat, moved.lng];
+  const turn = target.getBearing() * DEGREES_TO_RADIANS;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  const degrees = (pixels * 360) / TILE_SIZE_PX / 2 ** target.getZoom();
+  return (
+    groundAt(target, point.x + x * pixels, point.y + y * pixels) ?? [
+      // Short of the edge of the flat map's world, 85.05° north and south
+      Math.min(
+        85,
+        Math.max(
+          -85,
+          at[0] -
+            (y * cos + x * sin) *
+              degrees *
+              Math.cos(at[0] * DEGREES_TO_RADIANS),
+        ),
+      ),
+      at[1] + (x * cos - y * sin) * degrees,
+    ]
+  );
 }
+
+/**
+ * How far from the pointer an end it drags is drawn at most, in pixels: by
+ * as much as the end was taken hold of off its middle, a finger's target
+ * (features.css)
+ */
+const HANDLE_REACH_PX = 48;
 
 function createTool(app: MapApp): CrossSectionTool {
   let phase: Phase = "closed";
@@ -179,6 +208,8 @@ function createTool(app: MapApp): CrossSectionTool {
   /** The first end of a line being drawn */
   let first: Coordinate | null = null;
   let press: Press | null = null;
+  /** Where the pointer last moved, on the page */
+  let pointer: { clientX: number; clientY: number } | null = null;
   /** The click that ends a press that placed a point goes to no flight */
   let swallowClick = false;
   /** The corridor's half width once picked, rather than from the zoom */
@@ -289,9 +320,16 @@ function createTool(app: MapApp): CrossSectionTool {
     if (placing) {
       stats.textContent = "";
       readout.textContent = "";
-      hint.textContent = first
-        ? "Now B, the end of the line. Escape starts again."
-        : "Click or tap two points on the map, or drag a line. Escape cancels.";
+      // A finger has no Escape to press
+      hint.textContent =
+        (first
+          ? "Now B, the end of the line."
+          : "Click or tap two points on the map, or drag a line.") +
+        (isTouchDevice()
+          ? ""
+          : first
+            ? " Escape starts again."
+            : " Escape cancels.");
       placeButton.textContent = `Set ${first ? "B" : "A"} at the map centre`;
     }
     // Focus on a part that went away goes to the one in its place: the
@@ -412,9 +450,8 @@ function createTool(app: MapApp): CrossSectionTool {
    */
   const corridorFrame = frameCoalescer<PointerEvent>((event) => {
     const target = map();
-    if (phase === "placing" && first && target) {
-      drawCorridor(first, pointAt(target, event));
-    }
+    const to = target && pointAt(target, event);
+    if (phase === "placing" && first && to) drawCorridor(first, to);
   });
 
   /** Stop drawing: the map pans by dragging and zooms on a double again */
@@ -500,16 +537,19 @@ function createTool(app: MapApp): CrossSectionTool {
       return;
     }
     if (!target.getCanvasContainer().contains(event.target as Node)) return;
-    press = {
+    // A press in the sky of a tilted map is on no ground to set a point at
+    const at = pointAt(target, event);
+    press = at && {
       id: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      at: pointAt(target, event),
+      at,
       dragging: false,
     };
   };
 
   const onPointerMove = (event: PointerEvent): void => {
+    pointer = { clientX: event.clientX, clientY: event.clientY };
     const target = map();
     if (phase !== "placing" || !target) return;
     if (press && event.pointerId === press.id) {
@@ -536,8 +576,13 @@ function createTool(app: MapApp): CrossSectionTool {
     if (event.pointerId !== ended.id) return;
     press = null;
     swallowClick = true;
-    if (ended.dragging) finish(first!, pointAt(target, event));
-    else setPoint(ended.at);
+    if (!ended.dragging) {
+      setPoint(ended.at);
+      return;
+    }
+    // Let go of in the sky, the drag leaves A set for a tap to set B
+    const to = pointAt(target, event);
+    if (to) finish(first!, to);
   };
 
   /** A click that placed a point selects no flight, nor opens a popup */
@@ -590,13 +635,29 @@ function createTool(app: MapApp): CrossSectionTool {
     announceSoon();
   };
 
+  /** Whether an end dragged to `at` is drawn away from the pointer */
+  const offPointer = (at: LngLat): boolean => {
+    const target = map();
+    if (!target || !pointer) return false;
+    const box = target.getContainer().getBoundingClientRect();
+    const drawn = target.project(at);
+    return (
+      Math.hypot(
+        drawn.x - (pointer.clientX - box.left),
+        drawn.y - (pointer.clientY - box.top),
+      ) > HANDLE_REACH_PX
+    );
+  };
+
   handles.forEach((handle, index) => {
     handle.on("drag", () => {
       if (phase !== "shown" || !line) return;
       const at = handle.getLngLat();
       const moved: Coordinate = [at.lat, at.lng];
-      // On the other end the line keeps where this one was last apart
-      if (tooShort(moved, line[1 - index]!)) return;
+      // On the other end the line keeps where this one was last apart, and
+      // in the sky of a tilted map, which MapLibre answers with ground
+      // behind the camera, far from the pointer, where it was last on ground
+      if (tooShort(moved, line[1 - index]!) || offPointer(at)) return;
       line[index] = moved;
       schedule();
     });
@@ -771,10 +832,15 @@ function createTool(app: MapApp): CrossSectionTool {
       ? null
       : new ResizeObserver(() => {
           const height = root.offsetHeight;
+          // A frame later: the height lifts the legend and stops the left
+          // column (--legend-lift), whose resize in this round of the
+          // observers WebKit reports as an error (see followPanelHeight)
           if (height > 0) {
-            document.documentElement.style.setProperty(
-              CROSS_SECTION_HEIGHT_VAR,
-              `${height}px`,
+            requestAnimationFrame(() =>
+              document.documentElement.style.setProperty(
+                CROSS_SECTION_HEIGHT_VAR,
+                `${height}px`,
+              ),
             );
           }
           paint(section);

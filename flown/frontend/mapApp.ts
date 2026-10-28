@@ -66,6 +66,7 @@ import {
   isOnMarker,
   isReplayCameraMove,
   keepMarkerTapsFromZoom,
+  KEYED_FIELDS,
   stateZoomToMap,
   toBounds,
   toLngLat,
@@ -1266,13 +1267,42 @@ export class MapApp {
    * a search would move under them: their holds say so on the button, and
    * `/` does nothing meanwhile. With `open`, as for `/`, a search that is
    * open already takes the focus back to its field rather than closing.
+   * What is typed while the bundle comes goes into its field: the first
+   * keys after `/` were lost.
    */
   toggleSearch(open = false): void {
     if (this.mapHeld) return;
+    let typed = "";
+    const keep = (event: KeyboardEvent): void => {
+      if (
+        // Not a second "/", the shortcut that opens the search
+        event.key.length < 2 &&
+        event.key !== "/" &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        // Not the keys of a field gone to meanwhile (the flight list's
+        // search, a select), which are typed there. An element, or the
+        // document, which has no matches.
+        !(event.target as Element).matches?.(KEYED_FIELDS)
+      ) {
+        // Nor the map's: "+" and "-" would zoom it as well
+        event.preventDefault();
+        event.stopPropagation();
+        typed += event.key;
+      }
+    };
     this.toggleLazily(
       "toggleSearch",
-      () => loadLazyBundle(loadSearch, SEARCH_UNAVAILABLE_MESSAGE),
-      (search) => search.toggleSearch(this, open),
+      // Only by the press that fetches it: one dropped meanwhile would
+      // leave its listener behind
+      () => {
+        document.addEventListener("keydown", keep, true);
+        return loadLazyBundle(loadSearch, SEARCH_UNAVAILABLE_MESSAGE).finally(
+          () => document.removeEventListener("keydown", keep, true),
+        );
+      },
+      (search) => search.toggleSearch(this, open, typed),
     );
   }
 

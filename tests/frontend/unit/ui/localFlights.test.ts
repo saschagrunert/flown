@@ -13,8 +13,9 @@ import {
   CONFIRM_CLEAR_MS,
   LocalFlights,
   NO_TERRAIN_KEY,
-  OWN_TAB_KEY,
+  REBUILT_ADDRESS_KEY,
   REMOVED_KEY,
+  STOPPED_KEY,
   localStartConfig,
   reopenAfterSwitch,
   siteBuild,
@@ -234,9 +235,7 @@ beforeEach(() => {
   store.readDatasetFile.mockResolvedValue(null);
   // A file's bytes are its name, but an aircraft file's: {} (file())
   store.readFileBytes.mockImplementation((name: string) =>
-    Promise.resolve(
-      new TextEncoder().encode(aircraftNumber(name) ? "{}" : name).buffer,
-    ),
+    Promise.resolve(new Blob([aircraftNumber(name) ? "{}" : name])),
   );
   // The site's metadata.json, which the build asks for its flags: offline
   vi.stubGlobal(
@@ -319,6 +318,21 @@ describe("the panel", () => {
     const hint = panel().querySelector(".local-flights-hint")!;
     expect(hint.textContent).toContain("1_DEAGJ_DA20.kml");
     expect(hint.querySelector("a")?.getAttribute("rel")).toBe("noopener");
+  });
+
+  it("names the file field by the label's text that is shown (WCAG 2.5.3)", () => {
+    makePanel();
+
+    const input =
+      panel().querySelector<HTMLInputElement>('input[type="file"]')!;
+    // A name of its own would not be what a voice command says
+    expect(input.hasAttribute("aria-label")).toBe(false);
+    expect(input.closest("label")!.textContent).toContain(
+      "Drop KML or KMZ files here, or choose files",
+    );
+    expect(input.closest("label")!.textContent).toContain(
+      "Choose KML or KMZ files",
+    );
   });
 
   it("lands in the body without a main", () => {
@@ -623,8 +637,9 @@ describe("adding files", () => {
     const local = await openPanel();
     localStorage.setItem(LOCAL_STATE_KEY, "{}");
 
+    const dropped = file("1.KMZ");
     const adding = local.add([
-      file("1.KMZ"),
+      dropped,
       file("photo.jpg"),
       file("aircraft.json", "{}"),
     ]);
@@ -634,6 +649,11 @@ describe("adding files", () => {
     // The aircraft file as kept stays as it is, and builds with the rest
     const kept = store.putFiles.mock.calls[0]![0] as StoredFileWithBytes[];
     expect(kept.map((f) => f.name)).toEqual(["1.KMZ"]);
+    // A copy of its bytes, not the File: Chrome's incognito windows and
+    // Safari would keep a reference to the file on the disk
+    expect(kept[0]!.bytes).not.toBe(dropped);
+    expect(kept[0]!.bytes).toBeInstanceOf(Blob);
+    await expect(kept[0]!.bytes.text()).resolves.toBe(await dropped.text());
     expect(store.requestPersistence).toHaveBeenCalledTimes(1);
     // The refusal of the photo is still said as the build goes on
     expect(alert().textContent).toBe(UNSUPPORTED_FILES_MESSAGE);
@@ -642,7 +662,7 @@ describe("adding files", () => {
     expect(fake.build).toHaveBeenCalledTimes(1);
     const [inputs, terrain, , options] = fake.build.mock
       .calls[0]! as unknown as [
-      { name: string; bytes: ArrayBuffer }[],
+      { name: string; bytes: Blob }[],
       boolean,
       unknown,
       { flags: unknown; version: unknown },
@@ -655,13 +675,12 @@ describe("adding files", () => {
       retry: false,
     });
     expect(inputs.map((i) => i.name)).toEqual(["1.KMZ", "aircraft.json"]);
-    // The bytes are read from the store by name: the build takes them
-    // over, and the store keeps its own; the aircraft file kept first, to
-    // tell the one dropped by
+    // The bytes are read from the store by name, as Blobs the worker
+    // reads; the aircraft file kept first, to tell the one dropped by
     expect(
       (store.readFileBytes.mock.calls as [string][]).map(([name]) => name),
     ).toEqual(["aircraft.json", "1.KMZ", "aircraft.json"]);
-    expect(new TextDecoder().decode(inputs[0]!.bytes)).toBe("1.KMZ");
+    await expect(inputs[0]!.bytes.text()).resolves.toBe("1.KMZ");
 
     fake.settlers[0]!.progress("  Parsing 1 KML file(s)...");
     expect(status().textContent).toBe("Parsing 1 KML file(s)...");
@@ -762,7 +781,7 @@ describe("adding files", () => {
   it("builds without a file whose bytes went from the store meanwhile", async () => {
     store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
     store.readFileBytes.mockImplementation((name: string) =>
-      Promise.resolve(name === "a.kml" ? new ArrayBuffer(1) : null),
+      Promise.resolve(name === "a.kml" ? new Blob(["a"]) : null),
     );
     const local = makePanel();
     const adding = local.add([file("a.kml")]);
@@ -916,9 +935,9 @@ describe("adding files", () => {
 
   it("starts no build of the files a Remove all took while they were read", async () => {
     store.listFiles.mockResolvedValue([stored("a.kml", 6)]);
-    let read!: (bytes: ArrayBuffer) => void;
+    let read!: (bytes: Blob) => void;
     store.readFileBytes.mockReturnValue(
-      new Promise<ArrayBuffer>((resolve) => {
+      new Promise<Blob>((resolve) => {
         read = resolve;
       }),
     );
@@ -929,7 +948,7 @@ describe("adding files", () => {
     store.listFiles.mockResolvedValue([]);
     removeAll();
     await settle();
-    read(new ArrayBuffer(1));
+    read(new Blob(["a"]));
     await adding;
     await settle();
 
@@ -990,12 +1009,12 @@ describe("adding files", () => {
     await adding;
   });
 
-  /** A file of `size` bytes, which are never read */
+  /** A file of `size` bytes, which are never read but for the first */
   const sized = (name: string, size: number): File =>
     ({
       name,
       size,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(1)),
     }) as unknown as File;
 
   it("refuses files that would take the files kept past the limit in all", async () => {
@@ -1740,9 +1759,9 @@ describe("removing a file", () => {
 
   it("still shows the flights a drop asked for when a file goes while it is built", async () => {
     store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
-    let read!: (bytes: ArrayBuffer) => void;
+    let read!: (bytes: Blob) => void;
     store.readFileBytes.mockReturnValueOnce(
-      new Promise<ArrayBuffer>((resolve) => {
+      new Promise<Blob>((resolve) => {
         read = resolve;
       }),
     );
@@ -1759,7 +1778,7 @@ describe("removing a file", () => {
     // The build lets go of the files read as b.kml goes, before the
     // removal builds the rest
     panel().querySelector<HTMLElement>('[data-remove="b.kml"]')!.click();
-    read(new ArrayBuffer(1));
+    read(new Blob(["a"]));
     await adding;
     await settle();
     expect(fake.build).not.toHaveBeenCalled();
@@ -1771,6 +1790,110 @@ describe("removing a file", () => {
     fake.settlers[0]!.resolve(OUTCOME);
     await settle();
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets go of the build on its way, and builds the rest at once", async () => {
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    const local = await openPanel();
+    const adding = local.add([file("b.kml")]);
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(1);
+
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    panel().querySelector<HTMLElement>('[data-remove="b.kml"]')!.click();
+    await settle();
+
+    // Not after the old one is done, asking AWS for the tiles under b.kml
+    expect(fake.builder.destroy).toHaveBeenCalledTimes(1);
+    expect(fake.build).toHaveBeenCalledTimes(2);
+    expect(fake.build.mock.calls[1]![0]).toEqual([
+      expect.objectContaining({ name: "a.kml" }),
+    ]);
+    // What the old one says is not the panel's any more
+    fake.settlers[0]!.progress("Parsing 2 KML file(s)...");
+    expect(status().textContent).toBe(BUILDING_MESSAGE);
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await adding;
+    await settle();
+    expect(alert().textContent).toBe("");
+
+    // And the drop's flights are still shown, as it asked
+    fake.settlers[1]!.resolve(OUTCOME);
+    await settle();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the flag through a rebuild a removal let go of, whose build goes on", async () => {
+    // The rebuild a start asked for (reopenAfterSwitch), of another deploy
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue({ ...INFO, build: "0123456789ab" });
+    const local = await openPanel();
+    const rebuilding = local.rebuild();
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(1);
+
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    panel().querySelector<HTMLElement>('[data-remove="b.kml"]')!.click();
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await settle();
+
+    // Not given up on: the build without the file is on its way, and a
+    // closed panel only says it is ready, which the next visit opens on
+    expect(fake.build).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
+    local.close();
+    fake.settlers[1]!.resolve(OUTCOME);
+    await rebuilding;
+    await settle();
+    expect(reload).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
+  });
+
+  it("lets the flag go as the build a removal asked for in a rebuild fails or is stopped", async () => {
+    for (const end of ["fails", "stopped"]) {
+      localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+      store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+      store.readInfo.mockResolvedValue({ ...INFO, build: "0123456789ab" });
+      const local = await openPanel();
+      const rebuilding = local.rebuild();
+      await settle();
+      store.listFiles.mockResolvedValue([stored("a.kml")]);
+      panel().querySelector<HTMLElement>('[data-remove="b.kml"]')!.click();
+      fake.settlers[0]!.reject(new Error("The build could not run"));
+      await settle();
+      expect(fake.build).toHaveBeenCalledTimes(2);
+
+      // As the rebuild's own would: the next visit opens on the site's
+      // flights rather than building them again on its own
+      if (end === "fails") {
+        fake.settlers[1]!.reject(new Error("No valid KML files to process!"));
+      } else {
+        action("cancel").click();
+        fake.settlers[1]!.reject(new Error("The build could not run"));
+      }
+      await rebuilding;
+      expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBeNull();
+      local.destroy();
+    }
+  });
+
+  it("lets the flag go as a Remove all lets go of a rebuild", async () => {
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    store.listFiles.mockResolvedValue([stored("a.kml")]);
+    store.readInfo.mockResolvedValue({ ...INFO, build: "0123456789ab" });
+    const local = await openPanel();
+    const rebuilding = local.rebuild();
+    await settle();
+
+    removeAll();
+    fake.settlers[0]!.reject(new Error("The build could not run"));
+    await rebuilding;
+    expect(store.clearAll).toHaveBeenCalledTimes(1);
+    expect(status().textContent).toBe(REMOVED_MESSAGE);
+    // Not left for the files dropped next, which the next visit would
+    // open on unasked
+    expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBeNull();
   });
 
   it("shows the rest built again where the visitor's flights are shown", async () => {
@@ -1920,6 +2043,14 @@ describe("a build on its way", () => {
     expect(store.putDataset).not.toHaveBeenCalled();
     expect(store.clearAll).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
+    // Kept for the next visit, which then builds nothing on its own
+    expect(localStorage.getItem(STOPPED_KEY)).toBe("1");
+
+    // Until the next build
+    action("show").click();
+    await settle();
+    expect(fake.build).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(STOPPED_KEY)).toBeNull();
   });
 
   it("offers Show my flights after a stop where the visitor's flights are shown", async () => {
@@ -2032,9 +2163,9 @@ describe("a build on its way", () => {
 
   it("starts no worker when stopped while the files are read", async () => {
     store.listFiles.mockResolvedValue([stored("a.kml")]);
-    let read!: (bytes: ArrayBuffer) => void;
+    let read!: (bytes: Blob) => void;
     store.readFileBytes.mockReturnValue(
-      new Promise<ArrayBuffer>((resolve) => {
+      new Promise<Blob>((resolve) => {
         read = resolve;
       }),
     );
@@ -2043,7 +2174,7 @@ describe("a build on its way", () => {
     await settle();
 
     action("cancel").click();
-    read(new ArrayBuffer(1));
+    read(new Blob(["a"]));
     await adding;
 
     expect(fake.build).not.toHaveBeenCalled();
@@ -2960,6 +3091,41 @@ describe("localStartConfig", () => {
     document.getElementById(LOCAL_PANEL_ID)?.remove();
   });
 
+  it("opens on the flights built before when the visitor stopped the build of files added", async () => {
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    localStorage.setItem(STOPPED_KEY, "1");
+    store.listFiles.mockResolvedValue([
+      stored("a.kml"),
+      stored("b.kml"),
+      stored("c.kml"),
+    ]);
+    store.readInfo.mockResolvedValue(INFO);
+
+    const start = await localStartConfig(config);
+
+    expect(start).toMatchObject({ localFlights: INFO });
+    // Nothing built on its own; Show my flights builds the rest
+    reopenAfterSwitch(asMapApp(createMockApp({ config: start! })));
+    await settle();
+    expect(document.getElementById(LOCAL_PANEL_ID)).toBeNull();
+  });
+
+  it("builds again after a stop when a file the dataset holds is gone, or another deploy built it", async () => {
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    localStorage.setItem(STOPPED_KEY, "1");
+    // b.kml removed: its flights would be shown again
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("c.kml")]);
+    store.readInfo.mockResolvedValue(INFO);
+    await expect(localStartConfig(config)).resolves.toBeNull();
+
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue({ ...INFO, build: "0123456789ab" });
+    await expect(localStartConfig(config)).resolves.toBeNull();
+    // Taken by the next start, which does not build again
+    reopenAfterSwitch(asMapApp(createMockApp()));
+    document.getElementById(LOCAL_PANEL_ID)?.remove();
+  });
+
   it("says the files are built again, not the site updated, for other files of this build", async () => {
     // A build of a drop that was stopped
     localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
@@ -3007,7 +3173,7 @@ describe("localStartConfig", () => {
     expect(settled).toBe(false);
   });
 
-  it("is null for a link this tab did not write, and keeps the flag", async () => {
+  it("is null for a link, and keeps the flag", async () => {
     // A long link someone copied: it is of the site's flights
     localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
     store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
@@ -3018,11 +3184,98 @@ describe("localStartConfig", () => {
       expect(store.readInfo).not.toHaveBeenCalled();
       expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
 
-      // The state this tab wrote in its own address, as the map moved
-      sessionStorage.setItem(OWN_TAB_KEY, "1");
+      // In a tab that showed the visitor's flights before as well: the page
+      // writes no state in its address there, so this one is a link too
+      // (the long form a ?c= link is resolved to, reloaded)
+      history.replaceState(null, "", "/");
+      await expect(localStartConfig(config)).resolves.not.toBeNull();
+      history.replaceState(null, "", "/?y=2024&a=D-EAGJ");
+      await expect(localStartConfig(config)).resolves.toBeNull();
+
+      // The debug switch is no link
+      history.replaceState(null, "", "/?debug=true");
       await expect(localStartConfig(config)).resolves.not.toBeNull();
     } finally {
       history.replaceState(null, "", "/");
+    }
+  });
+
+  it("takes the state of a tab reloaded as it built the files again for its own, not for a link", async () => {
+    // Another deploy built the dataset: the page shows the site's flights,
+    // and writes their state in its address, while it builds them again
+    localStorage.setItem(LOCAL_FLIGHTS_KEY, "1");
+    store.listFiles.mockResolvedValue([stored("a.kml"), stored("b.kml")]);
+    store.readInfo.mockResolvedValue({ ...INFO, build: "0123456789ab" });
+    vi.stubGlobal(
+      "Worker",
+      class {
+        onmessage = null;
+        onerror = null;
+        postMessage(): void {}
+        terminate(): void {}
+      },
+    );
+    try {
+      await expect(localStartConfig(config)).resolves.toBeNull();
+      const app = createMockApp();
+      reopenAfterSwitch(asMapApp(app));
+      await settle();
+      // What a test before left to say (linkedAway)
+      for (const toast of document.querySelectorAll(".toast-notification")) {
+        toast.remove();
+      }
+      history.replaceState(null, "", "/?y=2024&a=D-EAGJ");
+      window.dispatchEvent(new Event("pagehide"));
+      expect(sessionStorage.getItem(REBUILT_ADDRESS_KEY)).toBe(
+        "?y=2024&a=D-EAGJ",
+      );
+
+      // Reloaded: built again, with no word of a link, and the state goes
+      // from the address, which would pick the year and the aircraft out
+      // of the visitor's flights once built
+      document.getElementById(LOCAL_PANEL_ID)?.remove();
+      await expect(localStartConfig(config)).resolves.toBeNull();
+      expect(location.search).toBe("");
+      expect(sessionStorage.getItem(REBUILT_ADDRESS_KEY)).toBeNull();
+      reopenAfterSwitch(asMapApp(createMockApp()));
+      await settle();
+      expect(status().textContent).toBe(REBUILDING_MESSAGE);
+      expect(
+        document.querySelector(
+          `.toast-notification[data-message="${LINK_OPENED_SITE_MESSAGE}"]`,
+        ),
+      ).toBeNull();
+
+      // Built by now: the visitor's flights, from the bare address
+      store.readInfo.mockResolvedValue(INFO);
+      sessionStorage.setItem(REBUILT_ADDRESS_KEY, "?y=2024&a=D-EAGJ");
+      history.replaceState(null, "", "/?y=2024&a=D-EAGJ");
+      await expect(localStartConfig(config)).resolves.not.toBeNull();
+      expect(location.search).toBe("");
+      // Keeping ?debug, which is no link
+      sessionStorage.setItem(REBUILT_ADDRESS_KEY, "?y=2024&debug=true");
+      history.replaceState(null, "", "/?y=2024&debug=true");
+      await expect(localStartConfig(config)).resolves.not.toBeNull();
+      expect(location.search).toBe("?debug=true");
+      // Kept as it came: a value with "&" adds no parameter of its own
+      sessionStorage.setItem(REBUILT_ADDRESS_KEY, "?y=2024&debug=a%26y%3D1");
+      history.replaceState(null, "", "/?y=2024&debug=a%26y%3D1");
+      await expect(localStartConfig(config)).resolves.not.toBeNull();
+      expect(location.search).toBe("?debug=a%26y%3D1");
+
+      // Another address in that tab is a link the visitor opened there
+      sessionStorage.setItem(REBUILT_ADDRESS_KEY, "?y=2024&a=D-EAGJ");
+      history.replaceState(null, "", "/?y=2023");
+      const reads = store.readInfo.mock.calls.length;
+      await expect(localStartConfig(config)).resolves.toBeNull();
+      expect(location.search).toBe("?y=2023");
+      expect(store.readInfo).toHaveBeenCalledTimes(reads);
+      expect(sessionStorage.getItem(REBUILT_ADDRESS_KEY)).toBeNull();
+      // Its toast, taken here
+      reopenAfterSwitch(asMapApp(createMockApp()));
+    } finally {
+      history.replaceState(null, "", "/");
+      sessionStorage.removeItem(REBUILT_ADDRESS_KEY);
     }
   });
 
@@ -3047,8 +3300,6 @@ describe("localStartConfig", () => {
 
     const start = await localStartConfig(config);
 
-    // The state this tab writes from now on is of the visitor's flights
-    expect(sessionStorage.getItem(OWN_TAB_KEY)).toBe("1");
     expect(start).toMatchObject({
       bounds: INFO.bounds,
       dataDir: LOCAL_DATA_DIR,
@@ -3156,8 +3407,6 @@ describe("reopenAfterSwitch", () => {
       expect(back.textContent).toBe("Show my flights");
       back.click();
       expect(showMine).toHaveBeenCalledTimes(1);
-      // The tab's own address from now on
-      expect(sessionStorage.getItem(OWN_TAB_KEY)).toBe("1");
       expect(localStorage.getItem(LOCAL_FLIGHTS_KEY)).toBe("1");
     } finally {
       history.replaceState(null, "", "/");

@@ -8,6 +8,7 @@ from array import array
 from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,6 +31,9 @@ from flown.previews import (
     write_previews,
 )
 from flown.types import TrackPoint
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 SITE = "https://example.org/flights"
 
@@ -256,6 +260,50 @@ class TestRenderPreview:
         # 7 m are a pixel at the closest zoom, and the glow reaches ~50 px
         assert lit_columns[-1] - lit_columns[0] < 200
 
+    @pytest.mark.parametrize(
+        "lit",
+        [
+            [(0, 0)],
+            [(PREVIEW_HEIGHT - 1, PREVIEW_WIDTH - 1)],
+            [(301, 33), (302, 34)],
+            [(row, 600) for row in range(PREVIEW_HEIGHT)],
+            [(5, column) for column in range(41, 1101)] + [(617, 1170)],
+        ],
+    )
+    def test_the_glow_of_the_lit_stretch_is_that_of_the_whole_image(self, lit):
+        heat = [0] * (PREVIEW_WIDTH * PREVIEW_HEIGHT)
+        for row, column in lit:
+            heat[row * PREVIEW_WIDTH + column] = 1000
+        rows: list[Sequence[int]] = [
+            heat[start : start + PREVIEW_WIDTH]
+            for start in range(0, len(heat), PREVIEW_WIDTH)
+        ]
+        # The glow blurred over every pixel, as it was before the stretch
+        core = previews._blur(rows, previews.GLOW_RADIUS, previews.GLOW_PASSES)
+        halo = previews._doubled(
+            previews._blur(
+                previews._halved(core), previews.HALO_RADIUS, previews.HALO_PASSES
+            )
+        )
+        weight = (
+            previews.CORE_PARTS
+            * 4
+            * (2 * previews.HALO_RADIUS + 1) ** (2 * previews.HALO_PASSES)
+        )
+        whole = [
+            [
+                weight * c + previews.HALO_PARTS * h
+                for c, h in zip(c_row, h_row, strict=True)
+            ]
+            for c_row, h_row in zip(core, halo, strict=True)
+        ]
+        assert [list(row) for row in previews._glow(heat)] == whole
+
+    def test_an_image_without_a_lit_pixel_has_no_glow(self):
+        glow = previews._glow([0] * (PREVIEW_WIDTH * PREVIEW_HEIGHT))
+        assert len(glow) == PREVIEW_HEIGHT
+        assert not any(map(any, glow))
+
     @staticmethod
     def _lit_columns(png):
         _, rows = _pixels(png)
@@ -384,8 +432,8 @@ class TestRenderImages:
         assert not hasattr(path, "content")
         assert len(path.digest) == 16
 
-    def test_the_module_digest_follows_every_module_that_draws(
-        self, tmp_path, monkeypatch
+    def test_a_change_to_any_module_that_draws_draws_the_images_again(
+        self, tmp_path, monkeypatch, preview_cache
     ):
         """A change to the PNG encoder draws the images again, not only one
         to this module."""
@@ -394,13 +442,15 @@ class TestRenderImages:
         for module in previews._DRAWING_MODULES:
             (package / f"{module}.py").write_text(f"# {module}\n")
         monkeypatch.setattr(previews, "__file__", str(package / "previews.py"))
+        job = PreviewJob("a.png", (DrawnPath(_circuit()),))
 
-        first = previews._module_digest()
+        render_images([job], tmp_path / "first")
         (package / "png.py").write_text("# changed\n")
-        second = previews._module_digest()
+        render_images([job], tmp_path / "second")
         (package / "geometry.py").unlink()
+        render_images([job], tmp_path / "third")
 
-        assert len({first, second, previews._module_digest()}) == 3
+        assert len(list(preview_cache.iterdir())) == 3
 
     def test_a_broken_cache_entry_is_drawn_again(self, tmp_path, preview_cache):
         job = PreviewJob("a.png", (DrawnPath(_circuit()),))

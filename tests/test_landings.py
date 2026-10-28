@@ -46,8 +46,8 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 # Takeoffs, full stops, touch-and-goes and go-arounds of the first sample
 # flights, with the fixture airport and runway databases; flights added to
 # data/ after them are read but left out of the totals
-COUNTED_FLIGHTS = 103
-TOTALS = [109, 87, 161, 19]
+COUNTED_FLIGHTS = 107
+TOTALS = [112, 90, 161, 20]
 
 # A field with one runway, 09/27, and the altitude its logger reads there
 FIELD = Field("EXMP", 50.0, 8.0, 500.0, (RunwayEnd("09", 90.0), RunwayEnd("27", 270.0)))
@@ -564,7 +564,8 @@ class TestFieldIndex:
 
 @pytest.mark.repo_data
 class TestSampleFlights:
-    """The fixture databases hold EDAQ and its runways 11/29."""
+    """The fixture databases hold EDAQ and its runways 11/29, and EDAY and
+    its 05/23."""
 
     def _landings(self, name):
         _, groups, _ = parse_kml_coordinates(str(DATA_DIR / name))
@@ -589,6 +590,25 @@ class TestSampleFlights:
         # LOAG, where it landed, is not in the fixture database
         assert (found.takeoffs, found.landings, found.touch_and_goes) == (1, 0, 0)
 
+    def test_a_logger_that_lost_its_height_on_final(self):
+        """Flight 91 reads 1,000 ft low for the last two minutes of its
+        approach; with them on the line between the fixes either side, its
+        track still leads to the runway."""
+        found = self._landings("91_DELGD_C182.kml")
+
+        assert (found.takeoffs, found.landings, found.touch_and_goes) == (1, 1, 0)
+        assert found.touchdowns == [("EDAQ", "29")]
+
+    def test_a_low_pass_that_never_rolled_is_a_go_around(self):
+        """Flight 106 passed EDAY 6 ft above the field at one fix and
+        climbed away without a roll: a go-around, before its landing
+        there."""
+        found = self._landings("106_DESST_C172.kml")
+
+        assert (found.takeoffs, found.landings) == (1, 1)
+        assert (found.touch_and_goes, found.go_arounds) == (0, 1)
+        assert found.touchdowns == [("EDAY", "23")]
+
     def test_every_sample_flight_is_read(self):
         paths = {}
         for kml in DATA_DIR.glob("*.kml"):
@@ -604,7 +624,7 @@ class TestSampleFlights:
             for airport, runway in landings.touchdowns:
                 assert runway in {end.designator for end in runways[airport]}
         # What the fixture databases let it find; with the full ones the
-        # counted flights land 110 times and touch and go 173 times
+        # counted flights land 114 times and touch and go 173 times
         counted = [found[number] for number in range(1, COUNTED_FLIGHTS + 1)]
         totals = [
             sum(getattr(landings, key) for landings in counted)

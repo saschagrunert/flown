@@ -519,6 +519,23 @@ describe("MobileBar", () => {
       );
     });
 
+    it("closes a sheet Wrapped opens over without its tab, and leaves the focus", () => {
+      tab("layers").focus();
+      tab("layers").click();
+      expect(bar!.sheetOpen()).toBe(true);
+      // Wrapped restored from the saved state, its dialog focused
+      const dialog = document.createElement("button");
+      document.body.append(dialog);
+      dialog.focus();
+
+      app.store.set("wrappedVisible", true);
+
+      expect(bar!.sheetOpen()).toBe(false);
+      expect(tab("layers").classList.contains("active")).toBe(false);
+      expect(document.activeElement).toBe(dialog);
+      dialog.remove();
+    });
+
     it.each([
       ["wrapped", "layers"],
       ["stats", "filter"],

@@ -266,7 +266,8 @@ updates:
           - "version-update:semver-patch"
       # uv is the release the setup-toolchain action installs in CI as well,
       # which Dependabot does not bump; move both by hand
-      # (scripts/check_pins.py fails the lint job until they agree).
+      # (scripts/check_pins.py fails the lint job until they agree; the
+      # security job audits the release).
       # Digest updates of the current tag still come through.
       - dependency-name: "astral-sh/uv"
         update-types:

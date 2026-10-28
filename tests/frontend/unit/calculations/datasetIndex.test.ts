@@ -5,47 +5,14 @@ import {
   datasetIndex,
   shownSelection,
 } from "../../../../flown/frontend/calculations/datasetIndex";
-import type {
-  KMLDataset,
-  PathInfo,
-  PathSegment,
-} from "../../../../flown/frontend/types";
-import { createDataset, createSegment } from "../../testHelpers";
+import type { KMLDataset, PathSegment } from "../../../../flown/frontend/types";
+import {
+  MOCK_PATH_INFO,
+  createDataset,
+  createSegment,
+} from "../../testHelpers";
 
-const pathInfo: PathInfo[] = [
-  {
-    id: 1,
-    year: 2025,
-    aircraft_registration: "D-EAGJ",
-    aircraft_type: "DA40",
-    start_airport: "EDAV",
-    end_airport: "EDDF",
-  },
-  {
-    id: 2,
-    year: 2025,
-    aircraft_registration: "D-EAGJ",
-    aircraft_type: "DA40",
-    start_airport: "EDDF",
-    end_airport: "EDAV",
-  },
-  {
-    id: 3,
-    year: 2024,
-    aircraft_registration: "D-EXYZ",
-    aircraft_type: "C172",
-    start_airport: "EDDM",
-    end_airport: "EDDK",
-  },
-  {
-    id: 4,
-    year: 2025,
-    aircraft_registration: "D-EXYZ",
-    aircraft_type: "C172",
-    start_airport: "EDDK",
-    end_airport: "EDDM",
-  },
-];
+const pathInfo = MOCK_PATH_INFO;
 
 const segments: PathSegment[] = [
   createSegment({ path_id: 1, altitude_ft: 3000, groundspeed_knots: 120 }),

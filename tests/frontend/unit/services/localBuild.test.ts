@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   LocalBuilder,
   WORKER_FAILED_MESSAGE,
+  WORKER_IDLE_MS,
   WORKER_LOAD_FAILED_MESSAGE,
   type BuildOutcome,
   type LocalWorkerLike,
@@ -71,9 +72,9 @@ function setup(): { builder: LocalBuilder; workers: FakeWorker[] } {
 }
 
 describe("LocalBuilder", () => {
-  it("posts the files as transferables and resolves with the outcome", async () => {
+  it("posts the files as the Blobs they are kept as and resolves with the outcome", async () => {
     const { builder, workers } = setup();
-    const bytes = new ArrayBuffer(4);
+    const bytes = new Blob(["<kml/>"]);
     const progress = vi.fn();
 
     const build = builder.build([{ name: "a.kml", bytes }], true, progress);
@@ -83,7 +84,9 @@ describe("LocalBuilder", () => {
       id: 1,
       build: { files: [{ name: "a.kml", bytes }], terrain: true },
     });
-    expect(transfer).toEqual([bytes]);
+    // A Blob is no transferable, and hands over no bytes
+    expect(request.build.files[0]!.bytes).toBe(bytes);
+    expect(transfer).toEqual([]);
 
     workers[0]!.answer({ id: 1, progress: "Parsing 1 KML file(s)..." });
     workers[0]!.answer({ id: 1, done: OUTCOME });
@@ -120,6 +123,58 @@ describe("LocalBuilder", () => {
     expect(workers).toHaveLength(2);
     workers[1]!.answer({ id: 3, done: OUTCOME });
     await expect(three).resolves.toBe(OUTCOME);
+  });
+
+  it("lets the worker go once no build came for a while, and starts another for the next", async () => {
+    vi.useFakeTimers();
+    try {
+      const { builder, workers } = setup();
+      const one = builder.build([], false, vi.fn());
+      workers[0]!.answer({ id: 1, done: OUTCOME });
+      await expect(one).resolves.toBe(OUTCOME);
+
+      // A build soon after finds it still there, and holds it while it runs
+      vi.advanceTimersByTime(WORKER_IDLE_MS - 1);
+      const two = builder.build([], false, vi.fn());
+      vi.advanceTimersByTime(WORKER_IDLE_MS);
+      expect(workers).toHaveLength(1);
+      expect(workers[0]!.terminated).toBe(0);
+      workers[0]!.answer({ id: 2, error: "not a KML file" });
+      await expect(two).rejects.toThrow("not a KML file");
+
+      // Idle after the error too
+      vi.advanceTimersByTime(WORKER_IDLE_MS);
+      expect(workers[0]!.terminated).toBe(1);
+      expect(builder.busy).toBe(false);
+
+      const three = builder.build([], false, vi.fn());
+      expect(workers).toHaveLength(2);
+      workers[1]!.answer({ id: 3, done: OUTCOME });
+      await expect(three).resolves.toBe(OUTCOME);
+      builder.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the worker while another build is on its way", async () => {
+    vi.useFakeTimers();
+    try {
+      const { builder, workers } = setup();
+      const one = builder.build([], false, vi.fn());
+      const two = builder.build([], false, vi.fn());
+      workers[0]!.answer({ id: 1, done: OUTCOME });
+      await expect(one).resolves.toBe(OUTCOME);
+
+      vi.advanceTimersByTime(WORKER_IDLE_MS * 2);
+
+      expect(workers[0]!.terminated).toBe(0);
+      workers[0]!.answer({ id: 2, done: OUTCOME });
+      await expect(two).resolves.toBe(OUTCOME);
+      builder.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("gives every build its own id on one worker", async () => {

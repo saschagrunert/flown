@@ -25,7 +25,7 @@ from flown.exceptions import (
 )
 from flown.listing import FlightListing, _skip_reason
 from flown.logger import logger, set_info_stream, set_log_level
-from flown.terrain import TerrariumTiles
+from flown.terrain_fetch import TerrariumTiles
 
 if TYPE_CHECKING:
     from flown.types import PathMetadata
@@ -833,7 +833,7 @@ class TestList:
 
         with (
             patch("sys.argv", ["flown", "--list", "-q", str(flights)]),
-            patch("flown.terrain.TerrariumTiles") as tiles,
+            patch("flown.terrain_fetch.TerrariumTiles") as tiles,
             pytest.raises(SystemExit) as exit_info,
         ):
             main()
@@ -888,7 +888,7 @@ class TestList:
 
         with (
             patch("sys.argv", ["flown", "--list", "-q", str(flights)]),
-            patch("flown.terrain.TerrariumTiles"),
+            patch("flown.terrain_fetch.TerrariumTiles"),
         ):
             main()
 
@@ -904,7 +904,7 @@ class TestList:
 
         with (
             patch("sys.argv", ["flown", "--list", str(flights)]),
-            patch("flown.terrain.TerrariumTiles"),
+            patch("flown.terrain_fetch.TerrariumTiles"),
         ):
             main()
 
@@ -927,7 +927,7 @@ class TestList:
         def points(*options):
             with (
                 patch("sys.argv", ["flown", "--list", "-q", *options, str(flights)]),
-                patch("flown.terrain.TerrariumTiles"),
+                patch("flown.terrain_fetch.TerrariumTiles"),
             ):
                 main()
             rows = capsys.readouterr().out.splitlines()[1:6]

@@ -227,7 +227,8 @@ export class MobileSheet {
   }
 
   /**
-   * Hide the sheet and hand focus back to whatever opened it.
+   * Hide the sheet and hand focus back to whatever opened it, unless
+   * `returnFocus` is false: what took the page over has it.
    *
    * `hidden` alone does not stop the sheet taking taps: the stylesheet gives
    * `.mobile-sheet` a `display` of its own, which beats the user agent's
@@ -236,7 +237,7 @@ export class MobileSheet {
    * tap landing where a row used to be would then still fire that row, so
    * the sheet is made non-interactive the moment it closes.
    */
-  close(): void {
+  close(returnFocus = true): void {
     if (!this.open) return;
     this.open = false;
     this.endDrag();
@@ -253,7 +254,7 @@ export class MobileSheet {
 
     const target = this.returnFocusTo;
     this.returnFocusTo = null;
-    if (target && document.contains(target)) target.focus();
+    if (returnFocus && target && document.contains(target)) target.focus();
   }
 
   /** Re-read every row's state; cheap enough to call on any store change */

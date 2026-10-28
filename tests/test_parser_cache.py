@@ -330,16 +330,15 @@ class TestPruneStaleCacheEntries:
             cache_dir,
             f"{digest}_v{CACHE_FORMAT_VERSION}_{parser_fingerprint()}_nodb{CACHE_SUFFIX}",
         )
-        legacy = _entry(cache_dir, "1_DEAGJ_DA20_0123456789ab_v3_1_2_nodb.json")
         unrelated = _entry(cache_dir, "notes.txt", age_days=365)
 
         removed = prune_stale_cache_entries(cache_dir=cache_dir)
 
-        assert removed == 3
+        assert removed == 2
         assert sorted(p.name for p in cache_dir.iterdir()) == sorted(
             [current.name, unrelated.name]
         )
-        assert not any(p.exists() for p in (old_version, old_database, legacy))
+        assert not any(p.exists() for p in (old_version, old_database))
 
     def test_removes_the_json_entries_of_version_8(self, tmp_path):
         """Version 8 wrote compressed JSON, under a .json.zst name."""
@@ -428,18 +427,18 @@ class TestPruneStaleCacheEntries:
         kml.write_bytes(b"<kml/>")
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
-        legacy = _entry(cache_dir, "test_0123456789ab_v2_1111_22.json")
+        stale = _entry(cache_dir, f"{'0' * 32}_v1_00000000_nodb{CACHE_SUFFIX}")
 
         get_cache_key(str(kml), cache_dir=cache_dir)
 
-        assert legacy.exists()
+        assert stale.exists()
 
     def test_missing_directory_is_ignored(self, tmp_path):
         assert prune_stale_cache_entries(cache_dir=tmp_path / "no") == 0
 
     def test_default_directory(self, tmp_path):
         with patch.object(parser_cache_module, "KML_CACHE_DIR", tmp_path):
-            _entry(tmp_path, "legacy_0123456789ab_v2_1_2.json")
+            _entry(tmp_path, f"{'0' * 32}_v1_00000000_nodb{CACHE_SUFFIX}")
             assert prune_stale_cache_entries() == 1
 
     def test_vanished_entry_is_ignored(self, tmp_path):
@@ -459,7 +458,7 @@ class TestPruneStaleCacheEntries:
     def test_unlink_errors_are_ignored(self, tmp_path):
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
-        _entry(cache_dir, "test_0123456789ab_v2_1111_22.json")
+        _entry(cache_dir, f"{'0' * 32}_v1_00000000_nodb{CACHE_SUFFIX}")
 
         with patch.object(Path, "unlink", side_effect=OSError("mock")):
             assert prune_stale_cache_entries(cache_dir=cache_dir) == 0

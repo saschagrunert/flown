@@ -27,6 +27,7 @@ __all__ = [
     "DecodeFailedError",
     "TileKey",
     "decode_cached_tile",
+    "drop_decoded_png",
     "has_current_pixels",
     "is_tile_png",
     "keep_decoded_planes",
@@ -115,16 +116,19 @@ def _decode_planes(data: bytes) -> bytes:
     )
 
 
-def _read_pixel_planes(path: Path, data: bytes) -> bytes | None:
+def _read_pixel_planes(path: Path, data: bytes | None) -> bytes | None:
     """The kept planes of the tile at ``path`` whose PNG is ``data``.
 
     None when there are none, or none of this PNG, or they are damaged:
-    the tile is then decoded again.
+    the tile is then decoded again. ``data`` None: the PNG is gone, and the
+    planes are all there is of the tile (see ``drop_decoded_png``).
     """
     try:
         kept = _pixels_path(path).read_bytes()
         magic, version, crc = _PIXELS_HEADER.unpack_from(kept)
-        if (magic, version, crc) != (_PIXELS_MAGIC, _PIXELS_VERSION, zlib.crc32(data)):
+        if (magic, version) != (_PIXELS_MAGIC, _PIXELS_VERSION) or (
+            data is not None and crc != zlib.crc32(data)
+        ):
             return None
         # Inflated no further than the planes and a byte, like the PNG
         planes = zstd.ZstdDecompressor().decompress(
@@ -164,6 +168,30 @@ def keep_decoded_planes(path: Path, data: bytes, planes: bytes) -> bool:
     return True
 
 
+def drop_decoded_png(path: Path) -> bool:
+    """Remove the PNG of the tile at ``path`` where its pixels are kept of it.
+
+    For the build in the page (see ``flown.browser``), whose cache is read
+    into the page's memory at every start: once its pixels are kept, they
+    are all a build reads of a tile, and the PNG took as much room again.
+    Whether it went.
+    """
+    try:
+        data = path.read_bytes()
+        with _pixels_path(path).open("rb") as kept:
+            header = kept.read(_PIXELS_HEADER.size)
+        if _PIXELS_HEADER.unpack(header) != (
+            _PIXELS_MAGIC,
+            _PIXELS_VERSION,
+            zlib.crc32(data),
+        ):
+            return False
+        path.unlink()
+    except OSError, struct.error:
+        return False
+    return True
+
+
 def _elevations_at(planes: bytes, indices: Sequence[int]) -> array[float]:
     """The elevations in metres of the pixels at ``indices`` of the planes.
 
@@ -183,21 +211,32 @@ def _elevations_at(planes: bytes, indices: Sequence[int]) -> array[float]:
     )
 
 
+def _cached_planes(path: Path) -> bytes:
+    """The planes of the cached tile at ``path``, decoded and kept if need be."""
+    try:
+        data: bytes | None = path.read_bytes()
+    except FileNotFoundError:
+        data = None
+    planes = _read_pixel_planes(path, data)
+    if planes is None:
+        if data is None:
+            raise OSError("neither its PNG nor its pixels are kept")
+        planes = _decode_planes(data)
+        _keep_pixel_planes(path, data, planes)
+    return planes
+
+
 def decode_cached_tile(path: Path, indices: Sequence[int]) -> array[float] | None:
     """The elevations of the pixels at ``indices`` of a cached tile.
 
     From the pixels kept of it when there are any, from its PNG otherwise,
-    whose pixels are then kept. None when the tile is unusable. A
-    module-level function, so the decoding pool can run it. A file that does
-    not decode is removed, so the next build fetches it again.
+    whose pixels are then kept; from the pixels alone where the PNG went
+    (``drop_decoded_png``). None when the tile is unusable. A module-level
+    function, so the decoding pool can run it. A file that does not decode
+    is removed, so the next build fetches it again.
     """
     try:
-        data = path.read_bytes()
-        planes = _read_pixel_planes(path, data)
-        if planes is None:
-            planes = _decode_planes(data)
-            _keep_pixel_planes(path, data, planes)
-        return _elevations_at(planes, indices)
+        return _elevations_at(_cached_planes(path), indices)
     except (OSError, PngError) as e:
         logger.debug("Elevation tile %s is unusable: %s", path.name, e)
         for unusable in (path, _pixels_path(path)):

@@ -46,7 +46,6 @@ htmlcov
 coverage
 test-results*
 playwright-report*
-.pre-commit-cache
 
 # Generated site and input data
 *.kml

@@ -4,6 +4,7 @@ import {
   gotoApp,
   selectFlightsForReplay,
   selectPathForReplay,
+  toggleStatsPanel,
 } from "./helpers";
 
 /** The chart of the flight profile */
@@ -58,6 +59,30 @@ test.describe("Flight profile", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await toggle.click();
     await expect(profile).toBeVisible();
+  });
+
+  test("beside the statistics the left column stops above the legend the profile lifts", async ({
+    page,
+  }) => {
+    // Below about 1156 px beside the rail the legend stands on top of the
+    // strip, and the column's icons ran over its title and scale. The
+    // selection turns the altitude on (waitForPathData), whose legend is
+    // the taller one.
+    await page.setViewportSize({ width: 1000, height: 640 });
+    await toggleStatsPanel(page);
+    await selectPathForReplay(page);
+    await expect(page.locator("#flight-profile")).toBeVisible();
+
+    const legend = page.locator("#altitude-legend");
+    await expect(legend).toBeVisible();
+    const column = page.locator("#left-buttons");
+    await expect
+      .poll(async () => {
+        const below = (await legend.boundingBox())!;
+        const above = (await column.boundingBox())!;
+        return above.y + above.height <= below.y;
+      })
+      .toBe(true);
   });
 
   test("draws two selected flights one after another, and opens their replay there", async ({
