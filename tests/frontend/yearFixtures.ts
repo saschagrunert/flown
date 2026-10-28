@@ -136,9 +136,8 @@ export function path(
   const encoded: PathSegments = { start: scaledStart, columns };
   if (groundFt) {
     // In tens of feet, as differences (GROUND_STEP of segment_codec.py)
-    encoded.ground = groundFt.map(
-      (feet, i) => (feet - (groundFt[i - 1] ?? 0)) / 10,
-    );
+    const tens = groundFt.map((feet) => Math.round(feet / 10));
+    encoded.ground = tens.map((step, i) => step - (tens[i - 1] ?? 0));
   }
   return encoded;
 }

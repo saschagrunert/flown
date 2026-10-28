@@ -462,11 +462,13 @@ export class PathSelection {
       if (!sharing && app.currentData) fitSelection(app, app.currentData);
     });
     // What is drawn of them, tilted as the map is (ui/frameFlights.ts):
-    // one the filter hides would widen the frame
+    // one the filter hides would widen the frame. Not under what took the
+    // map while the bundle came (Wrapped)
     if (sharing) {
       void loadLazyBundle(loadFeatures, SHARE_FRAME_UNAVAILABLE_MESSAGE).then(
         (features) =>
           app.isolateSelection &&
+          !app.mapHeld &&
           features?.frameFlights(app, shownSelection(app)),
       );
     }
@@ -526,9 +528,10 @@ export class PathSelection {
           ? "Sharing " + flights + hiddenText + filterWords
           : flights + " selected";
     const changed = count.textContent !== text;
-    // The words in a .selection-chip-word go on a phone, where the chip's
-    // mark says it is shared (styles.css): "3 flights, 1 hidden". Its
-    // " selected" goes on the narrowest phones alone, as `-tail`.
+    // The words in a .selection-chip-word go on a phone and beside the
+    // statistics under 1280 px, where the chip's mark says it is shared
+    // (styles.css): "3 flights, 1 hidden". Its " selected" goes, as
+    // `-tail`, there beside the statistics and on the narrowest phones.
     const word = (words: string, kind = "word"): HTMLElement => {
       const span = document.createElement("span");
       span.className = "selection-chip-" + kind;

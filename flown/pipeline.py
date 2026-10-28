@@ -43,12 +43,13 @@ from .exceptions import (
     KMLParseError,
     OutputRefusedError,
 )
+from .export_pipeline import without_altitude_spikes
 from .export_writers import (
     exported_airport_names,
     exported_country_codes,
     free_text_airport_names,
 )
-from .geometry import CoordinateExtent, trim_path_ends
+from .geometry import CoordinateExtent, trim_span
 from .landings import path_landings
 from .logger import logger
 from .parser import load_cached_entry, parse_and_cache, parse_size
@@ -774,6 +775,10 @@ class _ExportPlan:
     path_groups: FlightPathGroup
     path_metadata: list[PathMetadata]
     landings: list[FlightLandings | None] | None
+    #: The paths with the glitches of their altitudes smoothed over as in
+    #: the whole flight, for a trim (see ``trim_paths``); None when the
+    #: export smooths them
+    smoothed: FlightPathGroup | None
     #: ``is_exportable_path`` of every path
     exportable: list[bool]
     selection: ExportSelection
@@ -805,17 +810,18 @@ def _plan(
     The countries get a flag where ``flags`` has one: the page's, for the
     build in it, which has none of its own to look at; those of this
     checkout by default (see ``available_country_flags``). With
-    ``trim_metres``, every path loses its ground at both ends and its points
-    within that distance of where the rest starts and ends (see
-    ``trim_path_ends``) before anything else looks at it: the extent and
-    the airports are of what is published.
+    ``trim_metres``, every dated path loses its ground at both ends and its
+    points within that distance of where the rest starts and ends (see
+    ``trim_paths``) before anything else looks at it: the extent and the
+    airports are of what is published.
     """
-    trimmed_groups, trimmed_metadata = trim_paths(
-        all_path_groups, all_path_metadata, trim_metres
+    path_groups, path_metadata, dated_landings = _drop_paths_without_year(
+        all_path_groups, all_path_metadata, landings
     )
-    trimmed_away = trimmed_away_files(
-        all_path_groups, trimmed_groups, all_path_metadata
+    trimmed_groups, trimmed_metadata, smoothed = trim_paths(
+        path_groups, path_metadata, trim_metres
     )
+    trimmed_away = trimmed_away_files(path_groups, trimmed_groups, path_metadata)
     if trimmed_away:
         # As for a file that holds no flight (see _usable_results), which
         # the trim made it
@@ -826,10 +832,7 @@ def _plan(
             f"out their ends ({_some_names(trimmed_away)}, see above); lower "
             "--trim-ends or remove them"
         )
-    all_path_groups, all_path_metadata = trimmed_groups, trimmed_metadata
-    path_groups, path_metadata, dated_landings = _drop_paths_without_year(
-        all_path_groups, all_path_metadata, landings
-    )
+    path_groups, path_metadata = trimmed_groups, trimmed_metadata
     # Once per path, for every stage that only looks at the exported ones
     exportable = [is_exportable_path(path) for path in path_groups]
     selection = select_exported_paths(path_groups, path_metadata, exportable)
@@ -851,6 +854,7 @@ def _plan(
         path_groups=path_groups,
         path_metadata=path_metadata,
         landings=dated_landings,
+        smoothed=smoothed,
         exportable=exportable,
         selection=selection,
         extent=extent,
@@ -868,16 +872,36 @@ def trim_paths(
     all_path_groups: FlightPathGroup,
     all_path_metadata: list[PathMetadata],
     trim_metres: float,
-) -> tuple[FlightPathGroup, list[PathMetadata]]:
+) -> tuple[FlightPathGroup, list[PathMetadata], FlightPathGroup | None]:
     """Every path without its ground at its ends and what is near it.
 
-    See ``trim_path_ends``; the paths as they are for 0. For the build
-    (``_plan``) and ``--list`` (``listing.list_flights``) alike, so that the
-    list shows what the site publishes.
+    See ``trim_path_ends``, which reads where each flight began and ended
+    with the glitches of its altitudes smoothed over, as the statistics
+    are; the paths as they are for 0. For the build (``_plan``) and
+    ``--list`` (``listing.list_flights``) alike, so that the list shows
+    what the site publishes.
+
+    The third is every trimmed path with the glitches of its altitudes
+    smoothed over as in the whole flight (``without_altitude_spikes`` of
+    it, cut as the trim cuts it), which the export draws and counts; None
+    for 0, where the export smooths the paths itself. Smoothed alone, a
+    trimmed path that ends within a glitch, or a fix after it, read the
+    glitch as flown (``spikes.altitude_spikes`` keeps the first and the
+    last stretch of a path, and takes a last fix far from the agreeing ones
+    before it for a spike): flight 91 trimmed by a kilometre ended 600 ft
+    below the sea. The trimmed paths keep their altitudes as recorded, as
+    the untrimmed ones do, for the ids of the paths, which hash them (see
+    ``path_content``).
     """
     if trim_metres <= 0:
-        return all_path_groups, all_path_metadata
-    path_groups = [trim_path_ends(path, trim_metres) for path in all_path_groups]
+        return all_path_groups, all_path_metadata, None
+    path_groups: FlightPathGroup = []
+    smoothed_groups: FlightPathGroup = []
+    for path in all_path_groups:
+        smoothed = without_altitude_spikes(path)
+        span = trim_span(path, trim_metres, smoothed)
+        path_groups.append(path[span])
+        smoothed_groups.append(smoothed[span])
     # The start point goes with them: a departure the airport database
     # does not place is marked at it (airports._add_departures), which
     # published the parking spot the trim took out. On copies: the
@@ -886,7 +910,7 @@ def trim_paths(
         _started_at(metadata, path)
         for metadata, path in zip(all_path_metadata, path_groups, strict=True)
     ]
-    return path_groups, path_metadata
+    return path_groups, path_metadata, smoothed_groups
 
 
 def trimmed_away_files(
@@ -988,6 +1012,7 @@ def _export_site(
             selection=plan.selection,
             available_flags=plan.available_flags,
             landings=plan.landings,
+            smoothed=plan.smoothed,
         )
         # The page opens on the latest year, see resolveYearSelection
         render_html(
@@ -1111,6 +1136,15 @@ def _validated_files(
     return valid_files
 
 
+def _export_failed(e: Exception) -> ExportError:
+    """The one-line error for a failed export; a bug's traceback under --debug."""
+    if not isinstance(e, OSError | FlownError):
+        # A ValueError or RuntimeError is a bug as often as bad input, and
+        # the line printed says nothing of where it was raised
+        logger.debug("Export failed", exc_info=e)
+    return ExportError(f"Export failed: {e}")
+
+
 @dataclass(frozen=True)
 class FlightDataExport:
     """What ``export_flight_data`` wrote, and what the map opens on."""
@@ -1171,11 +1205,12 @@ def export_flight_data(
                 selection=plan.selection,
                 available_flags=plan.available_flags,
                 landings=plan.landings,
+                smoothed=plan.smoothed,
             )
         except InvalidInputError:
             raise
         except (ValueError, RuntimeError, OSError, FlownError) as e:
-            raise ExportError(f"Export failed: {e}") from e
+            raise _export_failed(e) from e
         return FlightDataExport(
             years=result.years,
             extent=plan.extent,
@@ -1269,7 +1304,7 @@ def build_site(
         except InvalidInputError, OutputRefusedError:
             raise
         except (ValueError, RuntimeError, OSError, FlownError) as e:
-            raise ExportError(f"Export failed: {e}") from e
+            raise _export_failed(e) from e
 
         logger.info("  %s", _serve_hint(output_file))
         return result

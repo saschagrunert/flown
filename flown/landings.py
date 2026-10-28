@@ -65,7 +65,7 @@ that come without them; its workers never load the databases.
 
 import math
 import time
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
 from dataclasses import dataclass, field
 from itertools import pairwise
 from statistics import median
@@ -78,15 +78,20 @@ from .airport_lookup import (
     load_runway_database,
 )
 from .constants import (
-    KM_TO_NAUTICAL_MILES,
     MAX_GROUNDSPEED_KNOTS,
+    MAX_VERTICAL_FT_PER_SECOND,
     METERS_TO_FEET,
-    SECONDS_PER_HOUR,
 )
 from .date_tokens import strip_dates
-from .geometry import METRES_PER_DEGREE, heading_difference, planar_km, true_bearing
+from .geometry import (
+    METRES_PER_DEGREE,
+    heading_difference,
+    planar_km,
+    true_bearing,
+    window_knots,
+)
 from .logger import logger
-from .spikes import altitude_spikes
+from .spikes import altitude_spikes, smoothed_altitudes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -142,15 +147,6 @@ APPROACH_MIN_METRES = 200.0
 RUNWAY_MAX_OFF_DEGREES = 30.0
 # Fewer timed fixes than this say nothing about landings
 MIN_TIMED_FIXES = 10
-# Speeds are measured over this long on either side of a fix (see
-# _groundspeeds), and a measurement over less or more time than the bounds
-# below is none: jitter, or a gap in the recording
-SPEED_HALF_WINDOW_SECONDS = 5.0
-SPEED_MIN_SECONDS = 2.0
-SPEED_MAX_SECONDS = 120.0
-# Faster than this up or down is no light aircraft but a logger that lost
-# its fix; no approach or touchdown is read from such a fix
-MAX_VERTICAL_FT_PER_SECOND = 60.0
 
 # The grid the fields are looked up in, in degrees of latitude
 _CELL_DEGREES = 0.1
@@ -303,7 +299,7 @@ def _timed_fixes(path: FlightPath) -> list[_Fix]:
 
     Without the fixes that repeat the position of the one before (a logger
     that writes its last fix again, with a new time, while it has no new
-    one) and the altitude spikes (see ``_without_spikes``).
+    one), with the altitude spikes smoothed over (see ``_smoothed``).
     """
     fixes: list[_Fix] = []
     for point in path:
@@ -316,42 +312,38 @@ def _timed_fixes(path: FlightPath) -> list[_Fix]:
     # make every speed after it meaningless
     if any(b.t < a.t for a, b in pairwise(fixes)):
         return []
-    return _without_spikes(fixes)
+    return _smoothed(fixes)
 
 
-def _without_spikes(fixes: list[_Fix]) -> list[_Fix]:
-    """The fixes without those whose altitude leaps away from their neighbours.
+def _smoothed(fixes: list[_Fix]) -> list[_Fix]:
+    """The fixes with the altitudes that leap away from their neighbours on
+    the line between those that do not, as the export smooths them (see
+    ``export_pipeline.without_altitude_spikes``).
 
     Read as they are, the glitches of a logger (see
     ``spikes.altitude_spikes``) touch down wherever they happen near a
     field. A real touchdown, at the rates a light aircraft climbs and
-    sinks, is never one.
+    sinks, is never one. Their positions stay: a logger that lost its
+    height for the last two minutes of an approach still flew it to the
+    runway.
     """
-    spikes = altitude_spikes([fix.alt_ft for fix in fixes])
-    return [fix for fix, spike in zip(fixes, spikes, strict=True) if not spike]
+    altitudes = [fix.alt_ft for fix in fixes]
+    spikes = altitude_spikes(altitudes, [fix.t for fix in fixes])
+    return [
+        fix._replace(alt_ft=altitude) if spike else fix
+        for fix, altitude, spike in zip(
+            fixes, smoothed_altitudes(altitudes, spikes), spikes, strict=True
+        )
+    ]
 
 
 def _groundspeeds(fixes: Sequence[_Fix], times: Sequence[float]) -> list[float | None]:
-    """Knots at every fix, None where they cannot be told.
-
-    Measured from the last fix ``SPEED_HALF_WINDOW_SECONDS`` or more before
-    it to the first as far after it: loggers write fixes a fraction of a
-    second apart as often as seconds apart, and the jitter of the position
-    over a fraction of a second reads as hundreds of knots.
-    """
-    speeds: list[float | None] = []
-    last = len(fixes) - 1
-    for fix in fixes:
-        a = fixes[max(0, bisect_right(times, fix.t - SPEED_HALF_WINDOW_SECONDS) - 1)]
-        b = fixes[min(last, bisect_left(times, fix.t + SPEED_HALF_WINDOW_SECONDS))]
-        seconds = b.t - a.t
-        if not SPEED_MIN_SECONDS <= seconds <= SPEED_MAX_SECONDS:
-            speeds.append(None)
-            continue
-        km = planar_km(a.lat, a.lon, b.lat, b.lon)
-        knots = km * KM_TO_NAUTICAL_MILES / seconds * SECONDS_PER_HOUR
-        speeds.append(knots if knots <= MAX_GROUNDSPEED_KNOTS else None)
-    return speeds
+    """Knots at every fix, None where they cannot be told (see
+    ``geometry.window_knots``) or faster than any aircraft here flies."""
+    return [
+        knots if knots is not None and knots <= MAX_GROUNDSPEED_KNOTS else None
+        for knots in window_knots(fixes, times, planar_km)
+    ]
 
 
 def _logger_offset_ft(
@@ -499,6 +491,7 @@ class _Detector:
         ground = self.ground_ft(at) if at is not None else None
         if speed is None:
             return
+        # A logger that lost its fix: no approach or touchdown is read from it
         if index and abs(fix.alt_ft - self.fixes[index - 1].alt_ft) > (
             MAX_VERTICAL_FT_PER_SECOND * max(1.0, fix.t - self.fixes[index - 1].t)
         ):

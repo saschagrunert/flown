@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import types
+import zipfile
 from pathlib import Path
 from typing import ClassVar
 from urllib.error import HTTPError
@@ -357,13 +358,22 @@ class TestBuild:
         assert outcome["degraded"] == []
         # Let go of as they are taken, the one that is no tile too
         assert [path.name for path in fetched.iterdir()] == ["notes.txt"]
-        assert sorted(path.stem for path in terrain.glob("*.png")) == sorted(names)
-        assert not (terrain / "10-1-1.png").exists()
-        assert all((terrain / f"{name}.pixels").exists() for name in names)
+        # Their pixels alone: the cache is read into the page's memory at
+        # every start, where the PNGs took as much room again
+        assert sorted(path.stem for path in terrain.glob("*.pixels")) == sorted(names)
+        assert list(terrain.glob("*.png")) == []
         assert elevations(terrain / f"{first}.png", [0]) == [10.0]
         if rest:
             kept = elevations(terrain / f"{rest[0]}.png", [0])
             assert kept == [250.0]
+
+        # The next build asks for none of them, and samples the same ground
+        again = browser.build(str(inputs), str(tmp_path / "again"), terrain=True)
+        assert "tiles" not in again
+        assert again["degraded"] == []
+        assert (tmp_path / "again" / "2025" / "data.json").read_bytes() == (
+            tmp_path / "site" / "2025" / "data.json"
+        ).read_bytes()
 
     def test_the_fixture_the_browser_decodes_has_these_planes(self):
         """The e2e suite has a browser decode the same tile as the worker
@@ -596,14 +606,16 @@ class TestBuild:
         assert far.exists()
         build_twice(inputs, tmp_path / "one", terrain=True)
         assert not far.exists()
-        assert under.exists()
-        assert (terrain / "10-546-340.pixels").exists()
+        # Its pixels, without the PNG once they are kept
+        kept = terrain / "10-546-340.pixels"
+        assert kept.exists()
+        assert not under.exists()
 
         # A build that fails before the ground keeps them for the next
         (inputs / "1_DEAGJ_DA20.kml").write_text("not a KML", encoding="utf-8")
         with pytest.raises(InvalidInputError):
             browser.build(str(inputs), str(tmp_path / "bad"), terrain=True)
-        assert under.exists()
+        assert kept.exists()
 
         # Without the ground no flight asks for any
         (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
@@ -736,6 +748,58 @@ class TestBuild:
 
         # Downloaded again only where asked: a slow line waits for the timeout
         assert tried == [False, True]
+
+    def test_kmz_files_that_unpack_past_the_most_it_reads_are_refused(
+        self, tmp_path, js, monkeypatch
+    ):
+        """The page counts a KMZ as it is kept, compressed; the memory of a
+        build follows the documents inside."""
+        monkeypatch.setattr(browser, "MAX_INPUT_BYTES", 30_000)
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        (inputs / "1_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+        padded = KML.replace("<Document>", "<Document>" + " " * 20_000)
+        for name in ("2_DEAGJ_DA20.kmz", "3_DEAGJ_DA20.kmz"):
+            with zipfile.ZipFile(inputs / name, "w", zipfile.ZIP_DEFLATED) as kmz:
+                kmz.writestr("doc.kml", padded)
+            assert (inputs / name).stat().st_size < 2_000
+
+        with pytest.raises(InvalidInputError, match="once the KMZ files") as error:
+            browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+
+        message = str(error.value)
+        assert "2_DEAGJ_DA20.kmz" in message
+        assert "3_DEAGJ_DA20.kmz" in message
+        assert str(inputs) not in message
+
+        # Within it, they build
+        monkeypatch.setattr(browser, "MAX_INPUT_BYTES", 100_000)
+        outcome = browser.build(str(inputs), str(tmp_path / "site"), terrain=False)
+        assert outcome["flights"] >= 1
+
+    def test_files_refused_for_their_size_let_the_removed_ones_go(
+        self, tmp_path, js, monkeypatch
+    ):
+        """The parse of a file removed leaves the cache, whatever the build
+        refuses."""
+        cache = tmp_path / "cache" / "kml"
+        cache.mkdir(parents=True, mode=0o700)
+        monkeypatch.setattr("flown.parser_cache.KML_CACHE_DIR", cache)
+        inputs = tmp_path / "input"
+        inputs.mkdir()
+        kml = inputs / "1_DEAGJ_DA20.kml"
+        kml.write_text(KML, encoding="utf-8")
+        browser.build(str(inputs), str(tmp_path / "one"), terrain=False)
+        assert len(list(cache.iterdir())) == 1
+
+        kml.unlink()
+        (inputs / "2_DEAGJ_DA20.kml").write_text(KML, encoding="utf-8")
+        monkeypatch.setattr(browser, "MAX_INPUT_BYTES", 1024 * 1024 + 1)
+        monkeypatch.setattr("flown.parser.parse_size", lambda path: 2 * 1024 * 1024 + 1)
+        with pytest.raises(InvalidInputError, match="come to 3 MB of KML"):
+            browser.build(str(inputs), str(tmp_path / "two"), terrain=False)
+
+        assert list(cache.iterdir()) == []
 
     def test_a_kml_larger_than_the_page_reads_is_left_out(self, tmp_path, js):
         """The parse takes some twenty times its size; the site build's own

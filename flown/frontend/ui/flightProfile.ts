@@ -673,10 +673,13 @@ export function followFlightProfile(app: MapApp): HTMLElement {
       ? null
       : new ResizeObserver(() => {
           const height = root.offsetHeight;
+          // A frame later, as the replay panel's (followPanelHeight)
           if (height > 0) {
-            document.documentElement.style.setProperty(
-              PROFILE_HEIGHT_VAR,
-              `${height}px`,
+            requestAnimationFrame(() =>
+              document.documentElement.style.setProperty(
+                PROFILE_HEIGHT_VAR,
+                `${height}px`,
+              ),
             );
           }
         });

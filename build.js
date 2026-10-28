@@ -444,20 +444,20 @@ function compareBundles(before, after, names) {
 // the chunk, so the sum is what counts). What the map draws cannot move to a
 // lazy bundle, since a link may open turned, as a globe or in 3D; what only
 // a panel or a mode shows can. The reading of a shared link's token stays
-// here too: it is resolved before anything reads the state. 169.01 KB and
-// 59.71 KB gzipped.
-const BUDGET_APP = { raw: 169.25 * 1024, gzip: 60 * 1024 };
+// here too: it is resolved before anything reads the state. 169.31 KB and
+// 59.8 KB gzipped.
+const BUDGET_APP = { raw: 169.5 * 1024, gzip: 60 * 1024 };
 // The feature bundle: replay and Replay all, the 3D view (relief, ribbons,
 // heat cloud), the imagery, the flight profile, the cross-section, the
 // hotspot tour and the intro of a link to shared flights. Fetched only when
 // one of them is first used (or ahead of a press that needs it), so no part
-// of a first visit. 158.4 KB and 60.57 KB gzipped.
-const BUDGET_FEATURES = { raw: 158.5 * 1024, gzip: 60.75 * 1024 };
+// of a first visit. 159.24 KB and 60.91 KB gzipped.
+const BUDGET_FEATURES = { raw: 159.5 * 1024, gzip: 61.25 * 1024 };
 // The Wrapped bundle: the Wrapped dialog with its intro, and the statistics
 // rail, fetched the first time either opens. It shares nothing with the
-// feature bundle that the app does not have as well. 43.98 KB and 15.21 KB
+// feature bundle that the app does not have as well. 44.17 KB and 15.29 KB
 // gzipped.
-const BUDGET_WRAPPED = { raw: 44 * 1024, gzip: 15.25 * 1024 };
+const BUDGET_WRAPPED = { raw: 44.25 * 1024, gzip: 15.5 * 1024 };
 // The search bundle: the panel of the search of airports and places, the
 // matching of the site's airports and the client of Photon, fetched the
 // first time the search opens. 13.39 KB and 5.35 KB gzipped.
@@ -473,13 +473,13 @@ const BUDGET_PHONE = { raw: 14.5 * 1024, gzip: 4.75 * 1024 };
 // Your flights: the panel that takes the KML files a visitor drops, the
 // store in the browser and the page's side of the build worker, fetched
 // the first time the panel opens or a file is dragged over the page, and at
-// start by a page that shows those flights. 25.54 KB and 9.11 KB gzipped.
-const BUDGET_LOCAL = { raw: 25.75 * 1024, gzip: 9.25 * 1024 };
+// start by a page that shows those flights. 26.52 KB and 9.46 KB gzipped.
+const BUDGET_LOCAL = { raw: 26.75 * 1024, gzip: 9.75 * 1024 };
 // The worker of Your flights, which runs the site's Python in Pyodide and
 // fetches and decodes the elevation tiles for it (services/localTiles.ts);
-// the runtime itself comes from its CDN and is no part of this. 10.13 KB
-// and 4.78 KB gzipped.
-const BUDGET_LOCAL_WORKER = { raw: 10.25 * 1024, gzip: 5 * 1024 };
+// the runtime itself comes from its CDN and is no part of this. 10.22 KB
+// and 4.81 KB gzipped.
+const BUDGET_LOCAL_WORKER = { raw: 10.5 * 1024, gzip: 5 * 1024 };
 // The year worker (services/yearWorker.ts): fetched by every visit, preloaded
 // in the page head beside the app and started with the first year file. It
 // decodes the year files and draws the heat sources off the main thread,

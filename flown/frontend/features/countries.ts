@@ -8,6 +8,7 @@
  */
 import { getAirportsByName } from "./airports";
 import { siteData } from "../state/siteData";
+import { splitAirportName } from "../utils/statsFormat";
 
 /**
  * Path to a country's flag, relative to the page, or null when this site
@@ -34,6 +35,12 @@ export function countCountries(airportNames: string[]): Set<string> {
   return countries;
 }
 
+/**
+ * The airports by country, the countries in the order first seen and the
+ * airports of each by the name the lists show (the place, without its
+ * code), and two of one place by their whole name: in the order of the
+ * flights they would tell which field came first.
+ */
 export function groupByCountry(airportNames: string[]): Map<string, string[]> {
   const map = getAirportsByName();
   const groups = new Map<string, string[]>();
@@ -48,5 +55,13 @@ export function groupByCountry(airportNames: string[]): Map<string, string[]> {
     }
   }
 
+  const place = (name: string): string =>
+    splitAirportName(name, map.get(name)?.code).name;
+  for (const list of groups.values()) {
+    list.sort(
+      (a, b) =>
+        place(a).localeCompare(place(b), "en") || a.localeCompare(b, "en"),
+    );
+  }
   return groups;
 }

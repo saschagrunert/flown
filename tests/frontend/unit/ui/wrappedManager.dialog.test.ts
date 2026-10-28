@@ -1165,6 +1165,19 @@ describe("WrappedManager dialog", () => {
       expect(el("wrapped-modal").hidden).toBe(true);
     });
 
+    it("leaves an Escape something else took first", () => {
+      openWrapped();
+      const taken = new KeyboardEvent("keydown", {
+        key: "Escape",
+        cancelable: true,
+      });
+      taken.preventDefault();
+
+      document.dispatchEvent(taken);
+
+      expect(el("wrapped-modal").hidden).toBe(false);
+    });
+
     it("ignores Escape after the dialog was closed", () => {
       openWrapped();
       wrappedManager.closeWrapped();

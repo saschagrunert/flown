@@ -346,14 +346,19 @@ class LocationSearch {
     return !this.panel.hidden;
   }
 
-  /** Open or close it; with `open`, an open one only takes the focus */
-  toggle(open = false): void {
-    if (!this.isOpen()) this.open();
+  /**
+   * Open or close it; with `open`, an open one only takes the focus. What
+   * was `typed` while the bundle came goes into the field of one it opens:
+   * only the press that fetched the bundle has any, and that found none
+   * open.
+   */
+  toggle(open = false, typed = ""): void {
+    if (!this.isOpen()) this.open(typed);
     else if (open) this.input.focus();
     else this.close();
   }
 
-  open(): void {
+  open(typed = ""): void {
     // A popup still to open at the end of the last pick's flight would
     // take the focus from the field
     this.cancelArrival();
@@ -375,7 +380,11 @@ class LocationSearch {
         signal: this.whileOpen.signal,
       });
     this.input.focus();
-    this.input.select();
+    // The words of the last search, selected, go with the first key. A
+    // field just made has none: it takes what was typed before it was
+    // there, the caret after it.
+    if (typed) this.input.value = typed;
+    else this.input.select();
     // What is typed already, against airports that may have loaded since
     this.onInput();
   }
@@ -827,15 +836,16 @@ let current: LocationSearch | null = null;
 
 /**
  * Open the search, or close it if it is open; with `open` (the `/` key),
- * an open search takes the focus back to its field instead. The panel is
- * made on the first call and kept for the app's lifetime. Nothing opens
- * while a replay, the tour or Wrapped holds the map.
+ * an open search takes the focus back to its field instead. What was
+ * `typed` as the bundle came goes into the field. The panel is made on the
+ * first call and kept for the app's lifetime. Nothing opens while a
+ * replay, the tour or Wrapped holds the map.
  */
-export function toggleSearch(app: MapApp, open = false): void {
+export function toggleSearch(app: MapApp, open = false, typed = ""): void {
   if (current?.app !== app) {
     current?.destroy();
     current = new LocationSearch(app);
   }
   if (!current.isOpen() && app.mapHeld) return;
-  current.toggle(open);
+  current.toggle(open, typed);
 }

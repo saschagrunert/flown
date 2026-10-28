@@ -27,7 +27,7 @@ from flown.segment_codec import (
     GROUND_STEP,
 )
 from flown.site_assets import CARTO_STYLE_URL, CARTO_TILEJSON_URL
-from flown.terrain import TILE_SIZE
+from flown.terrain_pixels import TILE_SIZE
 from tests.codec import decode_ground, decode_rows
 from tests.conftest import parse_data as _load_js
 from tests.conftest import segments_by_id

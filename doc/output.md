@@ -53,7 +53,7 @@ output-dir/
 │   ├── maplibre-gl-worker.mjs   # Started by maplibre-gl.mjs as a module worker
 │   ├── maplibre-gl.css
 │   └── html-to-image.mjs        # Imported on the first image export
-├── flags/                 # One SVG per country the flights touched
+├── flags/                 # One SVG per country the flights touched (none from a pip install, which shows the code)
 ├── preview.png            # Link preview image of the site, only with --site-url
 ├── y/                     # Link preview page of each year (2025.html), and with --site-url its image (2025.png)
 ├── f/                     # The same for each flight, by its id
@@ -233,12 +233,16 @@ north, fine enough for the relief under a flight. The build samples the
 elevation under every exported position, bilinear across tile edges, and writes
 it into the year files; `flown/terrain.py` has the details, including how the
 model is shifted to meet the altitudes a flight recorded taxiing at both ends.
-The 3D view draws the relief from the same tiles at every zoom (the page fetches
-them from AWS while the 3D view is on, a few hundred KB for a view, and credits
-them on the map while they are drawn), so the ground a flight is measured
-against and the ground it is drawn on are the same model. Zoomed out the map
-draws it from the tiles of a coarser level, and the page smooths the sampled
-ground along each flight as much before it stands the flight on it.
+The tiles hold the depths of the seas, which the build reads as sea level, or as
+low as a flight's own field below it (the Dead Sea, a polder): a flight over the
+water is measured against its surface. The 3D view draws the relief from the
+same tiles at every zoom (the page fetches them from AWS while the 3D view is
+on, a few hundred KB for a view, and credits them on the map while they are
+drawn), so the ground a flight is measured against and the ground it is drawn on
+are the same model (apart from the seas, which the relief draws at their depth).
+Zoomed out the map draws it from the tiles of a coarser level, and the page
+smooths the sampled ground along each flight as much before it stands the flight
+on it.
 
 The tiles are downloaded on the first run, eight at a time, and kept in the
 [cache directory](#cache-directory); how many the flights in this repository

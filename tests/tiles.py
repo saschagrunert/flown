@@ -12,7 +12,8 @@ import struct
 import zlib
 
 from flown.path_content import _path_content
-from flown.terrain import TERRAIN_ZOOM, TILE_SIZE
+from flown.terrain import TERRAIN_ZOOM
+from flown.terrain_pixels import TILE_SIZE
 
 
 def path_contents(paths):

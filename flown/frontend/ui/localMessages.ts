@@ -40,7 +40,7 @@ export const REBUILDING_MESSAGE =
 export const BUILT_MESSAGE = "Built, opening your flights…";
 export const READY_MESSAGE = "Your flights are ready";
 export const LINK_OPENED_SITE_MESSAGE =
-  "This link opened the site's flights, which it is of";
+  "This link is to the site's flights, so they are shown instead of yours";
 /**
  * Said when the browser refuses the storage: a private window, most often,
  * or site data blocked in its settings
@@ -53,7 +53,8 @@ export const STORAGE_FULL_MESSAGE =
 export const REMOVED_MESSAGE = "Your files are removed from this browser";
 /**
  * What the files kept may come to in all: every build takes all of them,
- * and holds some copies of them while it runs
+ * and holds some copies of them while it runs. The build refuses as much
+ * KML once the KMZ files are unpacked (MAX_INPUT_BYTES in flown/browser.py)
  */
 export const MAX_KEPT_BYTES = 200 * 1024 * 1024;
 export const TOO_LARGE_MESSAGE =

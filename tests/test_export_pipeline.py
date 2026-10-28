@@ -1,5 +1,6 @@
 """Tests for export_pipeline module."""
 
+import random
 from itertools import pairwise
 from typing import Any, cast
 
@@ -26,6 +27,7 @@ from flown.segment_calculator import SegmentSpeed, SpeedWindow
 from flown.segment_codec import ALTITUDE_STEP
 from flown.spikes import altitude_spikes
 from flown.types import PathMetadata, TrackPoint
+from tests.conftest import LINEAR_GROWTH, growth
 
 
 def _metadata(fields: dict[str, Any]) -> PathMetadata:
@@ -411,6 +413,200 @@ class TestAltitudeSpikes:
         assert altitude_spikes([]) == []
 
 
+def _timed(*stretches, seconds=5.0):
+    """Altitudes and times: ``seconds`` from one fix to the next, but the
+    first fix of each of the ``stretches`` after the first under the time
+    of the fix before it, as loggers write their jumps."""
+    altitudes, times, t = [], [], 1000.0
+    for number, stretch in enumerate(stretches):
+        for index, altitude in enumerate(stretch):
+            t += 0.0 if number and not index else seconds
+            altitudes.append(altitude)
+            times.append(t)
+    return altitudes, times
+
+
+def _glitch(before, glitch, after, seconds=5.0):
+    """Altitudes and times: level at ``before``, a jump within the same
+    second to the ``glitch`` altitudes, one a fix, and back to ``after``."""
+    return _timed(before, glitch, after, seconds=seconds)
+
+
+class TestAltitudeGlitchRuns:
+    """A logger that lost its height for a minute or two (data/ flights 42,
+    84, 85, 88 and 91)."""
+
+    def test_a_run_too_long_for_the_median_is_one_by_the_times(self):
+        """Flight 85: 1,400 ft below the sea for 20 fixes."""
+        altitudes, times = _glitch(
+            [2025.0] * 10, [-713.0 - 35 * i for i in range(20)], [2030.0] * 10
+        )
+
+        spikes = altitude_spikes(altitudes, times)
+
+        assert spikes == [False] * 10 + [True] * 20 + [False] * 10
+        # Too many fixes for the median alone
+        assert not any(altitude_spikes(altitudes)[12:28])
+
+    def test_it_follows_a_climb_or_descent(self):
+        """A glitch at the end of an approach: the jump back lands lower,
+        and it is on the line between the two that counts."""
+        before = [2000.0 - 40 * i for i in range(10)]
+        glitch = [400.0 - 40 * i for i in range(25)]
+        after = [340.0 - 10 * i for i in range(5)]
+        altitudes, times = _glitch(before, glitch, after)
+
+        assert altitude_spikes(altitudes, times) == (
+            [False] * 10 + [True] * 25 + [False] * 5
+        )
+
+    def test_a_glitch_within_a_glitch(self):
+        """A smaller glitch back towards the flight inside a longer one is
+        part of it (flight 85)."""
+        altitudes, times = _glitch(
+            [2000.0] * 10, [-700.0] * 8 + [300.0] * 4 + [-700.0] * 8, [2000.0] * 10
+        )
+
+        assert altitude_spikes(altitudes, times) == (
+            [False] * 10 + [True] * 20 + [False] * 10
+        )
+
+    def test_a_jump_that_does_not_come_back_is_none(self):
+        """A logger whose height is off from then on, or far longer than
+        ``ALTITUDE_GLITCH_SECONDS``, is read as it is."""
+        altitudes, times = _glitch([2000.0] * 10, [1000.0] * 30, [], seconds=5.0)
+        assert not any(altitude_spikes(altitudes, times))
+        altitudes, times = _glitch(
+            [2000.0] * 10, [1000.0] * 80, [2000.0] * 10, seconds=5.0
+        )
+        assert not any(altitude_spikes(altitudes, times))
+
+    def test_a_climb_and_descent_an_aircraft_flies_is_none(self):
+        """Steps of 50 ft a second, up and back down, under the limit: the
+        times add nothing to what the median reads."""
+        altitudes = [1000.0] * 5 + [1000.0 + 250 * i for i in range(1, 9)]
+        altitudes += [3000.0] * 5
+        altitudes += [3000.0 - 250 * i for i in range(1, 9)] + [1000.0] * 5
+        times = [1000.0 + 5 * i for i in range(len(altitudes))]
+
+        assert altitude_spikes(altitudes, times) == altitude_spikes(altitudes)
+        assert not any(altitude_spikes(altitudes, times))
+
+    def test_two_glitches_in_a_row(self):
+        """Flight 88: a jump up and, before it comes back, one far down, the
+        largest jump of all. The stretch it jumped from to the second is no
+        flight it jumped away from: both are the glitch."""
+        altitudes, times = _timed(
+            [2300.0] * 20, [3700.0] * 10, [400.0] * 12, [2300.0] * 20
+        )
+
+        assert altitude_spikes(altitudes, times) == (
+            [False] * 20 + [True] * 22 + [False] * 20
+        )
+
+    def test_the_flight_between_two_glitches_stays(self):
+        """Flight 88: a glitch 950 ft below a climb, the climb levelling off
+        after it, then two glitches in a row. The level stretch, a jump
+        from the first glitch and one to the next, is the flight: the climb
+        before reaches it, not the glitch."""
+        climb = [400.0 + 50 * i for i in range(20)]
+        below = [1450.0 + 50 * i - 950 for i in range(17)]
+        level = [2300.0 + 10 * i for i in range(20)]
+        altitudes, times = _timed(
+            climb, below, level, [3700.0] * 10, [400.0] * 12, [2500.0] * 20
+        )
+
+        assert altitude_spikes(altitudes, times) == (
+            [False] * 20 + [True] * 17 + [False] * 20 + [True] * 22 + [False] * 20
+        )
+
+    def test_a_glitch_of_short_stretches_wherever_they_lie(self):
+        """Flight 85: a logger that jumps from one height to the next a few
+        fixes at a time, one of them near the flight's: none lasts as long
+        as a stretch the flight is told by."""
+        altitudes, times = _timed(
+            [2000.0] * 20,
+            [1000.0] * 4,
+            [1900.0] * 4,
+            [300.0] * 4,
+            [1500.0] * 4,
+            [2000.0] * 20,
+        )
+
+        assert altitude_spikes(altitudes, times) == (
+            [False] * 20 + [True] * 16 + [False] * 20
+        )
+
+    def test_a_drift_into_a_glitch_is_part_of_it(self):
+        """Flight 85: the logger sank 50 ft a second for 20 seconds, within
+        what one fix to the next allows but no aircraft keeps up, before it
+        jumped: the glitch begins where the drift does."""
+        drift = [2000.0 - 250 * i for i in range(1, 5)]
+        altitudes, times = _timed([2000.0] * 20 + drift, [-700.0] * 10, [2000.0] * 20)
+
+        assert altitude_spikes(altitudes, times) == (
+            [False] * 20 + [True] * 14 + [False] * 20
+        )
+
+    def test_a_drift_back_after_a_jump_is_part_of_it(self):
+        """Flight 42: a jump up, and back down at 50 ft a second, before the
+        logger jumps back to the flight."""
+        drift = [3500.0 - 250 * i for i in range(5)]
+        altitudes, times = _timed([2000.0] * 20, drift, [2000.0] * 20)
+
+        assert altitude_spikes(altitudes, times) == (
+            [False] * 20 + [True] * 5 + [False] * 20
+        )
+
+    @pytest.mark.parametrize(
+        "times",
+        [
+            pytest.param(lambda size: [0.0] * size, id="one time"),
+            pytest.param(
+                lambda size: [float(i % 100) for i in range(size)], id="reset"
+            ),
+            pytest.param(
+                lambda size: [float(i // 50) for i in range(size)], id="stuck"
+            ),
+            pytest.param(lambda size: [float(i) for i in range(size)], id="a second"),
+        ],
+    )
+    def test_the_glitches_take_linear_time(self, times):
+        """A logger that writes noise of hundreds of feet a fix, under times
+        that stand still or run back: looking for the stretches of a glitch
+        must not take each fix with each other."""
+
+        def make(size):
+            noise = random.Random(size)  # noqa: S311 - noise, not secrets
+            altitudes = [3000.0 + noise.uniform(-300, 300) for _ in range(size)]
+            return altitudes, times(size)
+
+        ratio = growth(lambda track: altitude_spikes(*track), make, 1_000)
+        assert ratio < LINEAR_GROWTH
+
+    def test_a_run_back_across_the_line_is_none(self):
+        """A jump up and one down again, with the fixes between them back
+        below the line from the one before to the one after: what the two
+        jumps hold is the flight, not a glitch off it."""
+        glitch = [2000.0] * 3 + [1750.0, 1500, 1250, 1000] + [1000.0] * 3
+        glitch += [1000.0 + 250 * i for i in range(1, 6)]
+        altitudes, times = _glitch([1000.0] * 10, glitch, [1500.0] * 10)
+
+        assert altitude_spikes(altitudes, times) == altitude_spikes(altitudes)
+
+    def test_a_track_under_one_time_is_read_by_the_median(self):
+        """A few fixes of a flight from 1,500 ft up to 3,500 ft and back, all
+        under one time: steps a logger jumps, but times that tell nothing
+        of how fast. The flight between the two ends at its field stays."""
+        altitudes = [1500.0 + 500 * i for i in range(5)]
+        altitudes += [3500.0] * 5 + altitudes[::-1]
+
+        spikes = altitude_spikes(altitudes, [1000.0] * len(altitudes))
+
+        assert spikes == altitude_spikes(altitudes)
+        assert not any(spikes)
+
+
 class TestWithoutAltitudeSpikes:
     def test_a_glitch_gets_the_line_between_its_neighbours(self):
         path = _feet_path(1000, 1100, 1200, 0, 0, 1500, 1600, 1700, 1800)
@@ -434,6 +630,37 @@ class TestWithoutAltitudeSpikes:
     def test_a_glitch_at_an_end_gets_its_neighbour(self):
         smoothed = without_altitude_spikes(_feet_path(350, 352, 349, 351, 0))
         assert _feet(smoothed)[-1] == 351
+
+    def test_a_long_glitch_of_a_timed_path(self):
+        altitudes, times = _glitch([2000.0] * 10, [-700.0] * 20, [2000.0] * 10)
+        path = [
+            TrackPoint(50.0, 8.0 + i * 0.001, alt / METERS_TO_FEET, t)
+            for i, (alt, t) in enumerate(zip(altitudes, times, strict=True))
+        ]
+
+        assert _feet(without_altitude_spikes(path)) == [2000.0] * 40
+        # Without the times, the median alone reads it
+        untimed = [point._replace(ts=None) for point in path]
+        assert min(_feet(without_altitude_spikes(untimed))) == -700.0
+
+    def test_a_logger_that_repeats_its_last_fix_jumps_nothing(self):
+        """A low approach at 2,000 ft a minute, fixes 5 s apart, with the
+        logger writing its last fix again for 15 s on the way down and up,
+        as the landings leave out (see ``landings._timed_fixes``): the step
+        after each holds the 15 s it repeated, no jump, and the 500 ft at
+        the bottom stay."""
+        altitudes = [2500.0] * 12 + [2500.0 - 165 * i for i in range(1, 13)]
+        altitudes += [520.0] * 4 + [520.0 + 165 * i for i in range(1, 13)]
+        altitudes += [2500.0] * 12
+        path = [
+            TrackPoint(50.0, 8.0 + i * 0.003, alt / METERS_TO_FEET, 1000.0 + 5 * i)
+            for i, alt in enumerate(altitudes)
+        ]
+        for first in (16, 32):
+            for index in range(first + 1, first + 4):
+                path[index] = path[first]._replace(ts=path[index].ts)
+
+        assert without_altitude_spikes(path) is path
 
     def test_a_path_without_glitches_is_the_same(self):
         path = _make_path()

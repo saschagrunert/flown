@@ -291,6 +291,9 @@ export class MobileBar {
       }),
       store.subscribe("selectedYear", () => this.syncTabs()),
       store.subscribe("wrappedVisible", (visible) => {
+        // Wrapped restored at the start opens over a sheet opened while it
+        // came, as its tab closes one: the dialog keeps the focus
+        if (visible) this.closeSheet(false);
         this.syncTabs();
         this.syncMapInert();
         // A bar mounted while Wrapped held the map went to the end of the
@@ -447,8 +450,8 @@ export class MobileBar {
     });
   }
 
-  private closeSheet(): void {
-    this.sheet.close();
+  private closeSheet(returnFocus?: boolean): void {
+    this.sheet.close(returnFocus);
     this.openTab = null;
     this.syncTabs();
   }

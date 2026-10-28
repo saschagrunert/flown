@@ -656,7 +656,8 @@ export class ReplayCamera {
    * ChaseCamera), from behind and above, turning with it. Returns whether
    * the chase has the camera, so the follow pan keeps away from it. A
    * finished replay starts none, and reduced motion none at all: a camera
-   * that turns with the airplane is what that setting asks to be spared.
+   * that turns with the airplane is what that setting asks to be spared,
+   * and a chase it is asked for during gives back the view from before.
    * The user's hand on the map holds it, as it does the follow pan, and it
    * picks up from where they left the map once they let go.
    */
@@ -669,7 +670,7 @@ export class ReplayCamera {
       prefersReducedMotion() ||
       (!this.chase && state.currentTime >= state.maxTime)
     ) {
-      this.endChase();
+      this.endChase("view");
       return false;
     }
     if (this.userMovement?.isActive()) {
@@ -754,6 +755,15 @@ export class ReplayCamera {
     }
     this.turnIcon();
     return saved;
+  }
+
+  /**
+   * Note that the map moves for `ms` to a view of its own after the chase
+   * that had the camera `saved` before it: a chase that starts meanwhile
+   * gives that one back, not the camera half way there
+   */
+  keepSaved(saved: SavedCamera, ms: number): void {
+    this.restoring = { camera: saved, until: performance.now() + ms };
   }
 
   /** The camera from before the chase, while one has the map */

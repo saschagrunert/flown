@@ -76,14 +76,16 @@ from flown.site_assets import CSS_FILES, STATIC_DIR, _copy_and_minify_css
 # set at 5,651 B. The sheet moved to phone.css with the phone's bundle, set
 # at 5,994 B with its gradient chip, and extras.css kept the airport popup's
 # list of flights, set at 1,158 B. phone.css was raised from 6.25 KB for the
-# tabs of the bar, which left styles.css (6,818 B after).
+# tabs of the bar, which left styles.css (6,818 B after), and from 7 KB for
+# the toasts centred on the map beside a landscape phone's sheet (7,141 B
+# before, 7,415 B after).
 STYLESHEET_BUDGET_BYTES = {
     "styles.css": 40 * 1024,
     "features.css": int(21.5 * 1024),
     "wrapped.css": 36 * 1024,
     "search.css": int(5.75 * 1024),
     "local.css": int(6.5 * 1024),
-    "phone.css": 7 * 1024,
+    "phone.css": int(7.25 * 1024),
     "extras.css": int(1.5 * 1024),
 }
 
@@ -96,14 +98,16 @@ STYLESHEET_BUDGET_BYTES = {
 # (wrapped.css), with the print styles taken out of the first two, and at
 # 1,192 B for search.css and 1,514 B for extras.css, which became phone.css
 # at 1,585 B, and extras.css again at 524 B for the popup's list of flights.
-# phone.css raised to 1.75 KB for the tabs of the bar (1,685 B after).
+# phone.css raised to 1.75 KB for the tabs of the bar (1,685 B after), and
+# to 1.8125 KB for the toasts beside a landscape phone's sheet (1,752 B
+# before, 1,842 B after).
 STYLESHEET_GZIP_BUDGET_BYTES = {
     "styles.css": 8 * 1024,
     "features.css": int(3.875 * 1024),
     "wrapped.css": int(6.125 * 1024),
     "search.css": int(1.25 * 1024),
     "local.css": int(1.5 * 1024),
-    "phone.css": int(1.75 * 1024),
+    "phone.css": int(1.8125 * 1024),
     "extras.css": int(0.625 * 1024),
 }
 

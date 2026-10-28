@@ -325,6 +325,35 @@ describe("PathSelection", () => {
       );
     });
 
+    it("frames the shared flights only if nothing took the map while the code came", async () => {
+      let resolve!: (features: { frameFlights: typeof frameFlights }) => void;
+      vi.mocked(loadFeatures).mockReturnValueOnce(
+        new Promise((done) => (resolve = done)) as never,
+      );
+      mockApp.currentData = createDataset(
+        [{ id: 1 }],
+        [
+          createSegment({
+            path_id: 1,
+            coords: [
+              [50, 8],
+              [51, 9],
+            ],
+          }),
+        ],
+      );
+      mockApp.selectedPathIds = new Set([1]);
+
+      pathSelection.toggleIsolateSelection();
+      // Wrapped, whose bundle came first, has the map
+      mockApp.wrappedVisible = true;
+      resolve({ frameFlights });
+      await new Promise((done) => setTimeout(done, 0));
+
+      expect(mockApp.isolateSelection).toBe(true);
+      expect(mockApp.map!.easeTo).not.toHaveBeenCalled();
+    });
+
     it("says how to select when no paths are selected", () => {
       pathSelection.toggleIsolateSelection();
 

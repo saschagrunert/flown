@@ -41,7 +41,7 @@ import { announceInRegion, announceStatus, showToast } from "../utils/toast";
 import { nameButton } from "./crossSectionElements";
 import { followPanelHeight } from "./replayManager";
 import { featurePart } from "./lazyBundles";
-import { restingPitch } from "./replayState";
+import { userView } from "./replayState";
 import { mapChromePadding } from "./pathSelection";
 import { fitCamera } from "./frameFlights";
 import { REPLAY_ALL_SPEED, ReplayAllPlayer } from "./replayAllPlayer";
@@ -238,8 +238,9 @@ export class ReplayAllControls {
 
     // The flights fly at their height, which a map seen from straight
     // above does not show: a flatter one is tilted as the 3D view tilts
-    // it, and laid back as the replay closes
-    const pitch = restingPitch(app);
+    // it, and laid back as the replay closes. The tilt is the user's: where
+    // a camera flying back to their view is going (userView)
+    const pitch = userView(app)?.pitch ?? 0;
     const before = pitch < TILT_MIN_PITCH ? pitch : null;
     app.replayState.pitchBefore = before;
     const fit = this.fit(before === null ? pitch : TILT_PITCH, panel);

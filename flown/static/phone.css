@@ -360,6 +360,44 @@
   }
 }
 
+/* A landscape phone is too short for the layers' half: it left the list
+   one row of eight (Heatmap alone at 844 x 390), and the More sheet three
+   of eleven. The sheets stand at the right edge there, the full height,
+   and the map stays in sight beside them, which is what the half was for.
+   The selection chip at the top would stand over a sheet's title: it is
+   out of reach behind the modal sheet anyway, and steps aside. */
+@media (max-height: 480px) {
+  :root {
+    --sheet-w: min(calc(360px + var(--safe-right)), 100vw);
+  }
+  .mobile-sheet,
+  .mobile-sheet:has([data-row="heatmap"]) {
+    left: auto;
+    width: var(--sheet-w);
+    max-height: calc(
+      100dvh - var(--mobile-bar-h) - var(--safe-bottom) - var(--safe-top) -
+        var(--space-sm)
+    );
+    padding-left: 0;
+  }
+  body:has(.mobile-sheet.is-open) #selection-chip {
+    visibility: hidden;
+  }
+}
+/* A toast, centred on the window, covered the sheet's rows: it is centred
+   on the map beside the sheet, clear of a notch on the left, where a toast
+   of 160 px fits there (360 + 2 * 24 + 160). In a narrower window it kept
+   a strip of the map's width, which its words ran out of. */
+@media (max-height: 480px) and (min-width: 568px) {
+  body:has(.mobile-sheet.is-open) .toast-stack {
+    left: calc(50% + (var(--safe-left) - var(--sheet-w)) / 2);
+    max-width: min(
+      400px,
+      calc(100vw - var(--sheet-w) - var(--safe-left) - var(--space-lg) * 2)
+    );
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mobile-tab,
   .sheet-scrim,

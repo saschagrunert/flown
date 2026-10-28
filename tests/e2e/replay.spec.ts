@@ -4,6 +4,7 @@ import {
   gotoApp,
   playUntilProgress,
   toastMessage,
+  toggleStatsPanel,
   waitForPathData,
 } from "./helpers";
 import {
@@ -57,6 +58,96 @@ test.describe("Replay", () => {
 
     await expect(page.locator("#replay-controls")).toBeVisible();
     await expect(page.locator("body")).toHaveClass(/replay-active/);
+  });
+
+  test("beside the statistics the left column stops above the legend the replay lifts", async ({
+    page,
+  }) => {
+    // The panel is centred on the map beside the rail, and the legend
+    // stands on top of it below 1380 px: in a window as short as a laptop's
+    // it stood under the column's last groups, which covered its scale
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await toggleStatsPanel(page);
+    await activateReplay(page);
+
+    const legend = page.locator(".color-legend:visible");
+    await expect(legend).toHaveCount(1);
+    const column = page.locator("#left-buttons");
+    await expect
+      .poll(async () => {
+        const below = (await legend.boundingBox())!;
+        const above = (await column.boundingBox())!;
+        return above.y + above.height <= below.y;
+      })
+      .toBe(true);
+    // What no longer fits is scrolled to, as in a short window
+    expect(
+      await column.evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+  });
+
+  test("the legend stays off the replay panel in a window of 980 px", async ({
+    page,
+  }) => {
+    // The panel is some 540 px wide, and the legend kept its corner beside
+    // it down to 960 px (1340 px beside the rail): the panel covered the
+    // right end of its scale
+    await page.setViewportSize({ width: 980, height: 800 });
+    await activateReplay(page);
+
+    const legend = page.locator(".color-legend:visible");
+    await expect(legend).toHaveCount(1);
+    const panel = page.locator("#replay-controls");
+    await expect
+      .poll(async () => {
+        const a = (await legend.boundingBox())!;
+        const b = (await panel.boundingBox())!;
+        return (
+          a.x + a.width <= b.x ||
+          b.x + b.width <= a.x ||
+          a.y + a.height <= b.y ||
+          b.y + b.height <= a.y
+        );
+      })
+      .toBe(true);
+  });
+
+  test("beside the statistics a toast stands on the map, clear of the rail and the columns", async ({
+    page,
+  }) => {
+    // Centred on the window, a toast stood on the rail's edge, and during
+    // a replay, lifted past the legend that steps aside for it, on the
+    // left column's icons
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await toggleStatsPanel(page);
+    await activateReplay(page);
+    await page.locator("#replay-chase-btn").click();
+    const toast = toastMessage(page, "reduced motion");
+    await expect(toast).toBeVisible();
+
+    // The groups rather than the columns: the right one is as wide as its
+    // dropdowns all the way down
+    const others = page.locator(
+      "#stats-rail, #left-buttons .control-group, #right-buttons .control-group",
+    );
+    await expect
+      .poll(async () => {
+        const a = (await toast.boundingBox())!;
+        for (const other of await others.all()) {
+          if (!(await other.isVisible())) continue;
+          const b = (await other.boundingBox())!;
+          const apart =
+            a.x + a.width <= b.x ||
+            b.x + b.width <= a.x ||
+            a.y + a.height <= b.y ||
+            b.y + b.height <= a.y;
+          if (!apart) {
+            return await other.evaluate((el) => el.outerHTML.slice(0, 80));
+          }
+        }
+        return "clear";
+      })
+      .toBe("clear");
   });
 
   test("replay button reflects the active state", async ({ page }) => {

@@ -258,6 +258,50 @@ class TestUvRelease:
         assert "installs no uv release by version" in capsys.readouterr().err
 
 
+class TestUvRequirement:
+    """--uv-requirement hands the uv release to pip-audit in the security
+    job, which reads it from the action of the head and of the base."""
+
+    def test_prints_the_release_of_the_action(self, repo, capsys):
+        assert check_pins.main(["--uv-requirement"]) == 0
+
+        assert capsys.readouterr().out == f"uv=={UV}\n"
+
+    def test_reads_a_copy_of_the_action(self, repo, tmp_path, capsys):
+        copy = tmp_path / "base-action.yml"
+        copy.write_text(ACTION.format(uv="0.12.9"), encoding="utf-8")
+
+        assert check_pins.main(["--uv-requirement", str(copy)]) == 0
+
+        assert capsys.readouterr().out == "uv==0.12.9\n"
+
+    def test_checks_nothing_else(self, repo, capsys):
+        """The security job runs it on a base whose other pins may be stale."""
+        dockerfile = repo / "Dockerfile"
+        edit(dockerfile, f"uv:{UV}@", "uv:0.14.0@")
+
+        assert check_pins.main(["--uv-requirement"]) == 0
+
+        assert capsys.readouterr().err == ""
+
+    def test_an_action_without_a_version_fails(self, repo, capsys):
+        """An empty requirement would have pip-audit audit nothing."""
+        edit(repo / check_pins.UV_ACTION, f'        version: "{UV}"\n', "")
+
+        assert check_pins.main(["--uv-requirement"]) == 1
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "installs no uv release by version" in captured.err
+
+    def test_a_missing_action_fails(self, repo, tmp_path, capsys):
+        assert check_pins.main(["--uv-requirement", str(tmp_path / "gone.yml")]) == 1
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "gone.yml cannot be read" in captured.err
+
+
 def edit(path: Path, old: str, new: str):
     """Replace text in a file of the fixture repository."""
     path.write_text(
@@ -915,13 +959,16 @@ def fake_registry(monkeypatch, digests):
 
 PLAYWRIGHT_TAG = f"mcr.microsoft.com/playwright:v{PLAYWRIGHT}-noble"
 GITLEAKS_TAG = f"ghcr.io/gitleaks/gitleaks:{GITLEAKS}"
+UV_TAG = f"ghcr.io/astral-sh/uv:{UV}"
 
 
 class TestOnline:
     """--online asks the registries for the digest of each tag."""
 
     def test_digests_of_their_tags_pass(self, repo, monkeypatch, capsys):
-        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST})
+        fake_registry(
+            monkeypatch, {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST, UV_TAG: DIGEST}
+        )
 
         assert check_pins.main(["--online"]) == 0
 
@@ -930,7 +977,10 @@ class TestOnline:
     def test_a_tag_edited_alone_fails(self, repo, monkeypatch, capsys):
         """The bump of 1.64.0 to 1.64.1 kept the browsers, so every check
         but this one passed on the old image"""
-        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: NEW_DIGEST, GITLEAKS_TAG: DIGEST})
+        fake_registry(
+            monkeypatch,
+            {PLAYWRIGHT_TAG: NEW_DIGEST, GITLEAKS_TAG: DIGEST, UV_TAG: DIGEST},
+        )
 
         assert check_pins.main(["--online"]) == 1
 
@@ -942,7 +992,11 @@ class TestOnline:
     def test_a_tag_the_registry_does_not_know_fails(self, repo, monkeypatch, capsys):
         fake_registry(
             monkeypatch,
-            {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: LookupError("ghcr.io has no tag")},
+            {
+                PLAYWRIGHT_TAG: DIGEST,
+                GITLEAKS_TAG: LookupError("ghcr.io has no tag"),
+                UV_TAG: DIGEST,
+            },
         )
 
         assert check_pins.main(["--online"]) == 1
@@ -951,7 +1005,12 @@ class TestOnline:
 
     def test_a_registry_out_of_reach_is_a_warning(self, repo, monkeypatch, capsys):
         fake_registry(
-            monkeypatch, {PLAYWRIGHT_TAG: OSError("timed out"), GITLEAKS_TAG: DIGEST}
+            monkeypatch,
+            {
+                PLAYWRIGHT_TAG: OSError("timed out"),
+                GITLEAKS_TAG: DIGEST,
+                UV_TAG: DIGEST,
+            },
         )
 
         assert check_pins.main(["--online"]) == 0
@@ -970,9 +1029,39 @@ class TestOnline:
     def test_an_image_without_a_digest_is_not_asked_about(self, repo, monkeypatch):
         """The offline check reports it already"""
         edit(repo / check_pins.GITLEAKS_DOCKERFILE, f"@{DIGEST}", "")
-        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST})
+        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST, UV_TAG: DIGEST})
 
         assert check_pins.main(["--online"]) == 1
+
+    def test_a_uv_tag_edited_alone_fails(self, repo, monkeypatch, capsys):
+        """uv is moved by hand, and the image would keep building with the
+        release before, which the security job no longer audits"""
+        fake_registry(
+            monkeypatch,
+            {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST, UV_TAG: NEW_DIGEST},
+        )
+
+        assert check_pins.main(["--online"]) == 1
+
+        err = capsys.readouterr().err
+        assert (
+            f"Dockerfile pins {UV_TAG} by {DIGEST}, the registry gives {NEW_DIGEST}"
+            in err
+        )
+        # --fix moves the image files only
+        assert "Set the same uv release" in err
+        assert "--fix" not in err
+
+    def test_a_uv_image_without_a_digest_is_not_asked_about(
+        self, repo, monkeypatch, capsys
+    ):
+        """The offline check reports it already"""
+        edit(repo / "Dockerfile", f"uv:{UV}@{DIGEST}", f"uv:{UV}")
+        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST})
+
+        assert check_pins.main(["--online"]) == 1
+
+        assert "does not pin the uv image" in capsys.readouterr().err
 
 
 class TestFix:
@@ -988,7 +1077,9 @@ class TestFix:
         )
         playwright = "mcr.microsoft.com/playwright:v1.64.1-noble"
         gitleaks = "ghcr.io/gitleaks/gitleaks:v8.31.0"
-        fake_registry(monkeypatch, {playwright: NEW_DIGEST, gitleaks: NEW_DIGEST})
+        fake_registry(
+            monkeypatch, {playwright: NEW_DIGEST, gitleaks: NEW_DIGEST, UV_TAG: DIGEST}
+        )
 
         assert check_pins.main(["--fix"]) == 0
 
@@ -1003,7 +1094,9 @@ class TestFix:
         ).read_text(encoding="utf-8")
 
     def test_files_already_right_are_left_alone(self, repo, monkeypatch, capsys):
-        fake_registry(monkeypatch, {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST})
+        fake_registry(
+            monkeypatch, {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: DIGEST, UV_TAG: DIGEST}
+        )
 
         assert check_pins.main(["--fix"]) == 0
 
@@ -1013,7 +1106,11 @@ class TestFix:
         before = (repo / check_pins.GITLEAKS_DOCKERFILE).read_text(encoding="utf-8")
         fake_registry(
             monkeypatch,
-            {PLAYWRIGHT_TAG: DIGEST, GITLEAKS_TAG: OSError("timed out")},
+            {
+                PLAYWRIGHT_TAG: DIGEST,
+                GITLEAKS_TAG: OSError("timed out"),
+                UV_TAG: DIGEST,
+            },
         )
 
         assert check_pins.main(["--fix"]) == 0
@@ -1025,7 +1122,7 @@ class TestFix:
 
     def test_an_unreadable_file_is_skipped(self, repo, monkeypatch, capsys):
         (repo / check_pins.PLAYWRIGHT_DOCKERFILE).unlink()
-        fake_registry(monkeypatch, {GITLEAKS_TAG: DIGEST})
+        fake_registry(monkeypatch, {GITLEAKS_TAG: DIGEST, UV_TAG: DIGEST})
 
         assert check_pins.main(["--fix"]) == 1
 

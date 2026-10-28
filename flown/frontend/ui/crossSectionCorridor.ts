@@ -122,17 +122,28 @@ export const removeLayers = (target: MapLibreMap): void => {
   }
 };
 
-/** Where a pointer is on the map, [lat, lon] */
+/**
+ * The ground at `x`, `y` on the map `target`, [lat, lon]; null for the sky
+ * of a tilted map, which MapLibre answers with ground behind the camera
+ * that does not come back to the point (as in ui/cloudReadout.ts)
+ */
+export const groundAt = (
+  target: MapLibreMap,
+  x: number,
+  y: number,
+): Coordinate | null => {
+  const at = target.unproject([x, y]);
+  const back = target.project(at);
+  return Math.hypot(back.x - x, back.y - y) <= 1 ? [at.lat, at.lng] : null;
+};
+
+/** Where a pointer is on the map, [lat, lon]; null in its sky */
 export const pointAt = (
   target: MapLibreMap,
-  event: PointerEvent,
-): Coordinate => {
+  event: { clientX: number; clientY: number },
+): Coordinate | null => {
   const box = target.getContainer().getBoundingClientRect();
-  const at = target.unproject([
-    event.clientX - box.left,
-    event.clientY - box.top,
-  ]);
-  return [at.lat, at.lng];
+  return groundAt(target, event.clientX - box.left, event.clientY - box.top);
 };
 
 /** Whether the ends `from` and `to` are too close to make a line */

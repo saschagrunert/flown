@@ -10,12 +10,12 @@ from collections import deque
 from dataclasses import dataclass
 from itertools import pairwise
 from math import atan2, cos, degrees, hypot, log, pi, radians, sin, sqrt, tan
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from .constants import FEET_TO_METERS, KM_TO_NAUTICAL_MILES, SECONDS_PER_HOUR
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from .types import TrackPoint
 
@@ -24,6 +24,9 @@ __all__ = [
     "KM_PER_DEGREE",
     "MAX_LATITUDE",
     "METRES_PER_DEGREE",
+    "SPEED_HALF_WINDOW_SECONDS",
+    "SPEED_MAX_SECONDS",
+    "SPEED_MIN_SECONDS",
     "TERRAIN_MAX_LATITUDE",
     "CoordinateExtent",
     "haversine_distance",
@@ -32,8 +35,10 @@ __all__ = [
     "planar_km",
     "planar_metres",
     "trim_path_ends",
+    "trim_span",
     "true_bearing",
     "web_mercator",
+    "window_knots",
 ]
 
 EARTH_RADIUS_KM = 6371
@@ -65,17 +70,22 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return EARTH_RADIUS_KM * c
 
 
+# Groundspeeds are measured over this long on either side of a fix (see
+# window_knots), and a measurement over less or more time than the bounds
+# below is none: jitter, or a gap in the recording
+SPEED_HALF_WINDOW_SECONDS = 5.0
+SPEED_MIN_SECONDS = 2.0
+SPEED_MAX_SECONDS = 120.0
+
 # --trim-ends anchors the trim on the flight itself where the times tell
 # it: the stretches at a groundspeed of at least TRIM_FLIGHT_KNOTS, a takeoff
-# roll passes it and taxiing never does, measured over
-# TRIM_SPEED_HALF_WINDOW_SECONDS on either side of a fix (over less than
-# TRIM_SPEED_MIN_SECONDS or more than TRIM_SPEED_MAX_SECONDS it is jitter or
-# a gap, and unknown). A takeoff climbs TRIM_CLIMB_M above where its stretch
-# began within TRIM_CLIMB_SECONDS, a landing sinks as much to where its
-# stretch ended; a drive along a road does neither as fast. A stretch that
-# runs from the first fix or on to the last for TRIM_MOVING_SECONDS was
-# recorded on the move (in the air, or on the road), so the times do not
-# tell that end; a shorter one is a stale fix jumping to the receiver's own.
+# roll passes it and taxiing never does (see window_knots). A takeoff climbs
+# TRIM_CLIMB_M above where its stretch began within TRIM_CLIMB_SECONDS, a
+# landing sinks as much to where its stretch ended; a drive along a road
+# does neither as fast. A stretch that runs from the first fix or on to the
+# last for TRIM_MOVING_SECONDS was recorded on the move (in the air, or on
+# the road), so the times do not tell that end; a shorter one is a stale fix
+# jumping to the receiver's own.
 # The start of a takeoff roll lies less than TRIM_FIELD_M above the lowest
 # heights recorded before it (TRIM_LOW_SHARE of them, so a stray fix does
 # not count), the field: a glider circling level after its launch, a
@@ -85,35 +95,46 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 TRIM_FLIGHT_KNOTS = 40.0
 TRIM_FIELD_M = 30.0
 TRIM_LOW_SHARE = 0.05
-TRIM_SPEED_HALF_WINDOW_SECONDS = 5.0
-TRIM_SPEED_MIN_SECONDS = 2.0
-TRIM_SPEED_MAX_SECONDS = 120.0
 TRIM_CLIMB_M = 300 * FEET_TO_METERS
 TRIM_CLIMB_SECONDS = 180.0
 TRIM_MOVING_SECONDS = 30.0
 
 
-def _window_knots(fixes: Sequence[tuple[int, TrackPoint]]) -> list[float | None]:
-    """The groundspeed at each timed fix, over a few seconds around it.
+class _Located(Protocol):
+    """A fix with a position: a track point, or one the landings read."""
 
-    As the landing detector measures it (``landings._groundspeeds``): a
-    logger writes fixes a fraction of a second apart as often as seconds
-    apart, and the jitter over a fraction of a second reads as hundreds of
-    knots. None where it cannot be told.
+    @property
+    def lat(self) -> float: ...
+
+    @property
+    def lon(self) -> float: ...
+
+
+def window_knots(
+    fixes: Sequence[_Located],
+    times: Sequence[float],
+    km: Callable[[float, float, float, float], float],
+) -> list[float | None]:
+    """The groundspeed at each of ``fixes``, at ``times`` in order.
+
+    Measured from the last fix ``SPEED_HALF_WINDOW_SECONDS`` or more before
+    it to the first as far after it, ``km`` apart: loggers write fixes a
+    fraction of a second apart as often as seconds apart, and the jitter of
+    the position over a fraction of a second reads as hundreds of knots.
+    None where it cannot be told.
     """
-    times = [point.ts or 0.0 for _, point in fixes]
     last = len(fixes) - 1
     speeds: list[float | None] = []
     for t in times:
-        before = bisect_right(times, t - TRIM_SPEED_HALF_WINDOW_SECONDS) - 1
-        after = bisect_left(times, t + TRIM_SPEED_HALF_WINDOW_SECONDS)
-        a, b = fixes[max(0, before)][1], fixes[min(last, after)][1]
-        seconds = (b.ts or 0.0) - (a.ts or 0.0)
-        if not TRIM_SPEED_MIN_SECONDS <= seconds <= TRIM_SPEED_MAX_SECONDS:
+        before = bisect_right(times, t - SPEED_HALF_WINDOW_SECONDS) - 1
+        after = bisect_left(times, t + SPEED_HALF_WINDOW_SECONDS)
+        seconds = times[min(last, after)] - times[max(0, before)]
+        if not SPEED_MIN_SECONDS <= seconds <= SPEED_MAX_SECONDS:
             speeds.append(None)
             continue
-        km = haversine_distance(a.lat, a.lon, b.lat, b.lon)
-        speeds.append(km * KM_TO_NAUTICAL_MILES / seconds * SECONDS_PER_HOUR)
+        a, b = fixes[max(0, before)], fixes[min(last, after)]
+        distance = km(a.lat, a.lon, b.lat, b.lon)
+        speeds.append(distance * KM_TO_NAUTICAL_MILES / seconds * SECONDS_PER_HOUR)
     return speeds
 
 
@@ -233,7 +254,11 @@ def _flight_span(path: Sequence[TrackPoint]) -> tuple[int | None, int | None]:
         (b.ts or 0.0) < (a.ts or 0.0) for (_, a), (_, b) in pairwise(fixes)
     ):
         return None, None
-    speeds = _window_knots(fixes)
+    speeds = window_knots(
+        [point for _, point in fixes],
+        [point.ts or 0.0 for _, point in fixes],
+        haversine_distance,
+    )
     start = _takeoff(fixes, speeds)
     # The other way round, with the times running backwards from the end
     end_ts = fixes[-1][1].ts or 0.0
@@ -248,11 +273,16 @@ def _flight_span(path: Sequence[TrackPoint]) -> tuple[int | None, int | None]:
     )
 
 
-def trim_path_ends(path: Sequence[TrackPoint], metres: float) -> list[TrackPoint]:
+def trim_path_ends(
+    path: Sequence[TrackPoint],
+    metres: float,
+    smoothed: Sequence[TrackPoint] | None = None,
+) -> list[TrackPoint]:
     """``path`` without its ground at either end and what is near it.
 
-    Where the times tell where the flight began and ended (``_flight_span``),
-    everything before its takeoff roll and after its landing roll goes,
+    Where the times tell where the flight began and ended (``_flight_span``,
+    of the path with the glitches of its altitudes ``smoothed`` over, or as
+    it is), everything before its takeoff roll and after its landing roll goes,
     whatever it is: the taxiing, the spot the aircraft was parked on, a
     stale fix from before the receiver had its own, a drive to the field or
     home from it. Then, as at an end the times cannot tell, the points
@@ -261,15 +291,31 @@ def trim_path_ends(path: Sequence[TrackPoint], metres: float) -> list[TrackPoint
     ends with the last that is farther from its last. A path that never
     leaves the circles (a recording of a taxi) is left with its first point
     alone, which the export leaves out as a path that does not move: kept
-    whole, it would publish the spot.
+    whole, it would publish the spot. The points left are those of
+    ``trim_span``.
+    """
+    return list(path[trim_span(path, metres, smoothed)])
+
+
+def trim_span(
+    path: Sequence[TrackPoint],
+    metres: float,
+    smoothed: Sequence[TrackPoint] | None = None,
+) -> slice:
+    """The points of ``path`` that ``trim_path_ends`` keeps, as a slice.
+
+    It cuts ``smoothed`` alike, which has the points of ``path`` in their
+    order.
     """
     if metres <= 0 or len(path) < 2:
-        return list(path)
-    takeoff, landing = _flight_span(path)
+        return slice(0, len(path))
+    takeoff, landing = _flight_span(path if smoothed is None else smoothed)
     first_index = 0 if takeoff is None else takeoff
     last_index = len(path) - 1 if landing is None else landing
+    offset = 0
     if last_index - first_index >= 1:
         path = path[first_index : last_index + 1]
+        offset = first_index
     km = metres / 1000
     first, last = path[0], path[-1]
     start = next(
@@ -290,8 +336,8 @@ def trim_path_ends(path: Sequence[TrackPoint], metres: float) -> list[TrackPoint
         -1,
     )
     if end - start < 1:
-        return list(path[:1])
-    return list(path[start : end + 1])
+        return slice(offset, offset + 1)
+    return slice(offset + start, offset + end + 1)
 
 
 def longitude_difference(lon0: float, lon1: float) -> float:

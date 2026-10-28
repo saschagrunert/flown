@@ -7,6 +7,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from flown.date_tokens import (
+    MOST_PASSES,
     any_month_number,
     find_date_tokens,
     find_holiday_tokens,
@@ -1128,6 +1129,11 @@ class TestRomanMonths:
     def test_a_full_date(self, date):
         assert find_date_tokens(f"Trip {date} home", skip_near_jan_first=True) == [date]
         assert strip_dates(f"Aunt farm {date} - Home strip") == "Aunt farm - Home strip"
+
+    @pytest.mark.parametrize("date", ["16.VII.2026", "16-VII-2026", "2026.VII.16"])
+    def test_a_full_date_between_underscores(self, date):
+        """As a file name has it (regression)."""
+        assert find_date_tokens(f"Lot_{date}_DA40", skip_near_jan_first=True) == [date]
 
     @pytest.mark.parametrize("day_month", ["16.VII.", "16.VII", "16. VII.", "16.XII."])
     def test_without_the_year(self, day_month):
@@ -2496,3 +2502,333 @@ class TestShapesThatPassedTheBuild:
     def test_a_long_run_of_the_new_shapes_is_linear(self, unit):
         ratio = growth(strip_dates, lambda size: unit * (size // len(unit)), 5_000)
         assert ratio < LINEAR_GROWTH
+
+
+class TestYearFirstAndTheNordicLanguages:
+    """The year before a month or a season, the weekdays and seasons of the
+    languages of the Nordic months and Russian, and the endings of a day in
+    a date passed the rewrite and the check (regression)."""
+
+    @pytest.mark.parametrize(
+        ("text", "date"),
+        [
+            ("EDAQ 2024 August", "2024 August"),
+            ("EDDS 2026 Aug", "2026 Aug"),
+            ("EDDS 2026-August", "2026-August"),
+            ("EDDS 2026 Mai", "2026 Mai"),
+            ("EDDS 2026 März", "2026 März"),
+            ("EDDS 2026 août", "2026 août"),
+            ("EDDS 2026. augusztus", "2026. augusztus"),
+            ("Полёт 16-\u0433\u043e августа 2026", "16-\u0433\u043e августа 2026"),
+            ("Lot 16-go sierpnia 2026", "16-go sierpnia 2026"),
+            ("Flug 16ter Oktober 2026", "16ter Oktober 2026"),
+            ("Flight 16ten August 2026", "16ten August 2026"),
+            # With the separators of the year first in English, the ending
+            # of a Hungarian day, a range of months and a month of a year
+            ("EDDS 2026-Mai-16", "2026-Mai-16"),
+            ("EDDS 2026. augusztus 16-án", "2026. augusztus 16-án"),
+            ("EDDS 2026. márc. 16.", "2026. márc. 16."),
+            ("EDDS 2026 Jan/Feb", "2026 Jan/Feb"),
+            ("EDDS 2026 Juli/August", "2026 Juli/August"),
+            ("EDDS 2026 augusztusában", "2026 augusztusában"),
+            ("Lento elokuussa 2026", "elokuussa 2026"),
+            # Stuck to the year, after a comma, with a range of days after
+            # the year first and the other cases of a month (regression)
+            ("EDDS Aug2026", "Aug2026"),
+            ("EDDS Mai2026", "Mai2026"),
+            ("EDDS 2026, August", "2026, August"),
+            ("EDDS 2026 Aug 16-18", "2026 Aug 16-18"),
+            ("EDDS 2026. augusztus 16-18.", "2026. augusztus 16-18."),
+            ("EDDS 2026 augusztusban", "2026 augusztusban"),
+            ("EDDS 2026. augusztusi", "2026. augusztusi"),
+            ("Lot sierpniu 2026", "sierpniu 2026"),
+            ("Let srpnu 2026", "srpnu 2026"),
+            ("Let auguste 2026", "auguste 2026"),
+            ("Let avgustu 2026", "avgustu 2026"),
+        ],
+    )
+    def test_the_check_reports_the_dates(self, text, date):
+        assert find_date_tokens(text, skip_near_jan_first=True) == [date]
+        assert strip_dates(text) == text.split()[0]
+
+    @pytest.mark.parametrize(
+        ("text", "date"),
+        [
+            ("Flug_2026_Mai", "2026_Mai"),
+            ("EDDS_2026_August", "2026_August"),
+            ("EDDS_2026_Aug_16", "2026_Aug_16"),
+            ("EDDS_2026_augusztus_16_DA40", "2026_augusztus_16"),
+        ],
+    )
+    def test_the_year_first_after_an_underscore(self, text, date):
+        """As a file name has it, and "Flug_Mai_2026" the other way round:
+        the year after an underscore passed the check (regression)."""
+        assert find_date_tokens(text, skip_near_jan_first=True) == [date]
+        assert date not in (strip_dates(text) or "")
+
+    @pytest.mark.parametrize(
+        ("text", "part"),
+        [
+            ("EDDS 2026 Sommer", "2026 Sommer"),
+            ("EDDS 2026 Summer", "2026 Summer"),
+            ("EDDS 2026_Sommer", "2026_Sommer"),
+            ("EDDS 2026. nyár", "2026. nyár"),
+            ("EDDS sommar 2026", "sommar 2026"),
+            ("EDDS sommeren 2026", "sommeren 2026"),
+            ("EDDS kesällä 2026", "kesällä 2026"),
+            ("EDDS лето 2026", "лето 2026"),
+            ("EDDS летом 2026", "летом 2026"),
+            ("Полёт 1-\u0433\u043e мая", "1-\u0433\u043e мая"),
+            ("Полёт 16-\u0435 августа", "16-\u0435 августа"),
+            ("Lot 16-go sierpnia", "16-go sierpnia"),
+            ("Flug 16ter August", "16ter August"),
+            ("EDDS 2026 nyarán", "2026 nyarán"),
+            ("EDDS 2026 tavaszán", "2026 tavaszán"),
+            ("Lot latem 2026", "latem 2026"),
+            ("конец лета 2026", "лета 2026"),
+            ("Полёт летом 2026 года", "летом 2026 года"),
+            ("EDDS Summer, 2026", "Summer, 2026"),
+            # Regressions: the genitives of Polish, and the seasons of
+            # Czech, Slovak and Slovenian
+            ("koniec wiosny 2026", "wiosny 2026"),
+            ("EDDS jesieni 2026", "jesieni 2026"),
+            ("EDDS létě 2026", "létě 2026"),
+            ("EDDS jaře 2026", "jaře 2026"),
+            ("EDDS podzim 2026", "podzim 2026"),
+            ("EDDS lete 2026", "lete 2026"),
+            ("EDDS jeseň 2026", "jeseň 2026"),
+            ("EDDS poleti 2026", "poleti 2026"),
+            ("EDDS spomladi 2026", "spomladi 2026"),
+            # Regressions: the other cases of Polish and Finnish
+            ("EDDS lecie 2026", "lecie 2026"),
+            ("EDDS wiosnę 2026", "wiosnę 2026"),
+            ("EDDS wiośnie 2026", "wiośnie 2026"),
+            ("Lento kesänä 2026", "kesänä 2026"),
+            ("EDDS kesän 2026", "kesän 2026"),
+        ],
+    )
+    def test_the_check_reports_the_parts(self, text, part):
+        assert find_partial_date_tokens(text) == [part]
+        assert strip_dates(text) == text.split()[0]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "EDDS 2026 Jan",
+            "EDDS 2026 Winter",
+            "EDDS vinter 2026",
+            "EDDS зима 2026",
+            "EDDS зимой 2026",
+            "EDDS zimą 2026",
+            "EDDS 2026 telén",
+            "EDDS télen 2026",
+            "EDDS 2026 Jan 1-2",
+            "EDDS styczniu 2026",
+            "EDDS zimy 2026",
+            "EDDS zimě 2026",
+            "EDDS pozimi 2026",
+            "EDDS zimie 2026",
+            "EDDS talvena 2026",
+        ],
+    )
+    def test_january_and_the_winter_pass_the_check(self, text):
+        assert find_date_tokens(text, skip_near_jan_first=True) == []
+        assert find_partial_date_tokens(text) == []
+        assert strip_dates(text) == "EDDS"
+
+    def test_a_range_of_months_after_a_year_is_no_january(self):
+        """A year with a range of months after it ("2026 Jan/Feb") passed the
+        check and lost only its first month (regression)."""
+        assert find_date_tokens("EDDS 2026 Dez/Jan", skip_near_jan_first=True) == [
+            "2026 Dez/Jan"
+        ]
+
+    def test_a_range_of_days_after_a_year_is_no_january(self):
+        """A range of days after a month with the year first ("2026 Jan
+        1-20") passed the check, and kept its last day (regression)."""
+        assert find_date_tokens("EDDS 2026 Jan 1-20", skip_near_jan_first=True) == [
+            "2026 Jan 1-20"
+        ]
+        assert strip_dates("EDDS 2026 Jan 1-20 EDDM") == "EDDS EDDM"
+
+    @pytest.mark.parametrize(
+        "text", ["EDDS leto 2026", "EDDS konec léta 2026", "Lot lata 2020"]
+    )
+    def test_a_year_named_as_one_stays(self, text):
+        """Slovenian "leto 2026" is the year 2026, and so are Czech "léta"
+        and Polish "lata", which are summer as well."""
+        assert strip_dates(text) == text
+        assert find_partial_date_tokens(text) == []
+
+    def test_a_month_of_a_year_in_polish(self):
+        assert strip_dates("Lot w sierpniu 2026") == "Lot w"
+
+    def test_a_month_of_a_year_in_russian(self):
+        assert find_date_tokens("Полёт в августе 2026 года") == ["августе 2026 года"]
+        assert strip_dates("Полёт в августе 2026 года") == "Полёт в"
+
+    @pytest.mark.parametrize(
+        ("text", "date"),
+        [
+            # Regressions: the word for the year between the year and the
+            # month, in Polish, Russian, Czech and Hungarian ...
+            ("EDDS 2026 r. sierpień", "2026 r. sierpień"),
+            ("EDDS 2026 roku sierpień", "2026 roku sierpień"),
+            ("EDDS 2026 R. SIERPIEŃ", "2026 R. SIERPIEŃ"),
+            ("EDDS 2026 \u0433. август", "2026 \u0433. август"),
+            ("EDDS 2026\u0433. август", "2026\u0433. август"),
+            ("EDDS 2026 года август", "2026 года август"),
+            ("EDDS 2026 году август", "2026 году август"),
+            ("EDDS 2026 \u0433., август", "2026 \u0433., август"),
+            ("EDDS 2026 r. srpen", "2026 r. srpen"),
+            ("EDDS 2026. év augusztus", "2026. év augusztus"),
+            # ... between the month and the year, in Czech and Slovak ...
+            ("EDDS srpen r. 2026", "srpen r. 2026"),
+            ("EDDS srpnu roku 2026", "srpnu roku 2026"),
+            ("EDDS auguste roku 2026", "auguste roku 2026"),
+            ("EDDS 16. srpna roku 2026", "16. srpna roku 2026"),
+            # ... and after the year, in Polish, which no longer leaves an
+            # "r" behind
+            ("EDDS 16 sierpnia 2026 r.", "16 sierpnia 2026 r."),
+            ("EDDS sierpień 2026 roku", "sierpień 2026 roku"),
+        ],
+    )
+    def test_a_word_for_the_year_goes_with_the_date(self, text, date):
+        assert find_date_tokens(text, skip_near_jan_first=True) == [date]
+        assert strip_dates(text) == "EDDS"
+
+    @pytest.mark.parametrize(
+        ("text", "part"),
+        [
+            ("EDDS 2026 r. lato", "2026 r. lato"),
+            ("EDDS 2026 \u0433. лето", "2026 \u0433. лето"),
+            ("EDDS lato 2026 r.", "lato 2026 r."),
+            ("EDDS léto roku 2026", "léto roku 2026"),
+        ],
+    )
+    def test_a_word_for_the_year_goes_with_the_season(self, text, part):
+        assert find_partial_date_tokens(text) == [part]
+        assert strip_dates(text) == "EDDS"
+
+    @pytest.mark.parametrize(
+        "text", ["EDDS 2026 r. styczeń", "EDDS 2026 \u0433. январь"]
+    )
+    def test_a_word_for_the_year_before_january_passes_the_check(self, text):
+        assert find_date_tokens(text, skip_near_jan_first=True) == []
+        assert strip_dates(text) == "EDDS"
+
+    @pytest.mark.parametrize(
+        "text", ["EDDS 2026 r.", "EDDS 2026 \u0433.", "Flug R. Smith"]
+    )
+    def test_a_word_for_the_year_alone_stays(self, text):
+        assert strip_dates(text) == text
+
+    @pytest.mark.parametrize(
+        "text", ["EDDS 2026 Maier", "Cessna 2000 Mayfield", "EDDS 2026 Augustin"]
+    )
+    def test_a_year_before_a_word_stays(self, text):
+        assert strip_dates(text) == text
+        assert find_date_tokens(text, skip_near_jan_first=True) == []
+
+    @pytest.mark.parametrize(
+        "weekday",
+        [
+            "lördag",
+            "lørdag",
+            "fredag",
+            "tirsdag",
+            "lauantai",
+            "sunnuntai",
+            "суббота",
+            "субботу",
+            "воскресенье",
+            # Their endings, and the words made of them (regression)
+            "lördagen",
+            "lördags",
+            "lördagar",
+            "lördagsflyg",
+            "lørdagene",
+            "søndagstur",
+            "lauantaina",
+            "lauantain",
+            "lauantailento",
+            "keskiviikkona",
+            "keskiviikon",
+            "пятницы",
+            "субботний",
+            "воскресный",
+            # Regressions: a genitive after an ending, the days, and the
+            # adjective in its cases
+            "lördagens",
+            "lördagarnas",
+            "Søndagens",
+            "субботам",
+            "субботнего",
+            "воскресном",
+            # Regressions: a part of the day right after it, and the other
+            # cases of Russian
+            "lördagkväll",
+            "fredagmorgon",
+            "lørdagaften",
+            "torsdagkveld",
+            "пятнице",
+            "субботе",
+            "субботой",
+            "воскресенью",
+            "понедельником",
+            "четверги",
+            # Regressions: the other cases of the days
+            "понедельников",
+            "пятниц",
+            "субботами",
+            "воскресеньях",
+        ],
+    )
+    def test_their_weekdays(self, weekday):
+        assert find_weekday_tokens(f"Flyg {weekday} EDDS") == [weekday]
+        assert strip_dates(f"EDDS {weekday}") == "EDDS"
+
+    @pytest.mark.parametrize(
+        "unit",
+        [
+            "2026 ",
+            "2026 Q",
+            "2026-Su",
+            "2026 Jan/",
+            "2026-Mai-",
+            "lördags",
+            "2026, ",
+            "Aug2026",
+            "2026 Aug 16-",
+            "lördagens ",
+        ],
+    )
+    def test_a_long_run_of_years_is_linear(self, unit):
+        ratio = growth(strip_dates, lambda size: unit * (size // len(unit)), 5_000)
+        assert ratio < LINEAR_GROWTH
+
+
+class TestTheNamesLeftByAPass:
+    """What one pass of strip_dates leaves is stripped again, a bounded
+    number of times."""
+
+    @pytest.mark.parametrize("unit", ["Aug2", "2Aug", "Aug16", "Sommer2026"])
+    def test_a_name_that_shows_a_date_whenever_one_goes_is_linear(self, unit):
+        """Only the last "Aug2" of "Aug2Aug2" is a date, and the one before
+        it once that is gone: a pass for every date took quadratic time,
+        10 s for 4,000 characters (regression)."""
+        ratio = growth(strip_dates, lambda size: unit * (size // len(unit)), 300)
+        assert ratio < LINEAR_GROWTH
+
+    def test_a_few_such_dates_all_go(self):
+        assert strip_dates("EDDS Aug2Aug2Aug2") == "EDDS"
+
+    def test_a_name_still_changing_after_the_last_pass_is_none(self):
+        """Taking more of it out would take the passes again: none of it is
+        published."""
+        text = "EDDS " + "Aug2" * (MOST_PASSES + 1)
+        assert strip_dates(text) is None
+
+    def test_the_passes_stop_where_nothing_changes(self):
+        text = "EDDS " + "Aug2" * MOST_PASSES
+        assert strip_dates(text) == "EDDS"

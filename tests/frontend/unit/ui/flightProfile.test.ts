@@ -334,14 +334,27 @@ describe("flight profile", () => {
           disconnect(): void {}
         },
       );
+      // The height goes to the page a frame after the observer's round
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+        frames.push(callback),
+      );
+      const nextFrame = (): void => {
+        for (const callback of frames.splice(0)) callback(0);
+      };
       const { root } = setup();
 
       measure();
+      nextFrame();
       expect(
         document.documentElement.style.getPropertyValue(PROFILE_HEIGHT_VAR),
       ).toBe("");
       Object.defineProperty(root, "offsetHeight", { value: 120 });
       measure();
+      expect(
+        document.documentElement.style.getPropertyValue(PROFILE_HEIGHT_VAR),
+      ).toBe("");
+      nextFrame();
       expect(
         document.documentElement.style.getPropertyValue(PROFILE_HEIGHT_VAR),
       ).toBe("120px");

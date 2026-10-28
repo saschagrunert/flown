@@ -392,8 +392,18 @@ def _drop_cut_value(root: etree._Element) -> None:
         last.text = text[: len(text) - len(points[-1])] if points else text
         return
     parent = last.getparent()
-    if parent is not None:
-        parent.remove(last)
+    if parent is None:
+        return
+    parent.remove(last)
+    if local_name(last.tag) != "coord":
+        return
+    # A track that pairs each <when> with its <gx:coord> keeps the <when>
+    # of the dropped one, which would warn of counts that differ (see
+    # parser_gx_track): it goes too
+    whens = [child for child in parent if local_name(child.tag) == "when"]
+    coords = sum(1 for child in parent if local_name(child.tag) == "coord")
+    if len(whens) == coords + 1:
+        parent.remove(whens[-1])
 
 
 def _document_namespaces(root: etree._Element) -> dict[str, str]:

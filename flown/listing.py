@@ -167,7 +167,7 @@ def list_flights(kml_files: Sequence[str], trim_ends: float = 0) -> Listing:
         parsed.append(entry)
 
     paths, metadata, files = _listed_paths(parsed)
-    trimmed, trimmed_metadata = trim_paths(paths, metadata, trim_ends)
+    trimmed, trimmed_metadata, _ = trim_paths(paths, metadata, trim_ends)
     # A file the trim leaves without a flight fails the build as well
     failing.update(trimmed_away_files(paths, trimmed, metadata))
     paths, metadata = trimmed, trimmed_metadata

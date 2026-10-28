@@ -322,7 +322,8 @@ Opening `docs/index.html` from disk does not work (see
 [Hosting](hosting.md).
 
 `pip install .` also provides the `flown` console script and ships the templates
-and static assets.
+and static assets, except the country flags: a site built from the installed
+package shows the country code in their place.
 
 ## Command-line options
 

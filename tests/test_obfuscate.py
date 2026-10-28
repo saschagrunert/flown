@@ -16,6 +16,7 @@ from hypothesis import strategies as st
 import flown.obfuscate as obfuscate_module
 from flown.aircraft import parse_aircraft_from_filename
 from flown.date_tokens import (
+    MOST_PASSES,
     find_date_tokens,
     find_holiday_tokens,
     find_partial_date_tokens,
@@ -1207,6 +1208,10 @@ class TestCheckObfuscated:
             ("16.Mrz.2026 Mai 2026", ["16.Mrz.2026", "Mai 2026"]),
             ("1. Januar 2026 Jänner 2026", []),
             ("Flugplatz Mai", []),
+            # The year first, and the endings of a day (regression)
+            ("EDAQ 2024 August", ["2024 August"]),
+            ("2026. augusztus 2026 Jan", ["2026. augusztus"]),
+            ("16-\u0433\u043e августа 2026", ["16-\u0433\u043e августа 2026"]),
             ("Log Start: 2025-01-01", []),
             ("Flight Jan 01 2026 03:01PM", []),
             # Unix time in a data value
@@ -2647,6 +2652,11 @@ class TestRenameDatedFiles:
             ("Flight 2026-08-16 1430Z.kml", "Flight.kml"),
             ("EDDS_Sunday_16.08.kml", "EDDS.kml"),
             ("trip-KW33.KML", "trip.KML"),
+            # The year first after an underscore (regression)
+            ("1_DEHYL_DA40_2026_Aug_16.kml", "1_DEHYL_DA40.kml"),
+            ("Flug_2026_Mai.kml", "Flug.kml"),
+            ("Repules_2026_augusztus_16_DA40.kml", "Repules_DA40.kml"),
+            ("Lot_16.VII.2026_DA40.kml", "Lot_DA40.kml"),
         ],
     )
     def test_names(self, tmp_path, name, renamed):
@@ -2790,6 +2800,51 @@ class TestRenamedNamesAreClean:
             find_holiday_tokens(undated),
         ):
             assert found == [], (stem, undated)
+
+
+class TestPassesOfTheRewrite:
+    """The rewrite takes out again what its last pass left, a bounded
+    number of times."""
+
+    @pytest.mark.parametrize(
+        "run",
+        [
+            lambda text: obfuscate_module._scrubbed_text("name", text),
+            obfuscate_module._undated_stem,
+        ],
+    )
+    @pytest.mark.parametrize("unit", ["Aug2", "Sommer2026"])
+    def test_a_text_that_shows_a_date_whenever_one_goes_is_linear(self, run, unit):
+        """Only the last "Aug2" of "Aug2Aug2" is a date, and the one before
+        it once that is gone: a pass for every date took quadratic time,
+        8.5 s for 2,000 characters (regression)."""
+        ratio = growth(run, lambda size: unit * (size // len(unit)), 300)
+        assert ratio < LINEAR_GROWTH
+
+    def test_a_few_such_dates_all_go(self):
+        assert obfuscate_kml_content(_kml("<name>EDDS Aug2Aug2Aug2</name>")) == (
+            _kml("<name>EDDS</name>")
+        )
+
+    def test_a_text_still_changing_after_the_last_pass_is_for_a_person(self, tmp_path):
+        """The rewrite leaves the file as it was, and the check reports it."""
+        content = _kml(f"<name>EDDS {'Aug2' * (MOST_PASSES + 1)}</name>")
+        rewritten = obfuscate_kml_content(content)
+        assert rewritten is not None
+        assert "<name>EDDS Aug2</name>" in rewritten
+        kml_file = tmp_path / "flight.kml"
+        kml_file.write_text(content, encoding="utf-8")
+        assert not obfuscate_kml_file(kml_file)
+        assert kml_file.read_text(encoding="utf-8") == content
+        assert check_kml(kml_file)[0] == [
+            "Name or description contains part of a date: Aug2"
+        ]
+
+    def test_a_file_name_still_changing_after_the_last_pass_stays(self, tmp_path):
+        path = tmp_path / f"EDDS {'Aug2' * (MOST_PASSES + 1)}.kml"
+        path.write_text(_kml(""), encoding="utf-8")
+        assert rename_dated_files([path]) == [path]
+        assert check_kml(path)[0]
 
 
 class TestCheckSkipsCanonicalTimestamps:

@@ -131,11 +131,17 @@ function keepNoTerrain(on: boolean): void {
  */
 export const REMOVED_KEY = keyedToPage("flown-local-removed");
 /**
- * Set in a tab once it started on the visitor's flights: a state in its
- * address is of its own history there, not a link opened on it (see
- * localStartConfig; the page writes none while it shows them)
+ * Set by Stop the build, until the next build starts: the next visit opens
+ * on the flights built before, rather than building the files kept again
+ * on its own (localStartConfig)
  */
-export const OWN_TAB_KEY = keyedToPage("flown-local-tab");
+export const STOPPED_KEY = keyedToPage("flown-local-stopped");
+/**
+ * The address a tab left while it showed the site's flights to build the
+ * visitor's again (staleAtStart): the state in it is the page's own, which
+ * a reload finds there (localStartConfig), not a link
+ */
+export const REBUILT_ADDRESS_KEY = keyedToPage("flown-local-rebuilt");
 
 /**
  * How long Remove all waits for its second press (CONFIRM_CLEAR_LABEL), at
@@ -244,7 +250,7 @@ async function keptAs(
     const text = await file.text();
     for (const name of names) {
       const kept = aircraftNumber(name) && (await readFileBytes(name));
-      if (kept && decode(kept) === text) return name;
+      if (kept && (await kept.text()) === text) return name;
     }
   } catch {
     // Taken for another: one that cannot be read is said so as it is kept
@@ -309,19 +315,30 @@ function saidThisTab(): boolean {
   return false;
 }
 
-function ownTab(): boolean {
-  try {
-    return sessionStorage.getItem(OWN_TAB_KEY) === "1";
-  } catch {
-    return false;
+/**
+ * Whether the address holds a link: any parameter but debug, which the page
+ * keeps (urlState.ts). The page writes no state there while it shows the
+ * visitor's flights (ui/stateManager.ts), so a state in it is of the site's,
+ * in a tab that showed the visitor's flights before as well.
+ */
+function linked(): boolean {
+  for (const key of new URLSearchParams(location.search).keys()) {
+    if (key !== "debug") return true;
   }
+  return false;
 }
 
-function markOwnTab(): void {
+/**
+ * Whether the address is the one the tab left as it built the visitor's
+ * flights again (REBUILT_ADDRESS_KEY), which is taken: once a reload
+ */
+function leftAsRebuilt(): boolean {
   try {
-    sessionStorage.setItem(OWN_TAB_KEY, "1");
+    const left = sessionStorage.getItem(REBUILT_ADDRESS_KEY);
+    sessionStorage.removeItem(REBUILT_ADDRESS_KEY);
+    return left === location.search;
   } catch {
-    // A link in the address bar then opens on the site's flights
+    return false;
   }
 }
 
@@ -341,10 +358,10 @@ let linkedAway = false;
  * page starts from the site's flights as it would without it).
  *
  * Two starts go to the site's flights and keep the flag. One with a state
- * in its address that this tab did not write: a link someone copied, from
- * before the share token or from an address bar, is of the site's flights
- * (as mapApp.ts takes a shared link), and would pick its year, aircraft
- * and ids out of the visitor's. And one whose dataset another deploy of
+ * in its address (linked): a link someone copied, from before the share
+ * token or from an address bar, is of the site's flights (as mapApp.ts
+ * takes a shared link), and would pick its year, aircraft and ids out of
+ * the visitor's. And one whose dataset another deploy of
  * the site built, which may write the year files in another format: the
  * panel opens and builds the files again (reopenAfterSwitch), rather than
  * the visitor finding the site's flights without a word.
@@ -362,9 +379,22 @@ export async function localStartConfig(
 ): Promise<MapConfig | null> {
   // The flag is kept for the visitor's next visit to the site itself
   if (framed()) return null;
-  if (location.search && !ownTab()) {
-    linkedAway = true;
-    return null;
+  const rebuilt = leftAsRebuilt();
+  if (linked()) {
+    if (!rebuilt) {
+      linkedAway = true;
+      return null;
+    }
+    // Reloaded as it built them: the state is of the site's flights, which
+    // the page saved as well, and goes from a start on the visitor's (with
+    // ?debug, if the address had it)
+    const debug = new URLSearchParams(location.search).get("debug");
+    history.replaceState(
+      null,
+      "",
+      location.pathname +
+        (debug === null ? "" : "?debug=" + encodeURIComponent(debug)),
+    );
   }
   const giveUp = (): null => {
     storeFlag(LOCAL_FLIGHTS_KEY, false);
@@ -389,15 +419,22 @@ export async function localStartConfig(
     return giveUp();
   }
   // Of other files than the ones kept (a file removed while the rebuild
-  // failed) as well: built again as the panel opens
-  if (!upToDate(info, files, config)) {
+  // failed) as well: built again as the panel opens. Unless the visitor
+  // stopped the build of files added, whose flights it went on without:
+  // the page opens on them as it showed them after the stop, and Show my
+  // flights builds the rest (of a dataset of another deploy, which this
+  // one may not read, or of a file since removed, it does not)
+  const stopped =
+    storedFlag(STOPPED_KEY) &&
+    info.build === siteBuild(config) &&
+    info.files.every((name) => files.some((file) => file.name === name));
+  if (!stopped && !upToDate(info, files, config)) {
     // Said to be an update of the site only where another deploy built
     // it; otherwise a stopped build of a drop left it behind
     staleAtStart =
       info.build === siteBuild(config) ? BUILDING_MESSAGE : REBUILDING_MESSAGE;
     return null;
   }
-  markOwnTab();
   const prefix = `${LOCAL_DATA_DIR}/`;
   const bytesOf = async (url: string): Promise<ArrayBuffer> => {
     const path = url.startsWith(prefix) ? url.slice(prefix.length) : url;
@@ -465,7 +502,7 @@ const ACTIONS = {
   show: "Show my flights",
   again: BUILD_AGAIN_LABEL,
   cancel: "Stop the build",
-  site: "Show the site’s flights",
+  site: "Show the site's flights",
   clear: "Remove all",
 };
 type Action = keyof typeof ACTIONS;
@@ -486,12 +523,13 @@ const PANEL_HTML =
   "<span class='local-flights-choose'>choose files</span></span>" +
   '<span class="local-flights-drop-touch">Choose KML or KMZ files</span>' +
   // The types too: the iOS picker greys out a file by its type, which an
-  // extension alone may not give it
+  // extension alone may not give it. Named by the label's text that is
+  // shown, which a voice command says (WCAG 2.5.3)
   '<input type="file" multiple accept=".kml,.kmz,.json,' +
   "application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz," +
-  'application/json" ' +
-  'aria-label="Choose the KML or KMZ files of your flights"></label>' +
-  '<p class="local-flights-hint">The aircraft comes from each file’s name, ' +
+  'application/json"></label>' +
+  '<p class="local-flights-hint">' +
+  "The aircraft comes from each file's name, " +
   "such as 1_DEAGJ_DA20.kml " +
   `(<a href="${NAMING_DOCS_URL}" target="_blank" rel="noopener">how to ` +
   "name them</a>), and the year from the times in it; add an aircraft.json " +
@@ -511,7 +549,7 @@ const PANEL_HTML =
     .join("") +
   "</div>" +
   '<p class="local-flights-note">The files and the map built from them are ' +
-  "kept in this browser’s storage, and the files never leave it. The build " +
+  "kept in this browser's storage, and the files never leave it. The build " +
   "fetches its Python runtime from a CDN and the airport names from " +
   "OurAirports. For the ground under the flights it fetches the elevation " +
   "tiles they cross from AWS, which tells AWS roughly where you flew; " +
@@ -567,6 +605,8 @@ export class LocalFlights {
    * each pass alone
    */
   private adding: Promise<unknown> = Promise.resolve();
+  /** The last removal of a file, with the build of the rest it asks for */
+  private removing: Promise<void> | undefined;
   private opener: HTMLElement | null = null;
   private readonly lifetime = new AbortController();
 
@@ -674,7 +714,7 @@ export class LocalFlights {
           event.target instanceof Element
             ? event.target.closest<HTMLElement>("[data-remove]")
             : null;
-        if (button) void this.remove(button.dataset["remove"]!);
+        if (button) this.removing = this.remove(button.dataset["remove"]!);
       },
       listen,
     );
@@ -977,13 +1017,22 @@ export class LocalFlights {
    */
   private cancel(): void {
     if (!this.building || this.keeping) return;
+    this.letGo();
+    this.buildAgain = false;
+    this.reveal = false;
+    storeFlag(STOPPED_KEY, true);
+    this.render();
+    this.say(CANCELLED_MESSAGE);
+  }
+
+  /**
+   * Let go of the build on its way: the worker goes with it, and nothing it
+   * ends with is said, kept or shown (run)
+   */
+  private letGo(): void {
     this.builder.destroy();
     this.run++;
     this.building = false;
-    this.buildAgain = false;
-    this.reveal = false;
-    this.render();
-    this.say(CANCELLED_MESSAGE);
   }
 
   /**
@@ -1002,9 +1051,7 @@ export class LocalFlights {
       !this.keeping &&
       this.buildsGround
     ) {
-      this.builder.destroy();
-      this.run++;
-      this.building = false;
+      this.letGo();
       here = true;
     }
     if (here && this.files.length) void this.build(BUILDING_MESSAGE, false);
@@ -1135,9 +1182,11 @@ export class LocalFlights {
       return false;
     }
     for (const [name, file] of taken) {
-      let bytes: ArrayBuffer;
+      let bytes: Blob;
       try {
-        bytes = await file.arrayBuffer();
+        // A copy is kept, not the File (StoredFileWithBytes), read one
+        // file at a time
+        bytes = new Blob([await file.arrayBuffer()]);
       } catch (error) {
         // A file in the cloud that is not on the device, or one changed
         // since it was picked
@@ -1176,8 +1225,12 @@ export class LocalFlights {
 
   private async remove(name: string): Promise<void> {
     this.clearAlert();
-    // A build on its way of the file is dropped at once
+    // A build on its way of the file is dropped at once, and let go of,
+    // unless it is being kept: it would go on to the end, asking AWS for
+    // the tiles under the file's flights, before the rest built again
     this.generation++;
+    const stopped = this.building && !this.keeping;
+    if (stopped) this.letGo();
     try {
       await removeFile(name);
     } catch (error) {
@@ -1185,7 +1238,7 @@ export class LocalFlights {
       this.say(STORAGE_FAILED_MESSAGE, true);
       // The file is still kept: the files a build dropped for it, or is
       // dropping, are built again, which takes up what it was asked for
-      if (this.building || this.reveal) {
+      if (stopped || this.building || this.reveal) {
         await this.build(BUILDING_MESSAGE, false);
       }
       return;
@@ -1228,7 +1281,16 @@ export class LocalFlights {
    */
   async rebuild(message = REBUILDING_MESSAGE): Promise<void> {
     await this.refresh();
+    let generation = this.generation;
     if (this.files.length) await this.build(message);
+    // A file removed meanwhile let go of the build, and its removal builds
+    // the rest (remove), or a Remove all let go of them all: what that
+    // ends with decides, a stop or a failure of it as of this one
+    while (generation !== this.generation) {
+      generation = this.generation;
+      await this.removing;
+      await this.clearing;
+    }
     // A page torn down meanwhile let go of the build, not of the flag
     if (this.lifetime.signal.aborted) return;
     if (!upToDate(this.info, this.files)) storeFlag(LOCAL_FLIGHTS_KEY, false);
@@ -1248,9 +1310,7 @@ export class LocalFlights {
     // as well: the parsed tracks of the flights are in it. The cache goes
     // first, so a failure to clear the files leaves no parse of them
     // behind either.
-    this.builder.destroy();
-    this.building = false;
-    this.run++;
+    this.letGo();
     // Stop the build goes with the build it stopped
     this.render();
     const clearing = (async () => {
@@ -1333,6 +1393,7 @@ export class LocalFlights {
     }
     this.building = true;
     this.buildAgain = false;
+    storeFlag(STOPPED_KEY, false);
     const run = ++this.run;
     this.say(message);
     this.render();
@@ -1350,7 +1411,7 @@ export class LocalFlights {
       const flags = siteFlags(this.app, config);
       const inputs: InputFile[] = [];
       for (const file of built) {
-        // The build takes the bytes over; the store keeps its own
+        // As Blobs, which the worker reads one at a time
         const bytes = await readFileBytes(file.name);
         if (bytes) inputs.push({ name: file.name, bytes });
       }
@@ -1564,10 +1625,7 @@ export function reopenAfterSwitch(
     // followed a link of their own (an old bookmark) lost sight of theirs
     showToast(LINK_OPENED_SITE_MESSAGE, "info", {
       label: "Show my flights",
-      run: () => {
-        markOwnTab();
-        showMine();
-      },
+      run: showMine,
     });
   }
   const degraded = app.config.localFlights?.degraded;
@@ -1588,6 +1646,19 @@ export function reopenAfterSwitch(
   if (staleAtStart) {
     const message = staleAtStart;
     staleAtStart = null;
+    // The site's flights write their state in the address, which a reload
+    // as they show takes for the page's own (localStartConfig)
+    window.addEventListener(
+      "pagehide",
+      () => {
+        try {
+          sessionStorage.setItem(REBUILT_ADDRESS_KEY, location.search);
+        } catch {
+          // A reload then opens on the site's flights, as a link's would
+        }
+      },
+      { signal: app.signal },
+    );
     takeReopen();
     toggleLocalFlights(app);
     void current?.rebuild(message);

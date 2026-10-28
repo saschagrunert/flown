@@ -51,7 +51,7 @@ from .exceptions import TerrainUnavailableError
 from .geometry import TERRAIN_MAX_LATITUDE, planar_metres
 from .logger import logger
 from .segment_codec import ALTITUDE, GROUND_STEP, LAT, LON, SPEED, TIME
-from .terrain_fetch import TERRAIN_CACHE_DIR, TILE_URL, TerrariumTiles
+from .terrain_fetch import TILE_URL
 from .terrain_pixels import TILE_SIZE, DecodeFailedError, TileKey
 from .types import COORDINATE_DECIMALS
 
@@ -62,12 +62,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "REQUIRE_TERRAIN_ENV",
-    "TERRAIN_CACHE_DIR",
     "TERRAIN_ZOOM",
-    "TILE_SIZE",
-    "DecodeFailedError",
-    "TerrariumTiles",
-    "TileKey",
     "TileSource",
     "elevations_by_coordinate",
     "ground_profile_ft",
@@ -182,7 +177,8 @@ def sample_elevations(
     Bilinear between the four pixels around a coordinate, which can be in
     up to four tiles: the relief runs on across tile edges. A coordinate
     with a pixel of a missing tile is NaN. Also returns how many tiles were
-    asked for and how many of them were missing.
+    asked for and how many of them were missing. The depths of the seas
+    are in the tiles as they are (see ``ground_profile_ft``).
 
     Every pixel is asked for once. Nothing is kept per coordinate but four
     numbers in arrays (its fractions, and its index and that of its top
@@ -484,18 +480,25 @@ def _field_offset_ft(
     flight of circuits whose average was below ``TAXI_KNOTS`` taxied all
     of its way at the median of its altitudes.
     """
-    altitudes: list[float] = []
-    grounds: list[float] = []
+    taxiing = _taxiing(rows, order)
+    if not taxiing:
+        return None
+    # The upper median, as the frontend takes it
+    return median_high(rows[index][ALTITUDE] for index in taxiing) - median_high(
+        dem_ft[index] for index in taxiing
+    )
+
+
+def _taxiing(rows: Sequence[SegmentRow], order: Iterable[int]) -> list[int]:
+    """The indices of the taxiing rows at one end (see ``_field_offset_ft``),
+    none for fewer than ``TAXI_MIN_FIXES``."""
+    taxiing: list[int] = []
     for index in order:
         row = rows[index]
         if len(row) <= TIME or not 0 < row[SPEED] < TAXI_KNOTS:
             break
-        altitudes.append(row[ALTITUDE])
-        grounds.append(dem_ft[index])
-    if len(altitudes) < TAXI_MIN_FIXES:
-        return None
-    # The upper median, as the frontend takes it
-    return median_high(altitudes) - median_high(grounds)
+        taxiing.append(index)
+    return taxiing if len(taxiing) >= TAXI_MIN_FIXES else []
 
 
 def ground_profile_ft(
@@ -518,17 +521,39 @@ def ground_profile_ft(
     since the ground under them is their own altitudes up to the relief of
     the field, and the altitudes are rounded to 20 ft anyway.
 
+    The model holds the depths of the seas, which put the ground of a
+    flight along a coast 100 ft down and that of one across the ocean
+    thousands of feet. It is at sea level where it is below, unless the
+    flight's own fields are below it as well (the Dead Sea, a polder): then
+    it goes as far down as they are. Clamped at sea level, a field 1,266 ft
+    below it would shift the model under the rest of the flight by as much.
+
     None when the path has no rows or a row without an elevation: a ground
     with a hole in it would be worse than the line between the fields.
     """
     if not rows or not start:
         return None
-    dem_ft: list[float] = []
+    model_ft: list[float] = []
     for row in rows:
         elevation = elevations.get((row[LAT], row[LON]))
         if elevation is None:
             return None
-        dem_ft.append(elevation * METERS_TO_FEET)
+        model_ft.append(elevation * METERS_TO_FEET)
+    fields = (
+        _taxiing(rows, range(len(rows))),
+        _taxiing(rows, reversed(range(len(rows)))),
+    )
+    lowest_ft = min(
+        [
+            0.0,
+            *(
+                median_high(model_ft[index] for index in field)
+                for field in fields
+                if field
+            ),
+        ]
+    )
+    dem_ft = [max(feet, lowest_ft) for feet in model_ft]
 
     first = _field_offset_ft(rows, dem_ft, range(len(rows)))
     last = _field_offset_ft(rows, dem_ft, reversed(range(len(rows))))

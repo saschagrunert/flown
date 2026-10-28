@@ -28,10 +28,12 @@ import {
 import type { CrossSection } from "../../../../flown/frontend/calculations/crossSection";
 import { isSectionLine } from "../../../../flown/frontend/state/urlState";
 import { MobileSheet } from "../../../../flown/frontend/ui/mobileSheet";
+import * as device from "../../../../flown/frontend/utils/device";
 import type { PathSegment } from "../../../../flown/frontend/types";
-import type {
-  Map as MockMap,
-  Marker as MockMarker,
+import {
+  LngLat,
+  type Map as MockMap,
+  type Marker as MockMarker,
 } from "../../../mocks/maplibre-gl";
 import {
   asMapApp,
@@ -311,6 +313,94 @@ describe("cross-section", () => {
       expect(line.coordinates.at(-1)![0]).toBeCloseTo(LON + 0.035, 6);
     });
 
+    it("names Escape only where there is a key for it", async () => {
+      const { app, canvas } = await setup();
+      await open(app);
+      const hint = (): string => part(".section-hint").textContent;
+      expect(hint()).toContain("Escape cancels.");
+      tap(canvas, LON - 0.035);
+      expect(hint()).toContain("Escape starts again.");
+      toggleCrossSection(asMapApp(app));
+
+      // A finger has no Escape
+      vi.spyOn(device, "isTouchDevice").mockReturnValue(true);
+      await open(app);
+      expect(hint()).toBe(
+        "Click or tap two points on the map, or drag a line.",
+      );
+      tap(canvas, LON - 0.035);
+      expect(hint()).toBe("Now B, the end of the line.");
+    });
+
+    it("sets no end in the sky of a tilted map", async () => {
+      const { app, map, canvas } = await setup();
+      // MapLibre answers the sky with ground behind the camera, which does
+      // not come back to the point: here north of LAT + 0.002
+      const ground = map.unproject.getMockImplementation()!;
+      const behind = new LngLat(LON, LAT - 1);
+      map.unproject.mockImplementation((point) => {
+        const y = Array.isArray(point) ? point[1] : point.y;
+        return y < -2 ? behind : ground(point);
+      });
+      await open(app);
+
+      // A tap there sets no A, and a drag let go of there no B
+      tap(canvas, LON, LAT + 0.05);
+      expect(handles()[0]!.map).toBeNull();
+      expect(part(".section-hint").textContent).toContain("two points");
+      canvas.dispatchEvent(pointer("pointerdown", screen(LON - 0.035)));
+      window.dispatchEvent(pointer("pointermove", screen(LON)));
+      window.dispatchEvent(pointer("pointerup", screen(LON, LAT + 0.05)));
+      expect(part(".section-plot").hidden).toBe(true);
+      expect(part(".section-hint").textContent).toContain("Now B");
+      tap(canvas, LON + 0.035);
+      expect(summary()).toContain("of a 5.0 km line");
+
+      // A key moves B the pixels of a map seen from straight above, as it
+      // does an end off the screen past the relief drawn: north, not to
+      // the ground behind the camera
+      const b = handles()[1]!;
+      const press = (): KeyboardEvent => {
+        const up = new KeyboardEvent("keydown", {
+          key: "ArrowUp",
+          bubbles: true,
+          cancelable: true,
+        });
+        b.getElement().dispatchEvent(up);
+        return up;
+      };
+      // 10 pixels at zoom 12, 360 / 512 / 2 ** 12 degrees of longitude each
+      const step = (10 * 360) / 512 / 2 ** 12;
+      expect(press().defaultPrevented).toBe(true);
+      const north = step * Math.cos(LAT * (Math.PI / 180));
+      expect(b.getLngLat()!.lat).toBeCloseTo(LAT + north, 9);
+      expect(b.getLngLat()!.lng).toBeCloseTo(LON + 0.035, 9);
+      // Up the screen of a map turned east is east
+      map.jumpTo({ bearing: 90 });
+      press();
+      expect(b.getLngLat()!.lat).toBeCloseTo(LAT + north, 9);
+      expect(b.getLngLat()!.lng).toBeCloseTo(LON + 0.035 + step, 9);
+      map.jumpTo({ bearing: 0 });
+      frames.run();
+      // A drag there does not move it
+      const kept = b.getLngLat()!;
+      window.dispatchEvent(
+        pointer("pointermove", screen(LON + 0.035, LAT + 0.05)),
+      );
+      b.setLngLat(behind);
+      b.emit("drag");
+      expect(frames.pending()).toBe(0);
+      b.emit("dragend");
+      expect(b.getLngLat()).toEqual(kept);
+      // Dragged on the ground, it moves
+      window.dispatchEvent(
+        pointer("pointermove", screen(LON + 0.035, LAT - 0.01)),
+      );
+      b.setLngLat([LON + 0.035, LAT - 0.01]);
+      b.emit("drag");
+      expect(frames.pending()).toBe(1);
+    });
+
     it("gives the next click back to the map after a drag without one", async () => {
       const { app, map, canvas } = await setup();
       await open(app);
@@ -326,6 +416,38 @@ describe("cross-section", () => {
       map.getCanvasContainer().addEventListener("click", underneath);
       expect(tap(canvas, LON)).toBe(true);
       expect(underneath).toHaveBeenCalledTimes(1);
+    });
+
+    it("steps an end with no ground under it no further than the flat map's world", async () => {
+      const { app, map, canvas } = await setup();
+      await open(app);
+      drawLine(canvas);
+      // Sky wherever the keys go, seen from far out: Shift's 50 pixels are
+      // 35 degrees of longitude at zoom 0
+      const behind = new LngLat(LON, LAT - 1);
+      map.unproject.mockImplementation(() => behind);
+      map.jumpTo({ zoom: 0 });
+      const b = handles()[1]!;
+      const press = (key: string): void => {
+        b.getElement().dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key,
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      };
+
+      // 72.6, 83.1, then 87.3 past the edge at 85.05, held at 85
+      for (let i = 0; i < 3; i++) press("ArrowUp");
+      expect(b.getLngLat()!.lat).toBe(85);
+      press("ArrowUp");
+      expect(b.getLngLat()!.lat).toBe(85);
+      for (let i = 0; i < 20; i++) press("ArrowDown");
+      expect(b.getLngLat()!.lat).toBe(-85);
+      frames.run();
+      expect(isSectionLine(app.crossSectionLine)).toBe(true);
     });
 
     it("keeps a double click or tap that places B from zooming the map", async () => {
@@ -862,6 +984,14 @@ describe("cross-section", () => {
           disconnect(): void {}
         },
       );
+      // The height goes to the page a frame after the observer's round
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+        frames.push(callback),
+      );
+      const nextFrame = (): void => {
+        for (const callback of frames.splice(0)) callback(0);
+      };
       const { app } = await setup();
       toggleCrossSection(asMapApp(app));
       vi.spyOn(root(), "offsetHeight", "get").mockReturnValue(180);
@@ -870,9 +1000,16 @@ describe("cross-section", () => {
         document.documentElement.style.getPropertyValue(
           CROSS_SECTION_HEIGHT_VAR,
         ),
+      ).toBe("");
+      nextFrame();
+      expect(
+        document.documentElement.style.getPropertyValue(
+          CROSS_SECTION_HEIGHT_VAR,
+        ),
       ).toBe("180px");
       vi.spyOn(root(), "offsetHeight", "get").mockReturnValue(0);
       observers[0]!([], {} as ResizeObserver);
+      nextFrame();
       expect(
         document.documentElement.style.getPropertyValue(
           CROSS_SECTION_HEIGHT_VAR,

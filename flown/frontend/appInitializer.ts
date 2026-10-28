@@ -288,8 +288,10 @@ function followMissingAirports(app: MapApp): {
         showAirportMarkers(app, airports);
         app.airportManager.updateAirportPopups();
         app.airportManager.updateAirportMarkerSizes();
-        // The rail named the airports and counted their countries without
+        // The rail named the airports and counted their countries without,
+        // and an open Wrapped its destinations
         app.statsManager?.refresh();
+        app.wrappedManager?.refresh();
         return true;
       })
       .finally(() => (loading = null)));

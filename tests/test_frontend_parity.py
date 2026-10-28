@@ -26,10 +26,8 @@ from flown.segment_codec import (
     SPEED_SCALE,
     TIME_SCALE,
 )
-from flown.terrain import (
-    TERRAIN_ZOOM,
-    TILE_SIZE,
-)
+from flown.terrain import TERRAIN_ZOOM
+from flown.terrain_pixels import TILE_SIZE
 
 FRONTEND = Path(__file__).parent.parent / "flown" / "frontend"
 
@@ -115,6 +113,8 @@ def _ts_constant(relative, name):
         ("ui/heatCloudShaders.ts", "CLOUD_COLOUR", previews.CLOUD_COLOUR),
         # Your flights refuses a file the build in the page would skip
         ("ui/localMessages.ts", "MAX_FILE_BYTES", browser.MAX_KML_BYTES),
+        # and keeps no more in all than the build reads once they are unpacked
+        ("ui/localMessages.ts", "MAX_KEPT_BYTES", browser.MAX_INPUT_BYTES),
         # The worker fetches the tiles of a build in the page as the site
         # build fetches them, and decodes them as its decoder does
         ("services/localTiles.ts", "TILE_FETCHES", fetch_module.FETCH_WORKERS),

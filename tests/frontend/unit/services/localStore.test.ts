@@ -10,6 +10,7 @@
  */
 import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
+import { Blob as NodeBlob } from "node:buffer";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   CACHE_BUSY_MESSAGE,
@@ -38,6 +39,8 @@ const bytes = (text: string): ArrayBuffer =>
   new TextEncoder().encode(text).buffer;
 const text = (buffer: ArrayBuffer | null): string | null =>
   buffer && new TextDecoder().decode(buffer);
+const blobText = (blob: Blob | null): Promise<string> | null =>
+  blob && blob.text();
 
 const file = (
   name: string,
@@ -46,7 +49,7 @@ const file = (
 ): StoredFileWithBytes => ({
   name,
   size: content.length,
-  bytes: bytes(content),
+  bytes: new Blob([content]),
   added,
 });
 
@@ -68,6 +71,9 @@ beforeEach(() => {
   // A fresh database for every test, and no connection to the last one's
   closeStore();
   vi.stubGlobal("indexedDB", new IDBFactory());
+  // Node's, which the store in memory clones as a browser's does; the
+  // page's is jsdom's, which it cannot
+  vi.stubGlobal("Blob", NodeBlob);
 });
 
 afterEach(() => closeStore());
@@ -106,8 +112,19 @@ describe("the files", () => {
       { name: "b.kml", size: 5, added: 20 },
       { name: "c.kml", size: 5, added: 30 },
     ]);
-    expect(text(await readFileBytes("a.kml"))).toBe("a.kml");
+    await expect(blobText(await readFileBytes("a.kml"))).resolves.toBe("a.kml");
     await expect(readFileBytes("none.kml")).resolves.toBeNull();
+  });
+
+  it("reads the bytes kept as an ArrayBuffer before as a Blob", async () => {
+    await putFiles([
+      { ...file("a.kml", 10), bytes: bytes("old") as unknown as Blob },
+    ]);
+
+    const kept = await readFileBytes("a.kml");
+
+    expect(kept).toBeInstanceOf(Blob);
+    await expect(blobText(kept)).resolves.toBe("old");
   });
 
   it("replaces a file dropped again under the same name", async () => {
@@ -116,7 +133,7 @@ describe("the files", () => {
 
     const files = await listFiles();
     expect(files).toEqual([{ name: "a.kml", size: 4, added: 20 }]);
-    expect(text(await readFileBytes("a.kml"))).toBe("new!");
+    await expect(blobText(await readFileBytes("a.kml"))).resolves.toBe("new!");
   });
 
   it("removes one by name with its bytes, and a name it has not without complaint", async () => {
@@ -127,7 +144,7 @@ describe("the files", () => {
 
     expect((await listFiles()).map((f) => f.name)).toEqual(["b.kml"]);
     await expect(readFileBytes("a.kml")).resolves.toBeNull();
-    expect(text(await readFileBytes("b.kml"))).toBe("b.kml");
+    await expect(blobText(await readFileBytes("b.kml"))).resolves.toBe("b.kml");
   });
 });
 
@@ -248,9 +265,7 @@ describe("a transaction that fails", () => {
       });
 
     await expect(
-      putFiles([
-        { name: "a.kml", size: 1, added: 1, bytes: new ArrayBuffer(1) },
-      ]),
+      putFiles([{ name: "a.kml", size: 1, added: 1, bytes: new Blob(["a"]) }]),
     ).rejects.toThrow("IndexedDB aborted");
     put.mockRestore();
     await expect(listFiles()).resolves.toEqual([]);
@@ -273,11 +288,123 @@ describe("a transaction that fails", () => {
       });
 
     await expect(
-      putFiles([
-        { name: "a.kml", size: 1, added: 1, bytes: new ArrayBuffer(1) },
-      ]),
+      putFiles([{ name: "a.kml", size: 1, added: 1, bytes: new Blob(["a"]) }]),
     ).rejects.toBe(quota);
+    // Not tried again with the bytes read, which take as much room
+    expect(put).toHaveBeenCalledTimes(2);
     put.mockRestore();
+  });
+
+  /** A put that refuses Blobs as `refuse` does, and keeps the rest */
+  function refuseBlobs(
+    refuse: (transaction: IDBTransaction) => IDBRequest<IDBValidKey>,
+  ) {
+    const original = IDBObjectStore.prototype.put;
+    return vi
+      .spyOn(IDBObjectStore.prototype, "put")
+      .mockImplementation(function (
+        this: IDBObjectStore,
+        value: unknown,
+        key?: IDBValidKey,
+      ) {
+        const kept = (value as { bytes?: unknown }).bytes;
+        if (kept instanceof Blob) {
+          return refuse(this.transaction);
+        }
+        return original.call(this, value, key);
+      });
+  }
+
+  it("keeps the bytes where the browser keeps no Blob, as Safari's private windows", async () => {
+    // As WebKit has it since 2025: the request fails, which aborts it all
+    const refused = new DOMException(
+      "Error preparing Blob/File data to be stored in object store",
+      "UnknownError",
+    );
+    const aborted = new Set<IDBTransaction>();
+    const put = refuseBlobs((transaction) => {
+      queueMicrotask(() => {
+        // Once, by the first of the files
+        if (aborted.has(transaction)) return;
+        aborted.add(transaction);
+        transaction.onerror?.call(transaction, {
+          target: { error: refused },
+        } as unknown as Event);
+        transaction.abort();
+      });
+      return {} as IDBRequest<IDBValidKey>;
+    });
+
+    await putFiles([
+      file("a.kml", 10),
+      file("b.kml", 20, "bee"),
+      file("c.kml", 30),
+    ]);
+    // The bytes of every file asked to be kept before any listing: WebKit
+    // hangs the connection for a Blob it refuses after a listing went
+    const kinds = put.mock.calls.map(([value]) =>
+      (value as { bytes?: unknown }).bytes === undefined ? "listing" : "bytes",
+    );
+    const batch = ["bytes", "bytes", "bytes", "listing", "listing", "listing"];
+    // As Blobs, then as ArrayBuffers
+    expect(kinds).toEqual([...batch, ...batch]);
+    put.mockRestore();
+
+    expect((await listFiles()).map((f) => f.name)).toEqual([
+      "a.kml",
+      "b.kml",
+      "c.kml",
+    ]);
+    await expect(blobText(await readFileBytes("b.kml"))).resolves.toBe("bee");
+  });
+
+  it("keeps the bytes where a put of a Blob throws, as an older Safari's", async () => {
+    const put = refuseBlobs(() => {
+      throw new DOMException(
+        "BlobURLs are not yet supported",
+        "DataCloneError",
+      );
+    });
+
+    await putFiles([file("a.kml", 10)]);
+    put.mockRestore();
+
+    await expect(blobText(await readFileBytes("a.kml"))).resolves.toBe("a.kml");
+  });
+
+  it("keeps nothing of a put of the bytes that threw, nor the listing", async () => {
+    const put = refuseBlobs(() => {
+      throw new Error("broken");
+    });
+
+    await expect(putFiles([file("a.kml", 10)])).rejects.toThrow("broken");
+    put.mockRestore();
+
+    await expect(listFiles()).resolves.toEqual([]);
+  });
+
+  it("keeps none of a batch whose later bytes threw", async () => {
+    const original = IDBObjectStore.prototype.put;
+    const put = vi
+      .spyOn(IDBObjectStore.prototype, "put")
+      .mockImplementation(function (
+        this: IDBObjectStore,
+        value: unknown,
+        key?: IDBValidKey,
+      ) {
+        if ((value as { name?: unknown }).name === "b.kml") {
+          throw new Error("broken");
+        }
+        return original.call(this, value, key);
+      });
+
+    await expect(
+      putFiles([file("a.kml", 10), file("b.kml", 20)]),
+    ).rejects.toThrow("broken");
+    put.mockRestore();
+
+    await expect(listFiles()).resolves.toEqual([]);
+    await expect(readFileBytes("a.kml")).resolves.toBeNull();
   });
 
   it("rejects with what went wrong in it, and nothing else unheard", async () => {

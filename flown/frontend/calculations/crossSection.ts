@@ -401,9 +401,21 @@ function corridorPieces(request: SectionRequest): {
   const pieces: Piece[] = [];
   const flights = new Set<number>();
   let fromTerrain = true;
-  const near = wraps
-    ? null
-    : corridorSegments(segments, frame, halfWidthM, [south, north, west, east]);
+  // So does one whose box has more cells of the index than there are
+  // segments: a line across a continent looked up a million cells, at
+  // every frame of a drag, to pass over fewer segments than that
+  const cells =
+    (cellIndex(north) - cellIndex(south) + 3) *
+    (cellIndex(east) - cellIndex(west) + 3);
+  const near =
+    wraps || cells > segments.length
+      ? null
+      : corridorSegments(segments, frame, halfWidthM, [
+          south,
+          north,
+          west,
+          east,
+        ]);
   const count = segments.length;
   for (let i = 0; i < count; i++) {
     if (near?.[i] === 0) continue;

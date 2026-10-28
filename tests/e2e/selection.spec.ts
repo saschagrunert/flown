@@ -7,8 +7,11 @@ import {
   selectionParams,
   selectFlightsForReplay,
   selectPathForReplay,
+  setAircraftFilter,
   toggleLayer,
   togglePathSelection,
+  toggleStatsPanel,
+  waitForAircraftFilter,
   waitForAppReady,
   waitForPathData,
 } from "./helpers";
@@ -136,6 +139,82 @@ test.describe("Path Selection", () => {
     await expect(replayBtn).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#replay-all-btn")).toBeEnabled();
   });
+
+  /** The selection chip overlaps neither the rail nor a column's group */
+  async function expectChipClear(page: Page, label: string): Promise<void> {
+    const chip = page.locator("#selection-chip");
+    await expect(chip).toBeVisible();
+    const box = (await chip.boundingBox())!;
+    const others = page.locator(
+      "#stats-rail, #left-buttons .control-group, #right-buttons .control-group",
+    );
+    for (const other of await others.all()) {
+      if (!(await other.isVisible())) continue;
+      const near = (await other.boundingBox())!;
+      const apart =
+        box.x >= near.x + near.width ||
+        near.x >= box.x + box.width ||
+        box.y >= near.y + near.height ||
+        near.y >= box.y + box.height;
+      expect(
+        apart,
+        label +
+          ": " +
+          (await other.evaluate((el) => el.outerHTML.slice(0, 80))),
+      ).toBe(true);
+    }
+  }
+
+  for (const width of [1280, 1024, 960, 768]) {
+    test(`beside the statistics the selection chip stands clear of the columns at ${width} px`, async ({
+      page,
+    }) => {
+      // The rail pushes the left column to the right, and the chip,
+      // centred on the window, ran over its top group up to 1280 px
+      await page.setViewportSize({ width, height: 768 });
+      await toggleStatsPanel(page);
+      await selectPathForReplay(page);
+      await expectChipClear(page, "a flight selected");
+
+      // Its longest text: share mode with a flight the filter hides, which
+      // ran over the filters at 960 and 1024 px, and below 820 px
+      await page.locator("#selection-clear-btn").click();
+      const aircraft = await page.evaluate(() => {
+        const app = window.mapApp!;
+        const byAircraft = new Map<string, number[]>();
+        for (const path of app.fullPathInfo!) {
+          const registration = path.aircraft_registration;
+          if (!registration) continue;
+          byAircraft.set(registration, [
+            ...(byAircraft.get(registration) ?? []),
+            path.id,
+          ]);
+        }
+        const fleet = [...byAircraft].sort((a, b) => b[1].length - a[1].length);
+        const [busiest, other] = fleet;
+        for (const pathId of [...busiest![1].slice(0, 2), other![1][0]!]) {
+          app.pathSelection.togglePathSelection(pathId);
+        }
+        return busiest![0];
+      });
+      await page.locator("#selection-share-btn").click();
+      await setAircraftFilter(page, aircraft);
+      await waitForAircraftFilter(page, aircraft);
+      await expect(page.locator("#selection-chip-count")).toHaveText(
+        "Sharing 3 flights, 1 hidden by the filter",
+      );
+      await expectChipClear(page, "three flights shared, one hidden");
+
+      // Under the filters the count is cut short before the right
+      // column's icons, however long it is
+      if (width < 960) {
+        await page.locator("#selection-chip-count").evaluate((count) => {
+          count.textContent = "12345 flights, 12345 not in 2024";
+        });
+        await expectChipClear(page, "a count too long for the map");
+      }
+    });
+  }
 
   test("deselecting all paths marks the replay button unavailable", async ({
     page,

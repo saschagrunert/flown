@@ -189,11 +189,12 @@ the site build does; one with the same contents as one kept is that file dropped
 again, and stays as it is. The AppleDouble files macOS writes beside a file
 (`._1_x.kml`) are left out, dropped or picked, as the site build leaves them
 out. The files kept come to 200 MB at most in all, since every build takes all
-of them, and each up to 32 MB (the document of a KMZ unzipped too), a third of
-what the site build reads: a parse takes some twenty times the size of its file
-at its peak, which a phone's tab has not for more, and 32 MB of a track is more
-than a hundred hours of fixes once a second. The browser keeps the files, runs
-the same build the site was made with on them, in a worker with
+of them, and each up to 32 MB, the documents of KMZ files unzipped in both (a
+build of more names the files that unzip the most), a third of what the site
+build reads: a parse takes some twenty times the size of its file at its peak,
+which a phone's tab has not for more, and 32 MB of a track is more than a
+hundred hours of fixes once a second. The browser keeps the files, runs the same
+build the site was made with on them, in a worker with
 [Pyodide](https://pyodide.org) (the Python runtime is fetched from its CDN the
 first time, some 10 MB, and the site's own code next to the page), and then
 reloads the page on your flights: the heatmap, the flights, the airports, the
@@ -220,58 +221,64 @@ keeps the choice, for every tab of the page: a build on its way, in this tab or
 another, stops as the box is ticked and starts again without the tiles, and a
 build started after takes the choice too. A file that makes no flight (a route
 plan without altitudes, a track without a date) is left out rather than failing
-the build: the others are shown, and the list marks that file with the reason.
-The panel says the steps of the build as it goes, and lists the warnings of the
-build once it is done (a file that names no aircraft, say), the first ten and
-what the build went without, and says how many more there were. A build that is
-done while the panel is closed, or while a replay, the tour or Wrapped has the
-map, does not reload the page under you: a toast says your flights are ready,
-with a Show to switch to them; one that fails then says why in a toast too, with
-a Show that opens the panel once the map is free again (the toast stays until
-then, as Build again's does). Nor does one for a file removed or the ground
-switch changed while the site's flights are shown. **Stop the build** stops one
-on its way and keeps the files, until it is done and its dataset is being kept;
-**Show my flights** builds them again, also where your flights are shown and the
-stopped build was of a drop.
+the build: the others are shown, and the list marks that file with the reason. A
+file kept that the browser's storage can no longer read fails the build, which
+names it to be removed and added again. The panel says the steps of the build as
+it goes, and lists the warnings of the build once it is done (a file that names
+no aircraft, say), the first ten and what the build went without, and says how
+many more there were. A build that is done while the panel is closed, or while a
+replay, the tour or Wrapped has the map, does not reload the page under you: a
+toast says your flights are ready, with a Show to switch to them; one that fails
+then says why in a toast too, with a Show that opens the panel once the map is
+free again (the toast stays until then, as Build again's does). Nor does one for
+a file removed or the ground switch changed while the site's flights are shown.
+**Stop the build** stops one on its way and keeps the files, until it is done
+and its dataset is being kept; **Show my flights** builds them again, also where
+your flights are shown and the stopped build was of a drop. The next visit then
+opens on the flights built before the drop, rather than building the files again
+on its own. Removing a file while a build runs stops that build and starts the
+one without the file at once.
 
 The panel says which flights the page shows and lists the files kept, each with
 its size and a Remove; a file added or removed builds the set again, and so does
 **Show my flights** after a file changed. After the site was deployed again,
 whose build may write the data files another way, the page opens the panel on
-its next visit and builds the files again, saying so, then shows them; a rebuild
-that fails leaves the next visit on the site's flights, and **Show my flights**
-tries again. A build that is done while an older dataset is still shown goes to
-the new one, whole, as soon as the page reads a file of it. **Show the site's
-flights** goes back to the site's without losing the files, **Show my flights**
-returns to them, and **Remove all**, pressed a second time as it asks (for 15
-seconds, and for as long as it has the focus; it says when it stops asking),
-lets the files, the build and the build's cache go (the parsed tracks, the
-elevation tiles along them and the airport database, which the next build
-fetches again). Another tab of the page lets them go, and a build of its says
-the files were removed in another tab, keeping nothing it built of them; if that
-tab's Remove all removed nothing after all, the build starts again. If a tab
-does not let go in time (one still on an older deploy of the site), Remove all
-says so and removes nothing. Another tab that shows the flights removed goes to
-the site's, and lets the view it saved of them go. A build also lets go of what
-the cache holds of files removed: their parses, and, once it gets through, the
-tiles no flight left needs (all of them without the ground). Each set of flights
-keeps a view, year, aircraft and selection of its own; the switch opens the page
-afresh. Nothing leaves the browser: the files and the data built from them stay
-in its storage (IndexedDB), which goes with the site's data when the browser
-clears it; Safari lets go of the storage of a site not used for a week unless
-the page is on the home screen. Copy link is dimmed while they are shown, and
-the statistics say they were built in this browser rather than when the site
-was. Copy link's title says that a link cannot carry flights that are only in
-this browser, which a press says as well. A link opened on a page that shows
-your flights, someone else's long link or one from before the short links, opens
-on the site's flights, which it is of, and a toast says so, with a **Show my
-flights** that switches back. While your flights are shown the page keeps no
-state in its address (their registrations and flight ids would stay in the
-history and a browser's sync); a reload opens on them with the view saved in the
-browser. Replay, Replay all and the hotspot tour hold Your flights while they
-run, as they hold the search. Escape closes the panel, wherever the focus is,
-but in a text field or a dropdown outside it (the search of the flights, the
-year), whose Escape is its own.
+its next visit and builds the files again, saying so, then shows them (a reload
+meanwhile goes on with it: the state of the site's flights in the address is the
+page's own there, not a link); a rebuild that fails leaves the next visit on the
+site's flights, and **Show my flights** tries again. A build that is done while
+an older dataset is still shown goes to the new one, whole, as soon as the page
+reads a file of it. **Show the site's flights** goes back to the site's without
+losing the files, **Show my flights** returns to them, and **Remove all**,
+pressed a second time as it asks (for 15 seconds, and for as long as it has the
+focus; it says when it stops asking), lets the files, the build and the build's
+cache go (the parsed tracks, the elevation tiles along them and the airport
+database, which the next build fetches again). Another tab of the page lets them
+go, and a build of its says the files were removed in another tab, keeping
+nothing it built of them; if that tab's Remove all removed nothing after all,
+the build starts again. If a tab does not let go in time (one still on an older
+deploy of the site), Remove all says so and removes nothing. Another tab that
+shows the flights removed goes to the site's, and lets the view it saved of them
+go. A build also lets go of what the cache holds of files removed: their parses,
+and, once it gets through, the tiles no flight left needs (all of them without
+the ground). Each set of flights keeps a view, year, aircraft and selection of
+its own; the switch opens the page afresh. Nothing leaves the browser: the files
+and the data built from them stay in its storage (IndexedDB), which goes with
+the site's data when the browser clears it; Safari lets go of the storage of a
+site not used for a week unless the page is on the home screen. Copy link is
+dimmed while they are shown, and the statistics say they were built in this
+browser rather than when the site was. Copy link's title says that a link cannot
+carry flights that are only in this browser, which a press says as well. A link
+opened on a page that shows your flights, someone else's long link or one from
+before the short links, opens on the site's flights it is to, also when that tab
+is reloaded, and a toast says so, with a **Show my flights** that switches back.
+While your flights are shown the page keeps no state in its address (their
+registrations and flight ids would stay in the history and a browser's sync); a
+reload opens on them with the view saved in the browser. Replay, Replay all and
+the hotspot tour hold Your flights while they run, as they hold the search.
+Escape closes the panel, wherever the focus is, but in a text field or a
+dropdown outside it (the search of the flights, the year), whose Escape is its
+own.
 
 ### Statistics
 
@@ -688,8 +695,9 @@ replay it is disabled like the filters.
   a phone the tabs and the More rows too), and Reset view is available. The
   loading indicator shows from the start, while the list of years loads, and the
   year dropdown names the year the page opens on from the first paint
-- The toasts stand over the colour legend beside the statistics or in a window
-  narrower than 940 px: the legend steps aside there while one shows
+- Beside the statistics the toasts are centred on the map, clear of the columns.
+  They stand over the colour legend in a window narrower than 940 px, or 1284 px
+  beside the statistics: the legend steps aside there while one shows
 - The controls come before the map in the tab order, and the "Skip to map" link
   at the start of the page goes past them to the map and its airport markers
 - Below 768 px, or at 480 px of height and less (a phone held sideways), the two
@@ -700,11 +708,12 @@ replay it is disabled like the filters.
   and the title) past a third of its height or a quick flick; a shorter drag
   lets it spring back, and under reduced motion it closes or returns at once.
   Escape closes an open sheet, and Tab stays inside it. The Layers sheet takes
-  half the height, so the map above it shows what a switch did, and scrolls.
-  Replay, Replay all and the hotspot tour take over the bottom edge and the bar
-  steps aside until they end. The map shows no colour legend there, the heat's
-  included; the Layers sheet shows the scales of altitude and groundspeed beside
-  their switches
+  half the height, so the map above it shows what a switch did, and scrolls. On
+  a phone held sideways the sheets stand at the right edge instead, with the map
+  and the toasts beside them. Replay, Replay all and the hotspot tour take over
+  the bottom edge and the bar steps aside until they end. The map shows no
+  colour legend there, the heat's included; the Layers sheet shows the scales of
+  altitude and groundspeed beside their switches
 - Added to the home screen, the site opens as an app of its own (the manifest's
   `standalone` display), and on an iPhone the map fills the whole screen, under
   the status bar and around the Dynamic Island or the notch; the controls, the
@@ -818,39 +827,42 @@ except while it covers all of it: then Tab passes over the map nobody can see.
   and offers the link (Copy link) and Exit, which leaves the mode and keeps the
   flights selected. On a phone the chip shows share mode's mark and a blue
   border in place of "Sharing", and the link (Share link) and Exit as icons, so
-  that it fits a 360 px screen beside Replay. While it is on, a click or a tap
-  on a flight shows its values with a Remove button, a click on an airport opens
-  its popup, and a click on a row of a list shows its flight, but none of them
-  adds or removes a flight by itself; a flight joins or leaves with that Remove
-  or its checkbox in a list, and the mode ends with Exit or the last flight. An
-  airport whose last shared flight is unticked in its popup stays on the map
-  until the popup closes. The shared flights are fixed under a change of the
-  year or the aircraft as well: the ones the filter hides stay shared and in the
-  link, and the chip says so ("Sharing 3 flights, 1 hidden by the filter", "3
-  flights, 1 hidden" on a phone, "all hidden" where it hides every one, "1 not
-  in 2024" or "none in 2024" for flights the year's file lacks, "1 not shown"
-  for both). The map, its lines and ribbons, the airports, the statistics, the
-  frame of Share, Replay and the altitude profile are of the shared flights the
-  filter shows. A link opened in share mode shows the same flights the same way,
-  with the same words for the others. Only a link to every year can tell a
-  flight the site no longer has, which it leaves out and says so. A link from
-  Copy link (or Share link on a phone) in share mode opens with a short intro,
-  once: the camera eases from the link's view to frame the shared flights the
-  filter shows while their lines draw in one after another, in the order of
-  their files, about five seconds for all of them (each flight takes a part by
-  how long it took, and at least 0.6 s so a short hop is seen being drawn); a
-  flight without times shows at the end. The camera keeps the tilt and the
-  bearing of the link and frames the flights at that tilt as share mode does,
-  the lines are drawn as Replay all draws its trails (in the colour layer's
-  colours, amber without one), and with the Heatmap on their heat builds up
-  behind them, as the cloud of the 3D view on the flat map too, which fades into
-  the heatmap at the end. Any key (but Tab or a modifier on its own), click,
-  touch or wheel skips to the end, and one before the intro could start keeps it
-  from playing; with reduced motion the flights are only framed. A reload, a
-  link copied from the address bar and the saved state do not play it again (see
-  `i` below). Such a link leaves out the statistics panel the sender had open,
-  and opens without it, and while it shares the sender's flights nothing is
-  saved for the visitor's next visit, which opens on their own view as before
+  that it fits a 360 px screen beside Replay; beside the statistics in a window
+  narrower than 1280 px, where the columns show their icons alone, it does the
+  same, and below 960 px it stands under the filters. While it is on, a click or
+  a tap on a flight shows its values with a Remove button, a click on an airport
+  opens its popup, and a click on a row of a list shows its flight, but none of
+  them adds or removes a flight by itself; a flight joins or leaves with that
+  Remove or its checkbox in a list, and the mode ends with Exit or the last
+  flight. An airport whose last shared flight is unticked in its popup stays on
+  the map until the popup closes. The shared flights are fixed under a change of
+  the year or the aircraft as well: the ones the filter hides stay shared and in
+  the link, and the chip says so ("Sharing 3 flights, 1 hidden by the filter",
+  "3 flights, 1 hidden" on a phone, "all hidden" where it hides every one, "1
+  not in 2024" or "none in 2024" for flights the year's file lacks, "1 not
+  shown" for both). The map, its lines and ribbons, the airports, the
+  statistics, the frame of Share, Replay and the altitude profile are of the
+  shared flights the filter shows. A link opened in share mode shows the same
+  flights the same way, with the same words for the others. Only a link to every
+  year can tell a flight the site no longer has, which it leaves out and says
+  so. A link from Copy link (or Share link on a phone) in share mode opens with
+  a short intro, once: the camera eases from the link's view to frame the shared
+  flights the filter shows while their lines draw in one after another, in the
+  order of their files, about five seconds for all of them (each flight takes a
+  part by how long it took, and at least 0.6 s so a short hop is seen being
+  drawn); a flight without times shows at the end. The camera keeps the tilt and
+  the bearing of the link and frames the flights at that tilt as share mode
+  does, the lines are drawn as Replay all draws its trails (in the colour
+  layer's colours, amber without one), and with the Heatmap on their heat builds
+  up behind them, as the cloud of the 3D view on the flat map too, which fades
+  into the heatmap at the end. Any key (but Tab or a modifier on its own),
+  click, touch or wheel skips to the end, and one before the intro could start
+  keeps it from playing; with reduced motion the flights are only framed. A
+  reload, a link copied from the address bar and the saved state do not play it
+  again (see `i` below). Such a link leaves out the statistics panel the sender
+  had open, and opens without it, and while it shares the sender's flights
+  nothing is saved for the visitor's next visit, which opens on their own view
+  as before
 
 ## Shareable URLs
 

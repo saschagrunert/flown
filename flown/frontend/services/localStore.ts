@@ -3,12 +3,13 @@
  *
  * Three things are kept: the files as they were dropped, their bytes apart
  * from their names and sizes (`files` and `blobs`), so the panel lists them
- * without reading hundreds of megabytes, and what the build in the worker
- * made of them (`dataset`), the data files the page reads in place of the
- * site's (see ui/localFlights.ts and services/localBuild.ts), with one
- * record about them (`info`). Nothing leaves the browser: the storage is
- * the page's own, named for its directory (LOCAL_DB_NAME), and goes with
- * the site's data when the visitor clears it.
+ * without reading hundreds of megabytes (nor does a build: it hands the
+ * Blobs to the worker, which reads one at a time), and what the build in
+ * the worker made of them (`dataset`), the data files the page reads in
+ * place of the site's (see ui/localFlights.ts and services/localBuild.ts),
+ * with one record about them (`info`). Nothing leaves the browser: the
+ * storage is the page's own, named for its directory (LOCAL_DB_NAME), and
+ * goes with the site's data when the visitor clears it.
  *
  * One connection serves the page: the start reads every data file through
  * it (localStartConfig), and the panel its lists. Every call answers a
@@ -39,9 +40,15 @@ export interface StoredFile {
   modified?: number | undefined;
 }
 
-/** A dropped file with its bytes, as it is kept */
+/**
+ * A dropped file with its bytes: a Blob of a copy of them, not the File,
+ * which Chrome's incognito windows and Safari keep as a reference to the
+ * file on the disk for the session, unreadable once it changes there. The
+ * build hands it to the worker as it is (see putFiles for the ArrayBuffer
+ * that may be kept instead).
+ */
 export interface StoredFileWithBytes extends StoredFile {
-  bytes: ArrayBuffer;
+  bytes: Blob;
 }
 
 /** What the build made of the files, which the page opens on */
@@ -185,24 +192,61 @@ export function listFiles(): Promise<StoredFile[]> {
   });
 }
 
-/** The bytes of a dropped file, null for one that is not kept */
-export function readFileBytes(name: string): Promise<ArrayBuffer | null> {
+/**
+ * The bytes of a dropped file, null for one that is not kept: a Blob, which
+ * holds none of them in the page's memory until they are read
+ */
+export function readFileBytes(name: string): Promise<Blob | null> {
   return withStores([BLOBS], "readonly", async (t) => {
-    const blob: unknown = await settle(t.objectStore(BLOBS).get(name));
-    return (blob as { bytes: ArrayBuffer } | undefined)?.bytes ?? null;
+    const kept: unknown = await settle(t.objectStore(BLOBS).get(name));
+    const bytes = (kept as { bytes: Blob | ArrayBuffer } | undefined)?.bytes;
+    if (!bytes) return null;
+    return bytes instanceof Blob ? bytes : new Blob([bytes]);
   });
 }
 
-/** Keep `files`; one dropped again under the same name replaces the old */
-export function putFiles(files: StoredFileWithBytes[]): Promise<void> {
+function keep(
+  files: (StoredFile & { bytes: Blob | ArrayBuffer })[],
+): Promise<void> {
   return withStores([FILES, BLOBS], "readwrite", (t) => {
     const listing = t.objectStore(FILES);
     const blobs = t.objectStore(BLOBS);
-    for (const { bytes, ...file } of files) {
-      listing.put(file);
-      blobs.put({ name: file.name, bytes });
+    // The bytes of every file first: a Blob WebKit refuses after a put of
+    // another kind went to its server hangs the connection for the
+    // session (the listing of a batch's first file before the bytes of
+    // its second did), and one it throws at leaves nothing behind
+    try {
+      for (const { name, bytes } of files) blobs.put({ name, bytes });
+    } catch (error) {
+      t.abort();
+      throw error;
     }
+    for (const { bytes: _, ...file } of files) listing.put(file);
   });
+}
+
+/**
+ * Keep `files`; one dropped again under the same name replaces the old.
+ * Safari keeps no Blob in a private window (WebKit bug 156347; a
+ * DataCloneError, an UnknownError since 2025), nor at times on iOS
+ * (bug 188438): the bytes are kept as ArrayBuffers then, which
+ * readFileBytes hands out as Blobs.
+ */
+export async function putFiles(files: StoredFileWithBytes[]): Promise<void> {
+  try {
+    await keep(files);
+  } catch (error) {
+    const name = (error as { name?: unknown } | null)?.name;
+    if (name !== "UnknownError" && name !== "DataCloneError") throw error;
+    await keep(
+      await Promise.all(
+        files.map(async (file) => ({
+          ...file,
+          bytes: await file.bytes.arrayBuffer(),
+        })),
+      ),
+    );
+  }
 }
 
 export function removeFile(name: string): Promise<void> {

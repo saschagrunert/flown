@@ -301,19 +301,21 @@ def growth(run, make, small, repeats=3):
     A guard against catastrophic backtracking that holds on any machine: a
     fixed number of seconds failed on a CI runner busy with other work,
     which slows the small input and the large one alike and leaves their
-    ratio as it is. Each input is timed ``repeats`` times and the fastest
-    run counts, so a pause of the runner during one of them does not.
+    ratio as it is. The time counted is that of the processor for this
+    process, which the other processes of a busy machine (the workers of
+    ``pytest -n auto`` among them) do not add to as they do to the time on
+    the clock: that ratio came to 22 for a linear scan. The two inputs are
+    timed in turn, ``repeats`` times each, so a stretch of load slows both,
+    and the fastest run of each counts.
     """
-
-    def fastest(text):
-        times = []
-        for _ in range(repeats):
-            started = time.perf_counter()
+    texts = (make(small), make(small * GROWTH_FACTOR))
+    fastest = [float("inf")] * len(texts)
+    for _ in range(repeats):
+        for i, text in enumerate(texts):
+            started = time.process_time()
             run(text)
-            times.append(time.perf_counter() - started)
-        return min(times)
-
-    return fastest(make(small * GROWTH_FACTOR)) / fastest(make(small))
+            fastest[i] = min(fastest[i], time.process_time() - started)
+    return fastest[1] / fastest[0]
 
 
 def parse_data(path):

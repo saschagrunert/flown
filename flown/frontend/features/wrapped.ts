@@ -207,11 +207,13 @@ export function generateFunFacts(
   if (numAircraft === 1 && onlyAircraft) {
     // The list only has registered aircraft; flights without a registration
     // (some exports carry none) count in the year total but not here
-    const model =
-      onlyAircraft.model || onlyAircraft.type || onlyAircraft.registration;
+    const model = onlyAircraft.model || onlyAircraft.type;
     const registration = onlyAircraft.registration;
     const flights = onlyAircraft.flights;
     const plural = flights !== 1 ? "s" : "";
+    // Without a model or a type, the registration in its place read "in
+    // this D-EABC"
+    const inModel = model ? markup` in this ${model}` : "";
     // "All 1 flight" for a year of one. With one aircraft picked the list
     // has only that one, which says nothing about loyalty.
     if (
@@ -221,14 +223,14 @@ export function generateFunFacts(
     ) {
       facts.push({
         icon: "aircraft",
-        text: markup`Loyal to <strong>${registration}</strong>, all ${flights} flight${plural} in this ${model}!`,
+        text: markup`Loyal to <strong>${registration}</strong>, all ${flights} flight${plural}${inModel}!`,
         category: "aircraft",
         priority: 9,
       });
     } else {
       facts.push({
         icon: "aircraft",
-        text: markup`<strong>${registration}</strong> took you on ${flights} flight${plural} in this ${model}.`,
+        text: markup`<strong>${registration}</strong> took you on ${flights} flight${plural}${inModel}.`,
         category: "aircraft",
         priority: 7,
       });

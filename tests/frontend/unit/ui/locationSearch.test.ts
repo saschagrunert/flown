@@ -328,6 +328,15 @@ describe("opening and closing", () => {
     expect(document.activeElement).toBe(input());
   });
 
+  it("takes what was typed before its field was there, the caret after it", () => {
+    toggleSearch(asMapApp(app), true, "ED");
+
+    expect(input().value).toBe("ED");
+    expect(input().selectionStart).toBe(2);
+    expect(input().selectionEnd).toBe(2);
+    expect(optionNames()).toEqual(["EDDS Stuttgart"]);
+  });
+
   it("follows the column as it scrolls, only while open", () => {
     const measure = vi.spyOn(button(), "getBoundingClientRect");
     const column = document.getElementById("left-buttons")!;

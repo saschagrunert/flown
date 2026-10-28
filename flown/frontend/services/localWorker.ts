@@ -63,10 +63,13 @@ const OUTPUT_DIR = "/site";
 const TILES_DIR = "/tiles";
 const SOURCES_DIR = "/lib/flown-src";
 
-/** A file the page hands over, as it was dropped */
+/**
+ * A file the page hands over, as it was dropped: as the store keeps it,
+ * read here one file at a time (Runtime.run)
+ */
 export interface InputFile {
   name: string;
-  bytes: ArrayBuffer;
+  bytes: Blob;
 }
 
 /** What a build is asked for besides the files (flown.browser.build) */
@@ -271,9 +274,11 @@ export const FETCHING_GROUND_MESSAGE =
 
 /**
  * How long the cache may take to be read into the worker's memory once it
- * is open: all of it comes in at every start, the airport database and
- * some hundred elevation tiles, tens of megabytes a slow phone takes a
- * while over
+ * is open: all of it comes in at every start, and stays for the worker's
+ * life. The airport database, some 20 MB, the parses of the files, and the
+ * pixels of the elevation tiles, some 100 KB a tile (flown/browser.py keeps
+ * no PNG beside them): 60 MB for a few hundred tiles, which a slow phone
+ * takes a while over
  */
 export const CACHE_LOAD_MS = 120_000;
 /** Said when that takes longer */
@@ -603,22 +608,36 @@ export class Runtime {
     retry = false,
   ): Promise<BuildOutcome> {
     const fs = pyodide.FS;
+    let unread = "";
     try {
       removeTree(pyodide, INPUT_DIR);
       removeTree(pyodide, OUTPUT_DIR);
       removeTree(pyodide, TILES_DIR);
       fs.mkdirTree(INPUT_DIR);
       for (const file of files) {
-        // The name decides the aircraft (flown/browser.py)
-        const name = file.name.replace(/[/\\]/g, "_");
-        fs.writeFile(`${INPUT_DIR}/${name}`, new Uint8Array(file.bytes));
-        // The file system holds its copy; the one handed over can go
-        file.bytes = new ArrayBuffer(0);
+        // The name decides the aircraft (flown/browser.py), and the file is
+        // named by it in what the build says: as it is kept, but for a
+        // slash, the one character no file name in the worker can hold
+        const name = file.name.replaceAll("/", "_");
+        // Read one at a time: the file system holds the only copy of each
+        await file.bytes.arrayBuffer().then(
+          (bytes) =>
+            fs.writeFile(`${INPUT_DIR}/${name}`, new Uint8Array(bytes)),
+          () => (unread ||= file.name),
+        );
       }
     } catch (error) {
       // The memory for the files' copies, which the runtime could not
       // get: a new one starts with all of it again
       throw new RuntimeLost(RUNTIME_LOST_MESSAGE, { cause: error });
+    }
+    // A file kept that the store could not read, which is no failure of
+    // the runtime: what the store kept of it is lost, and goes with a
+    // Remove (the same file dropped again is taken as kept). Not built
+    // without it, as a single file would leave nothing to build, and a
+    // build without one is easily taken for whole
+    if (unread) {
+      throw new Error(`Could not read ${unread}; remove it and add it again`);
     }
     pyodide.globals.set("report", (_level: string, message: string) =>
       report(message),

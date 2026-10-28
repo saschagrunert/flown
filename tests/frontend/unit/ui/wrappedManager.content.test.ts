@@ -291,6 +291,22 @@ describe("WrappedManager content", () => {
     expect(el("wrapped-airports-grid").textContent).toContain("Home");
   });
 
+  it("fills the cards anew for airports that came once it was open", () => {
+    resetSiteData();
+    wrappedManager.showWrapped();
+    expect(el("wrapped-airports-grid").textContent).not.toContain("Furthest");
+
+    installAirports();
+    wrappedManager.refresh();
+
+    expect(el("wrapped-airports-grid").textContent).toContain("Furthest");
+    // Closed, there is nothing to fill
+    wrappedManager.closeWrapped();
+    el("wrapped-airports-grid").innerHTML = "";
+    wrappedManager.refresh();
+    expect(el("wrapped-airports-grid").innerHTML).toBe("");
+  });
+
   it("clears the conditional sections of the previous year", () => {
     wrappedManager.showWrapped();
     expect(el("wrapped-aircraft-fleet").innerHTML).not.toBe("");

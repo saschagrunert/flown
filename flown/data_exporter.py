@@ -305,6 +305,7 @@ def process_year_chunk(
     airport_names: frozenset[str] | None = None,
     path_elevations: Sequence[PointElevations | None] | None = None,
     path_landings: Sequence[FlightLandings | None] | None = None,
+    smoothed: bool = False,
 ) -> ChunkResult:
     """Export a chunk of a year's paths into JSON fragments.
 
@@ -315,8 +316,10 @@ def process_year_chunk(
     their order (see ``terrain.sample_path_elevations``), None for a path
     without; a path gets a ground column when they cover every row of it.
     ``path_landings`` holds the landings of each path (see
-    ``landings.detect_landings``), None for a path without. Writes
-    ``<output_dir>/<year>/.data.<index>.<part>.part`` for each of
+    ``landings.detect_landings``), None for a path without. ``smoothed``
+    says the paths come with the glitches of their altitudes smoothed over
+    already (see ``export_all_data``); otherwise each is smoothed here.
+    Writes ``<output_dir>/<year>/.data.<index>.<part>.part`` for each of
     ``_PARTS``: the path_info entries, then the entries of each array of the
     segments object, one per path, comma separated. The fragments are
     streamed path by path, so the chunk never holds all of its segment rows
@@ -350,10 +353,10 @@ def process_year_chunk(
             # Smoothed for the statistics and the drawing alone: the ground
             # was sampled at its positions, which stay, and the landings
             # read the path as recorded
-            smoothed = without_altitude_spikes(path)
-            start, rows = process_path_segments(smoothed, path_duration(metadata))
+            drawn = path if smoothed else without_altitude_spikes(path)
+            start, rows = process_path_segments(drawn, path_duration(metadata))
             info = build_path_info(
-                smoothed, metadata, path_id, year, airport_names, landings
+                drawn, metadata, path_id, year, airport_names, landings
             )
 
             # json.dumps rather than json.dump: only the one-shot encoder is
@@ -641,6 +644,7 @@ type _ChunkArguments = tuple[
     frozenset[str] | None,
     list[PointElevations | None],
     list[FlightLandings | None],
+    bool,
 ]
 
 
@@ -654,6 +658,8 @@ class _ChunkJob:
     airport_names: frozenset[str] | None
     #: The chunk indices of every year, for the file names and the cleanup
     parts_per_year: dict[int, list[int]]
+    #: Whether the paths are smoothed already (see ``process_year_chunk``)
+    smoothed: bool = False
 
     def arguments(self, plan: _ChunkPlan) -> _ChunkArguments:
         """The arguments of ``process_year_chunk`` for ``plan``."""
@@ -667,6 +673,7 @@ class _ChunkJob:
             self.airport_names,
             plan.elevations,
             plan.landings,
+            self.smoothed,
         )
 
     def packed_arguments(self, plan: _ChunkPlan) -> tuple[Any, ...]:
@@ -778,14 +785,21 @@ def _export_chunks(
     output_dir: str,
     max_workers: int,
     airport_names: frozenset[str] | None = None,
+    smoothed: bool = False,
 ) -> list[YearExportResult]:
     """Run the chunks (in a process pool when there are several) and assemble
-    the year files. Returns the results sorted by year."""
+    the year files. Returns the results sorted by year. ``smoothed`` says
+    the paths are smoothed already (see ``process_year_chunk``)."""
     parts_per_year: dict[int, list[int]] = {}
     for plan in plans:
         parts_per_year.setdefault(plan.year, []).append(plan.index)
     job = _ChunkJob(
-        all_path_groups, all_path_metadata, output_dir, airport_names, parts_per_year
+        all_path_groups,
+        all_path_metadata,
+        output_dir,
+        airport_names,
+        parts_per_year,
+        smoothed,
     )
 
     if len(plans) == 1:
@@ -814,6 +828,7 @@ def export_all_data(
     *,
     available_flags: Sequence[str],
     landings: Sequence[FlightLandings | None] | None = None,
+    smoothed: FlightPathGroup | None = None,
 ) -> ExportResult:
     """Write the data files into ``output_dir``.
 
@@ -831,9 +846,16 @@ def export_all_data(
     codes where the site has flags, and a caller that forgot them would not
     notice. ``landings`` are those of every path, found with the parse (see
     ``landings.path_landings``); without them they are found here.
+    ``smoothed`` holds every path with the glitches of its altitudes
+    smoothed over, which the year files draw and count, where the caller
+    has them: those of a trimmed path are of the whole flight (see
+    ``pipeline.trim_paths``). Without them every path is smoothed on its
+    own (see ``export_pipeline.without_altitude_spikes``).
     """
     if landings is not None and len(landings) != len(all_path_groups):
         raise ValueError("The landings have to be one per path")
+    if smoothed is not None and len(smoothed) != len(all_path_groups):
+        raise ValueError("The smoothed paths have to be one per path")
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -891,11 +913,12 @@ def export_all_data(
     )
     year_results = _export_chunks(
         plans,
-        all_path_groups,
+        all_path_groups if smoothed is None else smoothed,
         all_path_metadata,
         str(output_path),
         max_workers,
         exported_airport_names(unique_airports),
+        smoothed is not None,
     )
 
     groundspeed = GroundspeedRange()

@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlsplit
 
-from .cache import CACHE_DIR, atomic_bytes_write
+from .cache import CACHE_DIR, atomic_bytes_write, source_fingerprint
 from .export_pipeline import build_path_info
 from .geometry import web_mercator
 from .logger import logger
@@ -122,6 +122,9 @@ HALO_RADIUS = 5
 HALO_PASSES = 2
 CORE_PARTS = 2
 HALO_PARTS = 1
+# How far from a lit pixel its glow reaches: the core's boxes, then the
+# halo's at half the resolution, and the pixel halving pairs it with
+_GLOW_REACH = GLOW_PASSES * GLOW_RADIUS + 2 * HALO_PASSES * HALO_RADIUS + 1
 #: Room left around the flights, in pixels
 MARGIN_PX = 60
 #: A short local flight is not zoomed in further than this
@@ -344,36 +347,62 @@ def _doubled(lines: Sequence[Sequence[int]]) -> list[Sequence[int]]:
     return list(chain.from_iterable(zip(wide, wide, strict=True)))
 
 
+def _reach(lit: Sequence[bool], size: int) -> tuple[int, int]:
+    """The pixels the glow of the lit ones in ``lit`` reaches, start to end.
+
+    Both ends are even, so the halo's halving pairs the pixels it pairs
+    in the whole image.
+    """
+    first = next(index for index, value in enumerate(lit) if value)
+    last = size - next(index for index, value in enumerate(reversed(lit)) if value)
+    start = max(0, first - _GLOW_REACH) & ~1
+    end = min(size, last + _GLOW_REACH)
+    return start, end + (end & 1)
+
+
 def _glow(heat: list[int]) -> list[Sequence[int]]:
     """The heat blurred into a glow, row by row: a core and a wide halo.
 
     The halo is blurred at half the resolution, where it takes a quarter of
-    the time and, as soft as it is, looks the same.
+    the time and, as soft as it is, looks the same. Only the stretch of
+    rows and columns the glow reaches is blurred: the flights fill one way
+    of the image, rarely both.
     """
     width = PREVIEW_WIDTH
+    rows: list[Sequence[int]] = [
+        heat[start : start + width] for start in range(0, len(heat), width)
+    ]
+    lit_rows = [row for row in rows if any(row)]
+    if not lit_rows:
+        return rows
+    top, bottom = _reach(list(map(any, rows)), len(rows))
+    left, right = _reach(list(map(any, zip(*lit_rows, strict=True))), width)
     core = _blur(
-        [heat[start : start + width] for start in range(0, len(heat), width)],
-        GLOW_RADIUS,
-        GLOW_PASSES,
+        [row[left:right] for row in rows[top:bottom]], GLOW_RADIUS, GLOW_PASSES
     )
     halo = _doubled(_blur(_halved(core), HALO_RADIUS, HALO_PASSES))
     # The halo's sums are the core's times four pixels and its boxes, which
     # the core is scaled by to match
     core_weight = CORE_PARTS * 4 * (2 * HALO_RADIUS + 1) ** (2 * HALO_PASSES)
+    blank = [0] * width
+    before, after = [0] * left, [0] * (width - right)
     # map rather than a comprehension: a pixel costs a C call, not a loop
-    return [
-        list(
-            map(
+    glow = [
+        [
+            *before,
+            *map(
                 add,
                 map(core_weight.__mul__, c_row),
                 map(HALO_PARTS.__mul__, h_row),
                 strict=True,
-            )
-        )
+            ),
+            *after,
+        ]
         if any(h_row)
-        else h_row
+        else blank
         for c_row, h_row in zip(core, halo, strict=True)
     ]
+    return [blank] * top + glow + [blank] * (len(rows) - bottom)
 
 
 def _palette() -> bytes:
@@ -438,17 +467,6 @@ def render_preview(tracks: Sequence[array[float]]) -> bytes:
 # The modules whose code decides the bytes of an image: this one draws it,
 # png writes it, and geometry projects its tracks
 _DRAWING_MODULES = ("previews", "png", "geometry")
-
-
-def _module_digest() -> bytes:
-    """A hash of the modules that draw the images (_DRAWING_MODULES)."""
-    digest = hashlib.blake2b(digest_size=16)
-    package = Path(__file__).parent
-    for module in _DRAWING_MODULES:
-        digest.update(module.encode())
-        with contextlib.suppress(OSError):
-            digest.update((package / f"{module}.py").read_bytes())
-    return digest.digest()
 
 
 class DrawnPath:
@@ -618,7 +636,7 @@ def render_images(
     (see ``prune_preview_cache``).
     """
     cache_dir = cache_dir if cache_dir is not None else PREVIEW_CACHE_DIR
-    digest = _module_digest()
+    digest = source_fingerprint(Path(__file__).parent, _DRAWING_MODULES).encode()
     missing: dict[Path, list[PreviewJob]] = {}
     cached = 0
     for job in jobs:

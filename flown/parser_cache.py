@@ -105,8 +105,6 @@ _ENTRY_NAME = re.compile(
     r"^[0-9a-f]{32}_v(?P<version>\d+)_(?P<parser>[0-9a-f]{8})"
     r"_(?P<database>[0-9a-f]{8}|nodb)\.(?:json(?:\.zst)?|parse\.zst)$"
 )
-# The names this module ever gave an entry, for the legacy ones
-_ENTRY_SUFFIXES = (".json", ".zst")
 _HASH_CHUNK_BYTES = 1024 * 1024
 # The zstd level of an entry, as cache.encode_entry takes it
 _ZSTD_LEVEL = 3
@@ -178,9 +176,6 @@ def get_cache_key(
 def _is_stale(entry: Path, now: float) -> bool:
     match = _ENTRY_NAME.match(entry.name)
     if match is None:
-        if entry.suffix in _ENTRY_SUFFIXES:
-            # An older naming scheme, which no current key produces
-            return True
         if entry.suffix != ".tmp":
             return False
         # A temp file an interrupted write left behind goes by its age
@@ -202,8 +197,8 @@ def _is_stale(entry: Path, now: float) -> bool:
 def prune_stale_cache_entries(cache_dir: Path | None = None) -> int:
     """Remove the cache entries that are no longer useful in one directory pass.
 
-    An entry goes when no current key can produce it (a legacy name, another
-    format version or airport database) or when it has not been used for
+    An entry goes when no current key can produce it (another format
+    version or airport database) or when it has not been used for
     ``CACHE_MAX_AGE_DAYS``, like a temp file an interrupted write left or an
     entry of another parser version, which a checkout on another commit that
     shares the cache directory may still read.

@@ -736,6 +736,25 @@ describe("wrapped feature", () => {
       );
     });
 
+    it("names no model of the single aircraft without one", () => {
+      // The registration stood in for it: "in this D-EAGJ"
+      const stats: YearStats = {
+        ...yearStats,
+        total_flights: 3,
+        aircraft_list: [{ registration: "D-EAGJ", flights: 3 }],
+      };
+
+      expect(
+        generateFunFacts(stats).find((f) => f.category === "aircraft")?.text
+          .html,
+      ).toBe("Loyal to <strong>D-EAGJ</strong>, all 3 flights!");
+      expect(
+        generateFunFacts({ ...stats, total_flights: 4 }).find(
+          (f) => f.category === "aircraft",
+        )?.text.html,
+      ).toBe("<strong>D-EAGJ</strong> took you on 3 flights.");
+    });
+
     it("repeats no distance of a single flight", () => {
       // Its average and its longest journey are the distance on the card
       const stats: YearStats = { ...yearStats, total_flights: 1 };

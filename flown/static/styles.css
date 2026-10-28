@@ -444,17 +444,22 @@ main {
    where nobody could see it, and over the legend in the bottom left. They
    stop above them and scroll instead. The heights are the boxes' own: the
    link's 20 px icon in its padding and border, a legend as drawn (the
-   heat's is one row, the altitude's and the speed's three). */
+   heat's is one row, the altitude's and the speed's three), and what lifts
+   the legend onto a panel below it (--legend-lift, features.css). */
 #right-buttons {
   right: calc(var(--edge-gap) + var(--safe-right));
   --below: calc(var(--attribution-h) + var(--space-sm) * 4 + 22px);
 }
 body:has(#heat-legend:not([hidden])) #left-buttons {
-  --below: calc(var(--attribution-h) + var(--space-sm) * 2 + 44px);
+  --below: calc(
+    var(--attribution-h) + var(--space-sm) * 2 + 44px + var(--legend-lift, 0px)
+  );
 }
 body:has(#altitude-legend:not([hidden]), #airspeed-legend:not([hidden]))
   #left-buttons {
-  --below: calc(var(--attribution-h) + var(--space-sm) * 2 + 110px);
+  --below: calc(
+    var(--attribution-h) + var(--space-sm) * 2 + 110px + var(--legend-lift, 0px)
+  );
 }
 /* The mobile bar stands in for the two columns and sets `hidden` on them.
    `.control-column` would otherwise win on source order, and keying off the
@@ -700,16 +705,21 @@ body:has(#altitude-legend:not([hidden]), #airspeed-legend:not([hidden]))
    Selection chip
 
    What is selected, and the way out of it. It sits at the top centre, the
-   one edge of the map no panel claims, so it does not move when the rail
-   opens or the mobile bar takes over. Only the phone's statistics sheet
-   reaches it, and the chip moves aside into the sheet's header then (see
-   the mobile layout).
+   one edge of the map no panel claims, so it stays put when the mobile bar
+   takes over. The rail pushes the left column past it, and the chip,
+   centred on the window, ran over the column's top group up to 1280 px:
+   it is centred on the map beside the rail, as the replay panel is, and
+   compacts with the columns (below 960 px it stands under the filters).
+   The phone's statistics sheet reaches it, and the chip moves aside into
+   the sheet's header then (see the mobile layout); the sheets of a phone
+   held sideways stand over it, and it steps aside for them (phone.css).
    ========================================================================== */
 #selection-chip {
   position: fixed;
   top: calc(var(--edge-gap) + var(--safe-top));
   left: 50%;
   transform: translateX(-50%);
+  transition: left var(--duration-base) ease;
   z-index: var(--z-controls);
   display: flex;
   align-items: center;
@@ -723,6 +733,10 @@ body:has(#altitude-legend:not([hidden]), #airspeed-legend:not([hidden]))
   font-size: var(--text-md);
   color: var(--color-text);
   white-space: nowrap;
+}
+/* The phone's rule for the open sheet comes later with the same weight */
+.stats-open #selection-chip {
+  left: calc(50% + var(--stats-rail-w) / 2);
 }
 #selection-chip-count {
   overflow: hidden;
@@ -819,7 +833,10 @@ body:has(#altitude-legend:not([hidden]), #airspeed-legend:not([hidden]))
    ========================================================================== */
 .color-legend {
   position: fixed;
-  bottom: calc(var(--attribution-h) + var(--space-sm) + var(--safe-bottom));
+  bottom: calc(
+    var(--attribution-h) + var(--space-sm) + var(--safe-bottom) +
+      var(--legend-lift, 0px)
+  );
   left: calc(var(--edge-gap) + var(--safe-left));
   background-color: var(--color-bg-secondary);
   color: var(--color-text);
@@ -853,10 +870,12 @@ body:has(#altitude-legend:not([hidden]), #airspeed-legend:not([hidden]))
 /* The toasts stand where the legend is beside the statistics or in a
    narrow window over it, and a toast drawn over it cut both short: the
    legend steps aside while one shows. The widest toast
-   (400px, in the middle) meets the heat's legend below 940px, and beside
-   the rail below 1600px. */
-.stats-open:has(.toast-visible) .color-legend {
-  visibility: hidden;
+   (400px, in the middle of the map) meets the heat's legend below 940px,
+   and beside the rail below 1284px. */
+@media (max-width: 1283.98px), (max-height: 480px) {
+  .stats-open:has(.toast-visible) .color-legend {
+    visibility: hidden;
+  }
 }
 @media (max-width: 939.98px), (max-height: 480px) {
   body:has(.toast-visible) .color-legend {
@@ -1107,6 +1126,51 @@ body.stats-open #left-buttons {
   body.stats-open .control-column .filter-dropdown {
     flex: 1;
     align-self: stretch;
+  }
+  /* The selection chip compacts with them, to the words a phone keeps: its
+     buttons are icons named by their labels, and share mode's mark says
+     "Sharing". Centred on the map, "Sharing 3 flights, 1 hidden by the
+     filter" with its Copy link and Exit ran over the filters up to about
+     1090 px. */
+  .stats-open .selection-chip-word,
+  .stats-open .selection-chip-tail,
+  .stats-open #selection-chip button .control-label {
+    display: none;
+  }
+  .stats-open .is-sharing #selection-chip-mode {
+    display: flex;
+    color: var(--color-accent-blue);
+  }
+  .stats-open #selection-chip.is-sharing {
+    border-color: var(--color-accent-blue);
+  }
+}
+/* Below about 960 px the map beside the rail is narrower than the chip and
+   the two columns, and the chip, centred on it, ran into the filters; so
+   did "3 flights, 1 hidden" with its icons below about 820 px beside the
+   left column. It stands after the left column's icons (each 16 px in its
+   row's padding and its group's border) and below the two rows of filters
+   (each a control's height in its row's padding, in the group's padding
+   and border), where the right column is icons alone. It stops short of
+   them, as wide as their group: "123 flights, 45 not in 2024" ran over
+   them, and the count is cut short instead. */
+@media (min-width: 768px) and (max-width: 959.98px) and (min-height: 480.02px) {
+  .stats-open #selection-chip {
+    top: calc(
+      var(--edge-gap) + var(--safe-top) + var(--btn-min-height) * 2 +
+        var(--space-xs) * 6 + 2px + var(--space-sm)
+    );
+    left: calc(
+      var(--stats-rail-w) + var(--space-lg) + var(--safe-left) +
+        var(--icon-sm) + var(--space-sm) * 3 + 2px
+    );
+    box-sizing: border-box;
+    max-width: calc(
+      100vw - var(--stats-rail-w) - var(--space-lg) - var(--safe-left) -
+        var(--safe-right) - var(--edge-gap) -
+        (var(--icon-sm) + var(--space-sm) * 3 + 2px) * 2
+    );
+    transform: none;
   }
 }
 
@@ -1663,6 +1727,23 @@ main > #map .maplibregl-ctrl-bottom-right {
   width: max-content;
   max-width: min(400px, calc(100vw - var(--space-lg) * 2));
   pointer-events: none;
+}
+/* Beside the rail they are centred on the map, as the panels are, and
+   stop short of the columns' icons (each 16 px in its row's padding and
+   its group's border, see the selection chip): centred on the window,
+   they stood up to 130 px into the rail below 1030 px, and on the left
+   column above a replay's panel */
+@media (min-width: 768px) and (min-height: 480.02px) {
+  .stats-open .toast-stack {
+    left: calc(50% + var(--stats-rail-w) / 2);
+    max-width: min(
+      400px,
+      calc(
+        100vw - var(--stats-rail-w) -
+          (var(--space-lg) + var(--icon-sm) + var(--space-sm) * 3 + 2px) * 2
+      )
+    );
+  }
 }
 .toast-notification {
   transform: translateY(20px);
@@ -2251,6 +2332,7 @@ main > #map .maplibregl-ctrl-bottom-right {
   }
   body.rail-sliding #map,
   #left-buttons,
+  #selection-chip,
   .color-legend,
   .btn-surface,
   .control-btn,

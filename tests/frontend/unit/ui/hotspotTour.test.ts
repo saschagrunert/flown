@@ -472,6 +472,14 @@ describe("hotspot tour", () => {
         disconnect(): void {}
       },
     );
+    // The height goes to the page a frame after the observer's round
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    const nextFrame = (): void => {
+      for (const callback of frames.splice(0)) callback(0);
+    };
     try {
       tour.start();
       const panel = document.getElementById("hotspot-tour")!;
@@ -480,6 +488,7 @@ describe("hotspot tour", () => {
       for (const observer of observers) {
         observer([], {} as ResizeObserver);
       }
+      nextFrame();
 
       expect(document.body.style.getPropertyValue("--tour-panel-h")).toBe(
         "96px",

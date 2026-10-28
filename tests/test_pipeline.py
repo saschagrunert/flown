@@ -2,6 +2,7 @@
 
 import errno
 import json
+import logging
 import os
 import re
 import shutil
@@ -30,7 +31,8 @@ from flown.exceptions import (
     InvalidInputError,
     OutputRefusedError,
 )
-from flown.geometry import CoordinateExtent
+from flown.export_pipeline import without_altitude_spikes
+from flown.geometry import CoordinateExtent, trim_span
 from flown.landings import FlightLandings
 from flown.listing import list_flights
 from flown.parser import parse_and_cache
@@ -50,6 +52,7 @@ from flown.pipeline import (
     load_cached,
     no_flight_reason,
     parse_files,
+    trim_paths,
     trimmed_away_files,
 )
 from flown.previews import encode_path_id
@@ -60,8 +63,11 @@ from tests.conftest import (
     FIXTURE_AIRPORTS_CSV,
     FIXTURE_RUNWAYS_CSV,
     decoded_segments,
+    parse_kml_coordinates,
     segments_by_id,
 )
+
+DATA_DIR = Path(__file__).parent.parent / "data"
 
 TRACK_KML = """<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
@@ -838,6 +844,59 @@ class TestDropPathsWithoutYear:
         assert "c.kml" in err
 
 
+class TestTrimPaths:
+    @staticmethod
+    def _flight(name: str) -> tuple[list[TrackPoint], PathMetadata]:
+        _, groups, metadata = parse_kml_coordinates(str(DATA_DIR / name))
+        return groups[0], metadata[0]
+
+    def test_a_trim_that_ends_in_a_glitch_keeps_it_smoothed(self):
+        """Flight 91, its last two minutes 1,000 ft low: trimmed by a
+        kilometre, it ends within them, which read alone as flown, 600 ft
+        below the sea. They keep the smoothing of the whole flight."""
+        path, metadata = self._flight("91_DELGD_C182.kml")
+        smoothed = without_altitude_spikes(path)
+        span = trim_span(path, 1000, smoothed)
+        assert min(p.alt or 0.0 for p in without_altitude_spikes(path[span])) < -150
+
+        trimmed, _, drawn = trim_paths([path], [metadata], 1000)
+
+        # As recorded, for the ids, which hash the altitudes
+        assert trimmed == [path[span]]
+        assert all(a is b for a, b in zip(trimmed[0], path[span], strict=True))
+        assert drawn == [smoothed[span]]
+        assert min(p.alt or 0.0 for p in smoothed[span]) > 90
+
+    @pytest.mark.parametrize(
+        ("name", "metres", "end"),
+        [("95_DEAGJ_DA20.kml", 300, 0), ("88_DELGD_C182.kml", 1000, -1)],
+    )
+    def test_an_end_on_a_steep_climb_keeps_its_altitude(self, name, metres, end):
+        """Flight 95 trimmed by 300 m starts on a steep climb logged
+        sparsely, flight 88 trimmed by a kilometre ends on one: smoothed
+        alone, the first or the last fix went 100 ft up to the line of the
+        fixes after or before it."""
+        path, metadata = self._flight(name)
+        smoothed = without_altitude_spikes(path)
+        span = trim_span(path, metres, smoothed)
+        alone = without_altitude_spikes(path[span])
+        assert abs((alone[end].alt or 0.0) - (path[span][end].alt or 0.0)) > 25
+
+        _, _, drawn = trim_paths([path], [metadata], metres)
+
+        assert drawn == [smoothed[span]]
+        assert smoothed[span][end].alt == path[span][end].alt
+
+    def test_no_trim_leaves_the_smoothing_to_the_export(self):
+        path, metadata = self._flight("91_DELGD_C182.kml")
+
+        trimmed, trimmed_metadata, drawn = trim_paths([path], [metadata], 0)
+
+        assert trimmed == [path]
+        assert trimmed_metadata == [metadata]
+        assert drawn is None
+
+
 @pytest.mark.usefixtures("bundle")
 class TestExportSite:
     def test_the_landings_stay_with_their_paths(self, tmp_path, parse_data):
@@ -1039,6 +1098,23 @@ class TestExportSite:
 
         # The first and the last fix within 600 m of either end are gone
         assert _map_bounds(out) == [[50.0, 8.014], [50.0, 10.506]]
+
+    def test_a_trimmed_flight_is_drawn_smoothed_as_the_whole(
+        self, tmp_path, parse_data
+    ):
+        """Flight 91 trimmed by a kilometre ends within its approach glitch,
+        which the year file draws as the whole flight smooths it (see
+        TestTrimPaths), not 600 ft below the sea."""
+        _, groups, metadata = parse_kml_coordinates(str(DATA_DIR / "91_DELGD_C182.kml"))
+        out = tmp_path / "out"
+
+        _export_site(
+            groups, metadata, out / "index.html", out / "data", trim_metres=1000
+        )
+
+        (data_file,) = (out / "data").glob("*/data.json")
+        (entry,) = segments_by_id(parse_data(data_file)).values()
+        assert min(row[2] for row in decoded_segments(entry)[1]) > 300
 
     def test_a_flight_the_trim_takes_out_fails_the_run(self, tmp_path, capsys):
         """A recording of taxiing alone would leave the site without it."""
@@ -1571,6 +1647,24 @@ class TestCreateProgressiveHeatmap:
         assert str(failure.value) == "Export failed: Failed to process year 2025"
         assert isinstance(failure.value, ExportError)
         assert not (out / "index.html").exists()
+
+    @pytest.mark.usefixtures("bundle")
+    def test_a_bug_in_the_export_keeps_its_traceback_for_debug(self, tmp_path, caplog):
+        kml_file = _write_kml(tmp_path / "input" / "1_DEAGJ_DA20.kml")
+        out = tmp_path / "out"
+        with (
+            caplog.at_level(logging.DEBUG, logger="flown"),
+            patch(
+                "flown.pipeline.deduplicate_airports",
+                side_effect=ValueError("invalid literal for int()"),
+            ),
+            pytest.raises(ExportError, match="invalid literal"),
+        ):
+            build_site([kml_file], str(out / "index.html"), str(out / "data"))
+        failed = [r for r in caplog.records if r.getMessage() == "Export failed"]
+        assert len(failed) == 1
+        assert failed[0].levelno == logging.DEBUG
+        assert isinstance(failed[0].exc_info[1], ValueError)
 
     @pytest.mark.usefixtures("bundle")
     def test_full_disk_leaves_the_previous_site(self, tmp_path, capsys):

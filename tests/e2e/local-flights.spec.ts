@@ -179,7 +179,7 @@ test.describe("Your flights", () => {
     await expect(shown(page)).toHaveText("Showing your 2 flights from 2 files");
     await expect(panel(page).locator(".local-flights-files li")).toHaveCount(2);
     await expect(
-      page.getByRole("button", { name: "Show the site’s flights" }),
+      page.getByRole("button", { name: "Show the site's flights" }),
     ).toBeVisible();
     await expectNoA11yViolations(page, "Your flights with files");
     expect(await page.evaluate(() => window.mapApp!.config.dataDir)).toBe(
@@ -222,7 +222,7 @@ test.describe("Your flights", () => {
     // Back to the site's flights, with the files kept
     await openPanel(page);
     await switched(page, () =>
-      page.getByRole("button", { name: "Show the site’s flights" }).click(),
+      page.getByRole("button", { name: "Show the site's flights" }).click(),
     );
     await expect(panel(page)).toBeVisible();
     await expect(shown(page)).toHaveText("Showing the site's flights");

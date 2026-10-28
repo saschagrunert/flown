@@ -405,7 +405,7 @@ def _generate(
         kml_files = _obfuscate_inputs(kml_files)
 
     # Reads the cache directory at import, like the others above
-    from .terrain import TerrariumTiles  # noqa: PLC0415
+    from .terrain_fetch import TerrariumTiles  # noqa: PLC0415
 
     result = build_site(
         kml_files,
