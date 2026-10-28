@@ -33,7 +33,7 @@ test = [
     "pytest-xdist>=3.8.0",
     "pytest-randomly>=5.0.0",
     "coverage>=7.16.2",
-    "hypothesis>=6.170.2",
+    "hypothesis>=6.170.5",
     "lxml-stubs>=0.5.1",
 ]
 dev = [
