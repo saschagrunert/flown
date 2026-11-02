@@ -6,4 +6,4 @@
 # the one of that tag's multi-arch index: scripts/check_pins.py fails the
 # lint job until both do, and `python scripts/check_pins.py --fix` writes
 # them. Dependabot leaves this file alone (see dependabot.yml).
-FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f
