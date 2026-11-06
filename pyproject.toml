@@ -38,7 +38,7 @@ test = [
 ]
 dev = [
     "ruff>=0.17.3",
-    "mypy>=2.4.0",
+    "mypy>=2.4.1",
     "pip-audit>=2.10.1",
     # The audit of .github/workflows (make lint and the CI lint job)
     "zizmor>=1.31.1",
