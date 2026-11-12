@@ -46,7 +46,7 @@ dev = [
     "packaging>=26.3",
     # The spell check (make lint, the pre-commit hook and the CI lint job),
     # a prebuilt binary of crate-ci/typos
-    "typos>=1.51.1",
+    "typos>=1.52.0",
     # The file checks of the pre-commit hooks (final newline, trailing
     # whitespace, merge conflict markers, TOML and YAML), which the CI lint
     # job runs as well
