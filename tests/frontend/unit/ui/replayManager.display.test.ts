@@ -389,7 +389,7 @@ describe("ReplayManager display", () => {
       replayManager.updateReplayDisplay();
 
       expect(iconDiv.style.transform).toMatch(
-        /^translate3d\(0,0,0\) rotate\(-?[\d.]+deg\)$/,
+        /^translate3d\(0px, 0px, 0px\) rotate\(-?[\d.]+deg\)$/,
       );
     });
 
