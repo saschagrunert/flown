@@ -1367,7 +1367,7 @@ describe("ReplayRenderer", () => {
       callUpdateDisplay();
 
       expect(iconDiv.style.transform).toContain("rotate(");
-      expect(iconDiv.style.transform).toContain("translate3d(0,0,0)");
+      expect(iconDiv.style.transform).toContain("translate3d(0px, 0px, 0px)");
       expect(mockReplayManager.state.lastBearing).not.toBeNull();
       // The marker itself is never rotated: MapLibre positions it
       expect(airplane.marker.setRotation).not.toHaveBeenCalled();
